@@ -20,11 +20,19 @@ gvm use go1.23.4 --default
 
 ## Installation
 
+**Quick install (downloads pre-built binary):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sleuth-io/skills/main/install.sh | bash
+```
+
+**Or install from source:**
+
 ```bash
 go install github.com/sleuth-io/skills/cmd/skills@latest
 ```
 
-Or build from source:
+**Or build from source:**
 
 ```bash
 make init      # First time setup (install tools, download deps)
