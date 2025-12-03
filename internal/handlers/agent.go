@@ -22,6 +22,60 @@ func NewAgentHandler(meta *metadata.Metadata) *AgentHandler {
 	}
 }
 
+// DetectType returns true if files indicate this is an agent artifact
+func (h *AgentHandler) DetectType(files []string) bool {
+	for _, file := range files {
+		if file == "AGENT.md" || file == "agent.md" {
+			return true
+		}
+	}
+	return false
+}
+
+// GetType returns the artifact type string
+func (h *AgentHandler) GetType() string {
+	return "agent"
+}
+
+// CreateDefaultMetadata creates default metadata for an agent
+func (h *AgentHandler) CreateDefaultMetadata(name, version string) *metadata.Metadata {
+	return &metadata.Metadata{
+		MetadataVersion: "1.0",
+		Artifact: metadata.Artifact{
+			Name:    name,
+			Version: version,
+			Type:    "agent",
+		},
+		Agent: &metadata.AgentConfig{
+			PromptFile: "AGENT.md",
+		},
+	}
+}
+
+// GetPromptFile returns the prompt file path for agents
+func (h *AgentHandler) GetPromptFile(meta *metadata.Metadata) string {
+	if meta.Agent != nil {
+		return meta.Agent.PromptFile
+	}
+	return ""
+}
+
+// GetScriptFile returns empty for agents (not applicable)
+func (h *AgentHandler) GetScriptFile(meta *metadata.Metadata) string {
+	return ""
+}
+
+// ValidateMetadata validates agent-specific metadata
+func (h *AgentHandler) ValidateMetadata(meta *metadata.Metadata) error {
+	if meta.Agent == nil {
+		return fmt.Errorf("agent configuration missing")
+	}
+	if meta.Agent.PromptFile == "" {
+		return fmt.Errorf("agent prompt-file is required")
+	}
+	return nil
+}
+
 // Install extracts and installs the agent artifact
 func (h *AgentHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// Validate zip structure

@@ -42,13 +42,12 @@ clients = ["claude-code", "gemini"]     # Optional; applicable client tools
 # OR
 [artifacts.source-git]                  # Git source
 
-# Scope specification (optional, defaults to "global")
-scope = "global"                        # For global artifacts (default if omitted)
-# OR
-repo = "https://github.com/user/repo"   # For repo-specific artifacts
-# OR
-repo = "https://github.com/user/repo"   # For path-specific artifacts
-path = "backend/services"               # Relative to repo root
+# Repository scope specification (optional)
+# If omitted, artifact is installed globally
+[[artifacts.repositories]]              # Array of repository installations
+repo = "https://github.com/user/repo"   # Required; repository URL
+paths = ["services/api", "services/worker"]  # Optional; specific paths within repo
+                                        # If omitted/empty, installed for entire repo
 
 # Dependencies (optional)
 dependencies = [ ... ]                  # Array of dependency references
@@ -195,55 +194,108 @@ dependencies = [
 
 ## Scope
 
-Artifacts can be scoped to different contexts:
+Artifacts can be scoped to different contexts using the `[[artifacts.repositories]]` array.
 
 ### Global Scope (default)
 
-Artifacts apply to all projects and repositories.
+Artifacts apply to all projects and repositories when no `[[artifacts.repositories]]` entries are specified.
 
 ```toml
 [[artifacts]]
 name = "global-skill"
 version = "1.0.0"
 type = "skill"
-source = { ... }
-# No repo/path specified = global
+
+[artifacts.source-http]
+url = "https://app.sleuth.io/api/skills/artifacts/global-skill/1.0.0/global-skill-1.0.0.zip"
+hashes = {sha256 = "..."}
+# No repositories = global
 ```
 
 Installation: `~/.claude/plugins/sleuth-global-artifacts/`
 
 ### Repository Scope
 
-Artifacts apply to a specific repository.
+Artifacts apply to entire repositories when `paths` is omitted or empty.
 
 ```toml
 [[artifacts]]
 name = "repo-agent"
 version = "2.0.0"
 type = "agent"
+
+[artifacts.source-http]
+url = "https://app.sleuth.io/api/skills/artifacts/repo-agent/2.0.0/repo-agent-2.0.0.zip"
+hashes = {sha256 = "..."}
+
+[[artifacts.repositories]]
 repo = "https://github.com/company/backend"
-source = { ... }
+
+[[artifacts.repositories]]
+repo = "https://github.com/company/frontend"
 ```
 
-Installation: `{repo-root}/.claude/`
+Installation:
+- `{backend-repo-root}/.claude/`
+- `{frontend-repo-root}/.claude/`
 
 ### Path Scope
 
-Artifacts apply to a specific path within a repository.
+Artifacts apply to specific paths within repositories when `paths` array is specified.
 
 ```toml
 [[artifacts]]
 name = "api-helper"
 version = "0.5.0"
 type = "agent"
+
+[artifacts.source-http]
+url = "https://app.sleuth.io/api/skills/artifacts/api-helper/0.5.0/api-helper-0.5.0.zip"
+hashes = {sha256 = "..."}
+
+[[artifacts.repositories]]
 repo = "https://github.com/company/backend"
-path = "services/api"
-source = { ... }
+paths = ["services/api", "services/worker", "services/scheduler"]
+
+[[artifacts.repositories]]
+repo = "https://github.com/company/platform"
+paths = ["modules/auth"]
 ```
 
-Installation: `{repo-root}/services/api/.claude/`
+Installation:
+- `{backend-repo-root}/services/api/.claude/`
+- `{backend-repo-root}/services/worker/.claude/`
+- `{backend-repo-root}/services/scheduler/.claude/`
+- `{platform-repo-root}/modules/auth/.claude/`
 
-**Note**: `path` requires `repo` to be specified.
+### Mixed Scope
+
+Repository entries can mix repo-scoped and path-scoped installations.
+
+```toml
+[[artifacts]]
+name = "mixed-helper"
+version = "1.0.0"
+type = "skill"
+
+[artifacts.source-http]
+url = "https://app.sleuth.io/api/skills/artifacts/mixed-helper/1.0.0/mixed-helper-1.0.0.zip"
+hashes = {sha256 = "..."}
+
+[[artifacts.repositories]]
+repo = "https://github.com/company/backend"
+# No paths = entire backend repo
+
+[[artifacts.repositories]]
+repo = "https://github.com/company/platform"
+paths = ["modules/auth", "modules/billing"]
+# Specific paths in platform repo
+```
+
+Installation:
+- `{backend-repo-root}/.claude/` (entire repo)
+- `{platform-repo-root}/modules/auth/.claude/` (specific path)
+- `{platform-repo-root}/modules/billing/.claude/` (specific path)
 
 ## Complete Example
 
@@ -252,7 +304,7 @@ lock-version = "1.0"
 version = "a3f8d92b1c4e5f6a7b8c9d0e1f2a3b4c"
 created-by = "sleuth-cli/0.1.0"
 
-# Global HTTP artifact with hashes
+# Global HTTP artifact with hashes (no repositories = global)
 [[artifacts]]
 name = "github-mcp"
 version = "1.2.3"
@@ -264,27 +316,52 @@ hashes = {sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852
 size = 125678
 uploaded-at = "2025-11-20T14:30:00Z"
 
-# Local development artifact
+# Artifact installed at multiple paths within one repo
 [[artifacts]]
-name = "local-skill"
-version = "0.1.0-dev"
+name = "service-linter"
+version = "3.1.0"
 type = "skill"
 
-[artifacts.source-path]
-path = "~/dev/my-skills/local-skill.zip"
+[artifacts.source-http]
+url = "https://app.sleuth.io/api/skills/artifacts/service-linter/3.1.0/service-linter-3.1.0.zip"
+hashes = {sha256 = "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce"}
 
-# Git-based artifact with commit SHA
+[[artifacts.repositories]]
+repo = "https://github.com/company/backend"
+paths = ["services/api", "services/worker", "services/scheduler"]
+
+# Artifact installed across multiple repos with mixed scoping
+[[artifacts]]
+name = "auth-helper"
+version = "4.2.1"
+type = "agent"
+
+[artifacts.source-http]
+url = "https://app.sleuth.io/api/skills/artifacts/auth-helper/4.2.1/auth-helper-4.2.1.zip"
+hashes = {sha256 = "b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9"}
+
+[[artifacts.repositories]]
+repo = "https://github.com/company/backend"
+# No paths = entire repo
+
+[[artifacts.repositories]]
+repo = "https://github.com/company/platform"
+paths = ["modules/auth", "modules/billing"]
+
+# Git-based artifact with path scoping
 [[artifacts]]
 name = "custom-agent"
 version = "0.5.0"
 type = "agent"
-repo = "https://github.com/company/backend"
-path = "services/api"
 
 [artifacts.source-git]
 url = "https://github.com/company/agents.git"
 ref = "a1b2c3d4e5f6789012345678901234567890abcd"
 subdirectory = "dist"
+
+[[artifacts.repositories]]
+repo = "https://github.com/company/backend"
+paths = ["services/api"]
 
 # Artifact with dependencies
 [[artifacts]]
@@ -294,13 +371,17 @@ type = "mcp"
 
 [artifacts.source-http]
 url = "https://app.sleuth.io/api/skills/artifacts/database-mcp/2.0.0/database-mcp-2.0.0.zip"
-hashes = {sha256 = "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce"}
+hashes = {sha256 = "d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2"}
 
 dependencies = [
-  {name = "local-skill", version = "0.1.0-dev"}
+  {name = "service-linter", version = "3.1.0"}
 ]
 
-# Claude Code-specific skill
+[[artifacts.repositories]]
+repo = "https://github.com/company/backend"
+paths = ["services/api"]
+
+# Claude Code-specific skill across three repos
 [[artifacts]]
 name = "code-reviewer"
 version = "3.0.0"
@@ -309,7 +390,16 @@ clients = ["claude-code"]
 
 [artifacts.source-http]
 url = "https://app.sleuth.io/api/skills/artifacts/code-reviewer/3.0.0/code-reviewer-3.0.0.zip"
-hashes = {sha256 = "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a"}
+hashes = {sha256 = "e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3"}
+
+[[artifacts.repositories]]
+repo = "https://github.com/company/backend"
+
+[[artifacts.repositories]]
+repo = "https://github.com/company/frontend"
+
+[[artifacts.repositories]]
+repo = "https://github.com/company/mobile-app"
 ```
 
 ## Installation Process

@@ -13,21 +13,69 @@ type LockFile struct {
 	Artifacts   []Artifact `toml:"artifacts"`
 }
 
-// Artifact represents a single artifact entry in the lock file
+// Artifact represents an artifact with its metadata, source, and installation configurations
 type Artifact struct {
 	Name         string       `toml:"name"`
 	Version      string       `toml:"version"`
 	Type         ArtifactType `toml:"type"`
 	Clients      []string     `toml:"clients,omitempty"`
-	Scope        string       `toml:"scope,omitempty"`
-	Repo         string       `toml:"repo,omitempty"`
-	Path         string       `toml:"path,omitempty"`
 	Dependencies []Dependency `toml:"dependencies,omitempty"`
 
 	// Source (one of these will be present)
 	SourceHTTP *SourceHTTP `toml:"source-http,omitempty"`
 	SourcePath *SourcePath `toml:"source-path,omitempty"`
 	SourceGit  *SourceGit  `toml:"source-git,omitempty"`
+
+	// Installation configurations - array of repository installations
+	// If empty, artifact is installed globally
+	Repositories []Repository `toml:"repositories,omitempty"`
+}
+
+// Repository represents where an artifact is installed within a repository
+type Repository struct {
+	Repo  string   `toml:"repo"`            // Repository URL
+	Paths []string `toml:"paths,omitempty"` // Specific paths within repo (if empty, entire repo)
+}
+
+// ScopeType represents the scope of an installation
+type ScopeType string
+
+const (
+	ScopeGlobal ScopeType = "global"
+	ScopeRepo   ScopeType = "repo"
+	ScopePath   ScopeType = "path"
+)
+
+// GetScope returns the scope type for this repository entry
+// - If paths is empty/nil, it's repo-scoped (entire repository)
+// - If paths has entries, it's path-scoped (specific paths within repository)
+func (r *Repository) GetScope() ScopeType {
+	if len(r.Paths) > 0 {
+		return ScopePath
+	}
+	return ScopeRepo
+}
+
+// IsGlobal returns true if artifact is installed globally (no repository restrictions)
+func (a *Artifact) IsGlobal() bool {
+	return len(a.Repositories) == 0
+}
+
+// MatchesClient returns true if the artifact is compatible with the given client
+func (a *Artifact) MatchesClient(clientName string) bool {
+	// If no clients specified, matches all clients
+	if len(a.Clients) == 0 {
+		return true
+	}
+
+	// Check if client is in the list
+	for _, client := range a.Clients {
+		if client == clientName {
+			return true
+		}
+	}
+
+	return false
 }
 
 // ArtifactType represents the type of artifact
@@ -119,42 +167,6 @@ func (a *Artifact) GetSourceConfig() map[string]interface{} {
 	}
 
 	return config
-}
-
-// HasScope returns true if the artifact has scope information
-func (a *Artifact) HasScope() bool {
-	return a.Scope != "" || a.Repo != "" || a.Path != ""
-}
-
-// GetScope returns the scope type: "global", "repo", or "path"
-func (a *Artifact) GetScope() string {
-	if a.Path != "" {
-		return "path"
-	}
-	if a.Repo != "" {
-		return "repo"
-	}
-	if a.Scope != "" {
-		return a.Scope
-	}
-	return "global"
-}
-
-// MatchesClient returns true if the artifact is compatible with the given client
-func (a *Artifact) MatchesClient(clientName string) bool {
-	// If no clients specified, matches all clients
-	if len(a.Clients) == 0 {
-		return true
-	}
-
-	// Check if client is in the list
-	for _, client := range a.Clients {
-		if client == clientName {
-			return true
-		}
-	}
-
-	return false
 }
 
 // String returns a string representation of the artifact

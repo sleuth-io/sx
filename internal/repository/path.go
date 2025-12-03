@@ -55,12 +55,22 @@ func (p *PathSourceHandler) Fetch(ctx context.Context, artifact *lockfile.Artifa
 	// Clean the path
 	resolvedPath = filepath.Clean(resolvedPath)
 
-	// Check if file exists
-	if !utils.FileExists(resolvedPath) {
-		return nil, fmt.Errorf("file not found: %s", resolvedPath)
+	// Check if path exists
+	info, err := os.Stat(resolvedPath)
+	if err != nil {
+		return nil, fmt.Errorf("path not found: %s", resolvedPath)
 	}
 
-	// Read the file
+	// If it's a directory, create a zip from it
+	if info.IsDir() {
+		data, err := utils.CreateZip(resolvedPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create zip from directory: %w", err)
+		}
+		return data, nil
+	}
+
+	// It's a file - read it
 	data, err := os.ReadFile(resolvedPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)

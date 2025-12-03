@@ -23,6 +23,52 @@ func NewMCPHandler(meta *metadata.Metadata) *MCPHandler {
 	}
 }
 
+// DetectType returns true if files indicate this is an MCP artifact
+func (h *MCPHandler) DetectType(files []string) bool {
+	for _, file := range files {
+		if file == "package.json" {
+			return true
+		}
+	}
+	return false
+}
+
+// GetType returns the artifact type string
+func (h *MCPHandler) GetType() string {
+	return "mcp"
+}
+
+// CreateDefaultMetadata creates default metadata for an MCP
+func (h *MCPHandler) CreateDefaultMetadata(name, version string) *metadata.Metadata {
+	return &metadata.Metadata{
+		MetadataVersion: "1.0",
+		Artifact: metadata.Artifact{
+			Name:    name,
+			Version: version,
+			Type:    "mcp",
+		},
+		MCP: &metadata.MCPConfig{},
+	}
+}
+
+// GetPromptFile returns empty for MCP servers (not applicable)
+func (h *MCPHandler) GetPromptFile(meta *metadata.Metadata) string {
+	return ""
+}
+
+// GetScriptFile returns empty for MCP servers (not applicable)
+func (h *MCPHandler) GetScriptFile(meta *metadata.Metadata) string {
+	return ""
+}
+
+// ValidateMetadata validates MCP-specific metadata
+func (h *MCPHandler) ValidateMetadata(meta *metadata.Metadata) error {
+	if meta.MCP == nil {
+		return fmt.Errorf("mcp configuration missing")
+	}
+	return nil
+}
+
 // Install extracts and installs the MCP server artifact
 func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// Validate zip structure

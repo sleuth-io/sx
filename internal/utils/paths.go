@@ -52,13 +52,13 @@ func GetClaudeDir() (string, error) {
 	return filepath.Join(homeDir, ".claude"), nil
 }
 
-// GetConfigDir returns the path to the sleuth-sync config directory
+// GetConfigDir returns the path to the skills config directory
 func GetConfigDir() (string, error) {
 	claudeDir, err := GetClaudeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(claudeDir, "plugins", "sleuth-sync"), nil
+	return filepath.Join(claudeDir, "plugins", "skills"), nil
 }
 
 // GetConfigFile returns the path to the config.json file

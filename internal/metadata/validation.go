@@ -185,20 +185,8 @@ func (m *Metadata) ValidateWithFiles(fileList []string) error {
 		return err
 	}
 
-	// Create a set of available files
-	fileSet := make(map[string]bool)
-	for _, file := range fileList {
-		fileSet[file] = true
-	}
-
-	// Check that all required files exist
-	requiredFiles := m.GetRequiredFiles()
-	for _, file := range requiredFiles {
-		if !fileSet[file] {
-			return fmt.Errorf("required file not found in artifact: %s", file)
-		}
-	}
-
+	// Note: File existence validation is handled by the handlers package
+	// This method only validates the metadata structure itself
 	return nil
 }
 

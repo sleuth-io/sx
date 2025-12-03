@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/sleuth-io/skills/internal/buildinfo"
 	"github.com/sleuth-io/skills/internal/lockfile"
 	"github.com/sleuth-io/skills/internal/utils"
 )
@@ -40,7 +41,7 @@ func (h *HTTPSourceHandler) Fetch(ctx context.Context, artifact *lockfile.Artifa
 	}
 
 	// Add user agent
-	req.Header.Set("User-Agent", "skills-cli/0.1.0")
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
 
 	// Execute request
 	resp, err := h.client.Do(req)
@@ -102,7 +103,7 @@ func (h *HTTPSourceHandler) DownloadWithProgress(ctx context.Context, url string
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", "skills-cli/0.1.0")
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
 
 	resp, err := h.client.Do(req)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
+	"github.com/sleuth-io/skills/internal/buildinfo"
 )
 
 // Parse parses a lock file from bytes
@@ -54,4 +55,77 @@ func Write(lockFile *LockFile, filePath string) error {
 	}
 
 	return nil
+}
+
+// FindArtifact finds an artifact by name in a lock file
+// Returns the artifact and true if found, nil and false otherwise
+func FindArtifact(lockFilePath, name string) (*Artifact, bool) {
+	lockFile, err := ParseFile(lockFilePath)
+	if err != nil {
+		// Lock file doesn't exist or can't be read
+		return nil, false
+	}
+
+	for _, artifact := range lockFile.Artifacts {
+		if artifact.Name == name {
+			return &artifact, true
+		}
+	}
+
+	return nil, false
+}
+
+// AddOrUpdateArtifact adds or updates an artifact in the lock file
+// Replaces any existing artifact with the same name@version
+func AddOrUpdateArtifact(lockFilePath string, artifact *Artifact) error {
+	// Load existing lock file or create new one
+	var lockFile *LockFile
+	if _, err := os.Stat(lockFilePath); err == nil {
+		lockFile, err = ParseFile(lockFilePath)
+		if err != nil {
+			return fmt.Errorf("failed to parse lock file: %w", err)
+		}
+	} else {
+		lockFile = &LockFile{
+			LockVersion: "1.0",
+			Version:     "1",
+			CreatedBy:   buildinfo.GetCreatedBy(),
+			Artifacts:   []Artifact{},
+		}
+	}
+
+	// Remove existing artifact with same name@version
+	var filteredArtifacts []Artifact
+	for _, existing := range lockFile.Artifacts {
+		if existing.Name != artifact.Name || existing.Version != artifact.Version {
+			filteredArtifacts = append(filteredArtifacts, existing)
+		}
+	}
+	lockFile.Artifacts = filteredArtifacts
+
+	// Add the artifact
+	lockFile.Artifacts = append(lockFile.Artifacts, *artifact)
+
+	// Write lock file
+	return Write(lockFile, lockFilePath)
+}
+
+// RemoveArtifact removes an artifact and all its installations from a lock file
+func RemoveArtifact(lockFilePath string, name, version string) error {
+	lockFile, err := ParseFile(lockFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to parse lock file: %w", err)
+	}
+
+	// Filter out the artifact
+	var newArtifacts []Artifact
+	for _, artifact := range lockFile.Artifacts {
+		if artifact.Name != name || artifact.Version != version {
+			newArtifacts = append(newArtifacts, artifact)
+		}
+	}
+
+	lockFile.Artifacts = newArtifacts
+
+	return Write(lockFile, lockFilePath)
 }

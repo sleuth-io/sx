@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/schollz/progressbar/v3"
+	"github.com/sleuth-io/skills/internal/cache"
+	"github.com/sleuth-io/skills/internal/config"
 	"github.com/sleuth-io/skills/internal/handlers"
 	"github.com/sleuth-io/skills/internal/lockfile"
 	"github.com/sleuth-io/skills/internal/metadata"
@@ -102,6 +105,36 @@ func (i *ArtifactInstaller) Remove(ctx context.Context, artifact *lockfile.Artif
 	return nil
 }
 
+// RemoveArtifacts removes multiple artifacts
+func (i *ArtifactInstaller) RemoveArtifacts(ctx context.Context, artifacts []InstalledArtifact) error {
+	var errors []error
+
+	for _, artifact := range artifacts {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Create minimal lockfile artifact for removal
+		lockArtifact := &lockfile.Artifact{
+			Name:    artifact.Name,
+			Version: artifact.Version,
+			Type:    lockfile.ArtifactType(artifact.Type),
+		}
+
+		if err := i.Remove(ctx, lockArtifact); err != nil {
+			errors = append(errors, fmt.Errorf("%s: %w", artifact.Name, err))
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("cleanup errors: %v", errors)
+	}
+
+	return nil
+}
+
 // ArtifactFetcher handles fetching artifacts from a repository
 type ArtifactFetcher struct {
 	repo repository.Repository
@@ -116,7 +149,22 @@ func NewArtifactFetcher(repo repository.Repository) *ArtifactFetcher {
 
 // FetchArtifact downloads a single artifact
 func (f *ArtifactFetcher) FetchArtifact(ctx context.Context, artifact *lockfile.Artifact) (zipData []byte, meta *metadata.Metadata, err error) {
-	// Download artifact
+	// Try disk cache first
+	zipData, err = cache.LoadArtifactFromDisk(artifact.Name, artifact.Version)
+	if err == nil {
+		// Cache hit, extract metadata and return
+		metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
+		if err == nil {
+			meta, err = metadata.Parse(metadataBytes)
+			if err == nil && meta.Validate() == nil {
+				// Valid cached artifact
+				return zipData, meta, nil
+			}
+		}
+		// Cache corrupted, fall through to download
+	}
+
+	// Cache miss or invalid, download artifact
 	zipData, err = f.repo.GetArtifact(ctx, artifact)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to download artifact: %w", err)
@@ -141,6 +189,91 @@ func (f *ArtifactFetcher) FetchArtifact(ctx context.Context, artifact *lockfile.
 	// Validate metadata
 	if err := meta.Validate(); err != nil {
 		return nil, nil, fmt.Errorf("metadata validation failed: %w", err)
+	}
+
+	// Cache to disk for future use
+	if err := cache.SaveArtifactToDisk(artifact.Name, artifact.Version, zipData); err != nil {
+		// Log warning but don't fail
+		// Could add logging here
+	}
+
+	return zipData, meta, nil
+}
+
+// FetchArtifactWithProgress downloads a single artifact with progress bar
+func (f *ArtifactFetcher) FetchArtifactWithProgress(ctx context.Context, artifact *lockfile.Artifact, bar *progressbar.ProgressBar) (zipData []byte, meta *metadata.Metadata, err error) {
+	// Try disk cache first
+	zipData, err = cache.LoadArtifactFromDisk(artifact.Name, artifact.Version)
+	if err == nil {
+		// Cache hit, extract metadata and return
+		metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
+		if err == nil {
+			meta, err = metadata.Parse(metadataBytes)
+			if err == nil && meta.Validate() == nil {
+				// Valid cached artifact - complete progress bar immediately
+				if bar != nil {
+					bar.ChangeMax64(int64(len(zipData)))
+					bar.Set64(int64(len(zipData)))
+				}
+				return zipData, meta, nil
+			}
+		}
+		// Cache corrupted, fall through to download
+	}
+
+	// For HTTP sources, use DownloadWithProgress
+	if artifact.SourceHTTP != nil {
+		httpHandler := repository.NewHTTPSourceHandler()
+
+		progressCallback := func(current, total int64) {
+			if bar != nil && total > 0 {
+				bar.ChangeMax64(total)
+				bar.Set64(current)
+			}
+		}
+
+		zipData, err = httpHandler.DownloadWithProgress(ctx, artifact.SourceHTTP.URL, progressCallback)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to download artifact: %w", err)
+		}
+	} else {
+		// For non-HTTP sources, use regular fetch
+		zipData, err = f.repo.GetArtifact(ctx, artifact)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to download artifact: %w", err)
+		}
+		// Update progress bar to 100% for non-HTTP sources
+		if bar != nil {
+			bar.ChangeMax64(int64(len(zipData)))
+			bar.Set64(int64(len(zipData)))
+		}
+	}
+
+	// Verify it's a valid zip
+	if !utils.IsZipFile(zipData) {
+		return nil, nil, fmt.Errorf("downloaded file is not a valid zip archive")
+	}
+
+	// Extract and parse metadata from zip
+	metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read metadata.toml from zip: %w", err)
+	}
+
+	meta, err = metadata.Parse(metadataBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse metadata: %w", err)
+	}
+
+	// Validate metadata
+	if err := meta.Validate(); err != nil {
+		return nil, nil, fmt.Errorf("metadata validation failed: %w", err)
+	}
+
+	// Cache to disk for future use
+	if err := cache.SaveArtifactToDisk(artifact.Name, artifact.Version, zipData); err != nil {
+		// Log warning but don't fail
+		// Could add logging here
 	}
 
 	return zipData, meta, nil
@@ -174,7 +307,25 @@ func (f *ArtifactFetcher) FetchArtifacts(ctx context.Context, artifacts []*lockf
 				default:
 				}
 
-				zipData, meta, err := f.FetchArtifact(ctx, task.Artifact)
+				// Create progress bar for this artifact if not in silent mode
+				var bar *progressbar.ProgressBar
+				if !config.IsSilent() {
+					bar = progressbar.NewOptions64(
+						-1, // Unknown size initially
+						progressbar.OptionSetDescription(fmt.Sprintf("[%d/%d] %s", task.Index+1, len(artifacts), task.Artifact.Name)),
+						progressbar.OptionSetWidth(30),
+						progressbar.OptionShowBytes(true),
+						progressbar.OptionSetPredictTime(true),
+						progressbar.OptionClearOnFinish(),
+					)
+				}
+
+				zipData, meta, err := f.FetchArtifactWithProgress(ctx, task.Artifact, bar)
+
+				if bar != nil {
+					bar.Finish()
+				}
+
 				resultChan <- DownloadResult{
 					Artifact: task.Artifact,
 					ZipData:  zipData,

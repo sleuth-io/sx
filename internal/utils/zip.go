@@ -3,10 +3,12 @@ package utils
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/md5"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -236,17 +238,151 @@ func AddFileToZip(zipData []byte, filename string, content []byte) ([]byte, erro
 
 // copyZipFile copies a file from one zip archive to another
 func copyZipFile(writer *zip.Writer, file *zip.File) error {
-	w, err := writer.CreateHeader(&file.FileHeader)
-	if err != nil {
-		return err
-	}
-
+	// Read the file data first
 	r, err := file.Open()
 	if err != nil {
 		return err
 	}
 	defer r.Close()
 
-	_, err = io.Copy(w, r)
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	// Create a new header based on the original, but let the writer compute checksums
+	header := &zip.FileHeader{
+		Name:     file.Name,
+		Method:   file.Method,
+		Modified: file.Modified,
+	}
+
+	// If it's a directory, ensure trailing slash
+	if file.FileInfo().IsDir() {
+		header.Name = strings.TrimSuffix(header.Name, "/") + "/"
+	}
+
+	w, err := writer.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(data)
 	return err
+}
+
+// ComputeZipHash computes an MD5 hash of all files in a zip archive
+// Files are hashed individually, then combined in alphabetical order by filename
+func ComputeZipHash(zipData []byte) ([]byte, error) {
+	if !IsZipFile(zipData) {
+		return nil, fmt.Errorf("invalid zip file: missing magic bytes")
+	}
+
+	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read zip: %w", err)
+	}
+
+	// Create a map of filename -> hash for sorting
+	fileHashes := make(map[string][]byte)
+
+	for _, file := range reader.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+
+		// Open and hash the file
+		rc, err := file.Open()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open file %s in zip: %w", file.Name, err)
+		}
+
+		h := md5.New()
+		if _, err := io.Copy(h, rc); err != nil {
+			rc.Close()
+			return nil, fmt.Errorf("failed to hash file %s: %w", file.Name, err)
+		}
+		rc.Close()
+
+		fileHashes[file.Name] = h.Sum(nil)
+	}
+
+	// Sort filenames for consistent ordering
+	filenames := make([]string, 0, len(fileHashes))
+	for name := range fileHashes {
+		filenames = append(filenames, name)
+	}
+	sort.Strings(filenames)
+
+	// Combine all hashes in sorted order
+	combined := md5.New()
+	for _, name := range filenames {
+		// Include filename in hash to detect renames
+		combined.Write([]byte(name))
+		combined.Write(fileHashes[name])
+	}
+
+	return combined.Sum(nil), nil
+}
+
+// RemoveFileFromZip removes a file from a zip archive
+func RemoveFileFromZip(zipData []byte, filename string) ([]byte, error) {
+	if !IsZipFile(zipData) {
+		return nil, fmt.Errorf("invalid zip file: missing magic bytes")
+	}
+
+	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read zip: %w", err)
+	}
+
+	buf := new(bytes.Buffer)
+	writer := zip.NewWriter(buf)
+
+	// Copy all files except the one to remove
+	for _, file := range reader.File {
+		if file.Name == filename {
+			continue // Skip this file
+		}
+
+		if err := copyZipFile(writer, file); err != nil {
+			return nil, fmt.Errorf("failed to copy file %s: %w", file.Name, err)
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close zip writer: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// CompareZipContents compares two zip files by computing and comparing their hashes
+// Excludes metadata.toml from comparison to focus on actual content
+func CompareZipContents(zipData1, zipData2 []byte) (bool, error) {
+	// Remove metadata.toml from both zips before comparison
+	// This ensures we only compare actual content, not generated metadata
+	zipData1WithoutMeta, err := RemoveFileFromZip(zipData1, "metadata.toml")
+	if err != nil {
+		// If removal fails, file might not exist, use original
+		zipData1WithoutMeta = zipData1
+	}
+
+	zipData2WithoutMeta, err := RemoveFileFromZip(zipData2, "metadata.toml")
+	if err != nil {
+		// If removal fails, file might not exist, use original
+		zipData2WithoutMeta = zipData2
+	}
+
+	hash1, err := ComputeZipHash(zipData1WithoutMeta)
+	if err != nil {
+		return false, fmt.Errorf("failed to compute hash for first zip: %w", err)
+	}
+
+	hash2, err := ComputeZipHash(zipData2WithoutMeta)
+	if err != nil {
+		return false, fmt.Errorf("failed to compute hash for second zip: %w", err)
+	}
+
+	return bytes.Equal(hash1, hash2), nil
 }

@@ -22,6 +22,60 @@ func NewSkillHandler(meta *metadata.Metadata) *SkillHandler {
 	}
 }
 
+// DetectType returns true if files indicate this is a skill artifact
+func (h *SkillHandler) DetectType(files []string) bool {
+	for _, file := range files {
+		if file == "SKILL.md" || file == "skill.md" {
+			return true
+		}
+	}
+	return false
+}
+
+// GetType returns the artifact type string
+func (h *SkillHandler) GetType() string {
+	return "skill"
+}
+
+// CreateDefaultMetadata creates default metadata for a skill
+func (h *SkillHandler) CreateDefaultMetadata(name, version string) *metadata.Metadata {
+	return &metadata.Metadata{
+		MetadataVersion: "1.0",
+		Artifact: metadata.Artifact{
+			Name:    name,
+			Version: version,
+			Type:    "skill",
+		},
+		Skill: &metadata.SkillConfig{
+			PromptFile: "SKILL.md",
+		},
+	}
+}
+
+// GetPromptFile returns the prompt file path for skills
+func (h *SkillHandler) GetPromptFile(meta *metadata.Metadata) string {
+	if meta.Skill != nil {
+		return meta.Skill.PromptFile
+	}
+	return ""
+}
+
+// GetScriptFile returns empty for skills (not applicable)
+func (h *SkillHandler) GetScriptFile(meta *metadata.Metadata) string {
+	return ""
+}
+
+// ValidateMetadata validates skill-specific metadata
+func (h *SkillHandler) ValidateMetadata(meta *metadata.Metadata) error {
+	if meta.Skill == nil {
+		return fmt.Errorf("skill configuration missing")
+	}
+	if meta.Skill.PromptFile == "" {
+		return fmt.Errorf("skill prompt-file is required")
+	}
+	return nil
+}
+
 // Install extracts and installs the skill artifact
 func (h *SkillHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// Validate zip structure

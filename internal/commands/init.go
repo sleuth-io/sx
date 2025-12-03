@@ -1,10 +1,8 @@
 package commands
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -49,13 +47,13 @@ func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL str
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
+	out := newOutputHelper(cmd)
+
 	// Check if config already exists
 	if config.Exists() {
-		fmt.Fprintln(os.Stderr, "Configuration already exists.")
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Fprint(os.Stderr, "Overwrite existing configuration? (y/N): ")
-		response, _ := reader.ReadString('\n')
-		response = strings.TrimSpace(strings.ToLower(response))
+		out.printErr("Configuration already exists.")
+		response, _ := out.prompt("Overwrite existing configuration? (y/N): ")
+		response = strings.ToLower(response)
 		if response != "y" && response != "yes" {
 			return fmt.Errorf("initialization cancelled")
 		}
@@ -65,51 +63,49 @@ func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL str
 	nonInteractive := repoType != ""
 
 	if nonInteractive {
-		return runInitNonInteractive(ctx, repoType, serverURL, repoURL)
+		return runInitNonInteractive(cmd, ctx, repoType, serverURL, repoURL)
 	}
 
-	return runInitInteractive(ctx)
+	return runInitInteractive(cmd, ctx)
 }
 
 // runInitInteractive runs the init command in interactive mode
-func runInitInteractive(ctx context.Context) error {
-	reader := bufio.NewReader(os.Stdin)
+func runInitInteractive(cmd *cobra.Command, ctx context.Context) error {
+	out := newOutputHelper(cmd)
 
-	fmt.Println("Initialize Skills CLI")
-	fmt.Println()
-	fmt.Println("Choose repository type:")
-	fmt.Println("  1) Sleuth server (OAuth authentication)")
-	fmt.Println("  2) Git repository")
-	fmt.Println()
-	fmt.Fprint(os.Stderr, "Enter choice (1 or 2): ")
+	out.println("Initialize Skills CLI")
+	out.println()
+	out.println("Choose repository type:")
+	out.println("  1) Sleuth server (OAuth authentication)")
+	out.println("  2) Git repository")
+	out.println()
 
-	choice, _ := reader.ReadString('\n')
-	choice = strings.TrimSpace(choice)
+	choice, _ := out.prompt("Enter choice (1 or 2): ")
 
 	switch choice {
 	case "1":
-		return initSleuthServer(ctx, reader)
+		return initSleuthServer(cmd, ctx)
 	case "2":
-		return initGitRepository(ctx, reader)
+		return initGitRepository(cmd, ctx)
 	default:
 		return fmt.Errorf("invalid choice: %s", choice)
 	}
 }
 
 // runInitNonInteractive runs the init command in non-interactive mode
-func runInitNonInteractive(ctx context.Context, repoType, serverURL, repoURL string) error {
+func runInitNonInteractive(cmd *cobra.Command, ctx context.Context, repoType, serverURL, repoURL string) error {
 	switch repoType {
 	case "sleuth":
 		if serverURL == "" {
 			serverURL = defaultSleuthServerURL
 		}
-		return authenticateSleuth(ctx, serverURL)
+		return authenticateSleuth(cmd, ctx, serverURL)
 
 	case "git":
 		if repoURL == "" {
 			return fmt.Errorf("--repo-url is required for type=git")
 		}
-		return configureGitRepo(ctx, repoURL)
+		return configureGitRepo(cmd, ctx, repoURL)
 
 	default:
 		return fmt.Errorf("invalid repository type: %s (must be 'sleuth' or 'git')", repoType)
@@ -117,24 +113,22 @@ func runInitNonInteractive(ctx context.Context, repoType, serverURL, repoURL str
 }
 
 // initSleuthServer initializes Sleuth server configuration
-func initSleuthServer(ctx context.Context, reader *bufio.Reader) error {
-	fmt.Println()
-	fmt.Fprint(os.Stderr, "Enter Sleuth server URL (default: "+defaultSleuthServerURL+"): ")
-	serverURL, _ := reader.ReadString('\n')
-	serverURL = strings.TrimSpace(serverURL)
+func initSleuthServer(cmd *cobra.Command, ctx context.Context) error {
+	out := newOutputHelper(cmd)
 
-	if serverURL == "" {
-		serverURL = defaultSleuthServerURL
-	}
+	out.println()
+	serverURL, _ := out.promptWithDefault("Enter Sleuth server URL", defaultSleuthServerURL)
 
-	return authenticateSleuth(ctx, serverURL)
+	return authenticateSleuth(cmd, ctx, serverURL)
 }
 
 // authenticateSleuth performs OAuth authentication with Sleuth server
-func authenticateSleuth(ctx context.Context, serverURL string) error {
-	fmt.Println()
-	fmt.Println("Authenticating with Sleuth server...")
-	fmt.Println()
+func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL string) error {
+	out := newOutputHelper(cmd)
+
+	out.println()
+	out.println("Authenticating with Sleuth server...")
+	out.println()
 
 	// Start OAuth device code flow
 	oauthClient := config.NewOAuthClient(serverURL)
@@ -144,12 +138,12 @@ func authenticateSleuth(ctx context.Context, serverURL string) error {
 	}
 
 	// Display instructions
-	fmt.Println("To authenticate, please visit:")
-	fmt.Println()
-	fmt.Printf("  %s\n", deviceResp.VerificationURI)
-	fmt.Println()
-	fmt.Printf("And enter code: %s\n", deviceResp.UserCode)
-	fmt.Println()
+	out.println("To authenticate, please visit:")
+	out.println()
+	out.printf("  %s\n", deviceResp.VerificationURI)
+	out.println()
+	out.printf("And enter code: %s\n", deviceResp.UserCode)
+	out.println()
 
 	// Try to open browser
 	browserURL := deviceResp.VerificationURIComplete
@@ -157,11 +151,11 @@ func authenticateSleuth(ctx context.Context, serverURL string) error {
 		browserURL = deviceResp.VerificationURI
 	}
 	if err := config.OpenBrowser(browserURL); err == nil {
-		fmt.Println("(Browser opened automatically)")
+		out.println("(Browser opened automatically)")
 	}
 
-	fmt.Println()
-	fmt.Println("Waiting for authorization...")
+	out.println()
+	out.println("Waiting for authorization...")
 
 	// Poll for token
 	tokenResp, err := oauthClient.PollForToken(ctx, deviceResp.DeviceCode)
@@ -180,31 +174,33 @@ func authenticateSleuth(ctx context.Context, serverURL string) error {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
-	fmt.Println()
-	fmt.Println("✓ Authentication successful!")
-	fmt.Println("Configuration saved.")
+	out.println()
+	out.println("✓ Authentication successful!")
+	out.println("Configuration saved.")
 
 	return nil
 }
 
 // initGitRepository initializes Git repository configuration
-func initGitRepository(ctx context.Context, reader *bufio.Reader) error {
-	fmt.Println()
-	fmt.Fprint(os.Stderr, "Enter Git repository URL: ")
-	repoURL, _ := reader.ReadString('\n')
-	repoURL = strings.TrimSpace(repoURL)
+func initGitRepository(cmd *cobra.Command, ctx context.Context) error {
+	out := newOutputHelper(cmd)
+
+	out.println()
+	repoURL, _ := out.prompt("Enter Git repository URL: ")
 
 	if repoURL == "" {
 		return fmt.Errorf("repository URL is required")
 	}
 
-	return configureGitRepo(ctx, repoURL)
+	return configureGitRepo(cmd, ctx, repoURL)
 }
 
 // configureGitRepo configures a Git repository
-func configureGitRepo(ctx context.Context, repoURL string) error {
-	fmt.Println()
-	fmt.Println("Configuring Git repository...")
+func configureGitRepo(cmd *cobra.Command, ctx context.Context, repoURL string) error {
+	out := newOutputHelper(cmd)
+
+	out.println()
+	out.println("Configuring Git repository...")
 
 	// Save configuration
 	cfg := &config.Config{
@@ -216,9 +212,9 @@ func configureGitRepo(ctx context.Context, repoURL string) error {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
-	fmt.Println()
-	fmt.Println("✓ Configuration saved!")
-	fmt.Println("Git repository:", repoURL)
+	out.println()
+	out.println("✓ Configuration saved!")
+	out.println("Git repository:", repoURL)
 
 	return nil
 }

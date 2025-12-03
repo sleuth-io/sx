@@ -54,45 +54,57 @@ func (g *GitSourceHandler) Fetch(ctx context.Context, artifact *lockfile.Artifac
 		}
 	}
 
-	// Find .zip files in the directory
+	// First, try to find .zip files in the directory
 	zipFiles, err := g.findZipFiles(searchDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find zip files: %w", err)
 	}
 
-	if len(zipFiles) == 0 {
-		return nil, fmt.Errorf("no zip files found in %s", searchDir)
-	}
-
-	// If multiple zip files, look for one matching the artifact name
-	var zipFile string
-	if len(zipFiles) == 1 {
-		zipFile = zipFiles[0]
-	} else {
-		for _, f := range zipFiles {
-			base := filepath.Base(f)
-			if strings.HasPrefix(base, artifact.Name) {
-				zipFile = f
-				break
+	if len(zipFiles) > 0 {
+		// Found zip files - use the first one or match by name
+		var zipFile string
+		if len(zipFiles) == 1 {
+			zipFile = zipFiles[0]
+		} else {
+			for _, f := range zipFiles {
+				base := filepath.Base(f)
+				if strings.HasPrefix(base, artifact.Name) {
+					zipFile = f
+					break
+				}
+			}
+			if zipFile == "" {
+				zipFile = zipFiles[0] // Default to first
 			}
 		}
-		if zipFile == "" {
-			return nil, fmt.Errorf("multiple zip files found, none matching artifact name %s", artifact.Name)
+
+		// Read the zip file
+		data, err := os.ReadFile(zipFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read zip file: %w", err)
 		}
+
+		// Verify it's a valid zip file
+		if !utils.IsZipFile(data) {
+			return nil, fmt.Errorf("file is not a valid zip archive: %s", zipFile)
+		}
+
+		return data, nil
 	}
 
-	// Read the zip file
-	data, err := os.ReadFile(zipFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read zip file: %w", err)
+	// No zip files found - check if this is an exploded directory
+	// Look for metadata.toml to confirm it's an artifact directory
+	metadataPath := filepath.Join(searchDir, "metadata.toml")
+	if utils.FileExists(metadataPath) {
+		// This is an exploded artifact directory - create a zip from it
+		data, err := utils.CreateZip(searchDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create zip from directory: %w", err)
+		}
+		return data, nil
 	}
 
-	// Verify it's a valid zip file
-	if !utils.IsZipFile(data) {
-		return nil, fmt.Errorf("file is not a valid zip archive: %s", zipFile)
-	}
-
-	return data, nil
+	return nil, fmt.Errorf("no zip files or exploded artifact directory found in %s", searchDir)
 }
 
 // cloneOrUpdate clones the repository if it doesn't exist, or fetches updates if it does

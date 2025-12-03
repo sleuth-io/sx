@@ -1,12 +1,16 @@
 package repository
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"time"
 
+	"github.com/sleuth-io/skills/internal/buildinfo"
 	sleuthConfig "github.com/sleuth-io/skills/internal/config"
 	"github.com/sleuth-io/skills/internal/lockfile"
 	"github.com/sleuth-io/skills/internal/metadata"
@@ -61,7 +65,7 @@ func (s *SleuthRepository) GetLockFile(ctx context.Context, cachedETag string) (
 	}
 
 	// Add headers
-	req.Header.Set("User-Agent", "skills-cli/0.1.0")
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
 	if s.authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+s.authToken)
 	}
@@ -114,12 +118,81 @@ func (s *SleuthRepository) GetArtifact(ctx context.Context, artifact *lockfile.A
 
 // AddArtifact uploads an artifact to the Sleuth server
 func (s *SleuthRepository) AddArtifact(ctx context.Context, artifact *lockfile.Artifact, zipData []byte) error {
-	// TODO: Implement artifact upload to Sleuth server
-	// This will involve:
-	// 1. POST to /api/skills/artifacts with multipart form data
-	// 2. Server will extract metadata, validate, and add to lock file
-	// 3. Return updated lock file or artifact URL
-	return fmt.Errorf("AddArtifact not yet implemented for Sleuth repository")
+	endpoint := s.serverURL + "/api/skills/artifacts"
+
+	// Create multipart writer
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	// Add file part
+	part, err := writer.CreateFormFile("file", fmt.Sprintf("%s-%s.zip", artifact.Name, artifact.Version))
+	if err != nil {
+		return fmt.Errorf("failed to create form file: %w", err)
+	}
+	if _, err := part.Write(zipData); err != nil {
+		return fmt.Errorf("failed to write zip data: %w", err)
+	}
+
+	// Add metadata fields
+	writer.WriteField("name", artifact.Name)
+	writer.WriteField("version", artifact.Version)
+	writer.WriteField("type", string(artifact.Type))
+
+	// Close writer
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to close writer: %w", err)
+	}
+
+	// Create request
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, body)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
+	if s.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.authToken)
+	}
+
+	// Execute request
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to upload artifact: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	// Parse response
+	var uploadResp struct {
+		Success  bool `json:"success"`
+		Artifact struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+			URL     string `json:"url"`
+		} `json:"artifact"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&uploadResp); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if !uploadResp.Success {
+		return fmt.Errorf("upload failed: server returned success=false")
+	}
+
+	// Update artifact with source information if server returns URL
+	if uploadResp.Artifact.URL != "" {
+		artifact.SourceHTTP = &lockfile.SourceHTTP{
+			URL: uploadResp.Artifact.URL,
+		}
+	}
+
+	return nil
 }
 
 // GetVersionList retrieves available versions for an artifact
@@ -131,7 +204,7 @@ func (s *SleuthRepository) GetVersionList(ctx context.Context, name string) ([]s
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", "skills-cli/0.1.0")
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
 	if s.authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+s.authToken)
 	}
@@ -147,8 +220,15 @@ func (s *SleuthRepository) GetVersionList(ctx context.Context, name string) ([]s
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
-	// TODO: Parse response and return version list
-	return nil, fmt.Errorf("GetVersionList not yet fully implemented")
+	var response struct {
+		Versions []string `json:"versions"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return response.Versions, nil
 }
 
 // GetMetadata retrieves metadata for a specific artifact version
@@ -160,7 +240,7 @@ func (s *SleuthRepository) GetMetadata(ctx context.Context, name, version string
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", "skills-cli/0.1.0")
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
 	if s.authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+s.authToken)
 	}

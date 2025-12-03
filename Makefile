@@ -46,7 +46,7 @@ clean: ## Clean build artifacts
 release: ## Create release with goreleaser (requires goreleaser)
 	@echo "Creating release..."
 	@which goreleaser > /dev/null || (echo "goreleaser not found. Install from https://goreleaser.com/install/" && exit 1)
-	@goreleaser release --snapshot --clean
+	@goreleaser release --clean
 
 # Development targets
 run: build ## Build and run the binary

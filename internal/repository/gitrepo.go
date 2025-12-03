@@ -1,15 +1,20 @@
 package repository
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 
 	"github.com/sleuth-io/skills/internal/cache"
+	"github.com/sleuth-io/skills/internal/constants"
 	"github.com/sleuth-io/skills/internal/lockfile"
 	"github.com/sleuth-io/skills/internal/metadata"
+	"github.com/sleuth-io/skills/internal/utils"
 )
 
 // GitRepository implements Repository for Git repositories
@@ -53,10 +58,10 @@ func (g *GitRepository) GetLockFile(ctx context.Context, cachedETag string) (con
 		return nil, "", false, fmt.Errorf("failed to clone/update repository: %w", err)
 	}
 
-	// Read sleuth.lock from repository root
-	lockFilePath := filepath.Join(g.repoPath, "sleuth.lock")
+	// Read skill.lock from repository root
+	lockFilePath := filepath.Join(g.repoPath, constants.SkillLockFile)
 	if _, err := os.Stat(lockFilePath); os.IsNotExist(err) {
-		return nil, "", false, fmt.Errorf("sleuth.lock not found in repository")
+		return nil, "", false, fmt.Errorf("%s not found in repository", constants.SkillLockFile)
 	}
 
 	data, err := os.ReadFile(lockFilePath)
@@ -97,46 +102,86 @@ func (g *GitRepository) AddArtifact(ctx context.Context, artifact *lockfile.Arti
 		return fmt.Errorf("failed to create artifact directory: %w", err)
 	}
 
-	// Write zip file
-	zipFilename := fmt.Sprintf("%s-%s.zip", artifact.Name, artifact.Version)
-	zipPath := filepath.Join(artifactDir, zipFilename)
-	if err := os.WriteFile(zipPath, zipData, 0644); err != nil {
-		return fmt.Errorf("failed to write zip file: %w", err)
+	// For Git repositories, store artifacts exploded (not as zip)
+	// This makes them easier to browse and diff in Git
+	if err := extractZipToDir(zipData, artifactDir); err != nil {
+		return fmt.Errorf("failed to extract zip to directory: %w", err)
 	}
 
-	// Update lock file
-	lockFilePath := filepath.Join(g.repoPath, "sleuth.lock")
-	lockFile, err := lockfile.ParseFile(lockFilePath)
-	if err != nil {
-		// If lock file doesn't exist, create a new one
-		lockFile = &lockfile.LockFile{
-			LockVersion: "1.0",
-			Version:     "1",
-			CreatedBy:   "skills-cli/0.1.0",
-			Artifacts:   []lockfile.Artifact{},
-		}
+	// Update list.txt with this version
+	listPath := filepath.Join(g.repoPath, "artifacts", artifact.Name, "list.txt")
+	if err := g.updateVersionList(listPath, artifact.Version); err != nil {
+		return fmt.Errorf("failed to update version list: %w", err)
 	}
 
-	// Add artifact to lock file
-	lockFile.Artifacts = append(lockFile.Artifacts, *artifact)
-
-	// Write updated lock file
-	if err := lockfile.Write(lockFile, lockFilePath); err != nil {
-		return fmt.Errorf("failed to write lock file: %w", err)
-	}
-
-	// Git add, commit, and push
-	if err := g.commitAndPush(ctx, artifact); err != nil {
-		return fmt.Errorf("failed to commit and push: %w", err)
-	}
+	// Note: Lock file is NOT updated here - it will be updated separately
+	// with installation configurations by the caller
 
 	return nil
 }
 
-// GetVersionList retrieves available versions for an artifact
-// Not applicable for Git repositories
+// GetLockFilePath returns the path to the lock file in the git repository
+func (g *GitRepository) GetLockFilePath() string {
+	return filepath.Join(g.repoPath, constants.SkillLockFile)
+}
+
+// CommitAndPush commits all changes and pushes to remote
+func (g *GitRepository) CommitAndPush(ctx context.Context, artifact *lockfile.Artifact) error {
+	return g.commitAndPush(ctx, artifact)
+}
+
+// GetVersionList retrieves available versions for an artifact from list.txt
 func (g *GitRepository) GetVersionList(ctx context.Context, name string) ([]string, error) {
-	return nil, fmt.Errorf("GetVersionList not supported for Git repositories")
+	// Clone or update repository
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return nil, fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+
+	// Read list.txt for this artifact
+	listPath := filepath.Join(g.repoPath, "artifacts", name, "list.txt")
+	if _, err := os.Stat(listPath); os.IsNotExist(err) {
+		// No versions exist for this artifact
+		return []string{}, nil
+	}
+
+	data, err := os.ReadFile(listPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read version list: %w", err)
+	}
+
+	// Parse versions from file
+	var versions []string
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		version := string(bytes.TrimSpace(line))
+		if version != "" {
+			versions = append(versions, version)
+		}
+	}
+
+	return versions, nil
+}
+
+// GetArtifactByVersion retrieves an artifact by name and version from the git repository
+// This creates a zip from the exploded directory
+func (g *GitRepository) GetArtifactByVersion(ctx context.Context, name, version string) ([]byte, error) {
+	// Clone or update repository
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return nil, fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+
+	// Check if artifact directory exists
+	artifactDir := filepath.Join(g.repoPath, "artifacts", name, version)
+	if _, err := os.Stat(artifactDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("artifact %s@%s not found", name, version)
+	}
+
+	// Create zip from directory
+	zipData, err := utils.CreateZip(artifactDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create zip from directory: %w", err)
+	}
+
+	return zipData, nil
 }
 
 // GetMetadata retrieves metadata for a specific artifact version
@@ -216,4 +261,104 @@ func (g *GitRepository) commitAndPush(ctx context.Context, artifact *lockfile.Ar
 	}
 
 	return nil
+}
+
+// extractZipToDir extracts a zip file to a directory
+func extractZipToDir(zipData []byte, targetDir string) error {
+	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return fmt.Errorf("failed to read zip: %w", err)
+	}
+
+	for _, file := range reader.File {
+		// Build target path
+		targetPath := filepath.Join(targetDir, file.Name)
+
+		// Prevent zip slip vulnerability
+		if !filepath.HasPrefix(targetPath, filepath.Clean(targetDir)+string(os.PathSeparator)) &&
+			targetPath != filepath.Clean(targetDir) {
+			return fmt.Errorf("illegal file path: %s", file.Name)
+		}
+
+		if file.FileInfo().IsDir() {
+			if err := os.MkdirAll(targetPath, file.Mode()); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", file.Name, err)
+			}
+			continue
+		}
+
+		// Ensure parent directory exists with proper permissions
+		parentDir := filepath.Dir(targetPath)
+		if err := os.MkdirAll(parentDir, 0755); err != nil {
+			return fmt.Errorf("failed to create parent directory for %s: %w", file.Name, err)
+		}
+		// Fix permissions on parent directory if it already existed
+		if err := os.Chmod(parentDir, 0755); err != nil {
+			return fmt.Errorf("failed to set permissions on parent directory for %s: %w", file.Name, err)
+		}
+
+		// Extract file
+		rc, err := file.Open()
+		if err != nil {
+			return fmt.Errorf("failed to open file %s in zip: %w", file.Name, err)
+		}
+
+		// Use 0644 for files instead of preserving zip permissions
+		// Zip files may have restrictive permissions that cause issues
+		fileMode := os.FileMode(0644)
+		if file.Mode()&0111 != 0 {
+			// If executable bit is set, use 0755
+			fileMode = 0755
+		}
+
+		outFile, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fileMode)
+		if err != nil {
+			rc.Close()
+			return fmt.Errorf("failed to create file %s: %w", file.Name, err)
+		}
+
+		_, err = io.Copy(outFile, rc)
+		rc.Close()
+		outFile.Close()
+
+		if err != nil {
+			return fmt.Errorf("failed to write file %s: %w", file.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// updateVersionList updates the list.txt file with a new version
+func (g *GitRepository) updateVersionList(listPath, newVersion string) error {
+	var versions []string
+
+	// Read existing versions if file exists
+	if data, err := os.ReadFile(listPath); err == nil {
+		for _, line := range bytes.Split(data, []byte("\n")) {
+			version := string(bytes.TrimSpace(line))
+			if version != "" {
+				versions = append(versions, version)
+			}
+		}
+	}
+
+	// Check if version already exists
+	for _, v := range versions {
+		if v == newVersion {
+			return nil // Version already in list
+		}
+	}
+
+	// Add new version
+	versions = append(versions, newVersion)
+
+	// Write back to file
+	var buf bytes.Buffer
+	for _, v := range versions {
+		buf.WriteString(v)
+		buf.WriteByte('\n')
+	}
+
+	return os.WriteFile(listPath, buf.Bytes(), 0644)
 }

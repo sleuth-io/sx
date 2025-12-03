@@ -22,6 +22,60 @@ func NewCommandHandler(meta *metadata.Metadata) *CommandHandler {
 	}
 }
 
+// DetectType returns true if files indicate this is a command artifact
+func (h *CommandHandler) DetectType(files []string) bool {
+	for _, file := range files {
+		if file == "COMMAND.md" || file == "command.md" {
+			return true
+		}
+	}
+	return false
+}
+
+// GetType returns the artifact type string
+func (h *CommandHandler) GetType() string {
+	return "command"
+}
+
+// CreateDefaultMetadata creates default metadata for a command
+func (h *CommandHandler) CreateDefaultMetadata(name, version string) *metadata.Metadata {
+	return &metadata.Metadata{
+		MetadataVersion: "1.0",
+		Artifact: metadata.Artifact{
+			Name:    name,
+			Version: version,
+			Type:    "command",
+		},
+		Command: &metadata.CommandConfig{
+			PromptFile: "COMMAND.md",
+		},
+	}
+}
+
+// GetPromptFile returns the prompt file path for commands
+func (h *CommandHandler) GetPromptFile(meta *metadata.Metadata) string {
+	if meta.Command != nil {
+		return meta.Command.PromptFile
+	}
+	return ""
+}
+
+// GetScriptFile returns empty for commands (not applicable)
+func (h *CommandHandler) GetScriptFile(meta *metadata.Metadata) string {
+	return ""
+}
+
+// ValidateMetadata validates command-specific metadata
+func (h *CommandHandler) ValidateMetadata(meta *metadata.Metadata) error {
+	if meta.Command == nil {
+		return fmt.Errorf("command configuration missing")
+	}
+	if meta.Command.PromptFile == "" {
+		return fmt.Errorf("command prompt-file is required")
+	}
+	return nil
+}
+
 // Install extracts and installs the command artifact
 func (h *CommandHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// Validate zip structure

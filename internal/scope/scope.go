@@ -27,37 +27,59 @@ func NewMatcher(currentScope *Scope) *Matcher {
 	}
 }
 
-// Matches checks if an artifact's scope matches the current scope
-func (m *Matcher) Matches(artifact *lockfile.Artifact) bool {
-	artifactScope := artifact.GetScope()
-
-	switch artifactScope {
-	case "global":
-		// Global artifacts always match
+// MatchesArtifact checks if an artifact should be installed in the current scope
+// An artifact matches if:
+// - It's global (no repositories) OR
+// - It has a repository entry that matches the current context
+func (m *Matcher) MatchesArtifact(artifact *lockfile.Artifact) bool {
+	// Global artifacts (no repositories) always match
+	if artifact.IsGlobal() {
 		return true
-
-	case "repo":
-		// Repo-scoped artifacts match if we're in the same repo
-		if m.currentScope.Type == "global" {
-			return false
-		}
-		return m.matchesRepo(artifact.Repo)
-
-	case "path":
-		// Path-scoped artifacts match if we're in the same repo and path
-		if m.currentScope.Type != "path" {
-			return false
-		}
-		return m.matchesRepo(artifact.Repo) && m.matchesPath(artifact.Path)
-
-	default:
-		// Unknown scope, default to not matching
-		return false
 	}
+
+	// Check each repository entry to see if any match
+	for _, repo := range artifact.Repositories {
+		if m.matchesRepository(&repo) {
+			return true
+		}
+	}
+
+	return false
 }
 
-// matchesRepo checks if the artifact's repo matches the current repo
-func (m *Matcher) matchesRepo(artifactRepo string) bool {
+// matchesRepository checks if a repository entry matches the current scope
+func (m *Matcher) matchesRepository(repo *lockfile.Repository) bool {
+	// If we're in global scope, repository-specific artifacts don't match
+	if m.currentScope.Type == "global" {
+		return false
+	}
+
+	// Check if repo URL matches
+	if !m.matchesRepoURL(repo.Repo) {
+		return false
+	}
+
+	// If repository has no paths, it matches the entire repo
+	if len(repo.Paths) == 0 {
+		return true
+	}
+
+	// If repository has paths, check if current path matches any of them
+	if m.currentScope.Type != "path" {
+		return false
+	}
+
+	for _, path := range repo.Paths {
+		if m.matchesPath(path) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// matchesRepoURL checks if the artifact's repo matches the current repo
+func (m *Matcher) matchesRepoURL(artifactRepo string) bool {
 	if m.currentScope.RepoURL == "" || artifactRepo == "" {
 		return false
 	}
@@ -118,35 +140,36 @@ func normalizeRepoPath(path string) string {
 	return cleaned
 }
 
-// FilterArtifacts filters artifacts based on the current scope
-func FilterArtifacts(artifacts []lockfile.Artifact, currentScope *Scope) []lockfile.Artifact {
+// GetInstallLocations returns all installation base directories for an artifact in the current context
+// An artifact can have multiple installation locations if it has multiple repository entries
+func GetInstallLocations(artifact *lockfile.Artifact, currentScope *Scope, repoRoot, globalBase string) []string {
+	var locations []string
+
+	// If global artifact (no repositories), install to global base
+	if artifact.IsGlobal() {
+		return []string{globalBase}
+	}
+
 	matcher := NewMatcher(currentScope)
 
-	var matched []lockfile.Artifact
-	for _, artifact := range artifacts {
-		if matcher.Matches(&artifact) {
-			matched = append(matched, artifact)
+	// Check each repository entry
+	for _, repo := range artifact.Repositories {
+		if !matcher.matchesRepository(&repo) {
+			continue
+		}
+
+		// If repository has paths, install to each path
+		if len(repo.Paths) > 0 {
+			for _, path := range repo.Paths {
+				if matcher.matchesPath(path) {
+					locations = append(locations, filepath.Join(repoRoot, path, ".claude"))
+				}
+			}
+		} else {
+			// No paths = entire repo
+			locations = append(locations, filepath.Join(repoRoot, ".claude"))
 		}
 	}
 
-	return matched
-}
-
-// GetInstallBase returns the installation base directory for a given artifact scope
-// Returns the appropriate base directory based on scope precedence:
-// 1. Path-specific: {repo-root}/{path}/.claude/
-// 2. Repository-specific: {repo-root}/.claude/
-// 3. Global: ~/.claude/
-func GetInstallBase(artifact *lockfile.Artifact, repoRoot, globalBase string) string {
-	switch artifact.GetScope() {
-	case "path":
-		// Path-specific installation
-		return filepath.Join(repoRoot, artifact.Path, ".claude")
-	case "repo":
-		// Repository-specific installation
-		return filepath.Join(repoRoot, ".claude")
-	default:
-		// Global installation
-		return globalBase
-	}
+	return locations
 }

@@ -1,10 +1,12 @@
 package cache
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/sleuth-io/skills/internal/utils"
 )
@@ -26,7 +28,7 @@ func GetCacheDir() (string, error) {
 		}
 	}
 
-	return filepath.Join(cacheDir, "sleuth-sync"), nil
+	return filepath.Join(cacheDir, "skills"), nil
 }
 
 // getFallbackCacheDir returns platform-specific fallback cache directories
@@ -133,4 +135,158 @@ func ClearArtifactCache() error {
 		return err
 	}
 	return os.RemoveAll(artifactCacheDir)
+}
+
+// ETagCache stores ETags for lock files
+type ETagCache struct {
+	URL  string    `json:"url"`
+	ETag string    `json:"etag"`
+	Date time.Time `json:"date"`
+}
+
+// GetLockFileETagPath returns the path for storing lock file ETag
+func GetLockFileETagPath(repoURL string) (string, error) {
+	lockFileCacheDir, err := GetLockFileCacheDir()
+	if err != nil {
+		return "", err
+	}
+
+	// Hash the repo URL for filename
+	urlHash := utils.URLHash(repoURL)
+	return filepath.Join(lockFileCacheDir, urlHash+".etag.json"), nil
+}
+
+// LoadETag loads the cached ETag for a lock file
+func LoadETag(repoURL string) (string, error) {
+	etagPath, err := GetLockFileETagPath(repoURL)
+	if err != nil {
+		return "", err
+	}
+
+	if !utils.FileExists(etagPath) {
+		return "", nil
+	}
+
+	data, err := os.ReadFile(etagPath)
+	if err != nil {
+		return "", err
+	}
+
+	var cache ETagCache
+	if err := json.Unmarshal(data, &cache); err != nil {
+		return "", err
+	}
+
+	// Check if cache is stale (older than 7 days)
+	if time.Since(cache.Date) > 7*24*time.Hour {
+		return "", nil
+	}
+
+	return cache.ETag, nil
+}
+
+// SaveETag saves the ETag for a lock file
+func SaveETag(repoURL, etag string) error {
+	etagPath, err := GetLockFileETagPath(repoURL)
+	if err != nil {
+		return err
+	}
+
+	// Ensure directory exists
+	if err := utils.EnsureDir(filepath.Dir(etagPath)); err != nil {
+		return err
+	}
+
+	cache := ETagCache{
+		URL:  repoURL,
+		ETag: etag,
+		Date: time.Now(),
+	}
+
+	data, err := json.MarshalIndent(cache, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(etagPath, data, 0644)
+}
+
+// GetCachedLockFilePath returns path for cached lock file
+func GetCachedLockFilePath(repoURL string) (string, error) {
+	lockFileCacheDir, err := GetLockFileCacheDir()
+	if err != nil {
+		return "", err
+	}
+	urlHash := utils.URLHash(repoURL)
+	return filepath.Join(lockFileCacheDir, urlHash+".lock"), nil
+}
+
+// SaveLockFile caches lock file to disk
+func SaveLockFile(repoURL string, data []byte) error {
+	path, err := GetCachedLockFilePath(repoURL)
+	if err != nil {
+		return err
+	}
+	if err := utils.EnsureDir(filepath.Dir(path)); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// LoadLockFile loads cached lock file
+func LoadLockFile(repoURL string) ([]byte, error) {
+	path, err := GetCachedLockFilePath(repoURL)
+	if err != nil {
+		return nil, err
+	}
+	if !utils.FileExists(path) {
+		return nil, os.ErrNotExist
+	}
+	return os.ReadFile(path)
+}
+
+// SaveArtifactToDisk caches an artifact zip to disk
+func SaveArtifactToDisk(name, version string, data []byte) error {
+	cachePath, err := GetArtifactCachePath(name, version)
+	if err != nil {
+		return err
+	}
+
+	// Ensure directory exists
+	if err := utils.EnsureDir(filepath.Dir(cachePath)); err != nil {
+		return err
+	}
+
+	// Verify it's a valid zip before caching
+	if !utils.IsZipFile(data) {
+		return fmt.Errorf("not a valid zip file")
+	}
+
+	return os.WriteFile(cachePath, data, 0644)
+}
+
+// LoadArtifactFromDisk loads a cached artifact from disk
+func LoadArtifactFromDisk(name, version string) ([]byte, error) {
+	cachePath, err := GetArtifactCachePath(name, version)
+	if err != nil {
+		return nil, err
+	}
+
+	if !utils.FileExists(cachePath) {
+		return nil, os.ErrNotExist
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify cached file is still a valid zip
+	if !utils.IsZipFile(data) {
+		// Corrupted cache, remove it
+		os.Remove(cachePath)
+		return nil, fmt.Errorf("cached file corrupted")
+	}
+
+	return data, nil
 }

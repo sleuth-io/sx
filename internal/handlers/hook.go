@@ -23,6 +23,64 @@ func NewHookHandler(meta *metadata.Metadata) *HookHandler {
 	}
 }
 
+// DetectType returns true if files indicate this is a hook artifact
+func (h *HookHandler) DetectType(files []string) bool {
+	for _, file := range files {
+		if file == "hook.sh" || file == "hook.py" || file == "hook.js" {
+			return true
+		}
+	}
+	return false
+}
+
+// GetType returns the artifact type string
+func (h *HookHandler) GetType() string {
+	return "hook"
+}
+
+// CreateDefaultMetadata creates default metadata for a hook
+func (h *HookHandler) CreateDefaultMetadata(name, version string) *metadata.Metadata {
+	return &metadata.Metadata{
+		MetadataVersion: "1.0",
+		Artifact: metadata.Artifact{
+			Name:    name,
+			Version: version,
+			Type:    "hook",
+		},
+		Hook: &metadata.HookConfig{
+			Event:      "pre-commit",
+			ScriptFile: "hook.sh",
+		},
+	}
+}
+
+// GetPromptFile returns empty for hooks (not applicable)
+func (h *HookHandler) GetPromptFile(meta *metadata.Metadata) string {
+	return ""
+}
+
+// GetScriptFile returns the script file path for hooks
+func (h *HookHandler) GetScriptFile(meta *metadata.Metadata) string {
+	if meta.Hook != nil {
+		return meta.Hook.ScriptFile
+	}
+	return ""
+}
+
+// ValidateMetadata validates hook-specific metadata
+func (h *HookHandler) ValidateMetadata(meta *metadata.Metadata) error {
+	if meta.Hook == nil {
+		return fmt.Errorf("hook configuration missing")
+	}
+	if meta.Hook.Event == "" {
+		return fmt.Errorf("hook event is required")
+	}
+	if meta.Hook.ScriptFile == "" {
+		return fmt.Errorf("hook script-file is required")
+	}
+	return nil
+}
+
 // Install extracts and installs the hook artifact
 func (h *HookHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// Validate zip structure

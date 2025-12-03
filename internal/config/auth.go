@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pkg/browser"
+	"github.com/sleuth-io/skills/internal/buildinfo"
 )
 
 const (
@@ -64,7 +65,7 @@ func (o *OAuthClient) StartDeviceFlow(ctx context.Context) (*OAuthDeviceCodeResp
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", "skills-cli/0.1.0")
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
 
 	resp, err := o.httpClient.Do(req)
 	if err != nil {
@@ -143,7 +144,7 @@ func (o *OAuthClient) requestToken(ctx context.Context, endpoint, deviceCode str
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", "skills-cli/0.1.0")
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
 
 	resp, err := o.httpClient.Do(req)
 	if err != nil {

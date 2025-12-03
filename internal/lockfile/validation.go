@@ -126,9 +126,20 @@ func (a *Artifact) Validate() error {
 		}
 	}
 
-	// Validate scope consistency
-	if a.Path != "" && a.Repo == "" {
-		return fmt.Errorf("path scope requires repo to be specified")
+	// Validate repositories
+	for i, repo := range a.Repositories {
+		if err := repo.Validate(); err != nil {
+			return fmt.Errorf("repositories[%d]: %w", i, err)
+		}
+	}
+
+	return nil
+}
+
+// Validate validates a Repository entry
+func (r *Repository) Validate() error {
+	if r.Repo == "" {
+		return fmt.Errorf("repo is required")
 	}
 
 	return nil
