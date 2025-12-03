@@ -109,20 +109,65 @@ func (m *Matcher) matchesPath(artifactPath string) bool {
 
 // normalizeRepoURL normalizes a repository URL for comparison
 func normalizeRepoURL(repoURL string) string {
-	// Parse URL
-	u, err := url.Parse(repoURL)
-	if err != nil {
-		// If parsing fails, use the original URL
-		return strings.ToLower(strings.TrimSuffix(repoURL, ".git"))
+	// Normalize and clean the URL
+	cleaned := strings.TrimSpace(strings.ToLower(repoURL))
+	cleaned = strings.TrimSuffix(cleaned, ".git")
+
+	// Extract host for checking if we should normalize SSH
+	host := extractHost(cleaned)
+
+	// Only normalize SSH URLs for known public git services
+	if strings.HasPrefix(cleaned, "git@") && isKnownGitService(host) {
+		// Extract host and path from git@host:owner/repo format
+		cleaned = strings.TrimPrefix(cleaned, "git@")
+		cleaned = strings.Replace(cleaned, ":", "/", 1) // Replace first : with /
+		return cleaned
 	}
 
-	// Remove .git suffix
-	path := strings.TrimSuffix(u.Path, ".git")
+	// Handle HTTPS URLs
+	u, err := url.Parse(cleaned)
+	if err != nil {
+		// If parsing fails, return as-is
+		return cleaned
+	}
 
-	// Reconstruct normalized URL (host + path, lowercase)
-	normalized := strings.ToLower(u.Host + path)
+	// Return host + path (e.g., "github.com/owner/repo")
+	return strings.TrimPrefix(u.Host+u.Path, "/")
+}
 
-	return normalized
+// isKnownGitService checks if a host is a known public git service
+func isKnownGitService(host string) bool {
+	knownServices := []string{
+		"github.com",
+		"gitlab.com",
+		"bitbucket.org",
+		"codeberg.org",
+	}
+
+	for _, service := range knownServices {
+		if strings.Contains(host, service) {
+			return true
+		}
+	}
+	return false
+}
+
+// extractHost extracts the host from a git URL
+func extractHost(repoURL string) string {
+	if strings.HasPrefix(repoURL, "git@") {
+		// git@github.com:owner/repo
+		parts := strings.SplitN(strings.TrimPrefix(repoURL, "git@"), ":", 2)
+		if len(parts) > 0 {
+			return parts[0]
+		}
+	}
+
+	u, err := url.Parse(repoURL)
+	if err == nil {
+		return u.Host
+	}
+
+	return ""
 }
 
 // normalizeRepoPath normalizes a repository-relative path

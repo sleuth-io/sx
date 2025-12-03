@@ -21,6 +21,19 @@ jobs:
         with:
           go-version: '1.21'
 
+      - name: Check formatting
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Go code is not formatted. Run 'go fmt ./...' to fix:"
+            gofmt -d .
+            exit 1
+          fi
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+
       - name: Test
         run: |
           go mod tidy

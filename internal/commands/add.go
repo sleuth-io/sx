@@ -22,9 +22,9 @@ import (
 // NewAddCommand creates the add command
 func NewAddCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add [zip-file]",
-		Short: "Add a local zip file artifact to the repository",
-		Long: `Take a local zip file, detect metadata from its contents, prompt for
+		Use:   "add [zip-file-or-directory]",
+		Short: "Add a local zip file or directory artifact to the repository",
+		Long: `Take a local zip file or directory, detect metadata from its contents, prompt for
 confirmation/edits, install it to the repository, and update the lock file.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -79,19 +79,19 @@ func runAdd(cmd *cobra.Command, zipFile string) error {
 	return addNewArtifact(ctx, out, repo, name, artifactType, version, zipFile, zipData, metadataExists)
 }
 
-// loadZipFile prompts for, loads, and validates the zip file
+// loadZipFile prompts for, loads, and validates the zip file or directory
 func loadZipFile(out *outputHelper, zipFile string) (string, []byte, error) {
-	// Prompt for zip file if not provided
+	// Prompt for zip file or directory if not provided
 	if zipFile == "" {
 		var err error
-		zipFile, err = out.prompt("Enter path to artifact zip file: ")
+		zipFile, err = out.prompt("Enter path to artifact zip file or directory: ")
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to read input: %w", err)
 		}
 	}
 
 	if zipFile == "" {
-		return "", nil, fmt.Errorf("zip file path is required")
+		return "", nil, fmt.Errorf("zip file or directory path is required")
 	}
 
 	// Expand path
@@ -100,22 +100,32 @@ func loadZipFile(out *outputHelper, zipFile string) (string, []byte, error) {
 		return "", nil, fmt.Errorf("invalid path: %w", err)
 	}
 
-	// Check if file exists
+	// Check if file or directory exists
 	if !utils.FileExists(zipFile) {
-		return "", nil, fmt.Errorf("file not found: %s", zipFile)
+		return "", nil, fmt.Errorf("file or directory not found: %s", zipFile)
 	}
 
-	// Read zip file
+	// Read zip file or create zip from directory
 	out.println()
-	out.println("Reading artifact...")
-	zipData, err := os.ReadFile(zipFile)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to read zip file: %w", err)
-	}
+	var zipData []byte
 
-	// Verify it's a valid zip
-	if !utils.IsZipFile(zipData) {
-		return "", nil, fmt.Errorf("file is not a valid zip archive")
+	if utils.IsDirectory(zipFile) {
+		out.println("Creating zip from directory...")
+		zipData, err = utils.CreateZip(zipFile)
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to create zip from directory: %w", err)
+		}
+	} else {
+		out.println("Reading artifact...")
+		zipData, err = os.ReadFile(zipFile)
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to read zip file: %w", err)
+		}
+
+		// Verify it's a valid zip
+		if !utils.IsZipFile(zipData) {
+			return "", nil, fmt.Errorf("file is not a valid zip archive")
+		}
 	}
 
 	return zipFile, zipData, nil
