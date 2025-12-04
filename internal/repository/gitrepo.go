@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,12 @@ import (
 	"github.com/sleuth-io/skills/internal/metadata"
 	"github.com/sleuth-io/skills/internal/utils"
 )
+
+//go:embed templates/install.sh.tmpl
+var installScriptTemplate string
+
+//go:embed templates/README.md.tmpl
+var readmeTemplate string
 
 // GitRepository implements Repository for Git repositories
 type GitRepository struct {
@@ -237,8 +244,90 @@ func (g *GitRepository) pull(ctx context.Context) error {
 	return nil
 }
 
+// ensureInstallScript creates an install.sh script and README.md in the repository root if they don't exist
+func (g *GitRepository) ensureInstallScript(ctx context.Context) error {
+	installScriptPath := filepath.Join(g.repoPath, "install.sh")
+	readmePath := filepath.Join(g.repoPath, "README.md")
+
+	// Check if install.sh already exists
+	installScriptExists := false
+	if _, err := os.Stat(installScriptPath); err == nil {
+		installScriptExists = true
+	} else if !os.IsNotExist(err) {
+		// Some other error checking the file
+		return fmt.Errorf("failed to check install.sh: %w", err)
+	}
+
+	// Check if README.md already exists
+	readmeExists := false
+	if _, err := os.Stat(readmePath); err == nil {
+		readmeExists = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to check README.md: %w", err)
+	}
+
+	// If both exist, nothing to do
+	if installScriptExists && readmeExists {
+		return nil
+	}
+
+	// Create install.sh if it doesn't exist
+	if !installScriptExists {
+		if err := os.WriteFile(installScriptPath, []byte(installScriptTemplate), 0755); err != nil {
+			return fmt.Errorf("failed to create install.sh: %w", err)
+		}
+	}
+
+	// Create README.md if it doesn't exist
+	if !readmeExists {
+		// Generate README with actual repository URL
+		readme := generateReadme(g.repoURL)
+		if err := os.WriteFile(readmePath, []byte(readme), 0644); err != nil {
+			return fmt.Errorf("failed to create README.md: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// generateReadme creates a README with the actual repository URL
+func generateReadme(repoURL string) string {
+	// Convert git URL to raw GitHub URL for install.sh
+	// e.g., https://github.com/org/repo.git -> https://raw.githubusercontent.com/org/repo/main/install.sh
+	rawURL := convertToRawURL(repoURL)
+
+	return strings.ReplaceAll(readmeTemplate, "https://raw.githubusercontent.com/YOUR_ORG/YOUR_REPO/main/install.sh", rawURL)
+}
+
+// convertToRawURL converts a git repository URL to a raw content URL
+func convertToRawURL(repoURL string) string {
+	// Remove .git suffix if present
+	repoURL = strings.TrimSuffix(repoURL, ".git")
+
+	// Handle GitHub URLs
+	if strings.Contains(repoURL, "github.com") {
+		// Convert SSH URL to HTTPS
+		if strings.HasPrefix(repoURL, "git@github.com:") {
+			repoURL = strings.Replace(repoURL, "git@github.com:", "https://github.com/", 1)
+		}
+
+		// Convert to raw.githubusercontent.com URL
+		repoURL = strings.Replace(repoURL, "https://github.com/", "https://raw.githubusercontent.com/", 1)
+		return repoURL + "/main/install.sh"
+	}
+
+	// For other git hosting services, use a generic placeholder
+	return "https://raw.githubusercontent.com/YOUR_ORG/YOUR_REPO/main/install.sh"
+}
+
 // commitAndPush commits and pushes changes
 func (g *GitRepository) commitAndPush(ctx context.Context, artifact *lockfile.Artifact) error {
+	// Ensure install.sh and README.md exist before committing
+	if err := g.ensureInstallScript(ctx); err != nil {
+		// Log warning but continue - these files are convenience features
+		fmt.Fprintf(os.Stderr, "Warning: could not create repository files: %v\n", err)
+	}
+
 	// Add all changes
 	cmd := exec.CommandContext(ctx, "git", "add", ".")
 	cmd.Dir = g.repoPath
