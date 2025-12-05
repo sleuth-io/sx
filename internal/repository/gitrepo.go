@@ -127,6 +127,11 @@ func (g *GitRepository) AddArtifact(ctx context.Context, artifact *lockfile.Arti
 		return fmt.Errorf("failed to update version list: %w", err)
 	}
 
+	// Commit and push the artifact to the repository
+	if err := g.commitAndPush(ctx, artifact); err != nil {
+		return fmt.Errorf("failed to commit and push artifact: %w", err)
+	}
+
 	// Note: Lock file is NOT updated here - it will be updated separately
 	// with installation configurations by the caller
 
@@ -260,7 +265,9 @@ func (g *GitRepository) ensureInstallScript(ctx context.Context) error {
 
 	// Create install.sh if it doesn't exist
 	if !installScriptExists {
-		if err := os.WriteFile(installScriptPath, []byte(installScriptTemplate), 0755); err != nil {
+		// Generate install.sh with actual repository URL
+		installScript := generateInstallScript(g.repoURL)
+		if err := os.WriteFile(installScriptPath, []byte(installScript), 0755); err != nil {
 			return fmt.Errorf("failed to create install.sh: %w", err)
 		}
 	}
@@ -275,6 +282,11 @@ func (g *GitRepository) ensureInstallScript(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// generateInstallScript creates an install.sh with the actual repository URL
+func generateInstallScript(repoURL string) string {
+	return strings.ReplaceAll(installScriptTemplate, "{{REPO_URL}}", repoURL)
 }
 
 // generateReadme creates a README with the actual repository URL

@@ -37,16 +37,10 @@ echo
 echo "Configuring skills CLI for this repository..."
 echo
 
-# Auto-detect repository URL from git remote
-REPO_URL=$(git remote get-url origin 2>/dev/null || echo "")
+# Use the skills artifact repository URL
+REPO_URL="{{REPO_URL}}"
 
-if [ -z "$REPO_URL" ]; then
-    echo "Error: Could not detect repository URL"
-    echo "Please run manually: skills init --type git --repo-url <REPO_URL>"
-    exit 1
-fi
-
-echo "Detected repository URL: $REPO_URL"
+echo "Using skills repository: $REPO_URL"
 echo
 
 # Configure skills CLI
