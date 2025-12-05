@@ -30,7 +30,7 @@ from remote Sleuth servers or Git repositories.`,
 
 	// Add global flags
 	rootCmd.PersistentFlags().String("ssh-key", "",
-		"Path to SSH private key for git operations (can also use SKILLS_SSH_KEY environment variable)")
+		"Path to SSH private key file or key content for git operations (can also use SKILLS_SSH_KEY environment variable)")
 
 	// Add subcommands
 	rootCmd.AddCommand(commands.NewInitCommand())

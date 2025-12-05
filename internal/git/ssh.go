@@ -50,7 +50,14 @@ func IsHTTPSURL(url string) bool {
 }
 
 // ValidateSSHKey validates SSH key file exists, readable, and has proper permissions
+// If the keyPath looks like actual key content (starts with "-----BEGIN"), it's considered valid
 func ValidateSSHKey(keyPath string) error {
+	// If it looks like actual key content, no validation needed
+	if isSSHKeyContent(keyPath) {
+		return nil
+	}
+
+	// Otherwise treat as file path
 	// Check if file exists
 	info, err := os.Stat(keyPath)
 	if err != nil {
@@ -75,11 +82,50 @@ func ValidateSSHKey(keyPath string) error {
 	return nil
 }
 
-// buildSSHCommand returns the GIT_SSH_COMMAND value for the given key path
-func buildSSHCommand(keyPath string) string {
+// isSSHKeyContent checks if the string looks like actual SSH key content
+func isSSHKeyContent(s string) bool {
+	return strings.HasPrefix(strings.TrimSpace(s), "-----BEGIN")
+}
+
+// buildSSHCommand returns the GIT_SSH_COMMAND value for the given key path or content
+// If keyPathOrContent contains actual key content, it writes it to a temporary file first
+func buildSSHCommand(keyPathOrContent string) string {
+	finalKeyPath := keyPathOrContent
+
+	// If this is key content, write to a temporary file
+	if isSSHKeyContent(keyPathOrContent) {
+		tmpFile, err := os.CreateTemp("", "ssh-key-*")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to create temp file for SSH key: %v\n", err)
+			return ""
+		}
+
+		// Write the key content
+		if _, err := tmpFile.WriteString(keyPathOrContent); err != nil {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+			fmt.Fprintf(os.Stderr, "Warning: failed to write SSH key to temp file: %v\n", err)
+			return ""
+		}
+
+		// Set proper permissions
+		if err := tmpFile.Chmod(0600); err != nil {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+			fmt.Fprintf(os.Stderr, "Warning: failed to set permissions on temp SSH key: %v\n", err)
+			return ""
+		}
+
+		tmpFile.Close()
+		finalKeyPath = tmpFile.Name()
+
+		// Note: The temp file won't be cleaned up automatically, but that's okay
+		// since it's in the temp directory and will be cleaned on system reboot
+	}
+
 	// Use IdentitiesOnly=yes to prevent ssh-agent interference
 	// Use StrictHostKeyChecking=accept-new to handle first-time host keys automatically
-	return fmt.Sprintf("ssh -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new", keyPath)
+	return fmt.Sprintf("ssh -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new", finalKeyPath)
 }
 
 // isKnownGitService checks if the host is a known git service
