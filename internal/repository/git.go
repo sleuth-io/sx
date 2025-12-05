@@ -4,21 +4,25 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/sleuth-io/skills/internal/cache"
+	"github.com/sleuth-io/skills/internal/git"
 	"github.com/sleuth-io/skills/internal/lockfile"
 	"github.com/sleuth-io/skills/internal/utils"
 )
 
 // GitSourceHandler handles artifacts with source-git
-type GitSourceHandler struct{}
+type GitSourceHandler struct {
+	gitClient *git.Client
+}
 
 // NewGitSourceHandler creates a new Git source handler
-func NewGitSourceHandler() *GitSourceHandler {
-	return &GitSourceHandler{}
+func NewGitSourceHandler(gitClient *git.Client) *GitSourceHandler {
+	return &GitSourceHandler{
+		gitClient: gitClient,
+	}
 }
 
 // Fetch clones/fetches a git repository and retrieves the artifact
@@ -120,42 +124,17 @@ func (g *GitSourceHandler) cloneOrUpdate(ctx context.Context, repoURL, repoPath 
 
 // clone clones a git repository
 func (g *GitSourceHandler) clone(ctx context.Context, repoURL, repoPath string) error {
-	// Ensure parent directory exists
-	if err := utils.EnsureDir(filepath.Dir(repoPath)); err != nil {
-		return err
-	}
-
-	cmd := exec.CommandContext(ctx, "git", "clone", "--quiet", repoURL, repoPath)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git clone failed: %w\nOutput: %s", err, string(output))
-	}
-
-	return nil
+	return g.gitClient.Clone(ctx, repoURL, repoPath)
 }
 
 // fetch fetches updates from the remote repository
 func (g *GitSourceHandler) fetch(ctx context.Context, repoPath string) error {
-	cmd := exec.CommandContext(ctx, "git", "fetch", "--quiet", "--all")
-	cmd.Dir = repoPath
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git fetch failed: %w\nOutput: %s", err, string(output))
-	}
-
-	return nil
+	return g.gitClient.Fetch(ctx, repoPath)
 }
 
 // checkout checks out a specific ref (commit SHA)
 func (g *GitSourceHandler) checkout(ctx context.Context, repoPath, ref string) error {
-	cmd := exec.CommandContext(ctx, "git", "checkout", "--quiet", ref)
-	cmd.Dir = repoPath
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git checkout failed: %w\nOutput: %s", err, string(output))
-	}
-
-	return nil
+	return g.gitClient.Checkout(ctx, repoPath, ref)
 }
 
 // findZipFiles finds all .zip files in a directory (non-recursive)
@@ -193,14 +172,11 @@ func (g *GitSourceHandler) ResolveRef(ctx context.Context, repoURL, ref string) 
 	}
 
 	// Resolve ref to commit SHA
-	cmd := exec.CommandContext(ctx, "git", "rev-parse", ref)
-	cmd.Dir = repoCache
-	output, err := cmd.CombinedOutput()
+	sha, err := g.gitClient.RevParse(ctx, repoCache, ref)
 	if err != nil {
-		return "", fmt.Errorf("git rev-parse failed: %w\nOutput: %s", err, string(output))
+		return "", err
 	}
 
-	sha := strings.TrimSpace(string(output))
 	if len(sha) != 40 {
 		return "", fmt.Errorf("invalid commit SHA: %s", sha)
 	}

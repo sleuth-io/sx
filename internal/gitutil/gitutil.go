@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/sleuth-io/skills/internal/git"
 )
 
 // GitContext represents the current Git repository context
@@ -93,28 +95,14 @@ func GetRepoRoot(ctx context.Context, path string) (string, error) {
 
 // GetRemoteURL returns the remote URL for the repository (typically 'origin')
 func GetRemoteURL(ctx context.Context, repoPath string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", "remote", "get-url", "origin")
-	cmd.Dir = repoPath
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("git remote get-url failed: %w\nOutput: %s", err, string(output))
-	}
-
-	remoteURL := strings.TrimSpace(string(output))
-	return remoteURL, nil
+	gitClient := git.NewClient()
+	return gitClient.GetRemoteURL(ctx, repoPath)
 }
 
 // GetCurrentBranch returns the current branch name
 func GetCurrentBranch(ctx context.Context, repoPath string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = repoPath
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("git rev-parse failed: %w\nOutput: %s", err, string(output))
-	}
-
-	branch := strings.TrimSpace(string(output))
-	return branch, nil
+	gitClient := git.NewClient()
+	return gitClient.GetCurrentBranch(ctx, repoPath)
 }
 
 // GetCurrentCommit returns the current commit SHA

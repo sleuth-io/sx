@@ -6,6 +6,7 @@ import (
 
 	"github.com/sleuth-io/skills/internal/buildinfo"
 	"github.com/sleuth-io/skills/internal/commands"
+	"github.com/sleuth-io/skills/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -16,12 +17,20 @@ func main() {
 		Long: `Skills is a CLI tool that provisions AI artifacts (skills, agents, MCPs, etc.)
 from remote Sleuth servers or Git repositories.`,
 		Version: fmt.Sprintf("%s (commit: %s, built: %s)", buildinfo.Version, buildinfo.Commit, buildinfo.Date),
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			// Initialize SSH key path from flag or environment variable
+			git.SetSSHKeyPath(cmd)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Default command: run install if lock file exists
 			return commands.RunDefaultCommand(cmd, args)
 		},
 		SilenceUsage: true,
 	}
+
+	// Add global flags
+	rootCmd.PersistentFlags().String("ssh-key", "",
+		"Path to SSH private key for git operations (can also use SKILLS_SSH_KEY environment variable)")
 
 	// Add subcommands
 	rootCmd.AddCommand(commands.NewInitCommand())

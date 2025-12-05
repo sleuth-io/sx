@@ -8,11 +8,11 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/sleuth-io/skills/internal/buildinfo"
+	"github.com/sleuth-io/skills/internal/git"
 	"github.com/sleuth-io/skills/internal/lockfile"
 	"github.com/sleuth-io/skills/internal/repository"
 	"github.com/sleuth-io/skills/internal/requirements"
@@ -287,30 +287,9 @@ func (r *Resolver) resolveHTTP(req requirements.Requirement) (*lockfile.Artifact
 
 // resolveGitRef resolves a git ref (branch, tag, or commit) to a commit SHA
 func (r *Resolver) resolveGitRef(url, ref string) (string, error) {
-	// If ref looks like a commit SHA (40 hex chars), use as-is
-	if len(ref) == 40 && isHexString(ref) {
-		return ref, nil
-	}
-
-	// Use git ls-remote to resolve ref
-	cmd := exec.Command("git", "ls-remote", url, ref)
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("git ls-remote failed: %w", err)
-	}
-
-	// Parse output: "commit-sha\trefs/..."
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(lines) == 0 {
-		return "", fmt.Errorf("ref not found: %s", ref)
-	}
-
-	parts := strings.Fields(lines[0])
-	if len(parts) < 1 {
-		return "", fmt.Errorf("invalid git ls-remote output")
-	}
-
-	return parts[0], nil
+	// Use git client to resolve the ref
+	gitClient := git.NewClient()
+	return gitClient.LsRemote(context.Background(), url, ref)
 }
 
 // buildArtifactURL builds the URL for an artifact based on repository conventions
@@ -339,14 +318,4 @@ func generateLockFileVersion(artifacts map[string]*lockfile.Artifact) string {
 
 	hash := h.Sum(nil)
 	return hex.EncodeToString(hash[:16]) // Use first 16 bytes
-}
-
-// isHexString checks if a string is all hex characters
-func isHexString(s string) bool {
-	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return false
-		}
-	}
-	return true
 }

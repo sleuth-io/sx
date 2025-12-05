@@ -12,6 +12,7 @@ import (
 
 	"github.com/sleuth-io/skills/internal/buildinfo"
 	sleuthConfig "github.com/sleuth-io/skills/internal/config"
+	"github.com/sleuth-io/skills/internal/git"
 	"github.com/sleuth-io/skills/internal/lockfile"
 	"github.com/sleuth-io/skills/internal/metadata"
 )
@@ -28,13 +29,14 @@ type SleuthRepository struct {
 
 // NewSleuthRepository creates a new Sleuth repository
 func NewSleuthRepository(serverURL, authToken string) *SleuthRepository {
+	gitClient := git.NewClient()
 	return &SleuthRepository{
 		serverURL:   serverURL,
 		authToken:   authToken,
 		httpClient:  &http.Client{Timeout: 30 * time.Second},
 		httpHandler: NewHTTPSourceHandler(),
 		pathHandler: NewPathSourceHandler(""), // Lock file dir not applicable for Sleuth
-		gitHandler:  NewGitSourceHandler(),
+		gitHandler:  NewGitSourceHandler(gitClient),
 	}
 }
 

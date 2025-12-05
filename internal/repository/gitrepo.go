@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/sleuth-io/skills/internal/cache"
 	"github.com/sleuth-io/skills/internal/constants"
+	"github.com/sleuth-io/skills/internal/git"
 	"github.com/sleuth-io/skills/internal/lockfile"
 	"github.com/sleuth-io/skills/internal/metadata"
 	"github.com/sleuth-io/skills/internal/utils"
@@ -29,6 +29,7 @@ var readmeTemplate string
 type GitRepository struct {
 	repoURL     string
 	repoPath    string
+	gitClient   *git.Client
 	httpHandler *HTTPSourceHandler
 	pathHandler *PathSourceHandler
 	gitHandler  *GitSourceHandler
@@ -42,12 +43,16 @@ func NewGitRepository(repoURL string) (*GitRepository, error) {
 		return nil, fmt.Errorf("failed to get cache path: %w", err)
 	}
 
+	// Create git client
+	gitClient := git.NewClient()
+
 	return &GitRepository{
 		repoURL:     repoURL,
 		repoPath:    repoPath,
+		gitClient:   gitClient,
 		httpHandler: NewHTTPSourceHandler(),
 		pathHandler: NewPathSourceHandler(repoPath), // Use repo path for relative paths
-		gitHandler:  NewGitSourceHandler(),
+		gitHandler:  NewGitSourceHandler(gitClient),
 	}, nil
 }
 
@@ -218,30 +223,12 @@ func (g *GitRepository) cloneOrUpdate(ctx context.Context) error {
 
 // clone clones the Git repository
 func (g *GitRepository) clone(ctx context.Context) error {
-	// Ensure parent directory exists
-	if err := os.MkdirAll(filepath.Dir(g.repoPath), 0755); err != nil {
-		return err
-	}
-
-	cmd := exec.CommandContext(ctx, "git", "clone", "--quiet", g.repoURL, g.repoPath)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git clone failed: %w\nOutput: %s", err, string(output))
-	}
-
-	return nil
+	return g.gitClient.Clone(ctx, g.repoURL, g.repoPath)
 }
 
 // pull pulls updates from the remote repository
 func (g *GitRepository) pull(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "git", "pull", "--quiet")
-	cmd.Dir = g.repoPath
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git pull failed: %w\nOutput: %s", err, string(output))
-	}
-
-	return nil
+	return g.gitClient.Pull(ctx, g.repoPath)
 }
 
 // ensureInstallScript creates an install.sh script and README.md in the repository root if they don't exist
@@ -329,25 +316,19 @@ func (g *GitRepository) commitAndPush(ctx context.Context, artifact *lockfile.Ar
 	}
 
 	// Add all changes
-	cmd := exec.CommandContext(ctx, "git", "add", ".")
-	cmd.Dir = g.repoPath
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git add failed: %w\nOutput: %s", err, string(output))
+	if err := g.gitClient.Add(ctx, g.repoPath, "."); err != nil {
+		return err
 	}
 
 	// Commit with message
 	commitMsg := fmt.Sprintf("Add %s %s", artifact.Name, artifact.Version)
-	cmd = exec.CommandContext(ctx, "git", "commit", "-m", commitMsg)
-	cmd.Dir = g.repoPath
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git commit failed: %w\nOutput: %s", err, string(output))
+	if err := g.gitClient.Commit(ctx, g.repoPath, commitMsg); err != nil {
+		return err
 	}
 
 	// Push
-	cmd = exec.CommandContext(ctx, "git", "push", "--quiet")
-	cmd.Dir = g.repoPath
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git push failed: %w\nOutput: %s", err, string(output))
+	if err := g.gitClient.Push(ctx, g.repoPath); err != nil {
+		return err
 	}
 
 	return nil
