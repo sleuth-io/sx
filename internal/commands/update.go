@@ -3,9 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"os"
-	"runtime"
-	"syscall"
 	"time"
 
 	"github.com/creativeprojects/go-selfupdate"
@@ -82,6 +79,23 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 		return nil
 	}
 
+	// Check if there's actually a newer version available
+	latest, found, err := selfupdate.DetectLatest(ctx, repository)
+	if err != nil {
+		return fmt.Errorf("failed to check for updates: %w", err)
+	}
+
+	if !found {
+		out.printErr("No releases found")
+		return nil
+	}
+
+	// Compare versions - if we're already at or ahead of latest, nothing to do
+	if latest.LessOrEqual(currentVersion) {
+		out.printf("You are already using the latest version (%s)\n", buildinfo.Version)
+		return nil
+	}
+
 	// Perform the update using the library's high-level function
 	out.printf("Downloading and installing update...\n")
 
@@ -91,22 +105,7 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 	}
 
 	out.printf("\nSuccessfully updated to %s!\n", release.Version())
-
-	// On Windows, we can't replace the running executable, so just inform the user
-	if runtime.GOOS == "windows" {
-		out.printf("Please run the command again to use the new version.\n")
-		return nil
-	}
-
-	// On Unix-like systems, exec into the new binary to seamlessly continue
-	out.printf("Restarting with new version...\n")
-	exe, err := os.Executable()
-	if err == nil {
-		if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
-			out.printErr(fmt.Sprintf("Failed to restart: %v", err))
-			out.printf("Please run the command again to use the new version.\n")
-		}
-	}
+	out.printf("The new version is ready to use.\n")
 
 	return nil
 }

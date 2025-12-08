@@ -13,7 +13,10 @@ import (
 
 func main() {
 	// Check for updates in the background (non-blocking, once per day)
-	autoupdate.CheckAndUpdateInBackground()
+	// Skip if user is explicitly running the update command
+	if len(os.Args) < 2 || os.Args[1] != "update" {
+		autoupdate.CheckAndUpdateInBackground()
+	}
 
 	rootCmd := &cobra.Command{
 		Use:   "skills",
