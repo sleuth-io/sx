@@ -80,7 +80,14 @@ func (g *GitRepository) Authenticate(ctx context.Context) (string, error) {
 
 // acquireFileLock acquires a file lock for the git repository to prevent cross-process conflicts
 func (g *GitRepository) acquireFileLock(ctx context.Context) (*flock.Flock, error) {
-	lockFile := filepath.Join(g.repoPath, ".lock")
+	// Put lock file in cache directory, not in repo path
+	// Use repo path hash to create unique lock filename
+	cacheDir, err := cache.GetCacheDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cache dir: %w", err)
+	}
+
+	lockFile := filepath.Join(cacheDir, "git-repos", filepath.Base(g.repoPath)+".lock")
 
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(lockFile), 0755); err != nil {
