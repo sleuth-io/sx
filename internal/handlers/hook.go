@@ -81,6 +81,12 @@ func (h *HookHandler) ValidateMetadata(meta *metadata.Metadata) error {
 	return nil
 }
 
+// DetectUsageFromToolCall detects hook usage from tool calls
+// Hooks are not detectable from tool usage, so this always returns false
+func (h *HookHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+	return "", false
+}
+
 // Install extracts and installs the hook artifact
 func (h *HookHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// Validate zip structure

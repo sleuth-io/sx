@@ -58,6 +58,13 @@ type InstalledStateDetector interface {
 	ScanInstalled(targetBase string) ([]InstalledArtifactInfo, error)
 }
 
+// UsageDetector provides methods to detect artifact usage from tool calls
+type UsageDetector interface {
+	// DetectUsageFromToolCall checks if this handler's artifact type was used in a tool call
+	// Returns (artifact_name, detected)
+	DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool)
+}
+
 // InstalledArtifactInfo represents information about an installed artifact
 type InstalledArtifactInfo struct {
 	Name        string

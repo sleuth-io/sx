@@ -2,7 +2,9 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/sleuth-io/skills/internal/constants"
 	"github.com/sleuth-io/skills/internal/gitutil"
 	"github.com/sleuth-io/skills/internal/lockfile"
+	"github.com/sleuth-io/skills/internal/logger"
 	"github.com/sleuth-io/skills/internal/repository"
 	"github.com/sleuth-io/skills/internal/scope"
 	"github.com/sleuth-io/skills/internal/utils"
@@ -199,6 +202,12 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		// Save state even if nothing changed (updates timestamp)
 		saveInstallationState(trackingBase, lockFile, sortedArtifacts, out)
 		out.println("\n✓ No changes needed")
+
+		// Install usage reporting hook even if no artifacts changed
+		if err := installUsageReportingHook(claudeDir, out); err != nil {
+			out.printfErr("\nWarning: failed to install usage reporting hook: %v\n", err)
+		}
+
 		return nil
 	}
 
@@ -251,8 +260,18 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	// Report results
 	out.println()
 	out.printf("✓ Installed %d artifacts successfully\n", len(installResult.Installed))
+
+	// Log successful installations
+	log := logger.Get()
 	for _, name := range installResult.Installed {
 		out.printf("  - %s\n", name)
+		// Find version for this artifact
+		for _, art := range successfulDownloads {
+			if art.Artifact.Name == name {
+				log.Info("artifact installed", "name", name, "version", art.Artifact.Version, "type", art.Metadata.Artifact.Type, "scope", currentScope.Type)
+				break
+			}
+		}
 	}
 
 	if len(installResult.Failed) > 0 {
@@ -262,6 +281,12 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			out.printfErr("  - %s: %v\n", name, installResult.Errors[i])
 		}
 		return fmt.Errorf("some artifacts failed to install")
+	}
+
+	// Install usage reporting hook
+	if err := installUsageReportingHook(claudeDir, out); err != nil {
+		out.printfErr("\nWarning: failed to install usage reporting hook: %v\n", err)
+		// Don't fail the install command if hook installation fails
 	}
 
 	return nil
@@ -282,7 +307,17 @@ func loadPreviousInstallState(trackingBase string, out *outputHelper) *artifacts
 
 // determineArtifactsToInstall finds which artifacts need to be installed (new or changed)
 func determineArtifactsToInstall(previousInstall *artifacts.InstalledArtifacts, sortedArtifacts []*lockfile.Artifact, out *outputHelper) []*lockfile.Artifact {
+	log := logger.Get()
 	artifactsToInstall := artifacts.FindChangedOrNewArtifacts(previousInstall, sortedArtifacts)
+
+	// Log version updates
+	for _, artifact := range artifactsToInstall {
+		for _, prev := range previousInstall.Artifacts {
+			if prev.Name == artifact.Name && prev.Version != artifact.Version {
+				log.Info("artifact version update", "name", artifact.Name, "old_version", prev.Version, "new_version", artifact.Version)
+			}
+		}
+	}
 
 	if len(artifactsToInstall) == 0 {
 		out.println("✓ All artifacts are up to date")
@@ -311,8 +346,10 @@ func cleanupRemovedArtifacts(ctx context.Context, previousInstall *artifacts.Ins
 		return
 	}
 
+	log := logger.Get()
 	for _, artifact := range removedArtifacts {
 		out.printf("  - Removed %s\n", artifact.Name)
+		log.Info("artifact removed", "name", artifact.Name, "version", artifact.Version, "type", artifact.Type)
 	}
 }
 
@@ -390,4 +427,81 @@ func saveInstallationState(trackingBase string, lockFile *lockfile.LockFile, sor
 	if err := artifacts.SaveInstalledArtifacts(trackingBase, newInstall); err != nil {
 		out.printfErr("Warning: failed to save installation state: %v\n", err)
 	}
+}
+
+// installUsageReportingHook installs the PostToolUse hook for usage tracking
+func installUsageReportingHook(claudeDir string, out *outputHelper) error {
+	settingsPath := filepath.Join(claudeDir, "settings.json")
+
+	// Read existing settings or create new
+	var settings map[string]interface{}
+	if data, err := os.ReadFile(settingsPath); err == nil {
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return fmt.Errorf("failed to parse settings.json: %w", err)
+		}
+	} else {
+		settings = make(map[string]interface{})
+	}
+
+	// Get or create hooks section
+	hooks, ok := settings["hooks"].(map[string]interface{})
+	if !ok {
+		hooks = make(map[string]interface{})
+		settings["hooks"] = hooks
+	}
+
+	// Get or create PostToolUse array
+	postToolUse, ok := hooks["PostToolUse"].([]interface{})
+	if !ok {
+		postToolUse = []interface{}{}
+	}
+
+	// Check if our hook already exists
+	hookExists := false
+	for _, item := range postToolUse {
+		if hookMap, ok := item.(map[string]interface{}); ok {
+			if hooksArray, ok := hookMap["hooks"].([]interface{}); ok {
+				for _, h := range hooksArray {
+					if hMap, ok := h.(map[string]interface{}); ok {
+						if cmd, ok := hMap["command"].(string); ok && cmd == "skills report-usage" {
+							hookExists = true
+							break
+						}
+					}
+				}
+			}
+		}
+		if hookExists {
+			break
+		}
+	}
+
+	// Add hook if it doesn't exist
+	if !hookExists {
+		newHook := map[string]interface{}{
+			"matcher": "Skill|Task|SlashCommand|mcp__.*",
+			"hooks": []interface{}{
+				map[string]interface{}{
+					"type":    "command",
+					"command": "skills report-usage",
+				},
+			},
+		}
+		postToolUse = append(postToolUse, newHook)
+		hooks["PostToolUse"] = postToolUse
+
+		// Write back to file
+		data, err := json.MarshalIndent(settings, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal settings: %w", err)
+		}
+
+		if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+			return fmt.Errorf("failed to write settings.json: %w", err)
+		}
+
+		out.println("\n✓ Installed usage reporting hook to ~/.claude/settings.json")
+	}
+
+	return nil
 }

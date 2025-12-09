@@ -278,3 +278,30 @@ func (s *SleuthRepository) VerifyIntegrity(data []byte, hashes map[string]string
 	// Verify hashes (httpHandler already does this, but provide a standalone method)
 	return s.httpHandler.verifyHashes(data, hashes)
 }
+
+// PostUsageStats sends artifact usage statistics to the Sleuth server
+func (s *SleuthRepository) PostUsageStats(ctx context.Context, jsonlData string) error {
+	endpoint := s.serverURL + "/api/skills/usage"
+
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader([]byte(jsonlData)))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-ndjson")
+	req.Header.Set("Authorization", "Bearer "+s.authToken)
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to post usage stats: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}

@@ -37,6 +37,10 @@ type Repository interface {
 
 	// VerifyIntegrity checks hashes and sizes for downloaded artifacts
 	VerifyIntegrity(data []byte, hashes map[string]string, size int64) error
+
+	// PostUsageStats sends artifact usage statistics to the repository
+	// jsonlData is newline-separated JSON (JSONL format)
+	PostUsageStats(ctx context.Context, jsonlData string) error
 }
 
 // SourceHandler handles fetching artifacts from specific source types

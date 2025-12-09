@@ -77,6 +77,20 @@ func (h *CommandHandler) ValidateMetadata(meta *metadata.Metadata) error {
 	return nil
 }
 
+// DetectUsageFromToolCall detects command usage from tool calls
+func (h *CommandHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+	if toolName != "SlashCommand" {
+		return "", false
+	}
+	command, ok := toolInput["command"].(string)
+	if !ok {
+		return "", false
+	}
+	// Strip leading slash: "/my-command" -> "my-command"
+	commandName := strings.TrimPrefix(command, "/")
+	return commandName, true
+}
+
 // Install extracts and installs the command artifact
 func (h *CommandHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// Validate zip structure

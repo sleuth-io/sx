@@ -76,6 +76,15 @@ func (h *AgentHandler) ValidateMetadata(meta *metadata.Metadata) error {
 	return nil
 }
 
+// DetectUsageFromToolCall detects agent usage from tool calls
+func (h *AgentHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+	if toolName != "Task" {
+		return "", false
+	}
+	agentName, ok := toolInput["subagent_type"].(string)
+	return agentName, ok
+}
+
 // Install extracts and installs the agent artifact
 func (h *AgentHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// Validate zip structure

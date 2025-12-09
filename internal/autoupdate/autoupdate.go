@@ -13,6 +13,7 @@ import (
 
 	"github.com/sleuth-io/skills/internal/buildinfo"
 	"github.com/sleuth-io/skills/internal/cache"
+	"github.com/sleuth-io/skills/internal/logger"
 )
 
 const (
@@ -65,6 +66,10 @@ func checkAndUpdate() error {
 
 	// Update the last check time
 	_ = updateCheckTimestamp()
+
+	// Log the successful update
+	log := logger.Get()
+	log.Info("autoupdate completed", "old_version", currentVersion, "new_version", release.Version)
 
 	// Successfully updated to a new version!
 	if runtime.GOOS != "windows" {

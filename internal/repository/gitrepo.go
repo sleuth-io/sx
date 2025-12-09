@@ -577,3 +577,9 @@ func (g *GitRepository) updateVersionList(listPath, newVersion string) error {
 
 	return os.WriteFile(listPath, buf.Bytes(), 0644)
 }
+
+// PostUsageStats is a no-op for Git repositories
+// Git repositories don't support stats collection
+func (r *GitRepository) PostUsageStats(ctx context.Context, jsonlData string) error {
+	return nil
+}

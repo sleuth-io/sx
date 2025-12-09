@@ -3,15 +3,21 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/sleuth-io/skills/internal/autoupdate"
 	"github.com/sleuth-io/skills/internal/buildinfo"
 	"github.com/sleuth-io/skills/internal/commands"
 	"github.com/sleuth-io/skills/internal/git"
+	"github.com/sleuth-io/skills/internal/logger"
 	"github.com/spf13/cobra"
 )
 
 func main() {
+	// Log command invocation
+	log := logger.Get()
+	log.Info("command invoked", "version", buildinfo.Version, "command", strings.Join(os.Args[1:], " "))
+
 	// Check for updates in the background (non-blocking, once per day)
 	// Skip if user is explicitly running the update command
 	if len(os.Args) < 2 || os.Args[1] != "update" {
@@ -49,6 +55,7 @@ from remote Sleuth servers or Git repositories.`,
 	rootCmd.AddCommand(commands.NewAddCommand())
 	rootCmd.AddCommand(commands.NewUpdateTemplatesCommand())
 	rootCmd.AddCommand(commands.NewUpdateCommand())
+	rootCmd.AddCommand(commands.NewReportUsageCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

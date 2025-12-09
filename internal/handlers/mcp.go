@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/sleuth-io/skills/internal/metadata"
 	"github.com/sleuth-io/skills/internal/utils"
@@ -67,6 +68,21 @@ func (h *MCPHandler) ValidateMetadata(meta *metadata.Metadata) error {
 		return fmt.Errorf("mcp configuration missing")
 	}
 	return nil
+}
+
+// DetectUsageFromToolCall detects MCP server usage from tool calls
+func (h *MCPHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+	// MCP tools follow pattern: mcp__server__tool
+	if !strings.HasPrefix(toolName, "mcp__") {
+		return "", false
+	}
+	// Parse: "mcp__github__list_prs" -> "github"
+	parts := strings.Split(toolName, "__")
+	if len(parts) < 2 {
+		return "", false
+	}
+	serverName := parts[1]
+	return serverName, true
 }
 
 // Install extracts and installs the MCP server artifact

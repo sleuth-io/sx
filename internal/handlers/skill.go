@@ -76,6 +76,15 @@ func (h *SkillHandler) ValidateMetadata(meta *metadata.Metadata) error {
 	return nil
 }
 
+// DetectUsageFromToolCall detects skill usage from tool calls
+func (h *SkillHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+	if toolName != "Skill" {
+		return "", false
+	}
+	skillName, ok := toolInput["skill"].(string)
+	return skillName, ok
+}
+
 // Install extracts and installs the skill artifact
 func (h *SkillHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// Validate zip structure
