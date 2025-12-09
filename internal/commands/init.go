@@ -3,6 +3,8 @@ package commands
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,19 +27,20 @@ func NewInitCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize configuration (authenticate with Sleuth server or configure Git repo)",
-		Long: `Initialize skills configuration by authenticating with a Sleuth server
-or configuring a Git repository as the artifact source.
+		Short: "Initialize configuration (local path, Git repo, or Sleuth server)",
+		Long: `Initialize skills configuration using a local directory, Git repository,
+or Sleuth server as the artifact source.
 
-By default, runs in interactive mode. Use flags for non-interactive mode.`,
+By default, runs in interactive mode with local path as the default option.
+Use flags for non-interactive mode.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInit(cmd, args, repoType, serverURL, repoURL)
 		},
 	}
 
-	cmd.Flags().StringVar(&repoType, "type", "", "Repository type: 'sleuth' or 'git'")
+	cmd.Flags().StringVar(&repoType, "type", "", "Repository type: 'path', 'git', or 'sleuth'")
 	cmd.Flags().StringVar(&serverURL, "server-url", "", "Sleuth server URL (for type=sleuth)")
-	cmd.Flags().StringVar(&repoURL, "repo-url", "", "Git repository URL (for type=git)")
+	cmd.Flags().StringVar(&repoURL, "repo-url", "", "Repository URL (git URL, file:// URL, or directory path)")
 
 	return cmd
 }
@@ -76,17 +79,20 @@ func runInitInteractive(cmd *cobra.Command, ctx context.Context) error {
 	out.println("Initialize Skills CLI")
 	out.println()
 	out.println("Choose repository type:")
-	out.println("  1) Sleuth server (OAuth authentication)")
+	out.println("  1) Local directory (default - easiest to get started)")
 	out.println("  2) Git repository")
+	out.println("  3) Sleuth server (OAuth authentication)")
 	out.println()
 
-	choice, _ := out.prompt("Enter choice (1 or 2): ")
+	choice, _ := out.promptWithDefault("Enter choice", "1")
 
 	switch choice {
-	case "1":
-		return initSleuthServer(cmd, ctx)
+	case "1", "":
+		return initPathRepository(cmd, ctx)
 	case "2":
 		return initGitRepository(cmd, ctx)
+	case "3":
+		return initSleuthServer(cmd, ctx)
 	default:
 		return fmt.Errorf("invalid choice: %s", choice)
 	}
@@ -107,8 +113,14 @@ func runInitNonInteractive(cmd *cobra.Command, ctx context.Context, repoType, se
 		}
 		return configureGitRepo(cmd, ctx, repoURL)
 
+	case "path":
+		if repoURL == "" {
+			return fmt.Errorf("--repo-url is required for type=path")
+		}
+		return configurePathRepo(cmd, ctx, repoURL)
+
 	default:
-		return fmt.Errorf("invalid repository type: %s (must be 'sleuth' or 'git')", repoType)
+		return fmt.Errorf("invalid repository type: %s (must be 'path', 'git', or 'sleuth')", repoType)
 	}
 }
 
@@ -217,4 +229,105 @@ func configureGitRepo(cmd *cobra.Command, ctx context.Context, repoURL string) e
 	out.println("Git repository:", repoURL)
 
 	return nil
+}
+
+// initPathRepository initializes local path repository configuration
+func initPathRepository(cmd *cobra.Command, ctx context.Context) error {
+	out := newOutputHelper(cmd)
+
+	out.println()
+	out.println("Enter path to local skills repository directory.")
+	out.println("This can be:")
+	out.println("  - Relative path (./skills)")
+	out.println("  - Absolute path (/home/user/skills)")
+	out.println("  - Tilde path (~/skills)")
+	out.println("  - file:// URL (file:///home/user/skills)")
+	out.println()
+
+	repoPath, _ := out.promptWithDefault("Repository path", "./skills")
+
+	if repoPath == "" {
+		return fmt.Errorf("repository path is required")
+	}
+
+	return configurePathRepo(cmd, ctx, repoPath)
+}
+
+// configurePathRepo configures a local path repository
+func configurePathRepo(cmd *cobra.Command, ctx context.Context, repoPath string) error {
+	out := newOutputHelper(cmd)
+
+	out.println()
+	out.println("Configuring local repository...")
+
+	// Convert path to absolute path first
+	var absPath string
+	var err error
+	if strings.HasPrefix(repoPath, "file://") {
+		// Extract path from file:// URL and expand
+		repoPath = strings.TrimPrefix(repoPath, "file://")
+		absPath, err = expandPath(repoPath)
+		if err != nil {
+			return fmt.Errorf("invalid path: %w", err)
+		}
+	} else {
+		// Expand and normalize the path
+		absPath, err = expandPath(repoPath)
+		if err != nil {
+			return fmt.Errorf("invalid path: %w", err)
+		}
+	}
+
+	// Show the absolute path that will be used
+	out.println()
+	out.printf("Repository directory: %s\n", absPath)
+
+	// Check if directory exists, create if needed
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		out.println("Directory does not exist, creating...")
+		if err := os.MkdirAll(absPath, 0755); err != nil {
+			return fmt.Errorf("failed to create directory: %w", err)
+		}
+		out.println("✓ Directory created")
+	} else {
+		out.println("✓ Directory exists")
+	}
+
+	// Convert to file:// URL
+	repoURL := "file://" + absPath
+
+	// Save configuration
+	cfg := &config.Config{
+		Type:          config.RepositoryTypePath,
+		RepositoryURL: repoURL,
+	}
+
+	if err := config.Save(cfg); err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+
+	out.println()
+	out.println("✓ Configuration saved!")
+
+	return nil
+}
+
+// expandPath expands tilde and converts relative paths to absolute
+func expandPath(path string) (string, error) {
+	// Handle tilde
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %w", err)
+		}
+		path = filepath.Join(home, path[2:])
+	}
+
+	// Convert to absolute path
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to get absolute path: %w", err)
+	}
+
+	return absPath, nil
 }

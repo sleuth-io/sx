@@ -1,21 +1,47 @@
 package commands
 
 import (
-	"bufio"
+	"context"
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
 
+// Context key for test prompter injection
+type prompterKeyType struct{}
+
+var prompterKey = prompterKeyType{}
+
 // outputHelper wraps a cobra.Command to provide convenient output methods
 type outputHelper struct {
-	cmd *cobra.Command
+	cmd      *cobra.Command
+	prompter Prompter
 }
 
 // newOutputHelper creates an output helper for the given command
 func newOutputHelper(cmd *cobra.Command) *outputHelper {
-	return &outputHelper{cmd: cmd}
+	// Check if a test prompter was injected via context
+	var prompter Prompter
+	if cmd.Context() != nil {
+		if p, ok := cmd.Context().Value(prompterKey).(Prompter); ok {
+			prompter = p
+		}
+	}
+
+	// Use standard prompter by default
+	if prompter == nil {
+		prompter = NewStdPrompter(cmd.InOrStdin(), cmd.ErrOrStderr())
+	}
+
+	return &outputHelper{
+		cmd:      cmd,
+		prompter: prompter,
+	}
+}
+
+// WithPrompter returns a context with the given prompter (for testing)
+func WithPrompter(ctx context.Context, prompter Prompter) context.Context {
+	return context.WithValue(ctx, prompterKey, prompter)
 }
 
 // println writes a line to the command's output
@@ -39,25 +65,13 @@ func (o *outputHelper) printfErr(format string, args ...interface{}) {
 }
 
 // prompt prompts the user for input and returns the trimmed response
+// Delegates to the prompter interface for flexibility and testability
 func (o *outputHelper) prompt(message string) (string, error) {
-	fmt.Fprint(o.cmd.ErrOrStderr(), message)
-	reader := bufio.NewReader(o.cmd.InOrStdin())
-	input, err := reader.ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(input), nil
+	return o.prompter.Prompt(message)
 }
 
 // promptWithDefault prompts the user with a default value
+// Delegates to the prompter interface for flexibility and testability
 func (o *outputHelper) promptWithDefault(message, defaultValue string) (string, error) {
-	fullMessage := fmt.Sprintf("%s [%s]: ", message, defaultValue)
-	response, err := o.prompt(fullMessage)
-	if err != nil {
-		return "", err
-	}
-	if response == "" {
-		return defaultValue, nil
-	}
-	return response, nil
+	return o.prompter.PromptWithDefault(message, defaultValue)
 }

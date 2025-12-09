@@ -155,20 +155,7 @@ func createRepository() (repository.Repository, error) {
 		return nil, fmt.Errorf("failed to load configuration: %w\nRun 'skills init' to configure", err)
 	}
 
-	var repo repository.Repository
-	switch cfg.Type {
-	case config.RepositoryTypeSleuth:
-		repo = repository.NewSleuthRepository(cfg.GetServerURL(), cfg.AuthToken)
-	case config.RepositoryTypeGit:
-		repo, err = repository.NewGitRepository(cfg.RepositoryURL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create git repository: %w", err)
-		}
-	default:
-		return nil, fmt.Errorf("unsupported repository type: %s", cfg.Type)
-	}
-
-	return repo, nil
+	return repository.NewFromConfig(cfg)
 }
 
 // checkVersionAndContents queries repository for versions and checks if content is identical
@@ -629,7 +616,26 @@ func updateLockFile(ctx context.Context, out *outputHelper, repo repository.Repo
 			return err
 		}
 		out.println("✓ Changes pushed to repository")
+		return nil
 	}
+
+	// For path repos, update the lock file directly
+	if pathRepo, ok := repo.(*repository.PathRepository); ok {
+		out.println()
+		out.println("Updating repository lock file...")
+		lockFilePath := pathRepo.GetLockFilePath()
+		if err := lockfile.AddOrUpdateArtifact(lockFilePath, artifact); err != nil {
+			return err
+		}
+
+		if artifact.IsGlobal() {
+			out.println("✓ Updated lock file (global installation)")
+		} else {
+			out.printf("✓ Updated lock file with %d repository installation(s)\n", len(artifact.Repositories))
+		}
+		return nil
+	}
+
 	return nil
 }
 

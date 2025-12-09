@@ -9,17 +9,18 @@ import (
 	"github.com/sleuth-io/skills/internal/utils"
 )
 
-// RepositoryType represents the type of repository (sleuth or git)
+// RepositoryType represents the type of repository (sleuth, git, or path)
 type RepositoryType string
 
 const (
 	RepositoryTypeSleuth RepositoryType = "sleuth"
 	RepositoryTypeGit    RepositoryType = "git"
+	RepositoryTypePath   RepositoryType = "path"
 )
 
 // Config represents the configuration for the skills CLI
 type Config struct {
-	// Type of repository: "sleuth" or "git"
+	// Type of repository: "sleuth", "git", or "path"
 	Type RepositoryType `json:"type"`
 
 	// ServerURL is the Sleuth server URL (only for type=sleuth)
@@ -28,7 +29,9 @@ type Config struct {
 	// AuthToken is the OAuth token for Sleuth server (only for type=sleuth)
 	AuthToken string `json:"authToken,omitempty"`
 
-	// RepositoryURL is the Git repository URL (only for type=git)
+	// RepositoryURL is the repository URL
+	// - For git: git repository URL (https://github.com/org/repo.git)
+	// - For path: file:// URL pointing to local directory (file:///path/to/repo)
 	RepositoryURL string `json:"repositoryUrl,omitempty"`
 }
 
@@ -121,8 +124,8 @@ func Exists() bool {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
-	if c.Type != RepositoryTypeSleuth && c.Type != RepositoryTypeGit {
-		return fmt.Errorf("invalid repository type: %s (must be 'sleuth' or 'git')", c.Type)
+	if c.Type != RepositoryTypeSleuth && c.Type != RepositoryTypeGit && c.Type != RepositoryTypePath {
+		return fmt.Errorf("invalid repository type: %s (must be 'sleuth', 'git', or 'path')", c.Type)
 	}
 
 	switch c.Type {
@@ -137,9 +140,18 @@ func (c *Config) Validate() error {
 		if c.RepositoryURL == "" {
 			return fmt.Errorf("repositoryUrl is required for git repository type")
 		}
+	case RepositoryTypePath:
+		if c.RepositoryURL == "" {
+			return fmt.Errorf("repositoryUrl is required for path repository type")
+		}
 	}
 
 	return nil
+}
+
+// GetType returns the repository type
+func (c *Config) GetType() string {
+	return string(c.Type)
 }
 
 // GetServerURL returns the Sleuth server URL, with environment override
@@ -148,6 +160,16 @@ func (c *Config) GetServerURL() string {
 		return envURL
 	}
 	return c.ServerURL
+}
+
+// GetAuthToken returns the auth token
+func (c *Config) GetAuthToken() string {
+	return c.AuthToken
+}
+
+// GetRepositoryURL returns the repository URL
+func (c *Config) GetRepositoryURL() string {
+	return c.RepositoryURL
 }
 
 // IsSilent checks if silent mode is enabled via environment variable

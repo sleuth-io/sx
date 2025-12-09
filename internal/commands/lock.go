@@ -79,17 +79,9 @@ func runLock(cmd *cobra.Command, args []string, requirementsFile, outputFile str
 	}
 
 	// Create repository instance
-	var repo repository.Repository
-	switch cfg.Type {
-	case config.RepositoryTypeSleuth:
-		repo = repository.NewSleuthRepository(cfg.GetServerURL(), cfg.AuthToken)
-	case config.RepositoryTypeGit:
-		repo, err = repository.NewGitRepository(cfg.RepositoryURL)
-		if err != nil {
-			return fmt.Errorf("failed to create git repository: %w", err)
-		}
-	default:
-		return fmt.Errorf("unsupported repository type: %s", cfg.Type)
+	repo, err := repository.NewFromConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create repository: %w", err)
 	}
 
 	// Resolve requirements
