@@ -16,6 +16,7 @@ var prompterKey = prompterKeyType{}
 type outputHelper struct {
 	cmd      *cobra.Command
 	prompter Prompter
+	silent   bool // suppress stdout output (for hook mode)
 }
 
 // newOutputHelper creates an output helper for the given command
@@ -46,12 +47,21 @@ func WithPrompter(ctx context.Context, prompter Prompter) context.Context {
 
 // println writes a line to the command's output
 func (o *outputHelper) println(args ...interface{}) {
+	if !o.silent {
+		fmt.Fprintln(o.cmd.OutOrStdout(), args...)
+	}
+}
+
+// printlnAlways writes a line to the command's output (even in silent mode)
+func (o *outputHelper) printlnAlways(args ...interface{}) {
 	fmt.Fprintln(o.cmd.OutOrStdout(), args...)
 }
 
 // printf writes formatted output to the command's output
 func (o *outputHelper) printf(format string, args ...interface{}) {
-	fmt.Fprintf(o.cmd.OutOrStdout(), format, args...)
+	if !o.silent {
+		fmt.Fprintf(o.cmd.OutOrStdout(), format, args...)
+	}
 }
 
 // printErr writes a line to the command's error output

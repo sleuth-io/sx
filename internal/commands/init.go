@@ -190,6 +190,11 @@ func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL strin
 	out.println("✓ Authentication successful!")
 	out.println("Configuration saved.")
 
+	// Install Claude Code hooks
+	if err := installClaudeCodeHooks("", out); err != nil {
+		out.printfErr("\nWarning: failed to install Claude Code hooks: %v\n", err)
+	}
+
 	return nil
 }
 
@@ -227,6 +232,11 @@ func configureGitRepo(cmd *cobra.Command, ctx context.Context, repoURL string) e
 	out.println()
 	out.println("✓ Configuration saved!")
 	out.println("Git repository:", repoURL)
+
+	// Install Claude Code hooks
+	if err := installClaudeCodeHooks("", out); err != nil {
+		out.printfErr("\nWarning: failed to install Claude Code hooks: %v\n", err)
+	}
 
 	return nil
 }
@@ -308,6 +318,11 @@ func configurePathRepo(cmd *cobra.Command, ctx context.Context, repoPath string)
 
 	out.println()
 	out.println("✓ Configuration saved!")
+
+	// Install Claude Code hooks
+	if err := installClaudeCodeHooks("", out); err != nil {
+		out.printfErr("\nWarning: failed to install Claude Code hooks: %v\n", err)
+	}
 
 	return nil
 }

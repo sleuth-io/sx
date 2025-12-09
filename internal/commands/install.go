@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -24,25 +24,31 @@ import (
 
 // NewInstallCommand creates the install command
 func NewInstallCommand() *cobra.Command {
+	var hookMode bool
+
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Read lock file, fetch artifacts, and install locally",
 		Long: fmt.Sprintf(`Read the %s file, fetch artifacts from the configured repository,
 and install them to ~/.claude/ directory.`, constants.SkillLockFile),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInstall(cmd, args)
+			return runInstall(cmd, args, hookMode)
 		},
 	}
+
+	cmd.Flags().BoolVar(&hookMode, "hook-mode", false, "Run in hook mode (outputs JSON for Claude Code)")
+	_ = cmd.Flags().MarkHidden("hook-mode") // Hide from help output since it's internal
 
 	return cmd
 }
 
 // runInstall executes the install command
-func runInstall(cmd *cobra.Command, args []string) error {
+func runInstall(cmd *cobra.Command, args []string, hookMode bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
 	out := newOutputHelper(cmd)
+	out.silent = hookMode // Suppress normal output in hook mode
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -193,11 +199,24 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	if len(artifactsToInstall) == 0 {
 		// Save state even if nothing changed (updates timestamp)
 		saveInstallationState(trackingBase, lockFile, sortedArtifacts, out)
-		out.println("\n✓ No changes needed")
 
-		// Install usage reporting hook even if no artifacts changed
-		if err := installUsageReportingHook(claudeDir, out); err != nil {
-			out.printfErr("\nWarning: failed to install usage reporting hook: %v\n", err)
+		// Install Claude Code hooks even if no artifacts changed
+		if err := installClaudeCodeHooks(claudeDir, out); err != nil {
+			out.printfErr("\nWarning: failed to install hooks: %v\n", err)
+		}
+
+		// In hook mode, output JSON even when nothing changed
+		if hookMode {
+			response := map[string]interface{}{
+				"continue": true,
+			}
+			jsonBytes, err := json.MarshalIndent(response, "", "  ")
+			if err != nil {
+				return fmt.Errorf("failed to marshal JSON response: %w", err)
+			}
+			out.printlnAlways(string(jsonBytes))
+		} else {
+			out.println("\n✓ No changes needed")
 		}
 
 		return nil
@@ -275,10 +294,73 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("some artifacts failed to install")
 	}
 
-	// Install usage reporting hook
-	if err := installUsageReportingHook(claudeDir, out); err != nil {
-		out.printfErr("\nWarning: failed to install usage reporting hook: %v\n", err)
+	// Install Claude Code hooks
+	if err := installClaudeCodeHooks(claudeDir, out); err != nil {
+		out.printfErr("\nWarning: failed to install hooks: %v\n", err)
 		// Don't fail the install command if hook installation fails
+	}
+
+	// If in hook mode and artifacts were installed, output JSON message
+	if hookMode && len(installResult.Installed) > 0 {
+		// Build artifact list message with type info
+		type artifactInfo struct {
+			name string
+			typ  string
+		}
+		var artifacts []artifactInfo
+		for _, name := range installResult.Installed {
+			for _, art := range successfulDownloads {
+				if art.Artifact.Name == name {
+					artifacts = append(artifacts, artifactInfo{
+						name: name,
+						typ:  strings.ToLower(art.Metadata.Artifact.Type.Label),
+					})
+					break
+				}
+			}
+		}
+
+		// ANSI color codes (using bold and blue for better visibility on light/dark terminals)
+		const (
+			bold      = "\033[1m"
+			blue      = "\033[34m"
+			red       = "\033[31m"
+			resetBold = "\033[22m"
+			reset     = "\033[0m"
+		)
+
+		var message string
+		if len(artifacts) == 1 {
+			// Single artifact - more compact message
+			message = fmt.Sprintf("%sSleuth Skills%s installed the %s%s %s%s. %sRestart Claude Code to use it.%s",
+				bold, resetBold, blue, artifacts[0].name, artifacts[0].typ, reset, red, reset)
+		} else if len(artifacts) <= 3 {
+			// List all items
+			message = fmt.Sprintf("%sSleuth Skills%s installed:\n", bold, resetBold)
+			for _, art := range artifacts {
+				message += fmt.Sprintf("- The %s%s %s%s\n", blue, art.name, art.typ, reset)
+			}
+			message += fmt.Sprintf("\n%sRestart Claude Code to use them.%s", red, reset)
+		} else {
+			// Show first 3 and count remaining
+			message = fmt.Sprintf("%sSleuth Skills%s installed:\n", bold, resetBold)
+			for i := 0; i < 3; i++ {
+				message += fmt.Sprintf("- The %s%s %s%s\n", blue, artifacts[i].name, artifacts[i].typ, reset)
+			}
+			remaining := len(artifacts) - 3
+			message += fmt.Sprintf("and %d more\n\n%sRestart Claude Code to use them.%s", remaining, red, reset)
+		}
+
+		// Output JSON response
+		response := map[string]interface{}{
+			"systemMessage": message,
+			"continue":      true,
+		}
+		jsonBytes, err := json.MarshalIndent(response, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON response: %w", err)
+		}
+		out.printlnAlways(string(jsonBytes))
 	}
 
 	return nil
@@ -419,81 +501,4 @@ func saveInstallationState(trackingBase string, lockFile *lockfile.LockFile, sor
 	if err := artifacts.SaveInstalledArtifacts(trackingBase, newInstall); err != nil {
 		out.printfErr("Warning: failed to save installation state: %v\n", err)
 	}
-}
-
-// installUsageReportingHook installs the PostToolUse hook for usage tracking
-func installUsageReportingHook(claudeDir string, out *outputHelper) error {
-	settingsPath := filepath.Join(claudeDir, "settings.json")
-
-	// Read existing settings or create new
-	var settings map[string]interface{}
-	if data, err := os.ReadFile(settingsPath); err == nil {
-		if err := json.Unmarshal(data, &settings); err != nil {
-			return fmt.Errorf("failed to parse settings.json: %w", err)
-		}
-	} else {
-		settings = make(map[string]interface{})
-	}
-
-	// Get or create hooks section
-	hooks, ok := settings["hooks"].(map[string]interface{})
-	if !ok {
-		hooks = make(map[string]interface{})
-		settings["hooks"] = hooks
-	}
-
-	// Get or create PostToolUse array
-	postToolUse, ok := hooks["PostToolUse"].([]interface{})
-	if !ok {
-		postToolUse = []interface{}{}
-	}
-
-	// Check if our hook already exists
-	hookExists := false
-	for _, item := range postToolUse {
-		if hookMap, ok := item.(map[string]interface{}); ok {
-			if hooksArray, ok := hookMap["hooks"].([]interface{}); ok {
-				for _, h := range hooksArray {
-					if hMap, ok := h.(map[string]interface{}); ok {
-						if cmd, ok := hMap["command"].(string); ok && cmd == "skills report-usage" {
-							hookExists = true
-							break
-						}
-					}
-				}
-			}
-		}
-		if hookExists {
-			break
-		}
-	}
-
-	// Add hook if it doesn't exist
-	if !hookExists {
-		newHook := map[string]interface{}{
-			"matcher": "Skill|Task|SlashCommand|mcp__.*",
-			"hooks": []interface{}{
-				map[string]interface{}{
-					"type":    "command",
-					"command": "skills report-usage",
-				},
-			},
-		}
-		postToolUse = append(postToolUse, newHook)
-		hooks["PostToolUse"] = postToolUse
-
-		// Write back to file
-		data, err := json.MarshalIndent(settings, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal settings: %w", err)
-		}
-
-		if err := os.WriteFile(settingsPath, data, 0644); err != nil {
-			return fmt.Errorf("failed to write settings.json: %w", err)
-		}
-
-		out.println("\n✓ Installed usage reporting hook to ~/.claude/settings.json")
-	}
-
-	return nil
 }
