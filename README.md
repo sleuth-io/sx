@@ -1,79 +1,84 @@
-# Skills
+# Sleuth Skills
 
-A CLI tool for managing Sleuth skills - reusable units of AI agent behavior.
+Sleuth Skills is a package manager for AI coding assistants. Create, version, and distribute reusable AI 
+tools across your entire team. Think NPM for AI agents -- install once, use everywhere.
 
-## Installation
+## Why Sleuth Skills?
+- Onboard new developers instantly with your team's tribal knowledge
+- Expand successful AI use from experts to everyone
+- Spread best practices to any AI tool (coming soon)
+
+## Quickstart
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sleuth-io/skills/main/install.sh | bash
 ```
 
-This downloads and installs the pre-built binary for your platform.
-
-## Getting Started
-
-Initialize your skills configuration:
+then
 
 ```bash
+# Initialize
 skills init
-```
 
-This creates a configuration file in your home directory and installs a global Claude Code hook to
-automatically install skills for new sessions.
+# Add a skill from your repository
+skills add /path/to/my-skill
 
-### Repository Types
-
-During initialization, you'll choose from three repository types:
-
-1. **Local Path** (default) - Store skills in a local directory
-   - Easiest option for getting started
-   - Great for development and testing
-   - Directory will be created automatically if it doesn't exist
-
-2. **Git Repository** - Store skills in a Git repository
-   - Uses your local Git credentials
-   - Ideal for small team collaboration and version control
-   - Skills are synced via standard Git operations
-
-3. **Sleuth Server** - Connect to Sleuth for centralized skill management
-   - Provides a UI for managing, creating, and discovering new skills in your code
-   - No authentication credentials needed - handled automatically
-   - Best for teams wanting a centralized skill registry with visual management
-
-## Usage
-
-### Adding Skills
-
-Add a skill from a local directory or zip file:
-
-```bash
-skills add /path/to/skill
-skills add skill.zip
-```
-
-### Managing Dependencies
-
-Install skills:
-
-```bash
+# Install skills to your current project
 skills install
 ```
 
-### Help
+## What can you build and share?
 
-View all available commands:
+- **Skills** - Custom prompts and behaviors for specific tasks
+- **Agents** - Autonomous AI agents with specific goals
+- **Commands** - Slash commands for quick actions
+- **Hooks** - Automation triggers for lifecycle events
+- **MCP Servers** - Model Context Protocol (MCP) servers for external integrations
+
+## Distribution models
+
+Choose the right distribution model for your team:
+
+### Local (Personal)
+
+Perfect for easily sharing personal tools across multiple personal projects
 
 ```bash
-skills --help
-skills <command> --help
+skills init --type path --path my/repository/path
 ```
 
-## Documentation
+### Git repository (Small teams)
 
-- [Repository Spec](docs/repository-spec.md) - Skills repository structure
-- [Metadata Spec](docs/metadata-spec.md) - Skill metadata format
-- [Requirements Spec](docs/requirements-spec.md) - Dependency requirements
-- [Lock Spec](docs/lock-spec.md) - Lock file format
+Share skills through a shared git repository
+
+```bash
+skills init --type git --repo git@github.com:yourteam/skills.git
+```
+
+### Sleuth (Large teams and enterprise)
+
+Centralized, effortless management with a UI for discovery, creation, and sharing at scale
+
+```bash
+skills init --type sleuth
+```
+
+## How it works
+
+Sleuth Skills uses a lock file, like package-lock.json, for deterministic installations in the right context:
+
+1. **Create** skills with metadata (name, version, dependencies)
+2. **Publish** to your chosen repository
+3. **Share** the skill globally, per repository, or even per path in a repository (monorepo support!)
+4. **Auto-install** on new Claude Code sessions
+5. **Stay synchronized** - everyone gets the same tools automatically
+
+## Roadmap
+- ✅ Local, Git, and Sleuth repositories
+- ✅ Claude Code support
+- **Multi-client support** - Use the same skills in Cursor, Windsurf, Cline
+- **Skill discovery** - Use Sleuth to discover relevant skills from your code and architecture
+- **Analytics** - Track skill usage and impact
 
 ## License
 
@@ -85,6 +90,13 @@ See LICENSE file for details.
 
 <details>
 <summary>Click to expand development instructions</summary>
+
+### Documentation
+
+- [Repository Spec](docs/repository-spec.md) - Skills repository structure
+- [Metadata Spec](docs/metadata-spec.md) - Skill metadata format
+- [Lock Spec](docs/lock-spec.md) - Lock file format
+
 
 ### Prerequisites
 
