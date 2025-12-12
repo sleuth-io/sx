@@ -419,16 +419,17 @@ func (c *Client) ListSkills(ctx context.Context, scope *clients.InstallScope) ([
 func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.InstallScope) (*clients.SkillContent, error) {
 	targetBase := c.determineTargetBase(scope)
 
-	content, baseDir, description, err := skillOps.ReadPromptContent(targetBase, name, "SKILL.md", func(m *metadata.Metadata) string { return m.Skill.PromptFile })
+	result, err := skillOps.ReadPromptContent(targetBase, name, "SKILL.md", func(m *metadata.Metadata) string { return m.Skill.PromptFile })
 	if err != nil {
 		return nil, err
 	}
 
 	return &clients.SkillContent{
 		Name:        name,
-		Description: description,
-		Content:     content,
-		BaseDir:     baseDir,
+		Description: result.Description,
+		Version:     result.Version,
+		Content:     result.Content,
+		BaseDir:     result.BaseDir,
 	}, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -69,10 +70,11 @@ func (m *mockClient) ShouldInstall(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (m *mockClient) addSkill(name, description, content, baseDir string) {
+func (m *mockClient) addSkill(name, description, version, content, baseDir string) {
 	m.skills[name] = &clients.SkillContent{
 		Name:        name,
 		Description: description,
+		Version:     version,
 		Content:     content,
 		BaseDir:     baseDir,
 	}
@@ -81,7 +83,7 @@ func (m *mockClient) addSkill(name, description, content, baseDir string) {
 func TestServer_ReadSkill(t *testing.T) {
 	// Create a mock client with test skills
 	mock := newMockClient()
-	mock.addSkill("test-skill", "A test skill", "# Test Skill\n\nThis is the skill content.", "/tmp/skills/test-skill")
+	mock.addSkill("test-skill", "A test skill", "1.0.0", "# Test Skill\n\nThis is the skill content.", "/tmp/skills/test-skill")
 
 	// Create a registry with just our mock client
 	registry := clients.NewRegistry()
@@ -222,7 +224,7 @@ This skill helps with @example.txt integration testing.
 
 	// Use a mock client that reads from our temp directory
 	mock := newMockClient()
-	mock.addSkill("integration-skill", "An integration test skill", skillContent, skillDir)
+	mock.addSkill("integration-skill", "An integration test skill", "1.0.0", skillContent, skillDir)
 
 	registry := clients.NewRegistry()
 	registry.Register(mock)
@@ -336,5 +338,105 @@ func TestResolveFileReferences(t *testing.T) {
 				t.Errorf("Expected %q, got %q", tt.expected, result)
 			}
 		})
+	}
+}
+
+// mockUsageReporter captures usage reports for testing
+type mockUsageReporter struct {
+	mu      sync.Mutex
+	reports []usageReport
+	called  chan struct{}
+}
+
+type usageReport struct {
+	skillName    string
+	skillVersion string
+}
+
+func newMockUsageReporter() *mockUsageReporter {
+	return &mockUsageReporter{
+		called: make(chan struct{}, 1),
+	}
+}
+
+func (m *mockUsageReporter) ReportSkillUsage(skillName, skillVersion string) {
+	m.mu.Lock()
+	m.reports = append(m.reports, usageReport{skillName, skillVersion})
+	m.mu.Unlock()
+	select {
+	case m.called <- struct{}{}:
+	default:
+	}
+}
+
+func (m *mockUsageReporter) getReports() []usageReport {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]usageReport{}, m.reports...)
+}
+
+func TestServer_ReadSkill_ReportsUsage(t *testing.T) {
+	// Create a mock client with a test skill
+	mock := newMockClient()
+	mock.addSkill("usage-test-skill", "A skill for testing usage", "2.0.0", "# Usage Test\n\nContent here.", "/tmp/skills/usage-test")
+
+	registry := clients.NewRegistry()
+	registry.Register(mock)
+
+	server := NewServer(registry)
+
+	// Inject mock usage reporter
+	mockReporter := newMockUsageReporter()
+	server.SetUsageReporter(mockReporter)
+
+	// Create and connect MCP server
+	impl := &mcp.Implementation{Name: "skills", Version: "1.0.0"}
+	mcpServer := mcp.NewServer(impl, nil)
+	mcp.AddTool(mcpServer, &mcp.Tool{
+		Name:        "read_skill",
+		Description: "Read a skill's full instructions and content.",
+	}, server.handleReadSkill)
+
+	ctx := context.Background()
+	t1, t2 := mcp.NewInMemoryTransports()
+
+	_, err := mcpServer.Connect(ctx, t1, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect server: %v", err)
+	}
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v1.0.0"}, nil)
+	session, err := client.Connect(ctx, t2, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect client: %v", err)
+	}
+	defer session.Close()
+
+	// Read the skill
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "read_skill",
+		Arguments: map[string]any{"name": "usage-test-skill"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool failed: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("Tool returned error: %v", result.Content)
+	}
+
+	// Wait for the goroutine to call the reporter
+	<-mockReporter.called
+
+	// Verify the usage was reported
+	reports := mockReporter.getReports()
+	if len(reports) != 1 {
+		t.Fatalf("Expected 1 usage report, got %d", len(reports))
+	}
+
+	if reports[0].skillName != "usage-test-skill" {
+		t.Errorf("Expected skill name 'usage-test-skill', got %q", reports[0].skillName)
+	}
+	if reports[0].skillVersion != "2.0.0" {
+		t.Errorf("Expected skill version '2.0.0', got %q", reports[0].skillVersion)
 	}
 }

@@ -69,6 +69,7 @@ type InstalledSkill struct {
 type SkillContent struct {
 	Name        string // Skill name
 	Description string // Skill description from metadata
+	Version     string // Skill version from metadata
 	Content     string // Contents of SKILL.md (or configured prompt file)
 	BaseDir     string // Directory where skill is installed (for resolving @ file references)
 }

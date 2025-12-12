@@ -120,21 +120,29 @@ func (o *Operations) GetArtifactDir(targetBase string, artifactName string) stri
 // Returns empty string if not specified, in which case the default will be used.
 type PromptFileGetter func(meta *metadata.Metadata) string
 
+// PromptContent contains the result of reading an artifact's prompt file
+type PromptContent struct {
+	Content     string // The prompt file contents
+	BaseDir     string // Directory where the artifact is installed
+	Description string // Artifact description from metadata
+	Version     string // Artifact version from metadata
+}
+
 // ReadPromptContent reads the prompt/content file for an artifact.
 // promptFileGetter extracts the prompt file from metadata; if nil or returns empty, defaultPromptFile is used.
-func (o *Operations) ReadPromptContent(targetBase string, artifactName string, defaultPromptFile string, promptFileGetter PromptFileGetter) (content string, baseDir string, description string, err error) {
+func (o *Operations) ReadPromptContent(targetBase string, artifactName string, defaultPromptFile string, promptFileGetter PromptFileGetter) (*PromptContent, error) {
 	artifactDir := o.GetArtifactDir(targetBase, artifactName)
 
 	// Check if artifact directory exists
 	if _, err := os.Stat(artifactDir); os.IsNotExist(err) {
-		return "", "", "", fmt.Errorf("artifact not found: %s", artifactName)
+		return nil, fmt.Errorf("artifact not found: %s", artifactName)
 	}
 
 	// Read metadata
 	metaPath := filepath.Join(artifactDir, "metadata.toml")
 	meta, err := metadata.ParseFile(metaPath)
 	if err != nil {
-		return "", "", "", fmt.Errorf("failed to read artifact metadata: %w", err)
+		return nil, fmt.Errorf("failed to read artifact metadata: %w", err)
 	}
 
 	// Determine prompt file
@@ -149,8 +157,13 @@ func (o *Operations) ReadPromptContent(targetBase string, artifactName string, d
 	promptPath := filepath.Join(artifactDir, promptFile)
 	contentBytes, err := os.ReadFile(promptPath)
 	if err != nil {
-		return "", "", "", fmt.Errorf("failed to read prompt content: %w", err)
+		return nil, fmt.Errorf("failed to read prompt content: %w", err)
 	}
 
-	return string(contentBytes), artifactDir, meta.Artifact.Description, nil
+	return &PromptContent{
+		Content:     string(contentBytes),
+		BaseDir:     artifactDir,
+		Description: meta.Artifact.Description,
+		Version:     meta.Artifact.Version,
+	}, nil
 }

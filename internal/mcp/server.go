@@ -6,22 +6,40 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/sleuth-io/skills/internal/clients"
+	"github.com/sleuth-io/skills/internal/config"
 	"github.com/sleuth-io/skills/internal/gitutil"
+	"github.com/sleuth-io/skills/internal/logger"
+	"github.com/sleuth-io/skills/internal/repository"
+	"github.com/sleuth-io/skills/internal/stats"
 )
+
+// UsageReporter handles reporting skill usage
+type UsageReporter interface {
+	ReportSkillUsage(skillName, skillVersion string)
+}
 
 // Server provides an MCP server that exposes skill operations
 type Server struct {
-	registry *clients.Registry
+	registry      *clients.Registry
+	usageReporter UsageReporter
 }
 
 // NewServer creates a new MCP server
 func NewServer(registry *clients.Registry) *Server {
-	return &Server{
+	s := &Server{
 		registry: registry,
 	}
+	s.usageReporter = s // Server implements UsageReporter by default
+	return s
+}
+
+// SetUsageReporter sets a custom usage reporter (for testing)
+func (s *Server) SetUsageReporter(reporter UsageReporter) {
+	s.usageReporter = reporter
 }
 
 // ReadSkillInput is the input type for read_skill tool
@@ -69,6 +87,9 @@ func (s *Server) handleReadSkill(ctx context.Context, req *mcp.CallToolRequest, 
 	for _, client := range installedClients {
 		content, err := client.ReadSkill(ctx, input.Name, scope)
 		if err == nil {
+			// Report usage (best-effort, won't fail the MCP call)
+			go s.usageReporter.ReportSkillUsage(content.Name, content.Version)
+
 			// Resolve @file references to absolute paths
 			resolvedContent := resolveFileReferences(content.Content, content.BaseDir)
 
@@ -129,4 +150,45 @@ func (s *Server) detectScope(ctx context.Context) (*clients.InstallScope, error)
 		RepoURL:  gitContext.RepoURL,
 		Path:     gitContext.RelativePath,
 	}, nil
+}
+
+// ReportSkillUsage reports usage of a skill to the repository.
+// This function runs in a goroutine and is best-effort - it will not block the MCP call.
+func (s *Server) ReportSkillUsage(skillName, skillVersion string) {
+	log := logger.Get()
+
+	// Create usage event
+	usageEvent := stats.UsageEvent{
+		ArtifactName:    skillName,
+		ArtifactVersion: skillVersion,
+		ArtifactType:    "skill",
+		Timestamp:       time.Now().UTC().Format(time.RFC3339),
+	}
+
+	// Enqueue event (fast, local file write)
+	if err := stats.EnqueueEvent(usageEvent); err != nil {
+		log.Warn("failed to enqueue usage event", "skill", skillName, "error", err)
+		return
+	}
+
+	log.Debug("skill usage enqueued", "name", skillName, "version", skillVersion)
+
+	// Try to flush queue with timeout (network call, but we're already in a goroutine)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Load config to get repository
+	cfg, err := config.Load()
+	if err != nil {
+		return
+	}
+
+	// Create repository instance
+	repo, err := repository.NewFromConfig(cfg)
+	if err != nil {
+		return
+	}
+
+	// Try to flush queue
+	_ = stats.FlushQueue(ctx, repo)
 }
