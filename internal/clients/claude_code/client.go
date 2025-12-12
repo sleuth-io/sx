@@ -235,3 +235,8 @@ func (c *Client) EnsureSkillsSupport(ctx context.Context, scope *clients.Install
 	// Claude Code loads global rules, so no special setup needed
 	return nil
 }
+
+// InstallHooks installs Claude Code-specific hooks (auto-update and usage tracking)
+func (c *Client) InstallHooks(ctx context.Context) error {
+	return installHooks()
+}

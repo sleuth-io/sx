@@ -39,6 +39,11 @@ type Client interface {
 	// For Cursor, this creates local .cursor/rules/skills.md with skills from all applicable scopes.
 	// Clients that don't need post-install setup can return nil.
 	EnsureSkillsSupport(ctx context.Context, scope *InstallScope) error
+
+	// InstallHooks installs client-specific hooks (e.g., auto-update, usage tracking).
+	// This is called during installation to set up hooks in the client's configuration.
+	// Clients that don't need hooks can return nil.
+	InstallHooks(ctx context.Context) error
 }
 
 // InstalledSkill represents a skill that has been installed

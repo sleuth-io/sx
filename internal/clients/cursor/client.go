@@ -421,6 +421,13 @@ func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.Inst
 	}, nil
 }
 
+// InstallHooks is a no-op for Cursor since it doesn't need system hooks.
+// This method exists to satisfy the Client interface.
+func (c *Client) InstallHooks(ctx context.Context) error {
+	// Cursor doesn't need system hooks
+	return nil
+}
+
 func init() {
 	// Auto-register on package import
 	clients.Register(NewClient())

@@ -92,11 +92,14 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool) error {
 		}
 	} else if repoURL != "" && newETag != "" {
 		// Save new ETag and lock file content
+		log := logger.Get()
 		if err := cache.SaveETag(repoURL, newETag); err != nil {
 			out.printfErr("Warning: failed to save ETag: %v\n", err)
+			log.Error("failed to save ETag", "repo_url", repoURL, "error", err)
 		}
 		if err := cache.SaveLockFile(repoURL, lockFileData); err != nil {
 			out.printfErr("Warning: failed to cache lock file: %v\n", err)
+			log.Error("failed to cache lock file", "repo_url", repoURL, "error", err)
 		}
 	}
 
@@ -232,10 +235,8 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool) error {
 		// Save state even if nothing changed (updates timestamp)
 		saveInstallationState(trackingBase, lockFile, sortedArtifacts, targetClientIDs, out)
 
-		// Install Claude Code hooks even if no artifacts changed
-		if err := installClaudeCodeHooks(claudeDir, out); err != nil {
-			out.printfErr("\nWarning: failed to install hooks: %v\n", err)
-		}
+		// Install client-specific hooks (e.g., auto-update, usage tracking)
+		installClientHooks(ctx, targetClients, out)
 
 		// Ensure skills support is configured for all clients (creates local rules files, etc.)
 		// This is important even when no new artifacts are installed, as the local rules file
@@ -286,8 +287,10 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool) error {
 
 	if len(downloadErrors) > 0 {
 		out.printErr("\nDownload errors:")
+		log := logger.Get()
 		for _, err := range downloadErrors {
 			out.printfErr("  - %v\n", err)
+			log.Error("artifact download failed", "error", err)
 		}
 		out.println()
 	}
@@ -330,15 +333,13 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool) error {
 		out.printfErr("✗ Failed to install %d artifacts:\n", len(installResult.Failed))
 		for i, name := range installResult.Failed {
 			out.printfErr("  - %s: %v\n", name, installResult.Errors[i])
+			log.Error("artifact installation failed", "name", name, "error", installResult.Errors[i])
 		}
 		return fmt.Errorf("some artifacts failed to install")
 	}
 
-	// Install Claude Code hooks
-	if err := installClaudeCodeHooks(claudeDir, out); err != nil {
-		out.printfErr("\nWarning: failed to install hooks: %v\n", err)
-		// Don't fail the install command if hook installation fails
-	}
+	// Install client-specific hooks (e.g., auto-update, usage tracking)
+	installClientHooks(ctx, targetClients, out)
 
 	// If in hook mode and artifacts were installed, output JSON message
 	if hookMode && len(installResult.Installed) > 0 {
@@ -411,6 +412,8 @@ func loadPreviousInstallState(trackingBase string, out *outputHelper) *artifacts
 	previousInstall, err := artifacts.LoadInstalledArtifacts(trackingBase)
 	if err != nil {
 		out.printfErr("Warning: failed to load previous installation state: %v\n", err)
+		log := logger.Get()
+		log.Error("failed to load previous installation state", "tracking_base", trackingBase, "error", err)
 		return &artifacts.InstalledArtifacts{
 			Version:   artifacts.TrackerFormatVersion,
 			Artifacts: []artifacts.InstalledArtifact{},
@@ -481,6 +484,7 @@ func cleanupRemovedArtifacts(ctx context.Context, previousInstall *artifacts.Ins
 		resp, err := client.UninstallArtifacts(ctx, uninstallReq)
 		if err != nil {
 			out.printfErr("Warning: cleanup failed for %s: %v\n", client.DisplayName(), err)
+			log.Error("cleanup failed", "client", client.ID(), "error", err)
 			continue
 		}
 
@@ -490,6 +494,7 @@ func cleanupRemovedArtifacts(ctx context.Context, previousInstall *artifacts.Ins
 				log.Info("artifact removed", "name", result.ArtifactName, "client", client.ID())
 			} else if result.Status == clients.StatusFailed {
 				out.printfErr("Warning: failed to remove %s from %s: %v\n", result.ArtifactName, client.DisplayName(), result.Error)
+				log.Error("artifact removal failed", "name", result.ArtifactName, "client", client.ID(), "error", result.Error)
 			}
 		}
 	}
@@ -587,11 +592,25 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, o
 	return installResult
 }
 
+// installClientHooks calls InstallHooks on all clients to install client-specific hooks
+func installClientHooks(ctx context.Context, targetClients []clients.Client, out *outputHelper) {
+	log := logger.Get()
+	for _, client := range targetClients {
+		if err := client.InstallHooks(ctx); err != nil {
+			out.printfErr("Warning: failed to install hooks for %s: %v\n", client.DisplayName(), err)
+			log.Error("failed to install client hooks", "client", client.ID(), "error", err)
+			// Don't fail the install command if hook installation fails
+		}
+	}
+}
+
 // ensureSkillsSupport calls EnsureSkillsSupport on all clients to set up local rules files, etc.
 func ensureSkillsSupport(ctx context.Context, targetClients []clients.Client, scope *clients.InstallScope, out *outputHelper) {
+	log := logger.Get()
 	for _, client := range targetClients {
 		if err := client.EnsureSkillsSupport(ctx, scope); err != nil {
 			out.printfErr("Warning: failed to ensure skills support for %s: %v\n", client.DisplayName(), err)
+			log.Error("failed to ensure skills support", "client", client.ID(), "error", err)
 		}
 	}
 }
@@ -617,5 +636,7 @@ func saveInstallationState(trackingBase string, lockFile *lockfile.LockFile, sor
 
 	if err := artifacts.SaveInstalledArtifacts(trackingBase, newInstall); err != nil {
 		out.printfErr("Warning: failed to save installation state: %v\n", err)
+		log := logger.Get()
+		log.Error("failed to save installation state", "tracking_base", trackingBase, "error", err)
 	}
 }
