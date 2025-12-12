@@ -45,6 +45,11 @@ type Client interface {
 	// Clients that don't need hooks can return nil.
 	InstallHooks(ctx context.Context) error
 
+	// UninstallHooks removes client-specific hooks installed by InstallHooks.
+	// This is called during full uninstall (--all flag) to clean up system hooks.
+	// Clients that don't need hooks can return nil.
+	UninstallHooks(ctx context.Context) error
+
 	// ShouldInstall checks if installation should proceed in hook mode.
 	// Returns true to proceed, false to skip.
 	// Called before any installation work begins.

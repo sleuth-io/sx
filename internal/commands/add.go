@@ -3,6 +3,9 @@ package commands
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -12,6 +15,7 @@ import (
 
 	"github.com/sleuth-io/skills/internal/artifact"
 	"github.com/sleuth-io/skills/internal/artifacts/detectors"
+	"github.com/sleuth-io/skills/internal/buildinfo"
 	"github.com/sleuth-io/skills/internal/config"
 	"github.com/sleuth-io/skills/internal/constants"
 	"github.com/sleuth-io/skills/internal/lockfile"
@@ -23,10 +27,10 @@ import (
 // NewAddCommand creates the add command
 func NewAddCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add [zip-file-or-directory]",
-		Short: "Add a local zip file or directory artifact to the repository",
-		Long: `Take a local zip file or directory, detect metadata from its contents, prompt for
-confirmation/edits, install it to the repository, and update the lock file.`,
+		Use:   "add [zip-file-directory-or-url]",
+		Short: "Add a zip file, directory, or URL artifact to the repository",
+		Long: `Take a local zip file, directory, or URL to a zip file, detect metadata from its
+contents, prompt for confirmation/edits, install it to the repository, and update the lock file.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var zipFile string
@@ -80,19 +84,38 @@ func runAdd(cmd *cobra.Command, zipFile string) error {
 	return addNewArtifact(ctx, out, repo, name, artifactType, version, zipFile, zipData, metadataExists)
 }
 
-// loadZipFile prompts for, loads, and validates the zip file or directory
+// isURL checks if the input looks like a URL
+func isURL(input string) bool {
+	return strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://")
+}
+
+// loadZipFile prompts for, loads, and validates the zip file, directory, or URL
 func loadZipFile(out *outputHelper, zipFile string) (string, []byte, error) {
-	// Prompt for zip file or directory if not provided
+	// Prompt for zip file, directory, or URL if not provided
 	if zipFile == "" {
 		var err error
-		zipFile, err = out.prompt("Enter path to artifact zip file or directory: ")
+		zipFile, err = out.prompt("Enter path or URL to artifact zip file or directory: ")
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to read input: %w", err)
 		}
 	}
 
 	if zipFile == "" {
-		return "", nil, fmt.Errorf("zip file or directory path is required")
+		return "", nil, fmt.Errorf("zip file, directory path, or URL is required")
+	}
+
+	// Check if it's a URL
+	if isURL(zipFile) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		out.println()
+		out.println("Downloading artifact from URL...")
+		zipData, err := downloadZipFromURL(ctx, out, zipFile)
+		if err != nil {
+			return "", nil, err
+		}
+		return zipFile, zipData, nil
 	}
 
 	// Expand path
@@ -130,6 +153,48 @@ func loadZipFile(out *outputHelper, zipFile string) (string, []byte, error) {
 	}
 
 	return zipFile, zipData, nil
+}
+
+// downloadZipFromURL downloads a zip file from a URL
+func downloadZipFromURL(ctx context.Context, out *outputHelper, zipURL string) ([]byte, error) {
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 5 * time.Minute,
+	}
+
+	// Create request with context
+	req, err := http.NewRequestWithContext(ctx, "GET", zipURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set user agent
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
+
+	// Execute request
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	// Read response body
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Verify it's a valid zip
+	if !utils.IsZipFile(data) {
+		return nil, fmt.Errorf("downloaded file is not a valid zip archive")
+	}
+
+	out.printf("Downloaded %d bytes\n", len(data))
+	return data, nil
 }
 
 // detectArtifactInfo extracts or detects artifact name and type, then confirms with user
@@ -470,8 +535,15 @@ func updateMetadataInZip(meta *metadata.Metadata, zipData []byte, metadataExists
 	return newZipData, nil
 }
 
-// guessArtifactName extracts a reasonable artifact name from the zip file path
+// guessArtifactName extracts a reasonable artifact name from the zip file path or URL
 func guessArtifactName(zipPath string) string {
+	// Handle URLs - extract path component
+	if isURL(zipPath) {
+		if parsed, err := url.Parse(zipPath); err == nil {
+			zipPath = parsed.Path
+		}
+	}
+
 	// Get base filename
 	base := strings.TrimSuffix(strings.TrimSuffix(zipPath, ".zip"), ".ZIP")
 	base = strings.TrimPrefix(base, "./")

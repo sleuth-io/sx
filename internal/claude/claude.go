@@ -149,16 +149,24 @@ func installUsageReportingHook(claudeDir string, out Output) error {
 		postToolUse = []interface{}{}
 	}
 
-	// Check if our hook already exists
+	hookCommand := "skills report-usage --client=claude-code"
+
+	// Check if our hook already exists (check for both old and new command formats)
 	hookExists := false
+	var oldHookRef map[string]interface{}
 	for _, item := range postToolUse {
 		if hookMap, ok := item.(map[string]interface{}); ok {
 			if hooksArray, ok := hookMap["hooks"].([]interface{}); ok {
 				for _, h := range hooksArray {
 					if hMap, ok := h.(map[string]interface{}); ok {
-						if cmd, ok := hMap["command"].(string); ok && cmd == "skills report-usage" {
-							hookExists = true
-							break
+						if cmd, ok := hMap["command"].(string); ok {
+							if cmd == hookCommand {
+								hookExists = true
+								break
+							}
+							if cmd == "skills report-usage" {
+								oldHookRef = hMap // Remember for updating
+							}
 						}
 					}
 				}
@@ -169,34 +177,43 @@ func installUsageReportingHook(claudeDir string, out Output) error {
 		}
 	}
 
-	// Add hook if it doesn't exist
-	if !hookExists {
+	// Already have exact match, nothing to do
+	if hookExists {
+		return nil
+	}
+
+	log := logger.Get()
+
+	// Update old hook if found, otherwise add new
+	if oldHookRef != nil {
+		oldHookRef["command"] = hookCommand
+		log.Info("hook updated", "hook", "PostToolUse", "command", hookCommand)
+	} else {
 		newHook := map[string]interface{}{
 			"matcher": "Skill|Task|SlashCommand|mcp__.*",
 			"hooks": []interface{}{
 				map[string]interface{}{
 					"type":    "command",
-					"command": "skills report-usage",
+					"command": hookCommand,
 				},
 			},
 		}
 		postToolUse = append(postToolUse, newHook)
 		hooks["PostToolUse"] = postToolUse
-
-		// Write back to file
-		data, err := json.MarshalIndent(settings, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal settings: %w", err)
-		}
-
-		if err := os.WriteFile(settingsPath, data, 0644); err != nil {
-			return fmt.Errorf("failed to write settings.json: %w", err)
-		}
-
-		log := logger.Get()
-		log.Info("hook installed", "hook", "PostToolUse", "command", "skills report-usage")
-		out.Println("\n✓ Installed usage reporting hook to ~/.claude/settings.json")
+		log.Info("hook installed", "hook", "PostToolUse", "command", hookCommand)
 	}
+
+	// Write back to file
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal settings: %w", err)
+	}
+
+	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write settings.json: %w", err)
+	}
+
+	out.Println("\n✓ Installed usage reporting hook to ~/.claude/settings.json")
 
 	return nil
 }

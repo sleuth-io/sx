@@ -241,6 +241,11 @@ func (c *Client) InstallHooks(ctx context.Context) error {
 	return installHooks()
 }
 
+// UninstallHooks removes Claude Code-specific hooks (SessionStart and PostToolUse)
+func (c *Client) UninstallHooks(ctx context.Context) error {
+	return uninstallHooks()
+}
+
 // ShouldInstall always returns true for Claude Code.
 // Claude Code has a SessionStart hook that fires once per session, so no
 // deduplication is needed.

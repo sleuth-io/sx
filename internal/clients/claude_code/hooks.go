@@ -134,6 +134,131 @@ func installSessionStartHook(claudeDir string) error {
 	return nil
 }
 
+// uninstallHooks removes system hooks for Claude Code.
+// This removes the SessionStart hook (auto-install) and PostToolUse hook (usage tracking).
+func uninstallHooks() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	claudeDir := filepath.Join(home, ".claude")
+	settingsPath := filepath.Join(claudeDir, "settings.json")
+
+	log := logger.Get()
+
+	// Read existing settings
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// No settings file, nothing to uninstall
+			return nil
+		}
+		return fmt.Errorf("failed to read settings.json: %w", err)
+	}
+
+	var settings map[string]interface{}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return fmt.Errorf("failed to parse settings.json: %w", err)
+	}
+
+	hooks, ok := settings["hooks"].(map[string]interface{})
+	if !ok {
+		// No hooks section, nothing to uninstall
+		return nil
+	}
+
+	modified := false
+
+	// Remove our SessionStart hook
+	if sessionStart, ok := hooks["SessionStart"].([]interface{}); ok {
+		filtered := removeSkillsHooks(sessionStart, "skills install")
+		if len(filtered) != len(sessionStart) {
+			modified = true
+			if len(filtered) == 0 {
+				delete(hooks, "SessionStart")
+			} else {
+				hooks["SessionStart"] = filtered
+			}
+			log.Info("hook removed", "hook", "SessionStart")
+		}
+	}
+
+	// Remove our PostToolUse hook
+	if postToolUse, ok := hooks["PostToolUse"].([]interface{}); ok {
+		filtered := removeSkillsHooks(postToolUse, "skills report-usage")
+		if len(filtered) != len(postToolUse) {
+			modified = true
+			if len(filtered) == 0 {
+				delete(hooks, "PostToolUse")
+			} else {
+				hooks["PostToolUse"] = filtered
+			}
+			log.Info("hook removed", "hook", "PostToolUse")
+		}
+	}
+
+	// Remove empty hooks section
+	if len(hooks) == 0 {
+		delete(settings, "hooks")
+	}
+
+	if !modified {
+		return nil
+	}
+
+	// Write back to file
+	data, err = json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal settings: %w", err)
+	}
+
+	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write settings.json: %w", err)
+	}
+
+	return nil
+}
+
+// removeSkillsHooks filters out hooks whose command starts with the given prefix
+func removeSkillsHooks(hooks []interface{}, commandPrefix string) []interface{} {
+	var filtered []interface{}
+	for _, item := range hooks {
+		hookMap, ok := item.(map[string]interface{})
+		if !ok {
+			filtered = append(filtered, item)
+			continue
+		}
+
+		hooksArray, ok := hookMap["hooks"].([]interface{})
+		if !ok {
+			filtered = append(filtered, item)
+			continue
+		}
+
+		// Check if this hook entry contains our command
+		hasSkillsCommand := false
+		for _, h := range hooksArray {
+			hMap, ok := h.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			cmd, ok := hMap["command"].(string)
+			if !ok {
+				continue
+			}
+			if strings.HasPrefix(cmd, commandPrefix) {
+				hasSkillsCommand = true
+				break
+			}
+		}
+
+		if !hasSkillsCommand {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
 // installUsageReportingHook installs the PostToolUse hook for usage tracking
 func installUsageReportingHook(claudeDir string) error {
 	settingsPath := filepath.Join(claudeDir, "settings.json")
@@ -163,16 +288,24 @@ func installUsageReportingHook(claudeDir string) error {
 		postToolUse = []interface{}{}
 	}
 
-	// Check if our hook already exists
+	hookCommand := "skills report-usage --client=claude-code"
+
+	// Check if our hook already exists (check for both old and new command formats)
 	hookExists := false
+	var oldHookRef map[string]interface{}
 	for _, item := range postToolUse {
 		if hookMap, ok := item.(map[string]interface{}); ok {
 			if hooksArray, ok := hookMap["hooks"].([]interface{}); ok {
 				for _, h := range hooksArray {
 					if hMap, ok := h.(map[string]interface{}); ok {
-						if cmd, ok := hMap["command"].(string); ok && cmd == "skills report-usage" {
-							hookExists = true
-							break
+						if cmd, ok := hMap["command"].(string); ok {
+							if cmd == hookCommand {
+								hookExists = true
+								break
+							}
+							if cmd == "skills report-usage" {
+								oldHookRef = hMap // Remember for updating
+							}
 						}
 					}
 				}
@@ -183,33 +316,40 @@ func installUsageReportingHook(claudeDir string) error {
 		}
 	}
 
-	// Add hook if it doesn't exist
-	if !hookExists {
+	// Already have exact match, nothing to do
+	if hookExists {
+		return nil
+	}
+
+	// Update old hook if found, otherwise add new
+	if oldHookRef != nil {
+		oldHookRef["command"] = hookCommand
+		log.Info("hook updated", "hook", "PostToolUse", "command", hookCommand)
+	} else {
 		newHook := map[string]interface{}{
 			"matcher": "Skill|Task|SlashCommand|mcp__.*",
 			"hooks": []interface{}{
 				map[string]interface{}{
 					"type":    "command",
-					"command": "skills report-usage",
+					"command": hookCommand,
 				},
 			},
 		}
 		postToolUse = append(postToolUse, newHook)
 		hooks["PostToolUse"] = postToolUse
+		log.Info("hook installed", "hook", "PostToolUse", "command", hookCommand)
+	}
 
-		// Write back to file
-		data, err := json.MarshalIndent(settings, "", "  ")
-		if err != nil {
-			log.Error("failed to marshal settings for PostToolUse hook", "error", err)
-			return fmt.Errorf("failed to marshal settings: %w", err)
-		}
+	// Write back to file
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		log.Error("failed to marshal settings for PostToolUse hook", "error", err)
+		return fmt.Errorf("failed to marshal settings: %w", err)
+	}
 
-		if err := os.WriteFile(settingsPath, data, 0644); err != nil {
-			log.Error("failed to write settings.json for PostToolUse hook", "error", err, "path", settingsPath)
-			return fmt.Errorf("failed to write settings.json: %w", err)
-		}
-
-		log.Info("hook installed", "hook", "PostToolUse", "command", "skills report-usage")
+	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+		log.Error("failed to write settings.json for PostToolUse hook", "error", err, "path", settingsPath)
+		return fmt.Errorf("failed to write settings.json: %w", err)
 	}
 
 	return nil

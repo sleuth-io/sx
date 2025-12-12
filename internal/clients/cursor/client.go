@@ -437,6 +437,11 @@ func (c *Client) InstallHooks(ctx context.Context) error {
 	return c.installBeforeSubmitPromptHook()
 }
 
+// UninstallHooks removes Cursor-specific hooks (beforeSubmitPrompt).
+func (c *Client) UninstallHooks(ctx context.Context) error {
+	return c.uninstallBeforeSubmitPromptHook()
+}
+
 // ShouldInstall checks if installation should proceed based on conversation tracking.
 // Cursor fires beforeSubmitPrompt on every prompt, so we track conversation IDs
 // to only run install once per conversation.
@@ -532,6 +537,65 @@ func parseCursorHookInput() (*cursorHookInput, error) {
 		return nil, fmt.Errorf("failed to decode hook input: %w", err)
 	}
 	return &input, nil
+}
+
+// uninstallBeforeSubmitPromptHook removes the beforeSubmitPrompt hook
+func (c *Client) uninstallBeforeSubmitPromptHook() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	hooksJSONPath := filepath.Join(home, ".cursor", "hooks.json")
+	log := logger.Get()
+
+	// Read existing hooks.json
+	config, err := handlers.ReadHooksJSON(hooksJSONPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// No hooks.json, nothing to uninstall
+			return nil
+		}
+		return fmt.Errorf("failed to read hooks.json: %w", err)
+	}
+
+	// Filter out our hook from beforeSubmitPrompt
+	hooks, ok := config.Hooks["beforeSubmitPrompt"]
+	if !ok || len(hooks) == 0 {
+		// No beforeSubmitPrompt hooks, nothing to remove
+		return nil
+	}
+
+	filtered := []map[string]interface{}{}
+	for _, hook := range hooks {
+		cmd, ok := hook["command"].(string)
+		if !ok {
+			filtered = append(filtered, hook)
+			continue
+		}
+		if !strings.HasPrefix(cmd, "skills install") {
+			filtered = append(filtered, hook)
+		}
+	}
+
+	// Only modify if something was filtered
+	if len(filtered) == len(hooks) {
+		return nil
+	}
+
+	if len(filtered) == 0 {
+		delete(config.Hooks, "beforeSubmitPrompt")
+	} else {
+		config.Hooks["beforeSubmitPrompt"] = filtered
+	}
+
+	log.Info("hook removed", "hook", "beforeSubmitPrompt")
+
+	if err := handlers.WriteHooksJSON(hooksJSONPath, config); err != nil {
+		return fmt.Errorf("failed to write hooks.json: %w", err)
+	}
+
+	return nil
 }
 
 // installBeforeSubmitPromptHook installs the beforeSubmitPrompt hook for auto-install

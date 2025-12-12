@@ -290,3 +290,90 @@ func ReconcileState(validation *ValidationResult, preferTracker bool) *Installed
 
 	return reconciled
 }
+
+// TrackerFileInfo contains information about a tracker file
+type TrackerFileInfo struct {
+	Path     string
+	ScopeKey string
+}
+
+// ListAllTrackerFiles returns all tracker files in the cache directory
+func ListAllTrackerFiles() ([]TrackerFileInfo, error) {
+	trackerDir, err := cache.GetTrackerCacheDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tracker cache dir: %w", err)
+	}
+
+	// Check if directory exists
+	if _, err := os.Stat(trackerDir); os.IsNotExist(err) {
+		return []TrackerFileInfo{}, nil
+	}
+
+	entries, err := os.ReadDir(trackerDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read tracker directory: %w", err)
+	}
+
+	var trackers []TrackerFileInfo
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
+			// Extract scope key from filename (remove .json extension)
+			scopeKey := entry.Name()[:len(entry.Name())-5]
+			trackers = append(trackers, TrackerFileInfo{
+				Path:     filepath.Join(trackerDir, entry.Name()),
+				ScopeKey: scopeKey,
+			})
+		}
+	}
+
+	return trackers, nil
+}
+
+// RemoveArtifactsFromTracker removes specified artifacts from the tracker
+// Returns the updated tracker, or nil if no artifacts remain
+func RemoveArtifactsFromTracker(tracker *InstalledArtifacts, names []string) *InstalledArtifacts {
+	if tracker == nil {
+		return nil
+	}
+
+	// Build a set of names to remove
+	removeSet := make(map[string]bool)
+	for _, name := range names {
+		removeSet[name] = true
+	}
+
+	// Filter out artifacts to be removed
+	var remaining []InstalledArtifact
+	for _, artifact := range tracker.Artifacts {
+		if !removeSet[artifact.Name] {
+			remaining = append(remaining, artifact)
+		}
+	}
+
+	// Return nil if no artifacts remain
+	if len(remaining) == 0 {
+		return nil
+	}
+
+	// Return updated tracker
+	return &InstalledArtifacts{
+		Version:         tracker.Version,
+		LockFileVersion: tracker.LockFileVersion,
+		InstalledAt:     tracker.InstalledAt,
+		Artifacts:       remaining,
+	}
+}
+
+// DeleteTracker removes a tracker file completely
+func DeleteTracker(trackerPath string) error {
+	if !utils.FileExists(trackerPath) {
+		// Already deleted, not an error
+		return nil
+	}
+
+	if err := os.Remove(trackerPath); err != nil {
+		return fmt.Errorf("failed to delete tracker: %w", err)
+	}
+
+	return nil
+}
