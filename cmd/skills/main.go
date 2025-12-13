@@ -86,6 +86,7 @@ from remote Sleuth servers or Git repositories.`,
 	rootCmd.AddCommand(commands.NewUpdateCommand())
 	rootCmd.AddCommand(commands.NewReportUsageCommand())
 	rootCmd.AddCommand(commands.NewServeCommand())
+	rootCmd.AddCommand(commands.NewConfigCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

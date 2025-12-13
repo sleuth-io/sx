@@ -1,3 +1,31 @@
-- name: docs-write
-  description: Write documentation following project standards
-  url: https://github.com/metabase/metabase/tree/master/.claude/skills/docs-write
+- name: test-driven-development
+  description: Enforces RED-GREEN-REFACTOR cycles with test-first methodology
+  url: https://github.com/obra/superpowers/tree/main/skills/test-driven-development
+
+- name: systematic-debugging
+  description: Structured 4-phase root cause analysis process
+  url: https://github.com/obra/superpowers/tree/main/skills/systematic-debugging
+
+- name: writing-plans
+  description: Creates detailed implementation plans with bite-sized tasks
+  url: https://github.com/obra/superpowers/tree/main/skills/writing-plans
+
+- name: mcp-builder
+  description: Guides creation of high-quality MCP servers for API integrations
+  url: https://github.com/anthropics/skills/tree/main/skills/mcp-builder
+
+- name: skill-creator
+  description: Interactive tool for building custom skills through structured Q&A
+  url: https://github.com/anthropics/skills/tree/main/skills/skill-creator
+
+- name: code-review
+  description: Comprehensive review checklists and coding standards
+  url: https://github.com/alirezarezvani/claude-skills/tree/main/engineering-team/code-review
+
+- name: software-architecture
+  description: Clean Architecture, SOLID principles, and design patterns
+  url: https://github.com/NeoLabHQ/context-engineering-kit/tree/master/plugins/ddd/skills/software-architecture
+
+- name: aws-cdk-development
+  description: AWS CDK best practices, validation scripts, and patterns
+  url: https://github.com/zxkane/aws-skills/tree/main/skills/aws-cdk-development
