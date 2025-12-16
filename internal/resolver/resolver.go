@@ -297,7 +297,7 @@ func (r *Resolver) resolveGitRef(url, ref string) (string, error) {
 func (r *Resolver) buildAssetURL(name, version string) string {
 	// This should use the repository's base URL
 	// For now, return a placeholder that follows the spec
-	return fmt.Sprintf("https://app.sleuth.io/api/skills/assets/%s/%s/%s-%s.zip", name, version, name, version)
+	return fmt.Sprintf("https://app.skills.new/api/skills/assets/%s/%s/%s-%s.zip", name, version, name, version)
 }
 
 // generateLockFileVersion generates a version/hash for the lock file

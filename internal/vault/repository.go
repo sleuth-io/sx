@@ -41,6 +41,11 @@ type Vault interface {
 	// PostUsageStats sends asset usage statistics to the repository
 	// jsonlData is newline-separated JSON (JSONL format)
 	PostUsageStats(ctx context.Context, jsonlData string) error
+
+	// RemoveAsset removes an asset from the lock file
+	// The asset remains in the vault and can be re-added later
+	// If version is empty, removes any version of the asset
+	RemoveAsset(ctx context.Context, assetName, version string) error
 }
 
 // SourceHandler handles fetching assets from specific source types

@@ -64,7 +64,7 @@ dependencies = [ ... ]                  # Array of dependency references
 
 ## Source Types
 
-Assets use **source tables** following PEP 751 conventions. Each asset specifies exactly one source type using mutually-exclusive tables: `[assets.source-http]`, `[assets.source-path]`, or `[assets.source-git]`.
+Assets use **source tables** following PEP 751 conventions. Each asset specifies exactly one source type using mutually-exclusive tables: `[assets.source-http]`, `[assets.source-path]`, `[assets.source-git]`, or `[assets.source-git-dir]`.
 
 ### HTTP Source
 
@@ -93,7 +93,7 @@ Example:
 - Asset: `https://vault.example.com/assets/github-mcp/1.2.3/github-mcp-1.2.3.zip`
 - Metadata: `https://vault.example.com/assets/github-mcp/1.2.3/metadata.toml`
 
-See `vault-spec.md` for complete vault structure and protocols.
+See [vault-spec.md](vault-spec.md) for complete vault structure and protocols.
 
 **Fields**:
 
@@ -134,7 +134,7 @@ path = "/absolute/path/to/skill.zip"
 
 ### Git Source
 
-Used for assets stored in version control systems.
+Used for assets stored in version control systems as packaged zip files.
 
 ```toml
 [[assets]]
@@ -164,6 +164,44 @@ subdirectory = "dist"
 **Hashes**: Not required for git sources. Git commit history provides integrity verification through the commit SHA.
 
 **Caching**: Repositories are cloned to client cache directory. Subsequent syncs reuse cached repo with `git fetch` + `git checkout`.
+
+### Git Directory Source
+
+Used for assets that exist as directories within a Git repository (not packaged as zips). This is useful for referencing skills that live alongside application code in existing repositories.
+
+```toml
+[[assets]]
+name = "api-helper"
+version = "0.5.0"
+type = "skill"
+
+[assets.source-git-dir]
+url = "https://github.com/company/backend.git"
+ref = "abc123def456789"
+path = "tools/skills/api-helper"
+```
+
+**Fields**:
+
+- `url`: Git repository URL (required)
+  - Supports HTTPS and SSH URLs
+  - Uses local git installation and credentials
+- `ref`: Git reference to checkout (required)
+  - In lock files, MUST be a full commit SHA (40 hex characters for SHA-1)
+  - Ensures reproducibility across environments
+- `path`: Path to the asset directory within the repository (required)
+  - Must contain `metadata.toml` at its root
+  - Directory contents are treated as the unpacked asset
+
+**Hashes**: Not required. Git commit SHA provides integrity verification.
+
+**Use Cases**:
+
+- Skills maintained alongside application code in monorepos
+- Teams that prefer keeping assets in existing repositories rather than separate vaults
+- Gradual migration from ad-hoc skills to managed assets
+
+**Caching**: Repositories are cloned to client cache directory. Asset directory is read directly from the checkout.
 
 ## Dependencies
 

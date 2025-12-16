@@ -13,6 +13,7 @@ import (
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/requirements"
 	"github.com/sleuth-io/sx/internal/resolver"
+	"github.com/sleuth-io/sx/internal/ui/components"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
@@ -45,9 +46,7 @@ func runLock(cmd *cobra.Command, args []string, requirementsFile, outputFile str
 	defer cancel()
 
 	out := newOutputHelper(cmd)
-
-	out.println("Generating lock file from requirements...")
-	out.println()
+	status := components.NewStatus(cmd.OutOrStdout())
 
 	// Check if requirements file exists
 	if _, err := os.Stat(requirementsFile); err != nil {
@@ -55,11 +54,13 @@ func runLock(cmd *cobra.Command, args []string, requirementsFile, outputFile str
 	}
 
 	// Parse requirements file
-	out.printf("Reading requirements from %s...\n", requirementsFile)
+	status.Start("Reading requirements")
 	reqs, err := requirements.Parse(requirementsFile)
 	if err != nil {
+		status.Fail("Failed to parse requirements")
 		return fmt.Errorf("failed to parse requirements: %w", err)
 	}
+	status.Done("")
 
 	out.printf("Found %d requirements\n", len(reqs))
 	for _, req := range reqs {
@@ -85,12 +86,14 @@ func runLock(cmd *cobra.Command, args []string, requirementsFile, outputFile str
 	}
 
 	// Resolve requirements
-	out.println("Resolving assets and dependencies...")
+	status.Start("Resolving assets and dependencies")
 	resolverInstance := resolver.New(ctx, vault)
 	lockFile, err := resolverInstance.Resolve(reqs)
 	if err != nil {
+		status.Fail("Failed to resolve")
 		return fmt.Errorf("failed to resolve requirements: %w", err)
 	}
+	status.Done("")
 
 	out.printf("Resolved %d assets (including dependencies)\n", len(lockFile.Assets))
 	out.println()
@@ -103,10 +106,12 @@ func runLock(cmd *cobra.Command, args []string, requirementsFile, outputFile str
 	out.println()
 
 	// Write lock file
-	out.printf("Writing lock file to %s...\n", outputFile)
+	status.Start("Writing lock file")
 	if err := lockfile.Write(lockFile, outputFile); err != nil {
+		status.Fail("Failed to write lock file")
 		return fmt.Errorf("failed to write lock file: %w", err)
 	}
+	status.Done("")
 
 	out.println()
 	out.printf("✓ Lock file generated successfully: %s\n", outputFile)

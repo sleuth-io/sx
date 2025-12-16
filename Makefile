@@ -1,4 +1,4 @@
-.PHONY: help build install test lint format clean release
+.PHONY: help build install test lint format clean release demo
 
 # Default target
 help: ## Show this help message
@@ -109,3 +109,13 @@ init: ## Initialize development environment (install tools, download deps)
 prepush: format lint test build ## Run before pushing (format, lint, test, build)
 
 postpull: deps ## Run after pulling (download dependencies)
+
+demo: build ## Generate demo GIF (requires vhs)
+	@echo "Generating demo..."
+	@which vhs > /dev/null || (echo "vhs not found. Install from https://github.com/charmbracelet/vhs" && exit 1)
+	@$(BUILD_DIR)/$(BINARY_NAME) remove test-driven-development --yes 2>/dev/null || true
+	@DEMO_HOME=$$(mktemp -d) && \
+	mkdir -p "$$DEMO_HOME/.claude" && \
+	HOME="$$DEMO_HOME" PATH="$(CURDIR)/$(BUILD_DIR):$$PATH" PS1="$$ " vhs docs/demo.tape && \
+	rm -rf "$$DEMO_HOME"
+	@echo "Generated: docs/demo.gif"

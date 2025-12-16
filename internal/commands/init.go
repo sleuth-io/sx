@@ -30,9 +30,9 @@ func NewInitCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize configuration (local path, Git repo, or Sleuth server)",
+		Short: "Initialize configuration (local path, Git repo, or Skills.new)",
 		Long: `Initialize sx configuration using a local directory, Git repository,
-or Sleuth server as the asset source.
+or Skills.new as the asset source.
 
 By default, runs in interactive mode with local path as the default option.
 Use flags for non-interactive mode.`,
@@ -42,7 +42,7 @@ Use flags for non-interactive mode.`,
 	}
 
 	cmd.Flags().StringVar(&repoType, "type", "", "Repository type: 'path', 'git', or 'sleuth'")
-	cmd.Flags().StringVar(&serverURL, "server-url", "", "Sleuth server URL (for type=sleuth)")
+	cmd.Flags().StringVar(&serverURL, "server-url", "", "Skills.new server URL (for type=sleuth)")
 	cmd.Flags().StringVar(&repoURL, "repo-url", "", "Repository URL (git URL, file:// URL, or directory path)")
 
 	return cmd
@@ -104,7 +104,7 @@ func runInitInteractive(cmd *cobra.Command, ctx context.Context) error {
 
 	options := []components.Option{
 		{Label: "Just for myself", Value: "personal", Description: "Local vault"},
-		{Label: "Share with my team", Value: "team", Description: "Git or Sleuth server"},
+		{Label: "Share with my team", Value: "team", Description: "Git or Skills.new"},
 	}
 
 	selected, err := components.SelectWithDefault("How will you use sx?", options, 0)
@@ -136,7 +136,7 @@ func initPersonalRepository(cmd *cobra.Command, ctx context.Context) error {
 // initTeamRepository prompts for team repository options (git or sleuth)
 func initTeamRepository(cmd *cobra.Command, ctx context.Context) error {
 	options := []components.Option{
-		{Label: "Sleuth", Value: "sleuth", Description: "Managed assets platform"},
+		{Label: "Skills.new", Value: "sleuth", Description: "Managed assets platform"},
 		{Label: "Git repository", Value: "git", Description: "Self-hosted Git repo"},
 	}
 
@@ -181,12 +181,12 @@ func runInitNonInteractive(cmd *cobra.Command, ctx context.Context, repoType, se
 	}
 }
 
-// initSleuthServer initializes Sleuth server configuration
+// initSleuthServer initializes Skills.new server configuration
 func initSleuthServer(cmd *cobra.Command, ctx context.Context) error {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 	styledOut.Newline()
 
-	serverURL, err := components.InputWithDefault("Enter Sleuth server URL", defaultSleuthServerURL)
+	serverURL, err := components.InputWithDefault("Enter Skills.new server URL", defaultSleuthServerURL)
 	if err != nil {
 		return err
 	}
@@ -194,12 +194,10 @@ func initSleuthServer(cmd *cobra.Command, ctx context.Context) error {
 	return authenticateSleuth(cmd, ctx, serverURL)
 }
 
-// authenticateSleuth performs OAuth authentication with Sleuth server
+// authenticateSleuth performs OAuth authentication with Skills.new server
 func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL string) error {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
-	styledOut.Newline()
-	styledOut.Muted("Authenticating with Sleuth server...")
 	styledOut.Newline()
 
 	// Start OAuth device code flow
@@ -274,9 +272,6 @@ func initGitRepository(cmd *cobra.Command, ctx context.Context) error {
 // configureGitRepo configures a Git repository
 func configureGitRepo(cmd *cobra.Command, ctx context.Context, repoURL string) error {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
-
-	styledOut.Newline()
-	styledOut.Muted("Configuring Git repository...")
 
 	// Save configuration
 	cfg := &config.Config{
@@ -393,7 +388,6 @@ func promptFeaturedSkills(cmd *cobra.Command, ctx context.Context) {
 		}
 
 		styledOut.Newline()
-		styledOut.Muted(fmt.Sprintf("Adding %s...", selected.Label))
 
 		// Run the add command with the skill URL (skip install prompt, we'll do it at the end)
 		if err := runAddSkipInstall(cmd, selected.Value); err != nil {

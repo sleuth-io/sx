@@ -19,6 +19,7 @@ import (
 	"github.com/sleuth-io/sx/internal/gitutil"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/ui/components"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
@@ -218,6 +219,8 @@ func handleAllFlagWithoutAssets(ctx context.Context, opts UninstallOptions, out 
 
 // loadLockFileForUninstall loads config and fetches the lock file
 func loadLockFileForUninstall(ctx context.Context, out *outputHelper) (*lockfile.LockFile, error) {
+	status := components.NewStatus(out.cmd.OutOrStdout())
+
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load configuration: %w\nRun 'sx init' to configure", err)
@@ -232,7 +235,7 @@ func loadLockFileForUninstall(ctx context.Context, out *outputHelper) (*lockfile
 		return nil, fmt.Errorf("failed to create vault: %w", err)
 	}
 
-	out.println("Fetching lock file...")
+	status.Start("Fetching lock file")
 
 	var cachedETag string
 	var vaultURL string
@@ -243,26 +246,32 @@ func loadLockFileForUninstall(ctx context.Context, out *outputHelper) (*lockfile
 
 	lockFileData, _, notModified, err := vault.GetLockFile(ctx, cachedETag)
 	if err != nil {
+		status.Fail("Failed to fetch lock file")
 		return nil, fmt.Errorf("failed to fetch lock file: %w", err)
 	}
 
 	if notModified && vaultURL != "" {
 		lockFileData, err = cache.LoadLockFile(vaultURL)
 		if err != nil {
+			status.Fail("Failed to load cached lock file")
 			return nil, fmt.Errorf("failed to load cached lock file: %w", err)
 		}
 	}
 
 	lockFile, err := lockfile.Parse(lockFileData)
 	if err != nil {
+		status.Fail("Failed to parse lock file")
 		return nil, fmt.Errorf("failed to parse lock file: %w", err)
 	}
 
+	status.Done("")
 	return lockFile, nil
 }
 
 // loadTrackerForUninstall detects git context and loads the installation tracker
 func loadTrackerForUninstall(ctx context.Context, out *outputHelper) (*gitutil.GitContext, *assets.Tracker, string, error) {
+	status := components.NewStatus(out.cmd.OutOrStdout())
+
 	gitContext, err := gitutil.DetectContext(ctx)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("failed to detect git context: %w", err)
@@ -279,11 +288,13 @@ func loadTrackerForUninstall(ctx context.Context, out *outputHelper) (*gitutil.G
 		trackingBase = filepath.Join(gitContext.RepoRoot, ".claude")
 	}
 
-	out.println("Loading installation state...")
+	status.Start("Loading installation state")
 	tracker, err := assets.LoadTracker()
 	if err != nil {
+		status.Fail("Failed to load tracker")
 		return nil, nil, "", fmt.Errorf("failed to load tracker: %w", err)
 	}
+	status.Done("")
 
 	return gitContext, tracker, trackingBase, nil
 }
@@ -426,15 +437,17 @@ func buildScopeForAsset(assetPlan AssetUninstallPlan, gitContext *gitutil.GitCon
 
 // updateTracker removes successfully uninstalled assets from tracker
 func updateTracker(results []UninstallResult, plan UninstallPlan, out *outputHelper) error {
-	out.println("\nUpdating installation state...")
+	status := components.NewStatus(out.cmd.OutOrStdout())
 
 	fullyRemoved := findFullyRemovedAssets(results)
 	if len(fullyRemoved) == 0 {
 		return nil
 	}
 
+	status.Start("Updating installation state")
 	tracker, err := assets.LoadTracker()
 	if err != nil {
+		status.Fail("Failed to load tracker")
 		return fmt.Errorf("failed to load tracker: %w", err)
 	}
 
@@ -450,10 +463,17 @@ func updateTracker(results []UninstallResult, plan UninstallPlan, out *outputHel
 	}
 
 	if len(tracker.Assets) == 0 {
-		return assets.DeleteTracker()
+		err = assets.DeleteTracker()
+	} else {
+		err = assets.SaveTracker(tracker)
 	}
 
-	return assets.SaveTracker(tracker)
+	if err != nil {
+		status.Fail("Failed to update tracker")
+		return err
+	}
+	status.Done("")
+	return nil
 }
 
 // findFullyRemovedAssets returns assets where all client removals succeeded

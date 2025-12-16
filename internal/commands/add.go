@@ -80,13 +80,13 @@ func runAddWithOptions(cmd *cobra.Command, input string, promptInstall bool) err
 	}
 
 	// Get and validate zip file
-	zipFile, zipData, err := loadZipFile(out, input)
+	zipFile, zipData, err := loadZipFile(out, status, input)
 	if err != nil {
 		return err
 	}
 
 	// Detect asset name and type
-	name, assetType, metadataExists, err := detectAssetInfo(out, zipFile, zipData)
+	name, assetType, metadataExists, err := detectAssetInfo(out, status, zipFile, zipData)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func runAddWithOptions(cmd *cobra.Command, input string, promptInstall bool) err
 	}
 
 	// Check versions and content
-	version, contentsIdentical, err := checkVersionAndContents(ctx, out, status, vault, name, zipData)
+	version, contentsIdentical, err := checkVersionAndContents(ctx, status, vault, name, zipData)
 	if err != nil {
 		return err
 	}
@@ -318,13 +318,13 @@ func configureExistingAsset(ctx context.Context, cmd *cobra.Command, out *output
 // promptRunInstall asks if the user wants to run install after adding an asset
 func promptRunInstall(cmd *cobra.Command, ctx context.Context, out *outputHelper) {
 	out.println()
-	confirmed, err := components.ConfirmWithIO("Run install now to activate the asset?", true, cmd.InOrStdin(), cmd.OutOrStdout())
+	confirmed, err := components.ConfirmWithIO("Run install now to install the asset?", true, cmd.InOrStdin(), cmd.OutOrStdout())
 	if err != nil {
 		return
 	}
 
 	if !confirmed {
-		out.println("Run 'sx install' when ready to activate.")
+		out.println("Run 'sx install' when ready to install.")
 		return
 	}
 
@@ -340,7 +340,7 @@ func isURL(input string) bool {
 }
 
 // loadZipFile prompts for, loads, and validates the zip file, directory, or URL
-func loadZipFile(out *outputHelper, zipFile string) (string, []byte, error) {
+func loadZipFile(out *outputHelper, status *components.Status, zipFile string) (string, []byte, error) {
 	// Prompt for zip file, directory, or URL if not provided
 	if zipFile == "" {
 		var err error
@@ -359,9 +359,7 @@ func loadZipFile(out *outputHelper, zipFile string) (string, []byte, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
-		out.println()
-		out.println("Downloading from GitHub directory...")
-		zipData, err := downloadFromGitHub(ctx, out, zipFile)
+		zipData, err := downloadFromGitHub(ctx, status, zipFile)
 		if err != nil {
 			return "", nil, err
 		}
@@ -373,9 +371,7 @@ func loadZipFile(out *outputHelper, zipFile string) (string, []byte, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
-		out.println()
-		out.println("Downloading asset from URL...")
-		zipData, err := downloadZipFromURL(ctx, out, zipFile)
+		zipData, err := downloadZipFromURL(ctx, status, zipFile)
 		if err != nil {
 			return "", nil, err
 		}
@@ -394,33 +390,39 @@ func loadZipFile(out *outputHelper, zipFile string) (string, []byte, error) {
 	}
 
 	// Read zip file or create zip from directory
-	out.println()
 	var zipData []byte
 
 	if utils.IsDirectory(zipFile) {
-		out.println("Creating zip from directory...")
+		status.Start("Creating zip from directory")
 		zipData, err = utils.CreateZip(zipFile)
 		if err != nil {
+			status.Fail("Failed to create zip")
 			return "", nil, fmt.Errorf("failed to create zip from directory: %w", err)
 		}
+		status.Done("")
 	} else {
-		out.println("Reading asset...")
+		status.Start("Reading asset")
 		zipData, err = os.ReadFile(zipFile)
 		if err != nil {
+			status.Fail("Failed to read file")
 			return "", nil, fmt.Errorf("failed to read zip file: %w", err)
 		}
 
 		// Verify it's a valid zip
 		if !utils.IsZipFile(zipData) {
+			status.Fail("Invalid zip file")
 			return "", nil, fmt.Errorf("file is not a valid zip archive")
 		}
+		status.Done("")
 	}
 
 	return zipFile, zipData, nil
 }
 
 // downloadZipFromURL downloads a zip file from a URL
-func downloadZipFromURL(ctx context.Context, out *outputHelper, zipURL string) ([]byte, error) {
+func downloadZipFromURL(ctx context.Context, status *components.Status, zipURL string) ([]byte, error) {
+	status.Start("Downloading asset from URL")
+
 	// Create HTTP client with timeout
 	client := &http.Client{
 		Timeout: 5 * time.Minute,
@@ -429,6 +431,7 @@ func downloadZipFromURL(ctx context.Context, out *outputHelper, zipURL string) (
 	// Create request with context
 	req, err := http.NewRequestWithContext(ctx, "GET", zipURL, nil)
 	if err != nil {
+		status.Fail("Failed to create request")
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
@@ -438,57 +441,61 @@ func downloadZipFromURL(ctx context.Context, out *outputHelper, zipURL string) (
 	// Execute request
 	resp, err := client.Do(req)
 	if err != nil {
+		status.Fail("Failed to download")
 		return nil, fmt.Errorf("failed to download: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		status.Fail(fmt.Sprintf("HTTP %d", resp.StatusCode))
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
 	}
 
 	// Read response body
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
+		status.Fail("Failed to read response")
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	// Verify it's a valid zip
 	if !utils.IsZipFile(data) {
+		status.Fail("Invalid zip archive")
 		return nil, fmt.Errorf("downloaded file is not a valid zip archive")
 	}
 
-	out.printf("Downloaded %d bytes\n", len(data))
+	status.Done("")
 	return data, nil
 }
 
 // downloadFromGitHub downloads files from a GitHub directory URL and returns them as a zip.
-func downloadFromGitHub(ctx context.Context, out *outputHelper, gitHubURL string) ([]byte, error) {
+func downloadFromGitHub(ctx context.Context, status *components.Status, gitHubURL string) ([]byte, error) {
 	treeURL := github.ParseTreeURL(gitHubURL)
 	if treeURL == nil {
 		return nil, fmt.Errorf("invalid GitHub directory URL: %s", gitHubURL)
 	}
 
-	out.printf("Repository: %s/%s\n", treeURL.Owner, treeURL.Repo)
-	out.printf("Branch/Tag: %s\n", treeURL.Ref)
+	statusMsg := fmt.Sprintf("Downloading from %s/%s", treeURL.Owner, treeURL.Repo)
 	if treeURL.Path != "" {
-		out.printf("Path: %s\n", treeURL.Path)
+		statusMsg = fmt.Sprintf("Downloading from %s/%s/%s", treeURL.Owner, treeURL.Repo, treeURL.Path)
 	}
-	out.println()
+	status.Start(statusMsg)
 
 	fetcher := github.NewFetcher()
 	zipData, err := fetcher.FetchDirectory(ctx, treeURL)
 	if err != nil {
+		status.Fail("Failed to download")
 		return nil, fmt.Errorf("failed to download from GitHub: %w", err)
 	}
 
-	out.printf("Downloaded %d bytes\n", len(zipData))
+	status.Done("")
 	return zipData, nil
 }
 
 // detectAssetInfo extracts or detects asset name and type, then confirms with user
-func detectAssetInfo(out *outputHelper, zipFile string, zipData []byte) (name string, assetType asset.Type, metadataExists bool, err error) {
+func detectAssetInfo(out *outputHelper, status *components.Status, zipFile string, zipData []byte) (name string, assetType asset.Type, metadataExists bool, err error) {
 	// Extract or detect name and type
-	name, assetType, metadataExists, err = extractOrDetectNameAndType(out, zipFile, zipData)
+	name, assetType, metadataExists, err = extractOrDetectNameAndType(status, zipFile, zipData)
 	if err != nil {
 		return
 	}
@@ -513,7 +520,7 @@ func createVault() (vaultpkg.Vault, error) {
 }
 
 // checkVersionAndContents queries vault for versions and checks if content is identical
-func checkVersionAndContents(ctx context.Context, out *outputHelper, status *components.Status, vault vaultpkg.Vault, name string, zipData []byte) (version string, identical bool, err error) {
+func checkVersionAndContents(ctx context.Context, status *components.Status, vault vaultpkg.Vault, name string, zipData []byte) (version string, identical bool, err error) {
 	status.Start("Checking for existing versions")
 	versions, err := vault.GetVersionList(ctx, name)
 	status.Clear()
@@ -521,7 +528,7 @@ func checkVersionAndContents(ctx context.Context, out *outputHelper, status *com
 		return "", false, fmt.Errorf("failed to get version list: %w", err)
 	}
 
-	version, identical, err = determineSuggestedVersionAndCheckIdentical(ctx, out, status, vault, name, versions, zipData)
+	version, identical, err = determineSuggestedVersionAndCheckIdentical(ctx, status, vault, name, versions, zipData)
 	if err != nil {
 		return "", false, err
 	}
@@ -639,25 +646,28 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 }
 
 // extractOrDetectNameAndType extracts name and type from metadata or auto-detects them
-func extractOrDetectNameAndType(out *outputHelper, zipFile string, zipData []byte) (name string, assetType asset.Type, metadataExists bool, err error) {
-	out.println("Detecting asset name and type...")
+func extractOrDetectNameAndType(status *components.Status, zipFile string, zipData []byte) (name string, assetType asset.Type, metadataExists bool, err error) {
+	status.Start("Detecting asset name and type")
 
 	metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
 	if err == nil {
 		// Metadata exists, parse it
 		meta, err := metadata.Parse(metadataBytes)
 		if err != nil {
+			status.Fail("Failed to parse metadata")
 			return "", asset.Type{}, false, fmt.Errorf("failed to parse metadata: %w", err)
 		}
+		status.Done("")
 		return meta.Asset.Name, meta.Asset.Type, true, nil
 	}
 
 	// No metadata, auto-detect name and type
-	out.println("No metadata.toml found in zip. Auto-detecting...")
+	status.Update("Auto-detecting asset type")
 
 	// List files in zip
 	files, err := utils.ListZipFiles(zipData)
 	if err != nil {
+		status.Fail("Failed to list zip files")
 		return "", asset.Type{}, false, fmt.Errorf("failed to list zip files: %w", err)
 	}
 
@@ -668,6 +678,7 @@ func extractOrDetectNameAndType(out *outputHelper, zipFile string, zipData []byt
 	detectedMeta := detectors.DetectAssetType(files, name, "")
 	assetType = detectedMeta.Asset.Type
 
+	status.Done("")
 	return name, assetType, false, nil
 }
 
@@ -713,7 +724,7 @@ func confirmNameAndType(out *outputHelper, name string, inType asset.Type) (outN
 }
 
 // determineSuggestedVersionAndCheckIdentical determines the version to suggest and whether contents are identical
-func determineSuggestedVersionAndCheckIdentical(ctx context.Context, out *outputHelper, status *components.Status, vault vaultpkg.Vault, name string, versions []string, newZipData []byte) (version string, identical bool, err error) {
+func determineSuggestedVersionAndCheckIdentical(ctx context.Context, status *components.Status, vault vaultpkg.Vault, name string, versions []string, newZipData []byte) (version string, identical bool, err error) {
 	if len(versions) == 0 {
 		// No existing versions, suggest 1.0
 		return "1.0", false, nil
@@ -721,10 +732,9 @@ func determineSuggestedVersionAndCheckIdentical(ctx context.Context, out *output
 
 	// Get the latest version
 	latestVersion := versions[len(versions)-1]
-	out.printf("Found existing version: %s\n", latestVersion)
 
 	// Try to get the asset for comparison
-	status.Start("Comparing with existing version")
+	status.Start(fmt.Sprintf("Comparing with v%s", latestVersion))
 
 	var existingZipData []byte
 
@@ -752,12 +762,10 @@ func determineSuggestedVersionAndCheckIdentical(ctx context.Context, out *output
 	}
 
 	if contentsIdentical {
-		out.println("Contents are identical to existing version.")
 		return latestVersion, true, nil
 	}
 
 	// Contents differ, suggest next version
-	out.println("Contents differ from existing version.")
 	return suggestNextVersion(latestVersion), false, nil
 }
 

@@ -80,6 +80,7 @@ from remote Sleuth servers or Git vaults.`,
 	rootCmd.AddCommand(commands.NewInitCommand())
 	rootCmd.AddCommand(commands.NewInstallCommand())
 	rootCmd.AddCommand(commands.NewUninstallCommand())
+	rootCmd.AddCommand(commands.NewRemoveCommand())
 	rootCmd.AddCommand(commands.NewLockCommand())
 	rootCmd.AddCommand(commands.NewAddCommand())
 	rootCmd.AddCommand(commands.NewUpdateTemplatesCommand())

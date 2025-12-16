@@ -638,3 +638,39 @@ func (g *GitVault) updateVersionList(listPath, newVersion string) error {
 func (r *GitVault) PostUsageStats(ctx context.Context, jsonlData string) error {
 	return nil
 }
+
+// RemoveAsset removes an asset from the lock file and pushes to remote
+func (g *GitVault) RemoveAsset(ctx context.Context, assetName, version string) error {
+	// Acquire file lock to prevent concurrent git operations
+	fileLock, err := g.acquireFileLock(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	defer func() { _ = fileLock.Unlock() }()
+
+	// Clone or update repository
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+
+	// Remove from lock file
+	if err := lockfile.RemoveAsset(g.GetLockFilePath(), assetName, version); err != nil {
+		return fmt.Errorf("failed to remove asset from lock file: %w", err)
+	}
+
+	// Add, commit and push
+	if err := g.gitClient.Add(ctx, g.repoPath, constants.SkillLockFile); err != nil {
+		return fmt.Errorf("failed to stage lock file: %w", err)
+	}
+
+	commitMsg := fmt.Sprintf("Remove %s@%s", assetName, version)
+	if err := g.gitClient.Commit(ctx, g.repoPath, commitMsg); err != nil {
+		return fmt.Errorf("failed to commit removal: %w", err)
+	}
+
+	if err := g.gitClient.Push(ctx, g.repoPath); err != nil {
+		return fmt.Errorf("failed to push removal: %w", err)
+	}
+
+	return nil
+}

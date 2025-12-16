@@ -305,3 +305,31 @@ func (s *SleuthVault) PostUsageStats(ctx context.Context, jsonlData string) erro
 
 	return nil
 }
+
+// RemoveAsset removes an asset from the Sleuth server's lock file
+func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string) error {
+	endpoint := fmt.Sprintf("%s/api/skills/installations/%s/%s", s.serverURL, assetName, version)
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
+	if s.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.authToken)
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to remove asset: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}

@@ -63,6 +63,10 @@ https://vault.example.com/assets/
 
 ## Version Listing (`list.txt`)
 
+This file is **required** for each asset in a vault. It enables efficient version discovery - clients can check available versions with a single small file fetch instead of directory traversal or downloading full assets.
+
+**Who creates it**: Vault maintainers or publishing tools (like `sx publish`) must create and update this file when publishing new versions.
+
 ### Format
 
 Plain text file with one version per line:
@@ -335,14 +339,6 @@ echo "$VERSION" >> "$VAULT_BASE/$ASSET_NAME/list.txt"
 
 # Sort and deduplicate (optional)
 sort -u "$VAULT_BASE/$ASSET_NAME/list.txt" -o "$VAULT_BASE/$ASSET_NAME/list.txt"
-```
-
-### Automated Publishing
-
-Future `sx publish` command:
-
-```bash
-sx publish ./my-skill.zip --vault=local
 ```
 
 ## Vault Migration

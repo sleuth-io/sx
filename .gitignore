@@ -79,3 +79,6 @@ pulse-client
 demo
 .claude/skills
 .claude/.claude
+
+.cursor
+pulse

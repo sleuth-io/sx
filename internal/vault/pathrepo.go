@@ -179,6 +179,11 @@ func (p *PathVault) GetLockFilePath() string {
 	return filepath.Join(p.repoPath, constants.SkillLockFile)
 }
 
+// RemoveAsset removes an asset from the lock file
+func (p *PathVault) RemoveAsset(ctx context.Context, assetName, version string) error {
+	return lockfile.RemoveAsset(p.GetLockFilePath(), assetName, version)
+}
+
 // updateVersionList updates the list.txt file with a new version
 // Reuses the same logic as GitRepository
 func (p *PathVault) updateVersionList(listPath, newVersion string) error {

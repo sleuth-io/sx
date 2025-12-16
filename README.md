@@ -3,6 +3,8 @@
 sx is a package manager for AI coding assistants. Create, version, and distribute reusable AI
 tools across your entire team. Think NPM for AI agents -- install once, use everywhere.
 
+![Demo](docs/demo.gif)
+
 ## Why sx?
 - Onboard new developers instantly with your team's tribal knowledge
 - Expand successful AI use from experts to everyone
@@ -55,7 +57,7 @@ Share assets through a shared git vault
 sx init --type git --repo git@github.com:yourteam/skills.git
 ```
 
-### Sleuth (Large teams and enterprise)
+### Skills.new (Large teams and enterprise)
 
 Centralized, effortless management with a UI for discovery, creation, and sharing at scale
 
@@ -84,11 +86,11 @@ sx uses a lock file, like package-lock.json, for deterministic installations in 
 | Codex | Coming soon    | |
 
 ## Roadmap
-- ✅ Local, Git, and Sleuth vaults
+- ✅ Local, Git, and Skills.new vaults
 - ✅ Claude Code support
 - ✅ Cursor support (experimental)
 - **More clients** - GitHub Copilot, Gemini, Codex
-- **Skill discovery** - Use Sleuth to discover relevant skills from your code and architecture
+- **Skill discovery** - Use Skills.new to discover relevant skills from your code and architecture
 - **Analytics** - Track skill usage and impact
 
 ## License

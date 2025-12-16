@@ -354,6 +354,13 @@ dependencies = [
 ]
 ```
 
+### Dependency Resolution
+
+- Dependencies reference assets that will be in the lock file
+- All dependencies must be resolved during lock file generation
+- Cross-type dependencies are supported (MCPs can depend on skills, etc.)
+- Circular dependencies are detected and reported as errors
+
 ### Dependency String Format
 
 Each dependency string follows the format: `name[version-specifiers]`
@@ -392,13 +399,6 @@ dependencies = [
 - `!=X.Y.Z` - Exclude specific version
 - `>X.Y.Z`, `<=X.Y.Z`, `<X.Y.Z` - Other comparison operators
 - `===X.Y.Z` - Arbitrary equality
-
-### Dependency Resolution
-
-- Dependencies reference assets that will be in the lock file
-- All dependencies must be resolved during lock file generation
-- Cross-type dependencies are supported (MCPs can depend on skills, etc.)
-- Circular dependencies are detected and reported as errors
 
 ## Custom Metadata
 
