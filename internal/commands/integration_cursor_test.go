@@ -103,10 +103,10 @@ prompt-file = "SKILL.md"
 		t.Fatalf("Artifacts directory was not created: %s", artifactsDir)
 	}
 
-	// Verify skill.lock was created in repo
-	lockPath := filepath.Join(repoDir, "skill.lock")
+	// Verify sx.lock was created in repo
+	lockPath := filepath.Join(repoDir, "sx.lock")
 	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
-		t.Fatalf("skill.lock was not created: %s", lockPath)
+		t.Fatalf("sx.lock was not created: %s", lockPath)
 	}
 
 	// Step 3: Install from the repository
@@ -627,14 +627,14 @@ prompt-file = "SKILL.md"
 	foundAutoInstallHook := false
 	for _, hook := range beforeSubmitHooks {
 		if hookMap, ok := hook.(map[string]interface{}); ok {
-			if cmd, ok := hookMap["command"].(string); ok && strings.HasPrefix(cmd, "skills install") {
+			if cmd, ok := hookMap["command"].(string); ok && strings.HasPrefix(cmd, "sx install") {
 				foundAutoInstallHook = true
 				break
 			}
 		}
 	}
 	if !foundAutoInstallHook {
-		t.Error("beforeSubmitPrompt hook for 'skills install' not found")
+		t.Error("beforeSubmitPrompt hook for 'sx install' not found")
 	}
 	t.Log("✓ beforeSubmitPrompt hook installed")
 

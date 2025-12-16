@@ -7,15 +7,15 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 	"github.com/sleuth-io/skills/internal/clients"
 	"github.com/sleuth-io/skills/internal/clients/claude_code/handlers"
-	"github.com/sleuth-io/skills/internal/handlers/dirartifact"
+	"github.com/sleuth-io/skills/internal/handlers/dirasset"
 	"github.com/sleuth-io/skills/internal/lockfile"
 	"github.com/sleuth-io/skills/internal/metadata"
 )
 
-var skillOps = dirartifact.NewOperations("skills", &artifact.TypeSkill)
+var skillOps = dirasset.NewOperations("skills", &asset.TypeSkill)
 
 // Client implements the clients.Client interface for Claude Code
 type Client struct {
@@ -28,7 +28,7 @@ func NewClient() *Client {
 		BaseClient: clients.NewBaseClient(
 			"claude-code",
 			"Claude Code",
-			artifact.AllTypes(),
+			asset.AllTypes(),
 		),
 	}
 }
@@ -79,22 +79,22 @@ func (c *Client) InstallArtifacts(ctx context.Context, req clients.InstallReques
 
 		var err error
 		switch bundle.Metadata.Artifact.Type {
-		case artifact.TypeSkill:
+		case asset.TypeSkill:
 			handler := handlers.NewSkillHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
-		case artifact.TypeAgent:
+		case asset.TypeAgent:
 			handler := handlers.NewAgentHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
-		case artifact.TypeCommand:
+		case asset.TypeCommand:
 			handler := handlers.NewCommandHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
-		case artifact.TypeHook:
+		case asset.TypeHook:
 			handler := handlers.NewHookHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
-		case artifact.TypeMCP:
+		case asset.TypeMCP:
 			handler := handlers.NewMCPHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
-		case artifact.TypeMCPRemote:
+		case asset.TypeMCPRemote:
 			handler := handlers.NewMCPRemoteHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
 		default:
@@ -139,22 +139,22 @@ func (c *Client) UninstallArtifacts(ctx context.Context, req clients.UninstallRe
 
 		var err error
 		switch art.Type {
-		case artifact.TypeSkill:
+		case asset.TypeSkill:
 			handler := handlers.NewSkillHandler(meta)
 			err = handler.Remove(ctx, targetBase)
-		case artifact.TypeAgent:
+		case asset.TypeAgent:
 			handler := handlers.NewAgentHandler(meta)
 			err = handler.Remove(ctx, targetBase)
-		case artifact.TypeCommand:
+		case asset.TypeCommand:
 			handler := handlers.NewCommandHandler(meta)
 			err = handler.Remove(ctx, targetBase)
-		case artifact.TypeHook:
+		case asset.TypeHook:
 			handler := handlers.NewHookHandler(meta)
 			err = handler.Remove(ctx, targetBase)
-		case artifact.TypeMCP:
+		case asset.TypeMCP:
 			handler := handlers.NewMCPHandler(meta)
 			err = handler.Remove(ctx, targetBase)
-		case artifact.TypeMCPRemote:
+		case asset.TypeMCPRemote:
 			handler := handlers.NewMCPRemoteHandler(meta)
 			err = handler.Remove(ctx, targetBase)
 		default:

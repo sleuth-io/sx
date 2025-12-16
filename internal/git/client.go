@@ -22,8 +22,11 @@ func SetSSHKeyPath(cmd *cobra.Command) {
 		return
 	}
 
-	// Fall back to environment variable
-	envKey := os.Getenv("SKILLS_SSH_KEY")
+	// Fall back to environment variable (support both new and legacy)
+	envKey := os.Getenv("SX_SSH_KEY")
+	if envKey == "" {
+		envKey = os.Getenv("SKILLS_SSH_KEY")
+	}
 	if envKey != "" {
 		globalSSHKeyPath = envKey
 		printSSHKeyInfo(cmd, "environment variable", envKey)

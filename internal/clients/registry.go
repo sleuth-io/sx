@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 )
 
 // Registry holds all registered clients
@@ -68,7 +68,7 @@ func (r *Registry) GetAll() []Client {
 }
 
 // FilterByArtifactType returns clients that support the given artifact type
-func (r *Registry) FilterByArtifactType(artifactType artifact.Type) []Client {
+func (r *Registry) FilterByArtifactType(artifactType asset.Type) []Client {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

@@ -1,9 +1,9 @@
-# Sleuth Skills
+# sx
 
-Sleuth Skills is a package manager for AI coding assistants. Create, version, and distribute reusable AI 
+sx is a package manager for AI coding assistants. Create, version, and distribute reusable AI
 tools across your entire team. Think NPM for AI agents -- install once, use everywhere.
 
-## Why Sleuth Skills?
+## Why sx?
 - Onboard new developers instantly with your team's tribal knowledge
 - Expand successful AI use from experts to everyone
 - Spread best practices to any AI tool (coming soon)
@@ -18,13 +18,13 @@ then
 
 ```bash
 # Initialize
-skills init
+sx init
 
-# Add a skill from your repository
-skills add /path/to/my-skill
+# Add an asset from your vault
+sx add /path/to/my-skill
 
-# Install skills to your current project
-skills install
+# Install assets to your current project
+sx install
 ```
 
 ## What can you build and share?
@@ -44,15 +44,15 @@ Choose the right distribution model for your team:
 Perfect for easily sharing personal tools across multiple personal projects
 
 ```bash
-skills init --type path --path my/repository/path
+sx init --type path --path my/vault/path
 ```
 
-### Git repository (Small teams)
+### Git vault (Small teams)
 
-Share skills through a shared git repository
+Share assets through a shared git vault
 
 ```bash
-skills init --type git --repo git@github.com:yourteam/skills.git
+sx init --type git --repo git@github.com:yourteam/skills.git
 ```
 
 ### Sleuth (Large teams and enterprise)
@@ -60,16 +60,16 @@ skills init --type git --repo git@github.com:yourteam/skills.git
 Centralized, effortless management with a UI for discovery, creation, and sharing at scale
 
 ```bash
-skills init --type sleuth
+sx init --type sleuth
 ```
 
 ## How it works
 
-Sleuth Skills uses a lock file, like package-lock.json, for deterministic installations in the right context:
+sx uses a lock file, like package-lock.json, for deterministic installations in the right context:
 
-1. **Create** skills with metadata (name, version, dependencies)
-2. **Publish** to your chosen repository
-3. **Share** the skill globally, per repository, or even per path in a repository (monorepo support!)
+1. **Create** assets with metadata (name, version, dependencies)
+2. **Publish** to your chosen vault
+3. **Share** the asset globally, per repository, or even per path in a repository (monorepo support!)
 4. **Auto-install** on new Claude Code sessions
 5. **Stay synchronized** - everyone gets the same tools automatically
 
@@ -77,14 +77,14 @@ Sleuth Skills uses a lock file, like package-lock.json, for deterministic instal
 
 | Client | Status         | Notes |
 |--------|----------------|-------|
-| Claude Code | ✅ Supported    | Full support for all artifact types |
+| Claude Code | ✅ Supported    | Full support for all asset types |
 | Cursor | ✅ Experimental | Skills, MCP servers, commands, hooks |
 | GitHub Copilot | Coming soon    | |
 | Gemini | Coming soon    | |
 | Codex | Coming soon    | |
 
 ## Roadmap
-- ✅ Local, Git, and Sleuth repositories
+- ✅ Local, Git, and Sleuth vaults
 - ✅ Claude Code support
 - ✅ Cursor support (experimental)
 - **More clients** - GitHub Copilot, Gemini, Codex
@@ -104,7 +104,7 @@ See LICENSE file for details.
 
 ### Documentation
 
-- [Repository Spec](docs/repository-spec.md) - Skills repository structure
+- [Vault Spec](docs/vault-spec.md) - Skills vault structure
 - [Metadata Spec](docs/metadata-spec.md) - Skill metadata format
 - [Lock Spec](docs/lock-spec.md) - Lock file format
 

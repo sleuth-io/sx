@@ -13,16 +13,16 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sleuth-io/skills/internal/artifact"
-	"github.com/sleuth-io/skills/internal/artifacts/detectors"
+	"github.com/sleuth-io/skills/internal/asset"
+	"github.com/sleuth-io/skills/internal/assets/detectors"
 	"github.com/sleuth-io/skills/internal/buildinfo"
 	"github.com/sleuth-io/skills/internal/config"
 	"github.com/sleuth-io/skills/internal/constants"
 	"github.com/sleuth-io/skills/internal/github"
 	"github.com/sleuth-io/skills/internal/lockfile"
 	"github.com/sleuth-io/skills/internal/metadata"
-	"github.com/sleuth-io/skills/internal/repository"
 	"github.com/sleuth-io/skills/internal/ui"
+	vaultpkg "github.com/sleuth-io/skills/internal/vault"
 	"github.com/sleuth-io/skills/internal/ui/components"
 	"github.com/sleuth-io/skills/internal/utils"
 )
@@ -30,16 +30,16 @@ import (
 // NewAddCommand creates the add command
 func NewAddCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add [source-or-artifact-name]",
-		Short: "Add an artifact or configure an existing one",
-		Long: `Add an artifact from a local zip file, directory, URL, or GitHub path.
-If the argument is an existing artifact name, configure its installation scope instead.
+		Use:   "add [source-or-asset-name]",
+		Short: "Add an asset or configure an existing one",
+		Long: `Add an asset from a local zip file, directory, URL, or GitHub path.
+If the argument is an existing asset name, configure its installation scope instead.
 
 Examples:
-  skills add ./my-skill           # Add from local directory
-  skills add https://...          # Add from URL
-  skills add https://github.com/owner/repo/tree/main/path  # Add from GitHub
-  skills add my-skill             # Configure scope for existing artifact`,
+  sx add ./my-skill           # Add from local directory
+  sx add https://...          # Add from URL
+  sx add https://github.com/owner/repo/tree/main/path  # Add from GitHub
+  sx add my-skill             # Configure scope for existing asset`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var zipFile string
@@ -91,14 +91,14 @@ func runAddWithOptions(cmd *cobra.Command, input string, promptInstall bool) err
 		return err
 	}
 
-	// Create repository instance
-	repo, err := createRepository()
+	// Create vault instance
+	vault, err := createVault()
 	if err != nil {
 		return err
 	}
 
 	// Check versions and content
-	version, contentsIdentical, err := checkVersionAndContents(ctx, out, status, repo, name, zipData)
+	version, contentsIdentical, err := checkVersionAndContents(ctx, out, status, vault, name, zipData)
 	if err != nil {
 		return err
 	}
@@ -106,10 +106,10 @@ func runAddWithOptions(cmd *cobra.Command, input string, promptInstall bool) err
 	// Handle identical content case
 	var addErr error
 	if contentsIdentical {
-		addErr = handleIdenticalArtifact(ctx, out, status, repo, name, version, artifactType)
+		addErr = handleIdenticalArtifact(ctx, out, status, vault, name, version, artifactType)
 	} else {
 		// Add new or updated artifact
-		addErr = addNewArtifact(ctx, out, status, repo, name, artifactType, version, zipFile, zipData, metadataExists)
+		addErr = addNewArtifact(ctx, out, status, vault, name, artifactType, version, zipFile, zipData, metadataExists)
 	}
 
 	if addErr != nil {
@@ -124,17 +124,17 @@ func runAddWithOptions(cmd *cobra.Command, input string, promptInstall bool) err
 	return nil
 }
 
-// configureExistingArtifact handles configuring scope for an artifact that already exists in the repository
+// configureExistingArtifact handles configuring scope for an artifact that already exists in the vault
 func configureExistingArtifact(ctx context.Context, cmd *cobra.Command, out *outputHelper, status *components.Status, artifactName string, promptInstall bool) error {
-	// Create repository instance
-	repo, err := createRepository()
+	// Create vault instance
+	vault, err := createVault()
 	if err != nil {
 		return err
 	}
 
 	// Load lock file to find the artifact
-	status.Start("Syncing repository")
-	lockFileContent, _, _, err := repo.GetLockFile(ctx, "")
+	status.Start("Syncing vault")
+	lockFileContent, _, _, err := vault.GetLockFile(ctx, "")
 	status.Clear()
 	var lockFile *lockfile.LockFile
 	if err != nil {
@@ -196,17 +196,17 @@ func configureExistingArtifact(ctx context.Context, cmd *cobra.Command, out *out
 	if foundArtifact == nil {
 		// Try to find versions in artifacts directory
 		status.Start("Checking for artifact versions")
-		versions, err := repo.GetVersionList(ctx, artifactName)
+		versions, err := vault.GetVersionList(ctx, artifactName)
 		status.Clear()
 		if err != nil || len(versions) == 0 {
-			return fmt.Errorf("artifact '%s' not found in repository", artifactName)
+			return fmt.Errorf("asset '%s' not found in vault", artifactName)
 		}
 
 		// Use the latest version (last in list)
 		latestVersion := versions[len(versions)-1]
 
-		// Artifact exists in repository but not installed - treat as first-time install
-		out.printf("Found artifact: %s v%s in repository (not yet installed)\n", artifactName, latestVersion)
+		// Artifact exists in vault but not installed - treat as first-time install
+		out.printf("Found asset: %s v%s in vault (not yet installed)\n", artifactName, latestVersion)
 
 		// Prompt for repositories with nil current state (new install)
 		repositories, err := promptForRepositories(out, artifactName, latestVersion, nil)
@@ -217,14 +217,14 @@ func configureExistingArtifact(ctx context.Context, cmd *cobra.Command, out *out
 		// If nil, user chose not to install
 		if repositories == nil {
 			out.println()
-			out.println("Artifact available in repository only")
+			out.println("Asset available in vault only")
 			return nil
 		}
 
 		// Create new artifact entry for lock file
 		newArtifact := &lockfile.Artifact{
 			Name:    artifactName,
-			Type:    artifact.TypeSkill, // Default to skill, could enhance later
+			Type:    asset.TypeSkill, // Default to skill, could enhance later
 			Version: latestVersion,
 			SourcePath: &lockfile.SourcePath{
 				Path: fmt.Sprintf("./artifacts/%s/%s", artifactName, latestVersion),
@@ -233,7 +233,7 @@ func configureExistingArtifact(ctx context.Context, cmd *cobra.Command, out *out
 		}
 
 		// Add to lock file
-		if err := updateLockFile(ctx, out, repo, newArtifact); err != nil {
+		if err := updateLockFile(ctx, out, vault, newArtifact); err != nil {
 			return fmt.Errorf("failed to update lock file: %w", err)
 		}
 
@@ -263,18 +263,18 @@ func configureExistingArtifact(ctx context.Context, cmd *cobra.Command, out *out
 	// If nil, user chose to remove from installation
 	if repositories == nil {
 		// Remove artifact from lock file
-		if pathRepo, ok := repo.(*repository.PathRepository); ok {
-			lockFilePath := pathRepo.GetLockFilePath()
+		if pathVault, ok := vault.(*vaultpkg.PathVault); ok {
+			lockFilePath := pathVault.GetLockFilePath()
 			if err := lockfile.RemoveArtifact(lockFilePath, foundArtifact.Name, foundArtifact.Version); err != nil {
 				return fmt.Errorf("failed to remove artifact from lock file: %w", err)
 			}
-		} else if gitRepo, ok := repo.(*repository.GitRepository); ok {
-			lockFilePath := gitRepo.GetLockFilePath()
+		} else if gitVault, ok := vault.(*vaultpkg.GitVault); ok {
+			lockFilePath := gitVault.GetLockFilePath()
 			if err := lockfile.RemoveArtifact(lockFilePath, foundArtifact.Name, foundArtifact.Version); err != nil {
 				return fmt.Errorf("failed to remove artifact from lock file: %w", err)
 			}
 			// Commit and push the removal
-			if err := gitRepo.CommitAndPush(ctx, foundArtifact); err != nil {
+			if err := gitVault.CommitAndPush(ctx, foundArtifact); err != nil {
 				return fmt.Errorf("failed to push removal: %w", err)
 			}
 		}
@@ -282,7 +282,7 @@ func configureExistingArtifact(ctx context.Context, cmd *cobra.Command, out *out
 		// Prompt to run install to clean up the removed artifact (if enabled)
 		if promptInstall {
 			out.println()
-			confirmed, err := components.ConfirmWithIO("Run install now to remove the artifact from clients?", true, cmd.InOrStdin(), cmd.OutOrStdout())
+			confirmed, err := components.ConfirmWithIO("Run install now to remove the asset from clients?", true, cmd.InOrStdin(), cmd.OutOrStdout())
 			if err != nil {
 				return nil
 			}
@@ -293,7 +293,7 @@ func configureExistingArtifact(ctx context.Context, cmd *cobra.Command, out *out
 					out.printfErr("Install failed: %v\n", err)
 				}
 			} else {
-				out.println("Run 'skills install' when ready to clean up.")
+				out.println("Run 'sx install' when ready to clean up.")
 			}
 		}
 		return nil
@@ -303,7 +303,7 @@ func configureExistingArtifact(ctx context.Context, cmd *cobra.Command, out *out
 	foundArtifact.Repositories = repositories
 
 	// Update lock file
-	if err := updateLockFile(ctx, out, repo, foundArtifact); err != nil {
+	if err := updateLockFile(ctx, out, vault, foundArtifact); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 
@@ -318,13 +318,13 @@ func configureExistingArtifact(ctx context.Context, cmd *cobra.Command, out *out
 // promptRunInstall asks if the user wants to run install after adding an artifact
 func promptRunInstall(cmd *cobra.Command, ctx context.Context, out *outputHelper) {
 	out.println()
-	confirmed, err := components.ConfirmWithIO("Run install now to activate the artifact?", true, cmd.InOrStdin(), cmd.OutOrStdout())
+	confirmed, err := components.ConfirmWithIO("Run install now to activate the asset?", true, cmd.InOrStdin(), cmd.OutOrStdout())
 	if err != nil {
 		return
 	}
 
 	if !confirmed {
-		out.println("Run 'skills install' when ready to activate.")
+		out.println("Run 'sx install' when ready to activate.")
 		return
 	}
 
@@ -344,7 +344,7 @@ func loadZipFile(out *outputHelper, zipFile string) (string, []byte, error) {
 	// Prompt for zip file, directory, or URL if not provided
 	if zipFile == "" {
 		var err error
-		zipFile, err = out.prompt("Enter path or URL to artifact zip file or directory: ")
+		zipFile, err = out.prompt("Enter path or URL to asset zip file or directory: ")
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to read input: %w", err)
 		}
@@ -374,7 +374,7 @@ func loadZipFile(out *outputHelper, zipFile string) (string, []byte, error) {
 		defer cancel()
 
 		out.println()
-		out.println("Downloading artifact from URL...")
+		out.println("Downloading asset from URL...")
 		zipData, err := downloadZipFromURL(ctx, out, zipFile)
 		if err != nil {
 			return "", nil, err
@@ -404,7 +404,7 @@ func loadZipFile(out *outputHelper, zipFile string) (string, []byte, error) {
 			return "", nil, fmt.Errorf("failed to create zip from directory: %w", err)
 		}
 	} else {
-		out.println("Reading artifact...")
+		out.println("Reading asset...")
 		zipData, err = os.ReadFile(zipFile)
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to read zip file: %w", err)
@@ -486,7 +486,7 @@ func downloadFromGitHub(ctx context.Context, out *outputHelper, gitHubURL string
 }
 
 // detectArtifactInfo extracts or detects artifact name and type, then confirms with user
-func detectArtifactInfo(out *outputHelper, zipFile string, zipData []byte) (name string, artifactType artifact.Type, metadataExists bool, err error) {
+func detectArtifactInfo(out *outputHelper, zipFile string, zipData []byte) (name string, artifactType asset.Type, metadataExists bool, err error) {
 	// Extract or detect name and type
 	name, artifactType, metadataExists, err = extractOrDetectNameAndType(out, zipFile, zipData)
 	if err != nil {
@@ -502,26 +502,26 @@ func detectArtifactInfo(out *outputHelper, zipFile string, zipData []byte) (name
 	return name, artifactType, metadataExists, nil
 }
 
-// createRepository loads config and creates a repository instance
-func createRepository() (repository.Repository, error) {
+// createVault loads config and creates a vault instance
+func createVault() (vaultpkg.Vault, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load configuration: %w\nRun 'skills init' to configure", err)
+		return nil, fmt.Errorf("failed to load configuration: %w\nRun 'sx init' to configure", err)
 	}
 
-	return repository.NewFromConfig(cfg)
+	return vaultpkg.NewFromConfig(cfg)
 }
 
-// checkVersionAndContents queries repository for versions and checks if content is identical
-func checkVersionAndContents(ctx context.Context, out *outputHelper, status *components.Status, repo repository.Repository, name string, zipData []byte) (version string, identical bool, err error) {
+// checkVersionAndContents queries vault for versions and checks if content is identical
+func checkVersionAndContents(ctx context.Context, out *outputHelper, status *components.Status, vault vaultpkg.Vault, name string, zipData []byte) (version string, identical bool, err error) {
 	status.Start("Checking for existing versions")
-	versions, err := repo.GetVersionList(ctx, name)
+	versions, err := vault.GetVersionList(ctx, name)
 	status.Clear()
 	if err != nil {
 		return "", false, fmt.Errorf("failed to get version list: %w", err)
 	}
 
-	version, identical, err = determineSuggestedVersionAndCheckIdentical(ctx, out, status, repo, name, versions, zipData)
+	version, identical, err = determineSuggestedVersionAndCheckIdentical(ctx, out, status, vault, name, versions, zipData)
 	if err != nil {
 		return "", false, err
 	}
@@ -530,10 +530,10 @@ func checkVersionAndContents(ctx context.Context, out *outputHelper, status *com
 }
 
 // handleIdenticalArtifact handles the case when content is identical to existing version
-func handleIdenticalArtifact(ctx context.Context, out *outputHelper, status *components.Status, repo repository.Repository, name, version string, artifactType artifact.Type) error {
+func handleIdenticalArtifact(ctx context.Context, out *outputHelper, status *components.Status, vault vaultpkg.Vault, name, version string, artifactType asset.Type) error {
 	_ = status // status not needed for identical artifacts (no git operations)
 	out.println()
-	out.printf("✓ Artifact %s@%s already exists in repository with identical contents\n", name, version)
+	out.printf("✓ Artifact %s@%s already exists in vault with identical contents\n", name, version)
 
 	// Check if already in lock file to get current repositories
 	var currentRepos []lockfile.Repository
@@ -564,15 +564,15 @@ func handleIdenticalArtifact(ctx context.Context, out *outputHelper, status *com
 		Repositories: repositories,
 	}
 
-	if err := updateLockFile(ctx, out, repo, lockArtifact); err != nil {
+	if err := updateLockFile(ctx, out, vault, lockArtifact); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 
 	return nil
 }
 
-// addNewArtifact adds a new or updated artifact to the repository
-func addNewArtifact(ctx context.Context, out *outputHelper, status *components.Status, repo repository.Repository, name string, artifactType artifact.Type, version, zipFile string, zipData []byte, metadataExists bool) error {
+// addNewArtifact adds a new or updated artifact to the vault
+func addNewArtifact(ctx context.Context, out *outputHelper, status *components.Status, vault vaultpkg.Vault, name string, artifactType asset.Type, version, zipFile string, zipData []byte, metadataExists bool) error {
 	// Prompt user for version
 	version, err := promptForVersion(out, version)
 	if err != nil {
@@ -598,10 +598,10 @@ func addNewArtifact(ctx context.Context, out *outputHelper, status *components.S
 		},
 	}
 
-	// Upload artifact files to repository
+	// Upload artifact files to vault
 	out.println()
-	status.Start("Adding artifact to repository")
-	if err := repo.AddArtifact(ctx, lockArtifact, zipData); err != nil {
+	status.Start("Adding asset to vault")
+	if err := vault.AddArtifact(ctx, lockArtifact, zipData); err != nil {
 		status.Fail("Failed to add artifact")
 		return fmt.Errorf("failed to add artifact: %w", err)
 	}
@@ -631,7 +631,7 @@ func addNewArtifact(ctx context.Context, out *outputHelper, status *components.S
 	lockArtifact.Repositories = repositories
 
 	// Update lock file with artifact
-	if err := updateLockFile(ctx, out, repo, lockArtifact); err != nil {
+	if err := updateLockFile(ctx, out, vault, lockArtifact); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 
@@ -639,15 +639,15 @@ func addNewArtifact(ctx context.Context, out *outputHelper, status *components.S
 }
 
 // extractOrDetectNameAndType extracts name and type from metadata or auto-detects them
-func extractOrDetectNameAndType(out *outputHelper, zipFile string, zipData []byte) (name string, artifactType artifact.Type, metadataExists bool, err error) {
-	out.println("Detecting artifact name and type...")
+func extractOrDetectNameAndType(out *outputHelper, zipFile string, zipData []byte) (name string, artifactType asset.Type, metadataExists bool, err error) {
+	out.println("Detecting asset name and type...")
 
 	metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
 	if err == nil {
 		// Metadata exists, parse it
 		meta, err := metadata.Parse(metadataBytes)
 		if err != nil {
-			return "", artifact.Type{}, false, fmt.Errorf("failed to parse metadata: %w", err)
+			return "", asset.Type{}, false, fmt.Errorf("failed to parse metadata: %w", err)
 		}
 		return meta.Artifact.Name, meta.Artifact.Type, true, nil
 	}
@@ -658,7 +658,7 @@ func extractOrDetectNameAndType(out *outputHelper, zipFile string, zipData []byt
 	// List files in zip
 	files, err := utils.ListZipFiles(zipData)
 	if err != nil {
-		return "", artifact.Type{}, false, fmt.Errorf("failed to list zip files: %w", err)
+		return "", asset.Type{}, false, fmt.Errorf("failed to list zip files: %w", err)
 	}
 
 	// Auto-detect values
@@ -672,12 +672,12 @@ func extractOrDetectNameAndType(out *outputHelper, zipFile string, zipData []byt
 }
 
 // confirmNameAndType displays name and type and asks for confirmation
-func confirmNameAndType(out *outputHelper, name string, inType artifact.Type) (outName string, outType artifact.Type, err error) {
+func confirmNameAndType(out *outputHelper, name string, inType asset.Type) (outName string, outType asset.Type, err error) {
 	outName = name
 	outType = inType
 
 	out.println()
-	out.println("Detected artifact:")
+	out.println("Detected asset:")
 	out.printf("  Name: %s\n", outName)
 	out.printf("  Type: %s\n", outType)
 	out.println()
@@ -690,7 +690,7 @@ func confirmNameAndType(out *outputHelper, name string, inType artifact.Type) (o
 
 	if !confirmed {
 		// Prompt for custom name and type
-		nameInput, err2 := components.InputWithIO("Artifact name", "", outName, out.cmd.InOrStdin(), out.cmd.OutOrStdout())
+		nameInput, err2 := components.InputWithIO("Asset name", "", outName, out.cmd.InOrStdin(), out.cmd.OutOrStdout())
 		if err2 != nil {
 			err = fmt.Errorf("failed to read name: %w", err2)
 			return
@@ -699,13 +699,13 @@ func confirmNameAndType(out *outputHelper, name string, inType artifact.Type) (o
 			outName = nameInput
 		}
 
-		typeInput, err2 := components.InputWithIO("Artifact type", "", outType.Label, out.cmd.InOrStdin(), out.cmd.OutOrStdout())
+		typeInput, err2 := components.InputWithIO("Asset type", "", outType.Label, out.cmd.InOrStdin(), out.cmd.OutOrStdout())
 		if err2 != nil {
 			err = fmt.Errorf("failed to read type: %w", err2)
 			return
 		}
 		if typeInput != "" {
-			outType = artifact.FromString(typeInput)
+			outType = asset.FromString(typeInput)
 		}
 	}
 
@@ -713,7 +713,7 @@ func confirmNameAndType(out *outputHelper, name string, inType artifact.Type) (o
 }
 
 // determineSuggestedVersionAndCheckIdentical determines the version to suggest and whether contents are identical
-func determineSuggestedVersionAndCheckIdentical(ctx context.Context, out *outputHelper, status *components.Status, repo repository.Repository, name string, versions []string, newZipData []byte) (version string, identical bool, err error) {
+func determineSuggestedVersionAndCheckIdentical(ctx context.Context, out *outputHelper, status *components.Status, vault vaultpkg.Vault, name string, versions []string, newZipData []byte) (version string, identical bool, err error) {
 	if len(versions) == 0 {
 		// No existing versions, suggest 1.0
 		return "1.0", false, nil
@@ -728,11 +728,11 @@ func determineSuggestedVersionAndCheckIdentical(ctx context.Context, out *output
 
 	var existingZipData []byte
 
-	// Check if this is a git repository (has GetArtifactByVersion method)
-	if gitRepo, ok := repo.(*repository.GitRepository); ok {
-		existingZipData, err = gitRepo.GetArtifactByVersion(ctx, name, latestVersion)
+	// Check if this is a git vault (has GetArtifactByVersion method)
+	if gitVault, ok := vault.(*vaultpkg.GitVault); ok {
+		existingZipData, err = gitVault.GetArtifactByVersion(ctx, name, latestVersion)
 	} else {
-		// For other repos, we'd need to construct an artifact and use GetArtifact
+		// For other vaults, we'd need to construct an artifact and use GetArtifact
 		// For now, just suggest incrementing the version
 		status.Clear()
 		return suggestNextVersion(latestVersion), false, nil
@@ -789,7 +789,7 @@ func promptForVersion(out *outputHelper, suggestedVersion string) (string, error
 }
 
 // createMetadata creates a metadata object with the given name, version, and type
-func createMetadata(name, version string, artifactType artifact.Type, zipFile string, zipData []byte) *metadata.Metadata {
+func createMetadata(name, version string, artifactType asset.Type, zipFile string, zipData []byte) *metadata.Metadata {
 	// Try to read existing metadata from zip first
 	if metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml"); err == nil {
 		if existingMeta, err := metadata.Parse(metadataBytes); err == nil {
@@ -885,7 +885,7 @@ func guessArtifactName(zipPath string) string {
 	}
 
 	if base == "" {
-		base = "my-artifact"
+		base = "my-asset"
 	}
 
 	return base

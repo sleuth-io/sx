@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 )
 
 // LockFile represents the complete lock file structure
@@ -19,7 +19,7 @@ type LockFile struct {
 type Artifact struct {
 	Name         string        `toml:"name"`
 	Version      string        `toml:"version"`
-	Type         artifact.Type `toml:"type"`
+	Type         asset.Type `toml:"type"`
 	Clients      []string      `toml:"clients,omitempty"`
 	Dependencies []Dependency  `toml:"dependencies,omitempty"`
 

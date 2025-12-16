@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Install script for skills CLI
+# Install script for sx CLI
 # Downloads the latest release binary from GitHub
 
 # Detect OS and architecture
@@ -51,10 +51,10 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-echo "Installing skills ${VERSION} for ${OS}_${ARCH}..."
+echo "Installing sx ${VERSION} for ${OS}_${ARCH}..."
 
 # Build download URL
-BINARY_NAME="skills_${OS}_${ARCH}.${EXT}"
+BINARY_NAME="sx_${OS}_${ARCH}.${EXT}"
 URL="https://github.com/sleuth-io/skills/releases/download/${VERSION}/${BINARY_NAME}"
 
 # Determine install location
@@ -80,14 +80,14 @@ elif [ "$EXT" = "zip" ]; then
 fi
 
 # Install binary
-chmod +x skills
-mv skills "$INSTALL_DIR/"
+chmod +x sx
+mv sx "$INSTALL_DIR/"
 
 # Cleanup
 cd - > /dev/null
 rm -rf "$TEMP_DIR"
 
-echo "✓ skills installed to $INSTALL_DIR/skills"
+echo "✓ sx installed to $INSTALL_DIR/sx"
 
 # Check if install dir is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
@@ -98,10 +98,10 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
 fi
 
 # Verify installation
-if command -v skills &> /dev/null; then
+if command -v sx &> /dev/null; then
     echo ""
-    skills --version
+    sx --version
 else
     echo ""
-    echo "Run 'source ~/.bashrc' (or restart your shell) and then try: skills --version"
+    echo "Run 'source ~/.bashrc' (or restart your shell) and then try: sx --version"
 fi

@@ -11,9 +11,12 @@ import (
 	"github.com/sleuth-io/skills/internal/utils"
 )
 
-// GetCacheDir returns the platform-specific cache directory for skills
+// GetCacheDir returns the platform-specific cache directory for sx
 func GetCacheDir() (string, error) {
-	// Check for environment override
+	// Check for environment override (support both new and legacy)
+	if cacheDir := os.Getenv("SX_CACHE_DIR"); cacheDir != "" {
+		return cacheDir, nil
+	}
 	if cacheDir := os.Getenv("SKILLS_CACHE_DIR"); cacheDir != "" {
 		return cacheDir, nil
 	}
@@ -28,7 +31,7 @@ func GetCacheDir() (string, error) {
 		}
 	}
 
-	return filepath.Join(cacheDir, "skills"), nil
+	return filepath.Join(cacheDir, "sx"), nil
 }
 
 // getFallbackCacheDir returns platform-specific fallback cache directories

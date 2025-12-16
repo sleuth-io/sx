@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 	"github.com/sleuth-io/skills/internal/metadata"
 	"github.com/sleuth-io/skills/internal/utils"
 )
@@ -88,7 +88,7 @@ func (h *MCPRemoteHandler) Validate(zipData []byte) error {
 	}
 
 	// Verify artifact type matches
-	if meta.Artifact.Type != artifact.TypeMCPRemote {
+	if meta.Artifact.Type != asset.TypeMCPRemote {
 		return fmt.Errorf("artifact type mismatch: expected mcp-remote, got %s", meta.Artifact.Type)
 	}
 

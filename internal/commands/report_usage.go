@@ -10,21 +10,21 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sleuth-io/skills/internal/artifacts"
-	"github.com/sleuth-io/skills/internal/artifacts/detectors"
+	"github.com/sleuth-io/skills/internal/assets"
+	"github.com/sleuth-io/skills/internal/assets/detectors"
 	"github.com/sleuth-io/skills/internal/config"
 	"github.com/sleuth-io/skills/internal/logger"
-	"github.com/sleuth-io/skills/internal/repository"
 	"github.com/sleuth-io/skills/internal/stats"
+	vaultpkg "github.com/sleuth-io/skills/internal/vault"
 )
 
 // NewReportUsageCommand creates the report-usage command
 func NewReportUsageCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "report-usage",
-		Short: "Report artifact usage from tool calls (PostToolUse hook)",
-		Long: `Parse PostToolUse hook JSON from stdin, detect artifact usage,
-and report it to the repository. Intended to be called from Claude Code hooks.`,
+		Short: "Report asset usage from tool calls (PostToolUse hook)",
+		Long: `Parse PostToolUse hook JSON from stdin, detect asset usage,
+and report it to the vault. Intended to be called from Claude Code hooks.`,
 		Hidden: true, // Hide from help output as it's for internal use
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runReportUsage(cmd, args)
@@ -87,7 +87,7 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load tracker to check if artifact is installed
-	tracker, err := artifacts.LoadTracker()
+	tracker, err := assets.LoadTracker()
 	if err != nil {
 		// Tracker doesn't exist, exit silently
 		return nil
@@ -138,15 +138,15 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Create repository instance
-	repo, err := repository.NewFromConfig(cfg)
+	// Create vault instance
+	vault, err := vaultpkg.NewFromConfig(cfg)
 	if err != nil {
-		// Unknown repo type, queue will be flushed later
+		// Unknown vault type, queue will be flushed later
 		return nil
 	}
 
 	// Try to flush queue
-	if err := stats.FlushQueue(ctx, repo); err != nil {
+	if err := stats.FlushQueue(ctx, vault); err != nil {
 		// Flush failed, queue preserved for next attempt
 		fmt.Fprintf(os.Stderr, "Warning: failed to flush usage stats: %v\n", err)
 	}

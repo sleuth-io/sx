@@ -7,13 +7,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sleuth-io/skills/internal/artifact"
-	"github.com/sleuth-io/skills/internal/handlers/dirartifact"
+	"github.com/sleuth-io/skills/internal/asset"
+	"github.com/sleuth-io/skills/internal/handlers/dirasset"
 	"github.com/sleuth-io/skills/internal/metadata"
 	"github.com/sleuth-io/skills/internal/utils"
 )
 
-var hookOps = dirartifact.NewOperations("hooks", &artifact.TypeHook)
+var hookOps = dirasset.NewOperations("hooks", &asset.TypeHook)
 
 // HookHandler handles hook artifact installation for Cursor
 type HookHandler struct {

@@ -3,7 +3,7 @@ package lockfile
 import (
 	"testing"
 
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 )
 
 func TestParseValidLockFile(t *testing.T) {
@@ -44,7 +44,7 @@ hashes = {sha256 = "abc123"}
 		t.Errorf("Expected version 1.0.0, got %s", lockArtifact.Version)
 	}
 
-	if lockArtifact.Type != artifact.TypeSkill {
+	if lockArtifact.Type != asset.TypeSkill {
 		t.Errorf("Expected type skill, got %s", lockArtifact.Type)
 	}
 }
@@ -65,7 +65,7 @@ func TestValidateLockFile(t *testing.T) {
 					{
 						Name:    "test",
 						Version: "1.0.0",
-						Type:    artifact.TypeSkill,
+						Type:    asset.TypeSkill,
 						SourceHTTP: &SourceHTTP{
 							URL:    "https://example.com/test.zip",
 							Hashes: map[string]string{"sha256": "abc"},
@@ -93,7 +93,7 @@ func TestValidateLockFile(t *testing.T) {
 					{
 						Name:    "test",
 						Version: "invalid",
-						Type:    artifact.TypeSkill,
+						Type:    asset.TypeSkill,
 					},
 				},
 			},
@@ -109,7 +109,7 @@ func TestValidateLockFile(t *testing.T) {
 					{
 						Name:    "",
 						Version: "1.0.0",
-						Type:    artifact.TypeSkill,
+						Type:    asset.TypeSkill,
 					},
 				},
 			},
@@ -136,7 +136,7 @@ func TestCircularDependencies(t *testing.T) {
 			{
 				Name:    "a",
 				Version: "1.0.0",
-				Type:    artifact.TypeSkill,
+				Type:    asset.TypeSkill,
 				SourceHTTP: &SourceHTTP{
 					URL:    "https://example.com/a.zip",
 					Hashes: map[string]string{"sha256": "abc"},
@@ -146,7 +146,7 @@ func TestCircularDependencies(t *testing.T) {
 			{
 				Name:    "b",
 				Version: "1.0.0",
-				Type:    artifact.TypeSkill,
+				Type:    asset.TypeSkill,
 				SourceHTTP: &SourceHTTP{
 					URL:    "https://example.com/b.zip",
 					Hashes: map[string]string{"sha256": "abc"},
@@ -174,7 +174,7 @@ func TestArtifactScopes(t *testing.T) {
 			artifact: Artifact{
 				Name:         "test",
 				Version:      "1.0.0",
-				Type:         artifact.TypeSkill,
+				Type:         asset.TypeSkill,
 				Repositories: []Repository{},
 			},
 			isGlobal: true,
@@ -184,7 +184,7 @@ func TestArtifactScopes(t *testing.T) {
 			artifact: Artifact{
 				Name:    "test",
 				Version: "1.0.0",
-				Type:    artifact.TypeSkill,
+				Type:    asset.TypeSkill,
 				Repositories: []Repository{
 					{Repo: "https://github.com/user/repo"},
 				},
@@ -197,7 +197,7 @@ func TestArtifactScopes(t *testing.T) {
 			artifact: Artifact{
 				Name:    "test",
 				Version: "1.0.0",
-				Type:    artifact.TypeSkill,
+				Type:    asset.TypeSkill,
 				Repositories: []Repository{
 					{Repo: "https://github.com/user/repo", Paths: []string{"src/components"}},
 				},
@@ -210,7 +210,7 @@ func TestArtifactScopes(t *testing.T) {
 			artifact: Artifact{
 				Name:    "test",
 				Version: "1.0.0",
-				Type:    artifact.TypeSkill,
+				Type:    asset.TypeSkill,
 				Repositories: []Repository{
 					{Repo: "https://github.com/user/repo1"},
 					{Repo: "https://github.com/user/repo2", Paths: []string{"backend"}},

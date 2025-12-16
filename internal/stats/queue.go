@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sleuth-io/skills/internal/cache"
-	"github.com/sleuth-io/skills/internal/repository"
+	"github.com/sleuth-io/skills/internal/vault"
 )
 
 // UsageEvent represents a single artifact usage event
@@ -125,7 +125,7 @@ func DeleteEventFiles(filePaths []string) error {
 }
 
 // FlushQueue loads pending events from queue and sends them to the repository
-func FlushQueue(ctx context.Context, repo repository.Repository) error {
+func FlushQueue(ctx context.Context, repo vault.Vault) error {
 	// Load pending events
 	events, filePaths, err := DequeueEvents(100)
 	if err != nil {

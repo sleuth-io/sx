@@ -44,7 +44,7 @@ func promptForRepositoriesWithUI(artifactName, version string, currentRepos []lo
 		{
 			Label:       "Remove from installation",
 			Value:       "remove",
-			Description: "Uninstall this artifact (keeps it in repository)",
+			Description: "Uninstall this asset (keeps it in vault)",
 		},
 	}...)
 
@@ -79,7 +79,7 @@ func promptForRepositoriesWithUI(artifactName, version string, currentRepos []lo
 		return modifyRepositories(currentRepos, styledOut, ioc)
 
 	case "remove": // Remove from installation
-		styledOut.Info("Removing from installation (will remain available in repository)")
+		styledOut.Info("Removing from installation (will remain available in vault)")
 		return nil, nil // nil means don't install
 
 	default:

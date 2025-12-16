@@ -3,7 +3,7 @@ package clients
 import (
 	"context"
 
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 	"github.com/sleuth-io/skills/internal/lockfile"
 	"github.com/sleuth-io/skills/internal/metadata"
 )
@@ -19,7 +19,7 @@ type Client interface {
 	GetVersion() string // Get client version (empty if not available)
 
 	// Capabilities - what artifact types this client supports
-	SupportsArtifactType(artifactType artifact.Type) bool
+	SupportsArtifactType(artifactType asset.Type) bool
 
 	// Installation - client has FULL control over installation mechanism
 	// Receives all artifacts to install at once (batch)
@@ -123,7 +123,7 @@ type InstallResponse struct {
 
 // UninstallRequest contains artifacts to uninstall
 type UninstallRequest struct {
-	Artifacts []artifact.Artifact
+	Artifacts []asset.Asset
 	Scope     *InstallScope
 	Options   UninstallOptions
 }
@@ -172,12 +172,12 @@ type BaseClient struct {
 func (b *BaseClient) ID() string          { return b.id }
 func (b *BaseClient) DisplayName() string { return b.displayName }
 
-func (b *BaseClient) SupportsArtifactType(artifactType artifact.Type) bool {
+func (b *BaseClient) SupportsArtifactType(artifactType asset.Type) bool {
 	return b.capabilities[artifactType.Key]
 }
 
 // NewBaseClient creates a new base client with capabilities
-func NewBaseClient(id, displayName string, supportedTypes []artifact.Type) BaseClient {
+func NewBaseClient(id, displayName string, supportedTypes []asset.Type) BaseClient {
 	capabilities := make(map[string]bool)
 	for _, t := range supportedTypes {
 		capabilities[t.Key] = true

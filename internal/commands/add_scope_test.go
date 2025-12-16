@@ -90,7 +90,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify skill was added globally
-	lockFilePath := filepath.Join(repoDir, "skill.lock")
+	lockFilePath := filepath.Join(repoDir, "sx.lock")
 	artifact, exists := lockfile.FindArtifact(lockFilePath, "test-skill")
 	if !exists {
 		t.Fatalf("Artifact not found in lock file")
@@ -226,7 +226,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Get initial state
-	lockFilePath := filepath.Join(repoDir, "skill.lock")
+	lockFilePath := filepath.Join(repoDir, "sx.lock")
 	artifact, exists := lockfile.FindArtifact(lockFilePath, "test-skill")
 	if !exists {
 		t.Fatalf("Artifact not found in lock file")
@@ -341,7 +341,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify skill was added
-	lockFilePath := filepath.Join(repoDir, "skill.lock")
+	lockFilePath := filepath.Join(repoDir, "sx.lock")
 	_, exists := lockfile.FindArtifact(lockFilePath, "test-skill")
 	if !exists {
 		t.Fatalf("Artifact not found in lock file")
@@ -457,7 +457,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify artifact NOT in lock file
-	lockFilePath := filepath.Join(repoDir, "skill.lock")
+	lockFilePath := filepath.Join(repoDir, "sx.lock")
 	_, exists := lockfile.FindArtifact(lockFilePath, "test-skill")
 	if exists {
 		t.Fatalf("Artifact should not be in lock file")

@@ -5,7 +5,7 @@ import (
 	"regexp"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 )
 
 var (
@@ -32,7 +32,7 @@ func (m *Metadata) Validate() error {
 
 	// Validate type-specific configuration
 	switch m.Artifact.Type {
-	case artifact.TypeSkill:
+	case asset.TypeSkill:
 		if m.Skill == nil {
 			return fmt.Errorf("[skill] section is required for skill artifacts")
 		}
@@ -40,7 +40,7 @@ func (m *Metadata) Validate() error {
 			return fmt.Errorf("skill: %w", err)
 		}
 
-	case artifact.TypeCommand:
+	case asset.TypeCommand:
 		if m.Command == nil {
 			return fmt.Errorf("[command] section is required for command artifacts")
 		}
@@ -48,7 +48,7 @@ func (m *Metadata) Validate() error {
 			return fmt.Errorf("command: %w", err)
 		}
 
-	case artifact.TypeAgent:
+	case asset.TypeAgent:
 		if m.Agent == nil {
 			return fmt.Errorf("[agent] section is required for agent artifacts")
 		}
@@ -56,7 +56,7 @@ func (m *Metadata) Validate() error {
 			return fmt.Errorf("agent: %w", err)
 		}
 
-	case artifact.TypeHook:
+	case asset.TypeHook:
 		if m.Hook == nil {
 			return fmt.Errorf("[hook] section is required for hook artifacts")
 		}
@@ -64,7 +64,7 @@ func (m *Metadata) Validate() error {
 			return fmt.Errorf("hook: %w", err)
 		}
 
-	case artifact.TypeMCP, artifact.TypeMCPRemote:
+	case asset.TypeMCP, asset.TypeMCPRemote:
 		if m.MCP == nil {
 			return fmt.Errorf("[mcp] section is required for %s artifacts", m.Artifact.Type)
 		}

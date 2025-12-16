@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 )
 
 // Metadata represents the complete metadata.toml structure
@@ -27,7 +27,7 @@ type Metadata struct {
 type Artifact struct {
 	Name          string        `toml:"name"`
 	Version       string        `toml:"version"`
-	Type          artifact.Type `toml:"type"`
+	Type          asset.Type `toml:"type"`
 	Description   string        `toml:"description,omitempty"`
 	License       string        `toml:"license,omitempty"`
 	Authors       []string      `toml:"authors,omitempty"`
@@ -130,15 +130,15 @@ func Write(metadata *Metadata, filePath string) error {
 // GetTypeConfig returns the type-specific configuration section
 func (m *Metadata) GetTypeConfig() interface{} {
 	switch m.Artifact.Type {
-	case artifact.TypeSkill:
+	case asset.TypeSkill:
 		return m.Skill
-	case artifact.TypeCommand:
+	case asset.TypeCommand:
 		return m.Command
-	case artifact.TypeAgent:
+	case asset.TypeAgent:
 		return m.Agent
-	case artifact.TypeHook:
+	case asset.TypeHook:
 		return m.Hook
-	case artifact.TypeMCP, artifact.TypeMCPRemote:
+	case asset.TypeMCP, asset.TypeMCPRemote:
 		return m.MCP
 	}
 	return nil

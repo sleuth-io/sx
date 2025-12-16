@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sleuth-io/skills/internal/artifact"
-	"github.com/sleuth-io/skills/internal/handlers/dirartifact"
+	"github.com/sleuth-io/skills/internal/asset"
+	"github.com/sleuth-io/skills/internal/handlers/dirasset"
 	"github.com/sleuth-io/skills/internal/metadata"
 	"github.com/sleuth-io/skills/internal/utils"
 )
 
-var mcpOps = dirartifact.NewOperations("mcp-servers", &artifact.TypeMCP)
+var mcpOps = dirasset.NewOperations("mcp-servers", &asset.TypeMCP)
 
 // MCPHandler handles MCP server artifact installation
 type MCPHandler struct {
@@ -50,7 +50,7 @@ func (h *MCPHandler) CreateDefaultMetadata(name, version string) *metadata.Metad
 		Artifact: metadata.Artifact{
 			Name:    name,
 			Version: version,
-			Type:    artifact.TypeMCP,
+			Type:    asset.TypeMCP,
 		},
 		MCP: &metadata.MCPConfig{},
 	}
@@ -156,7 +156,7 @@ func (h *MCPHandler) Validate(zipData []byte) error {
 	}
 
 	// Verify artifact type matches
-	if meta.Artifact.Type != artifact.TypeMCP {
+	if meta.Artifact.Type != asset.TypeMCP {
 		return fmt.Errorf("artifact type mismatch: expected mcp, got %s", meta.Artifact.Type)
 	}
 

@@ -23,7 +23,7 @@ func Get() *slog.Logger {
 	return defaultLogger
 }
 
-// initLogger creates the global logger that writes to skills.log in cache directory
+// initLogger creates the global logger that writes to sx.log in cache directory
 // Uses lumberjack for automatic log rotation to keep file under 100KB
 // If the log file cannot be created, returns a no-op logger that discards all output
 func initLogger() *slog.Logger {
@@ -32,7 +32,7 @@ func initLogger() *slog.Logger {
 		return slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
-	logPath := filepath.Join(cacheDir, "skills.log")
+	logPath := filepath.Join(cacheDir, "sx.log")
 
 	// Use lumberjack for log rotation
 	logWriter := &lumberjack.Logger{

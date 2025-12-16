@@ -1,6 +1,6 @@
-# Skills - Coding Agent Guide
+# sx - Coding Agent Guide
 
-A CLI tool for managing Sleuth skills - reusable units of AI agent behavior.
+A CLI tool for managing AI assets - reusable units of AI agent behavior.
 
 ## Quick Commands
 
@@ -19,8 +19,8 @@ make lint           # Run linter
 
 ## Key Specifications
 
-- [Repository Spec](docs/repository-spec.md) - Skills repository structure and management
-- [Metadata Spec](docs/metadata-spec.md) - Skill metadata format and fields
+- [Vault Spec](docs/vault-spec.md) - Vault structure and management
+- [Metadata Spec](docs/metadata-spec.md) - Asset metadata format and fields
 - [Requirements Spec](docs/requirements-spec.md) - Dependency requirements syntax
 - [Lock Spec](docs/lock-spec.md) - Lock file format for resolved dependencies
 

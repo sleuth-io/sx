@@ -1,0 +1,53 @@
+#!/bin/bash
+set -e
+
+# Auto-generated install script for sx asset vault
+# This script ensures the sx CLI is installed and configured.
+# Safe to run multiple times (idempotent).
+# Template version: {{.TEMPLATE_VERSION}}
+
+SX_CONFIG="$HOME/.config/sleuth/skills/config.json"
+
+# Check if sx CLI is already installed
+if command -v sx &> /dev/null; then
+    echo "✓ sx CLI is already installed ($(sx --version))"
+else
+    echo "Installing sx CLI..."
+    echo
+
+    # Install sx CLI from GitHub
+    curl -fsSL https://raw.githubusercontent.com/sleuth-io/skills/main/install.sh | bash
+
+    # Verify installation
+    if ! command -v sx &> /dev/null; then
+        echo "Error: sx CLI installation failed"
+        echo "Please ensure ~/.local/bin is in your PATH and try again"
+        exit 1
+    fi
+
+    echo "✓ sx CLI installed successfully"
+fi
+
+# Check if already configured
+if [ -f "$SX_CONFIG" ]; then
+    echo "✓ sx CLI is already configured"
+    exit 0
+fi
+
+echo
+echo "Configuring sx CLI for this vault..."
+echo
+
+# Use the asset vault URL
+VAULT_URL="{{.REPO_URL}}"
+
+echo "Using vault: $VAULT_URL"
+echo
+
+# Configure sx CLI
+sx init --type git --repo-url "$VAULT_URL"
+
+echo
+echo "✓ Configuration complete!"
+echo
+echo "You can now use 'sx install' to install assets from this vault."

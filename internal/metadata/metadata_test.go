@@ -3,7 +3,7 @@ package metadata
 import (
 	"testing"
 
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 )
 
 func TestParseValidMetadata(t *testing.T) {
@@ -29,7 +29,7 @@ authors = ["Test Author <test@example.com>"]
 		t.Errorf("Expected version 1.0.0, got %s", meta.Artifact.Version)
 	}
 
-	if meta.Artifact.Type != artifact.TypeSkill {
+	if meta.Artifact.Type != asset.TypeSkill {
 		t.Errorf("Expected type skill, got %s", meta.Artifact.Type)
 	}
 
@@ -50,7 +50,7 @@ func TestValidateMetadata(t *testing.T) {
 				Artifact: Artifact{
 					Name:        "test-skill",
 					Version:     "1.0.0",
-					Type:        artifact.TypeSkill,
+					Type:        asset.TypeSkill,
 					Description: "A test skill",
 					Authors:     []string{"Test Author"},
 				},
@@ -65,7 +65,7 @@ func TestValidateMetadata(t *testing.T) {
 			metadata: &Metadata{
 				Artifact: Artifact{
 					Version:     "1.0.0",
-					Type:        artifact.TypeSkill,
+					Type:        asset.TypeSkill,
 					Description: "A test skill",
 				},
 			},
@@ -77,7 +77,7 @@ func TestValidateMetadata(t *testing.T) {
 				Artifact: Artifact{
 					Name:        "test-skill",
 					Version:     "invalid",
-					Type:        artifact.TypeSkill,
+					Type:        asset.TypeSkill,
 					Description: "A test skill",
 				},
 			},
@@ -89,7 +89,7 @@ func TestValidateMetadata(t *testing.T) {
 				Artifact: Artifact{
 					Name:    "test-skill",
 					Version: "1.0.0",
-					Type:    artifact.TypeSkill,
+					Type:    asset.TypeSkill,
 				},
 			},
 			wantErr: true,

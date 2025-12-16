@@ -6,8 +6,8 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
 
 # Build variables
-BINARY_NAME=skills
-MAIN_PATH=./cmd/skills
+BINARY_NAME=sx
+MAIN_PATH=./cmd/sx
 BUILD_DIR=./dist
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none")

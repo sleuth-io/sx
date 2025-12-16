@@ -13,8 +13,8 @@ import (
 	"github.com/sleuth-io/skills/internal/config"
 	"github.com/sleuth-io/skills/internal/gitutil"
 	"github.com/sleuth-io/skills/internal/logger"
-	"github.com/sleuth-io/skills/internal/repository"
 	"github.com/sleuth-io/skills/internal/stats"
+	vaultpkg "github.com/sleuth-io/skills/internal/vault"
 )
 
 // UsageReporter handles reporting skill usage
@@ -152,7 +152,7 @@ func (s *Server) detectScope(ctx context.Context) (*clients.InstallScope, error)
 	}, nil
 }
 
-// ReportSkillUsage reports usage of a skill to the repository.
+// ReportSkillUsage reports usage of a skill to the vault.
 // This function runs in a goroutine and is best-effort - it will not block the MCP call.
 func (s *Server) ReportSkillUsage(skillName, skillVersion string) {
 	log := logger.Get()
@@ -177,18 +177,18 @@ func (s *Server) ReportSkillUsage(skillName, skillVersion string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Load config to get repository
+	// Load config to get vault
 	cfg, err := config.Load()
 	if err != nil {
 		return
 	}
 
-	// Create repository instance
-	repo, err := repository.NewFromConfig(cfg)
+	// Create vault instance
+	vault, err := vaultpkg.NewFromConfig(cfg)
 	if err != nil {
 		return
 	}
 
 	// Try to flush queue
-	_ = stats.FlushQueue(ctx, repo)
+	_ = stats.FlushQueue(ctx, vault)
 }

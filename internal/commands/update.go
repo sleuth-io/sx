@@ -22,8 +22,8 @@ func NewUpdateCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "Update skills to the latest version",
-		Long: `Check for and install updates to the skills CLI tool.
+		Short: "Update sx to the latest version",
+		Long: `Check for and install updates to the sx CLI tool.
 
 By default, will check for updates and prompt before installing.
 Use --check to only check for updates without installing.`,
@@ -75,7 +75,7 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 		}
 
 		out.printf("New version available: %s\n", latest.Version())
-		out.printf("\nRun 'skills update' to install the new version\n")
+		out.printf("\nRun 'sx update' to install the new version\n")
 		return nil
 	}
 

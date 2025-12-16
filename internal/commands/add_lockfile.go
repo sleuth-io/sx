@@ -4,16 +4,16 @@ import (
 	"context"
 
 	"github.com/sleuth-io/skills/internal/lockfile"
-	"github.com/sleuth-io/skills/internal/repository"
+	"github.com/sleuth-io/skills/internal/vault"
 	"github.com/sleuth-io/skills/internal/ui/components"
 )
 
 // updateLockFile updates the repository's lock file with the artifact using modern UI
-func updateLockFile(ctx context.Context, out *outputHelper, repo repository.Repository, artifact *lockfile.Artifact) error {
+func updateLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, artifact *lockfile.Artifact) error {
 	status := components.NewStatus(out.cmd.OutOrStdout())
 
 	// For git repos, update the lock file and commit
-	if gitRepo, ok := repo.(*repository.GitRepository); ok {
+	if gitRepo, ok := repo.(*vault.GitVault); ok {
 		status.Start("Updating repository lock file")
 		lockFilePath := gitRepo.GetLockFilePath()
 		if err := lockfile.AddOrUpdateArtifact(lockFilePath, artifact); err != nil {
@@ -37,7 +37,7 @@ func updateLockFile(ctx context.Context, out *outputHelper, repo repository.Repo
 	}
 
 	// For path repos, update the lock file directly
-	if pathRepo, ok := repo.(*repository.PathRepository); ok {
+	if pathRepo, ok := repo.(*vault.PathVault); ok {
 		status.Start("Updating repository lock file")
 		lockFilePath := pathRepo.GetLockFilePath()
 		if err := lockfile.AddOrUpdateArtifact(lockFilePath, artifact); err != nil {

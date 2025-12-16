@@ -128,7 +128,7 @@ func TestLoadNoConfig(t *testing.T) {
 		t.Error("Expected error when no config exists, got nil")
 	}
 
-	if err != nil && err.Error() != "configuration not found. Run 'skills init' first" {
+	if err != nil && err.Error() != "configuration not found. Run 'sx init' first" {
 		t.Errorf("Expected 'configuration not found' error, got: %v", err)
 	}
 }

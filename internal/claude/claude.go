@@ -78,7 +78,7 @@ func installSessionStartHook(claudeDir string, out Output) error {
 			if hooksArray, ok := hookMap["hooks"].([]interface{}); ok {
 				for _, h := range hooksArray {
 					if hMap, ok := h.(map[string]interface{}); ok {
-						if cmd, ok := hMap["command"].(string); ok && (cmd == "skills install --hook-mode" || cmd == "skills install" || cmd == "skills install --error-on-change") {
+						if cmd, ok := hMap["command"].(string); ok && (cmd == "sx install --hook-mode" || cmd == "sx install" || cmd == "sx install --error-on-change" || cmd == "skills install --hook-mode" || cmd == "skills install" || cmd == "skills install --error-on-change") {
 							hookExists = true
 							break
 						}
@@ -97,7 +97,7 @@ func installSessionStartHook(claudeDir string, out Output) error {
 			"hooks": []interface{}{
 				map[string]interface{}{
 					"type":    "command",
-					"command": "skills install --hook-mode",
+					"command": "sx install --hook-mode",
 				},
 			},
 		}
@@ -115,7 +115,7 @@ func installSessionStartHook(claudeDir string, out Output) error {
 		}
 
 		log := logger.Get()
-		log.Info("hook installed", "hook", "SessionStart", "command", "skills install --hook-mode")
+		log.Info("hook installed", "hook", "SessionStart", "command", "sx install --hook-mode")
 		out.Println("\n✓ Installed auto-update hook to ~/.claude/settings.json")
 	}
 
@@ -149,7 +149,7 @@ func installUsageReportingHook(claudeDir string, out Output) error {
 		postToolUse = []interface{}{}
 	}
 
-	hookCommand := "skills report-usage --client=claude-code"
+	hookCommand := "sx report-usage --client=claude-code"
 
 	// Check if our hook already exists (check for both old and new command formats)
 	hookExists := false
@@ -160,11 +160,11 @@ func installUsageReportingHook(claudeDir string, out Output) error {
 				for _, h := range hooksArray {
 					if hMap, ok := h.(map[string]interface{}); ok {
 						if cmd, ok := hMap["command"].(string); ok {
-							if cmd == hookCommand {
+							if cmd == hookCommand || cmd == "skills report-usage --client=claude-code" {
 								hookExists = true
 								break
 							}
-							if cmd == "skills report-usage" {
+							if cmd == "skills report-usage" || cmd == "sx report-usage" {
 								oldHookRef = hMap // Remember for updating
 							}
 						}

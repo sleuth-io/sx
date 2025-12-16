@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/sleuth-io/skills/internal/artifact"
-	"github.com/sleuth-io/skills/internal/handlers/dirartifact"
+	"github.com/sleuth-io/skills/internal/asset"
+	"github.com/sleuth-io/skills/internal/handlers/dirasset"
 	"github.com/sleuth-io/skills/internal/metadata"
 	"github.com/sleuth-io/skills/internal/utils"
 )
 
-var skillOps = dirartifact.NewOperations("skills", &artifact.TypeSkill)
+var skillOps = dirasset.NewOperations("skills", &asset.TypeSkill)
 
 // SkillHandler handles skill artifact installation
 type SkillHandler struct {
@@ -47,7 +47,7 @@ func (h *SkillHandler) CreateDefaultMetadata(name, version string) *metadata.Met
 		Artifact: metadata.Artifact{
 			Name:    name,
 			Version: version,
-			Type:    artifact.TypeSkill,
+			Type:    asset.TypeSkill,
 		},
 		Skill: &metadata.SkillConfig{
 			PromptFile: "SKILL.md",
@@ -138,7 +138,7 @@ func (h *SkillHandler) Validate(zipData []byte) error {
 	}
 
 	// Verify artifact type matches
-	if meta.Artifact.Type != artifact.TypeSkill {
+	if meta.Artifact.Type != asset.TypeSkill {
 		return fmt.Errorf("artifact type mismatch: expected skill, got %s", meta.Artifact.Type)
 	}
 

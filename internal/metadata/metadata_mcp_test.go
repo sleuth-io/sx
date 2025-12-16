@@ -3,7 +3,7 @@ package metadata
 import (
 	"testing"
 
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 )
 
 // TestMCPMetadataRoundTrip tests that MCP metadata can be parsed and serialized without losing data
@@ -37,8 +37,8 @@ args = [
 		t.Errorf("Name not preserved: got %q, want %q", meta.Artifact.Name, "test-mcp")
 	}
 
-	if meta.Artifact.Type != artifact.TypeMCP {
-		t.Errorf("Type not preserved: got %q, want %q", meta.Artifact.Type, artifact.TypeMCP)
+	if meta.Artifact.Type != asset.TypeMCP {
+		t.Errorf("Type not preserved: got %q, want %q", meta.Artifact.Type, asset.TypeMCP)
 	}
 
 	if meta.MCP == nil {

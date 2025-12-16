@@ -7,13 +7,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sleuth-io/skills/internal/artifact"
-	"github.com/sleuth-io/skills/internal/handlers/dirartifact"
+	"github.com/sleuth-io/skills/internal/asset"
+	"github.com/sleuth-io/skills/internal/handlers/dirasset"
 	"github.com/sleuth-io/skills/internal/metadata"
 	"github.com/sleuth-io/skills/internal/utils"
 )
 
-var mcpOps = dirartifact.NewOperations("mcp-servers", &artifact.TypeMCP)
+var mcpOps = dirasset.NewOperations("mcp-servers", &asset.TypeMCP)
 
 // MCPHandler handles MCP artifact installation for Cursor
 type MCPHandler struct {

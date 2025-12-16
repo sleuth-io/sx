@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	defaultSleuthServerURL = "https://skills.new"
+	defaultSleuthServerURL = "https://app.skills.new"
 )
 
 // NewInitCommand creates the init command
@@ -31,8 +31,8 @@ func NewInitCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize configuration (local path, Git repo, or Sleuth server)",
-		Long: `Initialize skills configuration using a local directory, Git repository,
-or Sleuth server as the artifact source.
+		Long: `Initialize sx configuration using a local directory, Git repository,
+or Sleuth server as the asset source.
 
 By default, runs in interactive mode with local path as the default option.
 Use flags for non-interactive mode.`,
@@ -99,15 +99,15 @@ func runPostInit(cmd *cobra.Command, ctx context.Context) {
 func runInitInteractive(cmd *cobra.Command, ctx context.Context) error {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
-	styledOut.Header("Initialize Skills CLI")
+	styledOut.Header("Initialize sx")
 	styledOut.Newline()
 
 	options := []components.Option{
-		{Label: "Just for myself", Value: "personal", Description: "Local repository"},
+		{Label: "Just for myself", Value: "personal", Description: "Local vault"},
 		{Label: "Share with my team", Value: "team", Description: "Git or Sleuth server"},
 	}
 
-	selected, err := components.SelectWithDefault("How will you use skills?", options, 0)
+	selected, err := components.SelectWithDefault("How will you use sx?", options, 0)
 	if err != nil {
 		return err
 	}
@@ -122,21 +122,21 @@ func runInitInteractive(cmd *cobra.Command, ctx context.Context) error {
 	}
 }
 
-// initPersonalRepository sets up a local repository in ~/.config/skills/repository
+// initPersonalRepository sets up a local vault in ~/.config/sx/vault
 func initPersonalRepository(cmd *cobra.Command, ctx context.Context) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	repoPath := filepath.Join(home, ".config", "skills", "repository")
-	return configurePathRepo(cmd, ctx, repoPath)
+	vaultPath := filepath.Join(home, ".config", "sx", "vault")
+	return configurePathRepo(cmd, ctx, vaultPath)
 }
 
 // initTeamRepository prompts for team repository options (git or sleuth)
 func initTeamRepository(cmd *cobra.Command, ctx context.Context) error {
 	options := []components.Option{
-		{Label: "Sleuth", Value: "sleuth", Description: "Managed skills platform"},
+		{Label: "Sleuth", Value: "sleuth", Description: "Managed assets platform"},
 		{Label: "Git repository", Value: "git", Description: "Self-hosted Git repo"},
 	}
 
@@ -387,7 +387,7 @@ func promptFeaturedSkills(cmd *cobra.Command, ctx context.Context) {
 			}
 		}
 
-		selected, err := components.SelectWithDefault("Would you like to install a featured skill?", options, 0)
+		selected, err := components.SelectWithDefault("Would you like to install a featured asset?", options, 0)
 		if err != nil || selected.Value == "continue" {
 			break
 		}
@@ -397,7 +397,7 @@ func promptFeaturedSkills(cmd *cobra.Command, ctx context.Context) {
 
 		// Run the add command with the skill URL (skip install prompt, we'll do it at the end)
 		if err := runAddSkipInstall(cmd, selected.Value); err != nil {
-			styledOut.Error(fmt.Sprintf("Failed to add skill: %v", err))
+			styledOut.Error(fmt.Sprintf("Failed to add asset: %v", err))
 		} else {
 			addedAny = true
 		}

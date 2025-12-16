@@ -12,8 +12,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sleuth-io/skills/internal/artifact"
-	"github.com/sleuth-io/skills/internal/artifacts"
+	"github.com/sleuth-io/skills/internal/asset"
+	"github.com/sleuth-io/skills/internal/assets"
 	"github.com/sleuth-io/skills/internal/buildinfo"
 	"github.com/sleuth-io/skills/internal/cache"
 	"github.com/sleuth-io/skills/internal/clients"
@@ -108,11 +108,11 @@ func NewConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Display configuration and installation status",
-		Long:  "Shows current configuration, detected clients, installed artifacts, and paths for debugging and remote support.",
+		Long:  "Shows current configuration, detected clients, installed assets, and paths for debugging and remote support.",
 		RunE:  runConfig,
 	}
 	cmd.Flags().Bool("json", false, "Output in JSON format")
-	cmd.Flags().Bool("all", false, "Show all artifacts from lock file, not just those for current repo context")
+	cmd.Flags().Bool("all", false, "Show all assets from lock file, not just those for current repo context")
 	return cmd
 }
 
@@ -211,7 +211,7 @@ func gatherDirectoryInfo() DirectoryInfo {
 
 	logFile := ""
 	if cacheDir != "" {
-		logFile = filepath.Join(cacheDir, "skills.log")
+		logFile = filepath.Join(cacheDir, "sx.log")
 	}
 
 	return DirectoryInfo{
@@ -263,7 +263,7 @@ func getClientDirectory(clientID string) string {
 
 func getClientSupportedTypes(client clients.Client) []string {
 	var supported []string
-	for _, t := range artifact.AllTypes() {
+	for _, t := range asset.AllTypes() {
 		if client.SupportsArtifactType(t) {
 			supported = append(supported, t.Key)
 		}
@@ -278,22 +278,24 @@ func checkHooksInstalled(clientID, clientDir string) bool {
 
 	switch clientID {
 	case "claude-code":
-		// Check settings.json for skills hooks
+		// Check settings.json for sx hooks (or legacy skills hooks)
 		settingsPath := filepath.Join(clientDir, "settings.json")
 		data, err := os.ReadFile(settingsPath)
 		if err != nil {
 			return false
 		}
-		return strings.Contains(string(data), "skills install")
+		content := string(data)
+		return strings.Contains(content, "sx install") || strings.Contains(content, "skills install")
 
 	case "cursor":
-		// Check hooks.json for skills hooks
+		// Check hooks.json for sx hooks (or legacy skills hooks)
 		hooksPath := filepath.Join(clientDir, "hooks.json")
 		data, err := os.ReadFile(hooksPath)
 		if err != nil {
 			return false
 		}
-		return strings.Contains(string(data), "skills install")
+		content := string(data)
+		return strings.Contains(content, "sx install") || strings.Contains(content, "skills install")
 	}
 
 	return false
@@ -340,12 +342,12 @@ func getLatestVersion(artifacts []*lockfile.Artifact) *lockfile.Artifact {
 }
 
 // determineArtifactStatus determines the installation status of an artifact
-func determineArtifactStatus(art *lockfile.Artifact, scopeName string, tracker *artifacts.Tracker) (ArtifactStatus, string, []string) {
+func determineArtifactStatus(art *lockfile.Artifact, scopeName string, tracker *assets.Tracker) (ArtifactStatus, string, []string) {
 	if tracker == nil {
 		return StatusNotInstalled, "", art.Clients
 	}
 
-	var installed *artifacts.InstalledArtifact
+	var installed *assets.InstalledArtifact
 	if art.IsGlobal() {
 		// Global artifacts: check with empty repo/path
 		installed = tracker.FindArtifactWithMatcher(art.Name, "", "", scope.MatchRepoURLs)
@@ -401,7 +403,7 @@ func gatherUnifiedArtifacts(currentScope *scope.Scope, showAll bool) []ScopeArti
 	}
 
 	// Load tracker for installation status
-	tracker, _ := artifacts.LoadTracker()
+	tracker, _ := assets.LoadTracker()
 
 	// Group artifacts by scope
 	grouped := groupArtifactsByScope(lf, currentScope, showAll)
@@ -447,7 +449,7 @@ func gatherUnifiedArtifacts(currentScope *scope.Scope, showAll bool) []ScopeArti
 	// Also check for orphaned artifacts (installed but not in lock file)
 	if tracker != nil {
 		// Get installed artifacts for current scope
-		var installedArts []artifacts.InstalledArtifact
+		var installedArts []assets.InstalledArtifact
 		if showAll || currentScope == nil {
 			installedArts = tracker.Artifacts
 		} else {
@@ -504,7 +506,7 @@ func gatherRecentLogs(lines int) []string {
 		return nil
 	}
 
-	logPath := filepath.Join(cacheDir, "skills.log")
+	logPath := filepath.Join(cacheDir, "sx.log")
 	return readLastLines(logPath, lines)
 }
 
@@ -537,8 +539,8 @@ func printJSON(output ConfigOutput) error {
 }
 
 func printText(output ConfigOutput, showAll bool) error {
-	fmt.Println("Skills CLI Configuration")
-	fmt.Println("========================")
+	fmt.Println("sx Configuration")
+	fmt.Println("================")
 	fmt.Println()
 
 	// Version

@@ -11,9 +11,9 @@ import (
 	"github.com/sleuth-io/skills/internal/config"
 	"github.com/sleuth-io/skills/internal/constants"
 	"github.com/sleuth-io/skills/internal/lockfile"
-	"github.com/sleuth-io/skills/internal/repository"
 	"github.com/sleuth-io/skills/internal/requirements"
 	"github.com/sleuth-io/skills/internal/resolver"
+	vaultpkg "github.com/sleuth-io/skills/internal/vault"
 )
 
 // NewLockCommand creates the lock command
@@ -24,9 +24,9 @@ func NewLockCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "lock",
 		Short: "Generate lock file from requirements file",
-		Long: `Generate a skill.lock file from a skill.txt requirements file.
+		Long: `Generate a sx.lock file from a sx.txt requirements file.
 
-This command reads the requirements file, resolves artifact versions and dependencies,
+This command reads the requirements file, resolves asset versions and dependencies,
 and generates a lock file with exact versions, hashes, and full dependency graph.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runLock(cmd, args, requirementsFile, outputFile)
@@ -70,7 +70,7 @@ func runLock(cmd *cobra.Command, args []string, requirementsFile, outputFile str
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w\nRun 'skills init' to configure", err)
+		return fmt.Errorf("failed to load configuration: %w\nRun 'sx init' to configure", err)
 	}
 
 	// Validate configuration
@@ -78,25 +78,25 @@ func runLock(cmd *cobra.Command, args []string, requirementsFile, outputFile str
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// Create repository instance
-	repo, err := repository.NewFromConfig(cfg)
+	// Create vault instance
+	vault, err := vaultpkg.NewFromConfig(cfg)
 	if err != nil {
-		return fmt.Errorf("failed to create repository: %w", err)
+		return fmt.Errorf("failed to create vault: %w", err)
 	}
 
 	// Resolve requirements
-	out.println("Resolving artifacts and dependencies...")
-	resolverInstance := resolver.New(ctx, repo)
+	out.println("Resolving assets and dependencies...")
+	resolverInstance := resolver.New(ctx, vault)
 	lockFile, err := resolverInstance.Resolve(reqs)
 	if err != nil {
 		return fmt.Errorf("failed to resolve requirements: %w", err)
 	}
 
-	out.printf("Resolved %d artifacts (including dependencies)\n", len(lockFile.Artifacts))
+	out.printf("Resolved %d assets (including dependencies)\n", len(lockFile.Artifacts))
 	out.println()
 
 	// Display resolved artifacts
-	out.println("Resolved artifacts:")
+	out.println("Resolved assets:")
 	for _, artifact := range lockFile.Artifacts {
 		out.printf("  - %s@%s (%s) [%s]\n", artifact.Name, artifact.Version, artifact.Type, artifact.GetSourceType())
 	}

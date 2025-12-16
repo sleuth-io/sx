@@ -12,7 +12,7 @@ import (
 func RunDefaultCommand(cmd *cobra.Command, args []string) error {
 	out := newOutputHelper(cmd)
 
-	// Check if skill.lock exists in current directory
+	// Check if sx.lock exists in current directory
 	if _, err := os.Stat(constants.SkillLockFile); err == nil {
 		// Lock file exists, run install (not in hook mode, no specific client)
 		return runInstall(cmd, args, false, "", false)
@@ -22,8 +22,8 @@ func RunDefaultCommand(cmd *cobra.Command, args []string) error {
 	out.printfErr("No %s file found in current directory.", constants.SkillLockFile)
 	out.printErr("")
 	out.printErr("To get started:")
-	out.printErr("  1. Run 'skills init' to configure a repository")
-	out.printErr("  2. Run 'skills install' to install artifacts from the lock file")
+	out.printErr("  1. Run 'sx init' to configure a vault")
+	out.printErr("  2. Run 'sx install' to install assets from the lock file")
 	out.printErr("")
 	return cmd.Help()
 }

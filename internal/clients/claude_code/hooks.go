@@ -65,7 +65,7 @@ func installSessionStartHook(claudeDir string) error {
 		sessionStart = []interface{}{}
 	}
 
-	hookCommand := "skills install --hook-mode --client=claude-code"
+	hookCommand := "sx install --hook-mode --client=claude-code"
 
 	// First, check if exact hook command already exists
 	exactMatch := false
@@ -80,7 +80,7 @@ func installSessionStartHook(claudeDir string) error {
 								exactMatch = true
 								break
 							}
-							if strings.HasPrefix(cmd, "skills install") {
+							if strings.HasPrefix(cmd, "sx install") || strings.HasPrefix(cmd, "skills install") {
 								oldHookRef = hMap // Remember for updating
 							}
 						}
@@ -169,9 +169,9 @@ func uninstallHooks() error {
 
 	modified := false
 
-	// Remove our SessionStart hook
+	// Remove our SessionStart hook (check both sx and legacy skills commands)
 	if sessionStart, ok := hooks["SessionStart"].([]interface{}); ok {
-		filtered := removeSkillsHooks(sessionStart, "skills install")
+		filtered := removeSxHooks(sessionStart, "sx install", "skills install")
 		if len(filtered) != len(sessionStart) {
 			modified = true
 			if len(filtered) == 0 {
@@ -183,9 +183,9 @@ func uninstallHooks() error {
 		}
 	}
 
-	// Remove our PostToolUse hook
+	// Remove our PostToolUse hook (check both sx and legacy skills commands)
 	if postToolUse, ok := hooks["PostToolUse"].([]interface{}); ok {
-		filtered := removeSkillsHooks(postToolUse, "skills report-usage")
+		filtered := removeSxHooks(postToolUse, "sx report-usage", "skills report-usage")
 		if len(filtered) != len(postToolUse) {
 			modified = true
 			if len(filtered) == 0 {
@@ -219,8 +219,8 @@ func uninstallHooks() error {
 	return nil
 }
 
-// removeSkillsHooks filters out hooks whose command starts with the given prefix
-func removeSkillsHooks(hooks []interface{}, commandPrefix string) []interface{} {
+// removeSxHooks filters out hooks whose command starts with any of the given prefixes
+func removeSxHooks(hooks []interface{}, commandPrefixes ...string) []interface{} {
 	var filtered []interface{}
 	for _, item := range hooks {
 		hookMap, ok := item.(map[string]interface{})
@@ -236,7 +236,7 @@ func removeSkillsHooks(hooks []interface{}, commandPrefix string) []interface{} 
 		}
 
 		// Check if this hook entry contains our command
-		hasSkillsCommand := false
+		hasSxCommand := false
 		for _, h := range hooksArray {
 			hMap, ok := h.(map[string]interface{})
 			if !ok {
@@ -246,13 +246,18 @@ func removeSkillsHooks(hooks []interface{}, commandPrefix string) []interface{} 
 			if !ok {
 				continue
 			}
-			if strings.HasPrefix(cmd, commandPrefix) {
-				hasSkillsCommand = true
+			for _, prefix := range commandPrefixes {
+				if strings.HasPrefix(cmd, prefix) {
+					hasSxCommand = true
+					break
+				}
+			}
+			if hasSxCommand {
 				break
 			}
 		}
 
-		if !hasSkillsCommand {
+		if !hasSxCommand {
 			filtered = append(filtered, item)
 		}
 	}
@@ -288,7 +293,7 @@ func installUsageReportingHook(claudeDir string) error {
 		postToolUse = []interface{}{}
 	}
 
-	hookCommand := "skills report-usage --client=claude-code"
+	hookCommand := "sx report-usage --client=claude-code"
 
 	// Check if our hook already exists (check for both old and new command formats)
 	hookExists := false
@@ -303,7 +308,7 @@ func installUsageReportingHook(claudeDir string) error {
 								hookExists = true
 								break
 							}
-							if cmd == "skills report-usage" {
+							if cmd == "skills report-usage" || cmd == "sx report-usage" || cmd == "skills report-usage --client=claude-code" {
 								oldHookRef = hMap // Remember for updating
 							}
 						}

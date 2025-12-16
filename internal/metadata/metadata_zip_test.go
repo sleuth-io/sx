@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 	"github.com/sleuth-io/skills/internal/utils"
 )
 
@@ -149,7 +149,7 @@ args = [
 		t.Fatalf("Validation failed after re-zip: %v", err)
 	}
 
-	if meta2.Artifact.Type != artifact.TypeMCP {
-		t.Errorf("Type changed after re-zip: got %q, want %q", meta2.Artifact.Type, artifact.TypeMCP)
+	if meta2.Artifact.Type != asset.TypeMCP {
+		t.Errorf("Type changed after re-zip: got %q, want %q", meta2.Artifact.Type, asset.TypeMCP)
 	}
 }

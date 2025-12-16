@@ -117,10 +117,10 @@ prompt-file = "SKILL.md"
 		t.Logf("  - %s", file.Name())
 	}
 
-	// Verify skill.lock was created in repo
-	lockPath := filepath.Join(repoDir, "skill.lock")
+	// Verify sx.lock was created in repo
+	lockPath := filepath.Join(repoDir, "sx.lock")
 	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
-		t.Fatalf("skill.lock was not created: %s", lockPath)
+		t.Fatalf("sx.lock was not created: %s", lockPath)
 	}
 
 	// Step 3: Install from the repository

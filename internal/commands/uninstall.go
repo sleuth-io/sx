@@ -11,15 +11,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sleuth-io/skills/internal/artifact"
-	"github.com/sleuth-io/skills/internal/artifacts"
+	"github.com/sleuth-io/skills/internal/asset"
+	"github.com/sleuth-io/skills/internal/assets"
 	"github.com/sleuth-io/skills/internal/cache"
 	"github.com/sleuth-io/skills/internal/clients"
 	"github.com/sleuth-io/skills/internal/config"
 	"github.com/sleuth-io/skills/internal/gitutil"
 	"github.com/sleuth-io/skills/internal/lockfile"
 	"github.com/sleuth-io/skills/internal/logger"
-	"github.com/sleuth-io/skills/internal/repository"
+	vaultpkg "github.com/sleuth-io/skills/internal/vault"
 )
 
 // NewUninstallCommand creates the uninstall command
@@ -31,24 +31,24 @@ func NewUninstallCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "uninstall",
-		Short: "Uninstall all artifacts from the current scope or all scopes",
-		Long: `Uninstall removes all installed artifacts from the current scope (global, repository, or path).
+		Short: "Uninstall all assets from the current scope or all scopes",
+		Long: `Uninstall removes all installed assets from the current scope (global, repository, or path).
 
 Examples:
   # Uninstall from current scope (prompts for confirmation)
-  skills uninstall
+  sx uninstall
 
   # Uninstall from all scopes (global + all repositories)
-  skills uninstall --all
+  sx uninstall --all
 
   # Preview what would be uninstalled without making changes
-  skills uninstall --dry-run
+  sx uninstall --dry-run
 
   # Skip confirmation prompt
-  skills uninstall --yes
+  sx uninstall --yes
 
   # Uninstall from all scopes without confirmation
-  skills uninstall --all --yes`,
+  sx uninstall --all --yes`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := UninstallOptions{
 				All:     all,
@@ -80,7 +80,7 @@ type UninstallOptions struct {
 type ArtifactUninstallPlan struct {
 	Name      string
 	Version   string
-	Type      artifact.Type
+	Type      asset.Type
 	IsGlobal  bool
 	Clients   []string // client IDs that have this installed
 	LockEntry *lockfile.Artifact
@@ -135,7 +135,7 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 		if opts.All {
 			return handleAllFlagWithoutArtifacts(ctx, opts, out)
 		}
-		out.println("No artifacts installed")
+		out.println("No assets installed")
 		return nil
 	}
 
@@ -147,7 +147,7 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 		if opts.All {
 			return handleAllFlagWithoutArtifacts(ctx, opts, out)
 		}
-		out.println("No artifacts to uninstall")
+		out.println("No assets to uninstall")
 		return nil
 	}
 
@@ -171,7 +171,7 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 	}
 
 	// Step 5: Execute uninstall
-	out.println("\nUninstalling artifacts...")
+	out.println("\nUninstalling assets...")
 	results := executeUninstall(ctx, plan, opts, out)
 
 	// Step 6: Update tracker
@@ -196,7 +196,7 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 
 // handleAllFlagWithoutArtifacts handles the --all flag when there are no artifacts to uninstall
 func handleAllFlagWithoutArtifacts(ctx context.Context, opts UninstallOptions, out *outputHelper) error {
-	out.println("No artifacts to uninstall")
+	out.println("No assets to uninstall")
 
 	if !opts.Yes && !opts.DryRun {
 		out.println("\nSystem hooks will be removed (--all flag)")
@@ -220,34 +220,34 @@ func handleAllFlagWithoutArtifacts(ctx context.Context, opts UninstallOptions, o
 func loadLockFileForUninstall(ctx context.Context, out *outputHelper) (*lockfile.LockFile, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load configuration: %w\nRun 'skills init' to configure", err)
+		return nil, fmt.Errorf("failed to load configuration: %w\nRun 'sx init' to configure", err)
 	}
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	repo, err := repository.NewFromConfig(cfg)
+	vault, err := vaultpkg.NewFromConfig(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create repository: %w", err)
+		return nil, fmt.Errorf("failed to create vault: %w", err)
 	}
 
 	out.println("Fetching lock file...")
 
 	var cachedETag string
-	var repoURL string
+	var vaultURL string
 	if cfg.Type == config.RepositoryTypeSleuth {
-		repoURL = cfg.GetServerURL()
-		cachedETag, _ = cache.LoadETag(repoURL)
+		vaultURL = cfg.GetServerURL()
+		cachedETag, _ = cache.LoadETag(vaultURL)
 	}
 
-	lockFileData, _, notModified, err := repo.GetLockFile(ctx, cachedETag)
+	lockFileData, _, notModified, err := vault.GetLockFile(ctx, cachedETag)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch lock file: %w", err)
 	}
 
-	if notModified && repoURL != "" {
-		lockFileData, err = cache.LoadLockFile(repoURL)
+	if notModified && vaultURL != "" {
+		lockFileData, err = cache.LoadLockFile(vaultURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load cached lock file: %w", err)
 		}
@@ -262,7 +262,7 @@ func loadLockFileForUninstall(ctx context.Context, out *outputHelper) (*lockfile
 }
 
 // loadTrackerForUninstall detects git context and loads the installation tracker
-func loadTrackerForUninstall(ctx context.Context, out *outputHelper) (*gitutil.GitContext, *artifacts.Tracker, string, error) {
+func loadTrackerForUninstall(ctx context.Context, out *outputHelper) (*gitutil.GitContext, *assets.Tracker, string, error) {
 	gitContext, err := gitutil.DetectContext(ctx)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("failed to detect git context: %w", err)
@@ -280,7 +280,7 @@ func loadTrackerForUninstall(ctx context.Context, out *outputHelper) (*gitutil.G
 	}
 
 	out.println("Loading installation state...")
-	tracker, err := artifacts.LoadTracker()
+	tracker, err := assets.LoadTracker()
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("failed to load tracker: %w", err)
 	}
@@ -289,7 +289,7 @@ func loadTrackerForUninstall(ctx context.Context, out *outputHelper) (*gitutil.G
 }
 
 // buildUninstallPlanFromTracker creates the uninstall plan by matching tracker with lock file
-func buildUninstallPlanFromTracker(lockFile *lockfile.LockFile, tracker *artifacts.Tracker, gitContext *gitutil.GitContext, trackingBase string) UninstallPlan {
+func buildUninstallPlanFromTracker(lockFile *lockfile.LockFile, tracker *assets.Tracker, gitContext *gitutil.GitContext, trackingBase string) UninstallPlan {
 	log := logger.Get()
 
 	// Build artifact lookup from lock file
@@ -309,7 +309,7 @@ func buildUninstallPlanFromTracker(lockFile *lockfile.LockFile, tracker *artifac
 			// Artifact in tracker but not in lock file - still uninstall it
 			log.Warn("artifact in tracker but not in lock file", "name", installed.Name)
 			// Determine type from lock file if possible
-			artType := artifact.TypeSkill // Default to skill
+			artType := asset.TypeSkill // Default to skill
 			plan.Artifacts = append(plan.Artifacts, ArtifactUninstallPlan{
 				Name:     installed.Name,
 				Version:  installed.Version,
@@ -365,7 +365,7 @@ func uninstallArtifactFromClient(ctx context.Context, artPlan ArtifactUninstallP
 	installScope := buildScopeForArtifact(artPlan, gitContext)
 
 	req := clients.UninstallRequest{
-		Artifacts: []artifact.Artifact{
+		Artifacts: []asset.Asset{
 			{
 				Name:    artPlan.Name,
 				Version: artPlan.Version,
@@ -433,7 +433,7 @@ func updateTracker(results []UninstallResult, plan UninstallPlan, out *outputHel
 		return nil
 	}
 
-	tracker, err := artifacts.LoadTracker()
+	tracker, err := assets.LoadTracker()
 	if err != nil {
 		return fmt.Errorf("failed to load tracker: %w", err)
 	}
@@ -450,10 +450,10 @@ func updateTracker(results []UninstallResult, plan UninstallPlan, out *outputHel
 	}
 
 	if len(tracker.Artifacts) == 0 {
-		return artifacts.DeleteTracker()
+		return assets.DeleteTracker()
 	}
 
-	return artifacts.SaveTracker(tracker)
+	return assets.SaveTracker(tracker)
 }
 
 // findFullyRemovedArtifacts returns artifacts where all client removals succeeded
@@ -518,7 +518,7 @@ func regenerateClientSupport(ctx context.Context, plan UninstallPlan, results []
 
 // displayUninstallPlan shows what will be uninstalled
 func displayUninstallPlan(plan UninstallPlan, out *outputHelper) {
-	out.println("\nThe following artifacts will be uninstalled:")
+	out.println("\nThe following assets will be uninstalled:")
 
 	for _, art := range plan.Artifacts {
 		scopeDesc := "global"
@@ -586,8 +586,8 @@ func reportResults(results []UninstallResult, out *outputHelper) {
 	totalFailed := len(failedArtifacts)
 
 	if totalFailed > 0 {
-		out.printf("Uninstalled %d artifact(s) (%d failed)\n", totalRemoved, totalFailed)
+		out.printf("Uninstalled %d asset(s) (%d failed)\n", totalRemoved, totalFailed)
 	} else {
-		out.printf("Successfully uninstalled %d artifact(s)\n", totalRemoved)
+		out.printf("Successfully uninstalled %d asset(s)\n", totalRemoved)
 	}
 }

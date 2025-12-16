@@ -17,10 +17,10 @@ func NewServeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the MCP server over stdio",
-		Long: `Start an MCP (Model Context Protocol) server that exposes skill operations.
+		Long: `Start an MCP (Model Context Protocol) server that exposes asset operations.
 
-The server runs over stdio and provides tools for AI clients to read installed skills.
-This enables AI coding assistants like Cursor to access skills installed by the skills CLI.
+The server runs over stdio and provides tools for AI clients to read installed assets.
+This enables AI coding assistants like Cursor to access assets installed by sx.
 
 Tools provided:
   - read_skill: Read a skill's content and base directory for resolving file references`,

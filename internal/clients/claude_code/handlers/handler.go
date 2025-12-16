@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 	"github.com/sleuth-io/skills/internal/metadata"
 )
 
@@ -28,19 +28,19 @@ type Handler interface {
 }
 
 // NewHandler creates a handler for the given artifact type and metadata
-func NewHandler(artifactType artifact.Type, meta *metadata.Metadata) (Handler, error) {
+func NewHandler(artifactType asset.Type, meta *metadata.Metadata) (Handler, error) {
 	switch artifactType {
-	case artifact.TypeSkill:
+	case asset.TypeSkill:
 		return NewSkillHandler(meta), nil
-	case artifact.TypeAgent:
+	case asset.TypeAgent:
 		return NewAgentHandler(meta), nil
-	case artifact.TypeCommand:
+	case asset.TypeCommand:
 		return NewCommandHandler(meta), nil
-	case artifact.TypeHook:
+	case asset.TypeHook:
 		return NewHookHandler(meta), nil
-	case artifact.TypeMCP:
+	case asset.TypeMCP:
 		return NewMCPHandler(meta), nil
-	case artifact.TypeMCPRemote:
+	case asset.TypeMCPRemote:
 		return NewMCPRemoteHandler(meta), nil
 	default:
 		return nil, fmt.Errorf("unsupported artifact type: %s", artifactType.Key)

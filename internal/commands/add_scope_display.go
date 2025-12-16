@@ -30,7 +30,7 @@ func displayCurrentInstallation(currentRepos []lockfile.Repository, styledOut *u
 	styledOut.Info("Current installation:")
 
 	if currentRepos == nil {
-		styledOut.Println("  Not installed (available in repository only)")
+		styledOut.Println("  Not installed (available in vault only)")
 		return
 	}
 

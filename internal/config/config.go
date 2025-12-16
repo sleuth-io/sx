@@ -83,7 +83,7 @@ func Load() (*Config, error) {
 		return &cfg, nil
 	}
 
-	return nil, fmt.Errorf("configuration not found. Run 'skills init' first")
+	return nil, fmt.Errorf("configuration not found. Run 'sx init' first")
 }
 
 // Save saves the configuration to the config file
@@ -178,5 +178,5 @@ func (c *Config) GetRepositoryURL() string {
 
 // IsSilent checks if silent mode is enabled via environment variable
 func IsSilent() bool {
-	return os.Getenv("SKILLS_SYNC_SILENT") == "true"
+	return os.Getenv("SX_SYNC_SILENT") == "true" || os.Getenv("SKILLS_SYNC_SILENT") == "true"
 }

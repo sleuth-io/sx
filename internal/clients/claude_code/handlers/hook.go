@@ -7,13 +7,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sleuth-io/skills/internal/artifact"
-	"github.com/sleuth-io/skills/internal/handlers/dirartifact"
+	"github.com/sleuth-io/skills/internal/asset"
+	"github.com/sleuth-io/skills/internal/handlers/dirasset"
 	"github.com/sleuth-io/skills/internal/metadata"
 	"github.com/sleuth-io/skills/internal/utils"
 )
 
-var hookOps = dirartifact.NewOperations("hooks", &artifact.TypeHook)
+var hookOps = dirasset.NewOperations("hooks", &asset.TypeHook)
 
 // HookHandler handles hook artifact installation
 type HookHandler struct {
@@ -49,7 +49,7 @@ func (h *HookHandler) CreateDefaultMetadata(name, version string) *metadata.Meta
 		Artifact: metadata.Artifact{
 			Name:    name,
 			Version: version,
-			Type:    artifact.TypeHook,
+			Type:    asset.TypeHook,
 		},
 		Hook: &metadata.HookConfig{
 			Event:      "pre-commit",
@@ -157,7 +157,7 @@ func (h *HookHandler) Validate(zipData []byte) error {
 	}
 
 	// Verify artifact type matches
-	if meta.Artifact.Type != artifact.TypeHook {
+	if meta.Artifact.Type != asset.TypeHook {
 		return fmt.Errorf("artifact type mismatch: expected hook, got %s", meta.Artifact.Type)
 	}
 

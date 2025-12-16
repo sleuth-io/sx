@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/sleuth-io/skills/internal/artifact"
-	"github.com/sleuth-io/skills/internal/handlers/dirartifact"
+	"github.com/sleuth-io/skills/internal/asset"
+	"github.com/sleuth-io/skills/internal/handlers/dirasset"
 	"github.com/sleuth-io/skills/internal/metadata"
 	"github.com/sleuth-io/skills/internal/utils"
 )
 
-var agentOps = dirartifact.NewOperations("agents", &artifact.TypeAgent)
+var agentOps = dirasset.NewOperations("agents", &asset.TypeAgent)
 
 // AgentHandler handles agent artifact installation
 type AgentHandler struct {
@@ -47,7 +47,7 @@ func (h *AgentHandler) CreateDefaultMetadata(name, version string) *metadata.Met
 		Artifact: metadata.Artifact{
 			Name:    name,
 			Version: version,
-			Type:    artifact.TypeAgent,
+			Type:    asset.TypeAgent,
 		},
 		Agent: &metadata.AgentConfig{
 			PromptFile: "AGENT.md",
@@ -138,7 +138,7 @@ func (h *AgentHandler) Validate(zipData []byte) error {
 	}
 
 	// Verify artifact type matches
-	if meta.Artifact.Type != artifact.TypeAgent {
+	if meta.Artifact.Type != asset.TypeAgent {
 		return fmt.Errorf("artifact type mismatch: expected agent, got %s", meta.Artifact.Type)
 	}
 

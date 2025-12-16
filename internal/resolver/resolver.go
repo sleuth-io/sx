@@ -11,26 +11,26 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sleuth-io/skills/internal/artifact"
+	"github.com/sleuth-io/skills/internal/asset"
 	"github.com/sleuth-io/skills/internal/buildinfo"
 	"github.com/sleuth-io/skills/internal/git"
 	"github.com/sleuth-io/skills/internal/lockfile"
-	"github.com/sleuth-io/skills/internal/repository"
 	"github.com/sleuth-io/skills/internal/requirements"
+	vaultpkg "github.com/sleuth-io/skills/internal/vault"
 	"github.com/sleuth-io/skills/internal/version"
 )
 
 // Resolver resolves requirements to lock file artifacts
 type Resolver struct {
-	repo repository.Repository
-	ctx  context.Context
+	vault vaultpkg.Vault
+	ctx   context.Context
 }
 
 // New creates a new resolver
-func New(ctx context.Context, repo repository.Repository) *Resolver {
+func New(ctx context.Context, vault vaultpkg.Vault) *Resolver {
 	return &Resolver{
-		repo: repo,
-		ctx:  ctx,
+		vault: vault,
+		ctx:   ctx,
 	}
 }
 
@@ -122,7 +122,7 @@ func (r *Resolver) resolveRequirement(req requirements.Requirement) (*lockfile.A
 // resolveRegistry resolves a registry artifact
 func (r *Resolver) resolveRegistry(req requirements.Requirement) (*lockfile.Artifact, []requirements.Requirement, error) {
 	// Get available versions
-	versions, err := r.repo.GetVersionList(r.ctx, req.Name)
+	versions, err := r.vault.GetVersionList(r.ctx, req.Name)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get version list: %w", err)
 	}
@@ -155,7 +155,7 @@ func (r *Resolver) resolveRegistry(req requirements.Requirement) (*lockfile.Arti
 	}
 
 	// Get metadata for selected version
-	meta, err := r.repo.GetMetadata(r.ctx, req.Name, selectedVersion)
+	meta, err := r.vault.GetMetadata(r.ctx, req.Name, selectedVersion)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get metadata for %s@%s: %w", req.Name, selectedVersion, err)
 	}
@@ -199,7 +199,7 @@ func (r *Resolver) resolveGit(req requirements.Requirement) (*lockfile.Artifact,
 	artifact := &lockfile.Artifact{
 		Name:    req.GitName,
 		Version: "0.0.0+git" + commitSHA[:7],
-		Type:    artifact.TypeSkill, // Default, should be read from metadata
+		Type:    asset.TypeSkill, // Default, should be read from metadata
 		SourceGit: &lockfile.SourceGit{
 			URL:          req.GitURL,
 			Ref:          commitSHA,
@@ -233,7 +233,7 @@ func (r *Resolver) resolvePath(req requirements.Requirement) (*lockfile.Artifact
 	artifact := &lockfile.Artifact{
 		Name:    filepath.Base(path),
 		Version: "0.0.0+local",
-		Type:    artifact.TypeSkill,
+		Type:    asset.TypeSkill,
 		SourcePath: &lockfile.SourcePath{
 			Path: req.Path, // Use original path, not expanded
 		},
@@ -272,7 +272,7 @@ func (r *Resolver) resolveHTTP(req requirements.Requirement) (*lockfile.Artifact
 	artifact := &lockfile.Artifact{
 		Name:    name,
 		Version: "0.0.0+http",
-		Type:    artifact.TypeSkill,
+		Type:    asset.TypeSkill,
 		SourceHTTP: &lockfile.SourceHTTP{
 			URL: req.URL,
 			Hashes: map[string]string{
