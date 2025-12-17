@@ -20,6 +20,8 @@ import (
 
 // NewReportUsageCommand creates the report-usage command
 func NewReportUsageCommand() *cobra.Command {
+	var clientID string
+
 	cmd := &cobra.Command{
 		Use:   "report-usage",
 		Short: "Report asset usage from tool calls (PostToolUse hook)",
@@ -30,6 +32,8 @@ and report it to the vault. Intended to be called from Claude Code hooks.`,
 			return runReportUsage(cmd, args)
 		},
 	}
+
+	cmd.Flags().StringVar(&clientID, "client", "", "Client ID that triggered the hook (informational only)")
 
 	return cmd
 }
@@ -42,16 +46,20 @@ type PostToolUseEvent struct {
 
 // runReportUsage executes the report-usage command
 func runReportUsage(cmd *cobra.Command, args []string) error {
+	// Initialize logger early to capture all errors
+	log := logger.Get()
+
 	// Read JSON from stdin
 	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
+		log.Error("report-usage: failed to read stdin", "error", err)
 		return fmt.Errorf("failed to read stdin: %w", err)
 	}
 
 	// Parse hook event
 	var event PostToolUseEvent
 	if err := json.Unmarshal(data, &event); err != nil {
-		// Silently exit on parse error (not a valid hook event)
+		log.Error("report-usage: failed to parse hook event JSON", "error", err, "data_length", len(data))
 		return nil
 	}
 
@@ -81,7 +89,7 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// If no handler detected usage, exit silently
+	// If no handler detected usage, exit
 	if !detected || assetName == "" {
 		return nil
 	}
@@ -89,7 +97,7 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 	// Load tracker to check if asset is installed
 	tracker, err := assets.LoadTracker()
 	if err != nil {
-		// Tracker doesn't exist, exit silently
+		log.Error("report-usage: failed to load tracker", "error", err, "asset", assetName)
 		return nil
 	}
 
@@ -105,7 +113,6 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 	}
 
 	if !found {
-		// Asset not installed by us, exit silently
 		return nil
 	}
 
@@ -119,13 +126,12 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 
 	// Enqueue event
 	if err := stats.EnqueueEvent(usageEvent); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to enqueue usage event: %v\n", err)
+		log.Error("report-usage: failed to enqueue usage event", "error", err, "asset", assetName)
 		return nil // Don't fail the hook
 	}
 
 	// Log successful usage tracking
-	log := logger.Get()
-	log.Info("asset usage tracked", "name", assetName, "version", assetVersion, "type", assetType)
+	log.Info("report-usage: asset usage tracked", "name", assetName, "version", assetVersion, "type", assetType)
 
 	// Try to flush queue
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -134,21 +140,20 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 	// Load config to get repository
 	cfg, err := config.Load()
 	if err != nil {
-		// Config not initialized, queue will be flushed later
+		log.Error("report-usage: failed to load config", "error", err)
 		return nil
 	}
 
 	// Create vault instance
 	vault, err := vaultpkg.NewFromConfig(cfg)
 	if err != nil {
-		// Unknown vault type, queue will be flushed later
+		log.Error("report-usage: failed to create vault", "error", err)
 		return nil
 	}
 
 	// Try to flush queue
 	if err := stats.FlushQueue(ctx, vault); err != nil {
-		// Flush failed, queue preserved for next attempt
-		fmt.Fprintf(os.Stderr, "Warning: failed to flush usage stats: %v\n", err)
+		log.Error("report-usage: failed to flush usage stats", "error", err)
 	}
 
 	return nil
