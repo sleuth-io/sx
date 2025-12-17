@@ -400,6 +400,15 @@ func loadZipFile(out *outputHelper, status *components.Status, zipFile string) (
 			return "", nil, fmt.Errorf("failed to create zip from directory: %w", err)
 		}
 		status.Done("")
+	} else if isSingleFileAsset(zipFile) {
+		// Handle single .md files for agents and commands
+		status.Start("Creating zip from single file")
+		zipData, err = createZipFromSingleFile(zipFile)
+		if err != nil {
+			status.Fail("Failed to create zip")
+			return "", nil, fmt.Errorf("failed to create zip from file: %w", err)
+		}
+		status.Done("")
 	} else {
 		status.Start("Reading asset")
 		zipData, err = os.ReadFile(zipFile)
@@ -861,8 +870,7 @@ func guessAssetName(zipPath string) string {
 	}
 
 	// Get base filename
-	base := strings.TrimSuffix(strings.TrimSuffix(zipPath, ".zip"), ".ZIP")
-	base = strings.TrimPrefix(base, "./")
+	base := strings.TrimPrefix(zipPath, "./")
 	base = strings.TrimPrefix(base, "../")
 
 	// If it's just a path, get the last component
@@ -871,6 +879,11 @@ func guessAssetName(zipPath string) string {
 	}
 	if idx := strings.LastIndex(base, "\\"); idx != -1 {
 		base = base[idx+1:]
+	}
+
+	// Strip any file extension
+	if idx := strings.LastIndex(base, "."); idx != -1 {
+		base = base[:idx]
 	}
 
 	// Strip version suffix if present (e.g., "my-skill-1.0.0" -> "my-skill")

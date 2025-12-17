@@ -3,14 +3,15 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/handlers/fileasset"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
+
+var commandOps = fileasset.NewOperations("commands", &asset.TypeCommand)
 
 // CommandHandler handles command asset installation
 type CommandHandler struct {
@@ -92,7 +93,7 @@ func (h *CommandHandler) DetectUsageFromToolCall(toolName string, toolInput map[
 	return commandName, true
 }
 
-// Install extracts and installs the command asset
+// Install extracts and installs the command asset as a single .md file
 func (h *CommandHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// Validate zip structure
 	if err := h.Validate(zipData); err != nil {
@@ -102,55 +103,17 @@ func (h *CommandHandler) Install(ctx context.Context, zipData []byte, targetBase
 	// Get the prompt file from metadata
 	promptFile := h.metadata.Command.PromptFile
 
-	// Read the prompt file from zip
-	promptData, err := utils.ReadZipFile(zipData, promptFile)
-	if err != nil {
-		return fmt.Errorf("failed to read prompt file from zip: %w", err)
-	}
-
-	// Determine installation path (commands/{name}.md)
-	installPath := filepath.Join(targetBase, h.GetInstallPath())
-
-	// Ensure parent directory exists
-	if err := utils.EnsureDir(filepath.Dir(installPath)); err != nil {
-		return fmt.Errorf("failed to create commands directory: %w", err)
-	}
-
-	// Write the command file
-	if err := os.WriteFile(installPath, promptData, 0644); err != nil {
-		return fmt.Errorf("failed to write command file: %w", err)
-	}
-
-	// Write metadata file for version tracking
-	if err := h.writeMetadataFile(zipData, installPath); err != nil {
-		return err
-	}
-
-	return nil
+	return commandOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name, promptFile)
 }
 
 // Remove uninstalls the command asset
 func (h *CommandHandler) Remove(ctx context.Context, targetBase string) error {
-	installPath := filepath.Join(targetBase, h.GetInstallPath())
-
-	if !utils.FileExists(installPath) {
-		// Already removed or never installed
-		return nil
-	}
-
-	if err := os.Remove(installPath); err != nil {
-		return fmt.Errorf("failed to remove command: %w", err)
-	}
-
-	// Remove metadata file if it exists
-	h.removeMetadataFile(installPath)
-
-	return nil
+	return commandOps.Remove(ctx, targetBase, h.metadata.Asset.Name)
 }
 
 // GetInstallPath returns the installation path relative to targetBase
 func (h *CommandHandler) GetInstallPath() string {
-	return filepath.Join("commands", h.metadata.Asset.Name+".md")
+	return commandOps.GetInstallPath(h.metadata.Asset.Name)
 }
 
 // Validate checks if the zip structure is valid for a command asset
@@ -199,59 +162,12 @@ func (h *CommandHandler) Validate(zipData []byte) error {
 	return nil
 }
 
-// writeMetadataFile writes the metadata file alongside the command for version tracking
-func (h *CommandHandler) writeMetadataFile(zipData []byte, installPath string) error {
-	metadataPath := strings.TrimSuffix(installPath, ".md") + "-metadata.toml"
-	metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
-	if err != nil {
-		// metadata.toml doesn't exist in zip, that's okay (backwards compatibility)
-		return nil
-	}
-
-	// Write metadata file alongside the command
-	if err := os.WriteFile(metadataPath, metadataBytes, 0644); err != nil {
-		return fmt.Errorf("failed to write metadata file: %w", err)
-	}
-
-	return nil
-}
-
-// removeMetadataFile removes the metadata file if it exists
-func (h *CommandHandler) removeMetadataFile(installPath string) {
-	metadataPath := strings.TrimSuffix(installPath, ".md") + "-metadata.toml"
-	if utils.FileExists(metadataPath) {
-		os.Remove(metadataPath) // Ignore errors, metadata is optional
-	}
-}
-
-// CanDetectInstalledState returns true since commands now preserve metadata via adjacent files
+// CanDetectInstalledState returns true since commands preserve metadata via adjacent files
 func (h *CommandHandler) CanDetectInstalledState() bool {
 	return true
 }
 
 // VerifyInstalled checks if the command is properly installed
 func (h *CommandHandler) VerifyInstalled(targetBase string) (bool, string) {
-	commandPath := filepath.Join(targetBase, h.GetInstallPath())
-
-	if !utils.FileExists(commandPath) {
-		return false, "command file not found"
-	}
-
-	// Check metadata file for version verification
-	metadataPath := strings.TrimSuffix(commandPath, ".md") + "-metadata.toml"
-	if !utils.FileExists(metadataPath) {
-		// No metadata file - can only verify file exists
-		return true, "installed (no version info)"
-	}
-
-	meta, err := metadata.ParseFile(metadataPath)
-	if err != nil {
-		return false, "failed to parse metadata: " + err.Error()
-	}
-
-	if meta.Asset.Version != h.metadata.Asset.Version {
-		return false, fmt.Sprintf("version mismatch: installed %s, expected %s", meta.Asset.Version, h.metadata.Asset.Version)
-	}
-
-	return true, "installed"
+	return commandOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
 }

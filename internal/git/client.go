@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -245,6 +246,26 @@ func (c *Client) Commit(ctx context.Context, repoPath, message string) error {
 	}
 
 	return nil
+}
+
+// HasStagedChanges checks if there are staged changes ready to be committed
+func (c *Client) HasStagedChanges(ctx context.Context, repoPath string) (bool, error) {
+	cmd := execGitCommand(ctx, c.sshKeyPath, "diff", "--cached", "--quiet")
+	cmd.Dir = repoPath
+
+	err := cmd.Run()
+	if err != nil {
+		// Exit code 1 means there are changes
+		if exitError, ok := err.(*exec.ExitError); ok {
+			if exitError.ExitCode() == 1 {
+				return true, nil
+			}
+		}
+		return false, fmt.Errorf("git diff failed: %w", err)
+	}
+
+	// Exit code 0 means no changes
+	return false, nil
 }
 
 // isHexString checks if a string contains only hexadecimal characters

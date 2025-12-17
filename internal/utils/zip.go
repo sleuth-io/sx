@@ -12,6 +12,30 @@ import (
 	"strings"
 )
 
+// SkipDirectories contains directory names that should be excluded during zip operations.
+// These are typically cache/build artifacts that shouldn't be distributed.
+var SkipDirectories = []string{
+	"__pycache__",
+	".git",
+	"node_modules",
+	".pytest_cache",
+	".mypy_cache",
+	".ruff_cache",
+}
+
+// ShouldSkipPath checks if a path contains any directory that should be skipped
+func ShouldSkipPath(path string) bool {
+	parts := strings.Split(filepath.ToSlash(path), "/")
+	for _, part := range parts {
+		for _, skip := range SkipDirectories {
+			if part == skip {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ZipMagicBytes are the first 4 bytes of a ZIP file
 var ZipMagicBytes = []byte{0x50, 0x4B, 0x03, 0x04}
 
@@ -35,6 +59,9 @@ func ExtractZip(zipData []byte, targetDir string) error {
 	}
 
 	for _, file := range reader.File {
+		if ShouldSkipPath(file.Name) {
+			continue
+		}
 		if err := extractZipFile(file, targetDir); err != nil {
 			return fmt.Errorf("failed to extract %s: %w", file.Name, err)
 		}
@@ -147,6 +174,14 @@ func CreateZip(sourceDir string) ([]byte, error) {
 			return err
 		}
 
+		// Skip directories that shouldn't be included
+		if ShouldSkipPath(relPath) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
 		// Create zip header
 		header, err := zip.FileInfoHeader(info)
 		if err != nil {
@@ -185,6 +220,27 @@ func CreateZip(sourceDir string) ([]byte, error) {
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create zip: %w", err)
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close zip writer: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// CreateZipFromContent creates a zip archive containing a single file with the given content
+func CreateZipFromContent(filename string, content []byte) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	writer := zip.NewWriter(buf)
+
+	w, err := writer.Create(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file in zip: %w", err)
+	}
+
+	if _, err := w.Write(content); err != nil {
+		return nil, fmt.Errorf("failed to write content to zip: %w", err)
 	}
 
 	if err := writer.Close(); err != nil {

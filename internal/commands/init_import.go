@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/lockfile"
@@ -128,9 +129,57 @@ func promptImportAssets(cmd *cobra.Command, ctx context.Context, enabledClients 
 			continue
 		}
 
-		// Use the add command to import the asset
-		if err := runAddSkipInstall(cmd, assetPath); err != nil {
+		// Use the add command to import the asset and prompt for scope
+		if err := runAdd(cmd, assetPath); err != nil {
 			styledOut.Error(fmt.Sprintf("Failed to import %s: %v", item.asset.Name, err))
+			continue
+		}
+
+		// Check if user chose a non-global scope - if so, clean up the global copy
+		cleanupGlobalCopyIfNeeded(ctx, vault, item.client, item.asset, styledOut)
+	}
+}
+
+// cleanupGlobalCopyIfNeeded removes the global copy of an asset if user chose a different scope
+func cleanupGlobalCopyIfNeeded(ctx context.Context, vault vaultpkg.Vault, client clients.Client, importedAsset clients.InstalledAsset, out *ui.Output) {
+	// Re-read lock file to see what scope was chosen
+	lockFileContent, _, _, err := vault.GetLockFile(ctx, "")
+	if err != nil {
+		return
+	}
+
+	lf, err := lockfile.Parse(lockFileContent)
+	if err != nil {
+		return
+	}
+
+	// Find the asset and check if it's global
+	for i := range lf.Assets {
+		if lf.Assets[i].Name == importedAsset.Name {
+			// If not global, remove the original global copy via the client
+			if !lf.Assets[i].IsGlobal() {
+				globalScope := &clients.InstallScope{Type: clients.ScopeGlobal}
+				uninstallReq := clients.UninstallRequest{
+					Assets: []asset.Asset{{
+						Name: importedAsset.Name,
+						Type: importedAsset.Type,
+					}},
+					Scope: globalScope,
+				}
+
+				resp, err := client.UninstallAssets(ctx, uninstallReq)
+				if err != nil {
+					out.Warning(fmt.Sprintf("Could not remove global copy of %s: %v", importedAsset.Name, err))
+					return
+				}
+
+				for _, result := range resp.Results {
+					if result.Status == clients.StatusSuccess {
+						out.Success(fmt.Sprintf("Removed global copy of %s", result.AssetName))
+					}
+				}
+			}
+			return
 		}
 	}
 }

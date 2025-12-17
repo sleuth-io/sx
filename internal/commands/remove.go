@@ -47,6 +47,7 @@ func runRemove(cmd *cobra.Command, assetName, versionFlag string, yes bool) erro
 	defer cancel()
 
 	out := newOutputHelper(cmd)
+	status := components.NewStatus(cmd.OutOrStdout())
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -67,15 +68,19 @@ func runRemove(cmd *cobra.Command, assetName, versionFlag string, yes bool) erro
 	// If no version specified, find the highest version from the lock file
 	assetVersion := versionFlag
 	if assetVersion == "" {
+		status.Start("Loading lock file")
 		lockFileData, _, _, err := vault.GetLockFile(ctx, "")
 		if err != nil {
+			status.Fail("Failed to get lock file")
 			return fmt.Errorf("failed to get lock file: %w", err)
 		}
 
 		lf, err := lockfile.Parse(lockFileData)
 		if err != nil {
+			status.Fail("Failed to parse lock file")
 			return fmt.Errorf("failed to parse lock file: %w", err)
 		}
+		status.Clear()
 
 		// Collect all versions of this asset
 		var versions []string
@@ -96,12 +101,26 @@ func runRemove(cmd *cobra.Command, assetName, versionFlag string, yes bool) erro
 		}
 	}
 
-	// Remove from vault
+	// Remove from vault (includes git operations for GitVault)
+	_, isGitVault := vault.(*vaultpkg.GitVault)
+	if isGitVault {
+		status.Start("Removing from lock file and pushing to repository")
+	} else {
+		status.Start("Removing from lock file")
+	}
+
 	if err := vault.RemoveAsset(ctx, assetName, assetVersion); err != nil {
+		status.Fail("Failed to remove asset")
 		return fmt.Errorf("failed to remove asset: %w", err)
 	}
 
-	out.printf("Removed %s@%s from lock file\n", assetName, assetVersion)
+	if isGitVault {
+		status.Done("Removed and pushed to repository")
+	} else {
+		status.Done("Removed from lock file")
+	}
+
+	out.printf("✓ Removed %s@%s from lock file\n", assetName, assetVersion)
 
 	// Prompt to run install (or auto-run if --yes)
 	shouldInstall := yes

@@ -3,15 +3,14 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"github.com/sleuth-io/sx/internal/asset"
-	"github.com/sleuth-io/sx/internal/handlers/dirasset"
+	"github.com/sleuth-io/sx/internal/handlers/fileasset"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
 
-var agentOps = dirasset.NewOperations("agents", &asset.TypeAgent)
+var agentOps = fileasset.NewOperations("agents", &asset.TypeAgent)
 
 // AgentHandler handles agent asset installation
 type AgentHandler struct {
@@ -88,14 +87,17 @@ func (h *AgentHandler) DetectUsageFromToolCall(toolName string, toolInput map[st
 	return agentName, ok
 }
 
-// Install extracts and installs the agent asset
+// Install extracts and installs the agent asset as a single .md file
 func (h *AgentHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// Validate zip structure
 	if err := h.Validate(zipData); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	return agentOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name)
+	// Get the prompt file from metadata
+	promptFile := h.metadata.Agent.PromptFile
+
+	return agentOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name, promptFile)
 }
 
 // Remove uninstalls the agent asset
@@ -105,7 +107,7 @@ func (h *AgentHandler) Remove(ctx context.Context, targetBase string) error {
 
 // GetInstallPath returns the installation path relative to targetBase
 func (h *AgentHandler) GetInstallPath() string {
-	return filepath.Join("agents", h.metadata.Asset.Name)
+	return agentOps.GetInstallPath(h.metadata.Asset.Name)
 }
 
 // Validate checks if the zip structure is valid for an agent asset
@@ -154,7 +156,7 @@ func (h *AgentHandler) Validate(zipData []byte) error {
 	return nil
 }
 
-// CanDetectInstalledState returns true since agents preserve metadata.toml
+// CanDetectInstalledState returns true since agents preserve metadata via adjacent files
 func (h *AgentHandler) CanDetectInstalledState() bool {
 	return true
 }

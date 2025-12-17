@@ -517,6 +517,17 @@ func (g *GitVault) commitAndPush(ctx context.Context, asset *lockfile.Asset) err
 		return err
 	}
 
+	// Check if there are any staged changes to commit
+	hasChanges, err := g.gitClient.HasStagedChanges(ctx, g.repoPath)
+	if err != nil {
+		return err
+	}
+
+	if !hasChanges {
+		// No changes to commit - nothing to do
+		return nil
+	}
+
 	// Commit with message
 	commitMsg := fmt.Sprintf("Add %s %s", asset.Name, asset.Version)
 	if err := g.gitClient.Commit(ctx, g.repoPath, commitMsg); err != nil {
@@ -539,6 +550,11 @@ func extractZipToDir(zipData []byte, targetDir string) error {
 	}
 
 	for _, file := range reader.File {
+		// Skip directories that shouldn't be extracted (cache, build artifacts, etc.)
+		if utils.ShouldSkipPath(file.Name) {
+			continue
+		}
+
 		// Build target path
 		targetPath := filepath.Join(targetDir, file.Name)
 
@@ -551,7 +567,9 @@ func extractZipToDir(zipData []byte, targetDir string) error {
 		}
 
 		if file.FileInfo().IsDir() {
-			if err := os.MkdirAll(targetPath, file.Mode()); err != nil {
+			// Use 0755 for directories instead of preserving zip permissions
+			// Zip files may have restrictive permissions that cause issues
+			if err := os.MkdirAll(targetPath, 0755); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", file.Name, err)
 			}
 			continue

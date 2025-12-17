@@ -333,8 +333,8 @@ func (c *Client) ScanInstalledAssets(ctx context.Context, scope *clients.Install
 	}
 	assets = append(assets, skills...)
 
-	// Scan for unmanaged agents (have AGENT.md but no metadata.toml)
-	agents, err := scanUnmanagedAssets(targetBase, "agents", "AGENT.md", asset.TypeAgent)
+	// Scan for unmanaged agents (single .md files in agents directory)
+	agents, err := scanUnmanagedAgentFiles(targetBase)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan agents: %w", err)
 	}
@@ -393,6 +393,57 @@ func scanUnmanagedAssets(targetBase, subdir, promptFile string, assetType asset.
 	return assets, nil
 }
 
+// scanUnmanagedAgentFiles finds agent .md files that don't have a companion metadata file
+func scanUnmanagedAgentFiles(targetBase string) ([]clients.InstalledAsset, error) {
+	var assets []clients.InstalledAsset
+
+	agentsPath := filepath.Join(targetBase, "agents")
+	if _, err := os.Stat(agentsPath); os.IsNotExist(err) {
+		return assets, nil
+	}
+
+	entries, err := os.ReadDir(agentsPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read agents directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		// Skip directories - agents are single files
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+
+		// Only consider .md files
+		if !strings.HasSuffix(strings.ToLower(name), ".md") {
+			continue
+		}
+
+		// Skip metadata files
+		if strings.HasSuffix(name, ".metadata.toml") {
+			continue
+		}
+
+		// Get agent name (strip .md extension)
+		agentName := strings.TrimSuffix(name, filepath.Ext(name))
+
+		// Skip if has companion metadata file (already managed by sx)
+		metaPath := filepath.Join(agentsPath, agentName+".metadata.toml")
+		if _, err := os.Stat(metaPath); err == nil {
+			continue
+		}
+
+		assets = append(assets, clients.InstalledAsset{
+			Name:    agentName,
+			Version: "1.0", // Default version for unmanaged assets
+			Type:    asset.TypeAgent,
+		})
+	}
+
+	return assets, nil
+}
+
 // GetAssetPath returns the filesystem path to an installed asset
 func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.Type, scope *clients.InstallScope) (string, error) {
 	targetBase, err := c.determineTargetBase(scope)
@@ -402,9 +453,14 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 
 	switch assetType {
 	case asset.TypeSkill:
+		// Skills are directories
 		return filepath.Join(targetBase, "skills", name), nil
 	case asset.TypeAgent:
-		return filepath.Join(targetBase, "agents", name), nil
+		// Agents are single .md files
+		return filepath.Join(targetBase, "agents", name+".md"), nil
+	case asset.TypeCommand:
+		// Commands are single .md files
+		return filepath.Join(targetBase, "commands", name+".md"), nil
 	default:
 		return "", fmt.Errorf("import not supported for type: %s", assetType)
 	}
