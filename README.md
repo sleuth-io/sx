@@ -29,6 +29,18 @@ sx add /path/to/my-skill
 sx install
 ```
 
+### Already using Claude Code?
+
+If you've built up skills, commands, or MCP configs in your `.claude` directory, `sx` helps you version, sync across machines, and share with teammates.
+
+```bash
+# Add your existing skills/commands (sx auto-detects the type)
+sx add ~/.claude/commands/my-command
+sx add ~/.claude/skills/my-skill
+```
+
+Your prompt files stay exactly as they are - `sx` just wraps them with metadata for versioning.
+
 ## What can you build and share?
 
 - **Skills** - Custom prompts and behaviors for specific tasks
