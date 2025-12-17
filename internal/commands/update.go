@@ -14,7 +14,7 @@ import (
 
 const (
 	githubOwner = "sleuth-io"
-	githubRepo  = "skills"
+	githubRepo  = "sx"
 )
 
 // NewUpdateCommand creates the update command

@@ -16,7 +16,7 @@ import (
 
 const (
 	githubOwner     = "sleuth-io"
-	githubRepo      = "skills"
+	githubRepo      = "sx"
 	checkInterval   = 24 * time.Hour
 	updateCacheFile = "last-update-check"
 	updateTimeout   = 30 * time.Second
