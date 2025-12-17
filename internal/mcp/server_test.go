@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/lockfile"
 )
@@ -73,6 +75,14 @@ func (m *mockClient) ShouldInstall(ctx context.Context) (bool, error) {
 
 func (m *mockClient) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, scope *clients.InstallScope) []clients.VerifyResult {
 	return nil
+}
+
+func (m *mockClient) ScanInstalledAssets(ctx context.Context, scope *clients.InstallScope) ([]clients.InstalledAsset, error) {
+	return nil, nil
+}
+
+func (m *mockClient) GetAssetPath(ctx context.Context, name string, assetType asset.Type, scope *clients.InstallScope) (string, error) {
+	return "", fmt.Errorf("not implemented")
 }
 
 func (m *mockClient) addSkill(name, description, version, content, baseDir string) {

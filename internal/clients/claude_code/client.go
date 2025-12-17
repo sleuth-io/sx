@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/clients"
@@ -313,4 +314,98 @@ func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, sco
 	}
 
 	return results
+}
+
+// ScanInstalledAssets scans for unmanaged assets (those without metadata.toml)
+// Assets with metadata.toml were installed by sx and are already managed.
+func (c *Client) ScanInstalledAssets(ctx context.Context, scope *clients.InstallScope) ([]clients.InstalledAsset, error) {
+	targetBase, err := c.determineTargetBase(scope)
+	if err != nil {
+		return nil, fmt.Errorf("cannot determine target directory: %w", err)
+	}
+
+	var assets []clients.InstalledAsset
+
+	// Scan for unmanaged skills (have SKILL.md but no metadata.toml)
+	skills, err := scanUnmanagedAssets(targetBase, "skills", "SKILL.md", asset.TypeSkill)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan skills: %w", err)
+	}
+	assets = append(assets, skills...)
+
+	// Scan for unmanaged agents (have AGENT.md but no metadata.toml)
+	agents, err := scanUnmanagedAssets(targetBase, "agents", "AGENT.md", asset.TypeAgent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan agents: %w", err)
+	}
+	assets = append(assets, agents...)
+
+	return assets, nil
+}
+
+// scanUnmanagedAssets finds assets that have the prompt file but no metadata.toml
+func scanUnmanagedAssets(targetBase, subdir, promptFile string, assetType asset.Type) ([]clients.InstalledAsset, error) {
+	var assets []clients.InstalledAsset
+
+	assetsPath := filepath.Join(targetBase, subdir)
+	if _, err := os.Stat(assetsPath); os.IsNotExist(err) {
+		return assets, nil
+	}
+
+	dirs, err := os.ReadDir(assetsPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s directory: %w", subdir, err)
+	}
+
+	for _, dir := range dirs {
+		if !dir.IsDir() {
+			continue
+		}
+
+		dirPath := filepath.Join(assetsPath, dir.Name())
+
+		// Skip if has metadata.toml (already managed by sx)
+		metaPath := filepath.Join(dirPath, "metadata.toml")
+		if _, err := os.Stat(metaPath); err == nil {
+			continue
+		}
+
+		// Check for prompt file (SKILL.md or skill.md, AGENT.md or agent.md)
+		hasPromptFile := false
+		promptLower := strings.ToLower(promptFile)
+		if _, err := os.Stat(filepath.Join(dirPath, promptFile)); err == nil {
+			hasPromptFile = true
+		} else if _, err := os.Stat(filepath.Join(dirPath, promptLower)); err == nil {
+			hasPromptFile = true
+		}
+
+		if !hasPromptFile {
+			continue
+		}
+
+		assets = append(assets, clients.InstalledAsset{
+			Name:    dir.Name(),
+			Version: "1.0", // Default version for unmanaged assets
+			Type:    assetType,
+		})
+	}
+
+	return assets, nil
+}
+
+// GetAssetPath returns the filesystem path to an installed asset
+func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.Type, scope *clients.InstallScope) (string, error) {
+	targetBase, err := c.determineTargetBase(scope)
+	if err != nil {
+		return "", fmt.Errorf("cannot determine target directory: %w", err)
+	}
+
+	switch assetType {
+	case asset.TypeSkill:
+		return filepath.Join(targetBase, "skills", name), nil
+	case asset.TypeAgent:
+		return filepath.Join(targetBase, "agents", name), nil
+	default:
+		return "", fmt.Errorf("import not supported for type: %s", assetType)
+	}
 }

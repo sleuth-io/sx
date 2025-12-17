@@ -61,6 +61,15 @@ type Client interface {
 	// Used by --repair mode to detect discrepancies between tracker and filesystem.
 	// Each client implements verification according to its own installation structure.
 	VerifyAssets(ctx context.Context, assets []*lockfile.Asset, scope *InstallScope) []VerifyResult
+
+	// ScanInstalledAssets scans for all installed assets of supported types.
+	// Used during init to detect existing assets that could be imported into the vault.
+	ScanInstalledAssets(ctx context.Context, scope *InstallScope) ([]InstalledAsset, error)
+
+	// GetAssetPath returns the filesystem path to an installed asset.
+	// Used during import to pass the asset directory to the add command.
+	// Returns an error for asset types that don't have a simple directory structure.
+	GetAssetPath(ctx context.Context, name string, assetType asset.Type, scope *InstallScope) (string, error)
 }
 
 // InstalledSkill represents a skill that has been installed
@@ -68,6 +77,14 @@ type InstalledSkill struct {
 	Name        string // Skill name
 	Description string // Skill description from metadata
 	Version     string // Skill version
+}
+
+// InstalledAsset represents any asset that has been installed in a client
+type InstalledAsset struct {
+	Name        string     // Asset name
+	Description string     // Asset description from metadata
+	Version     string     // Asset version
+	Type        asset.Type // Asset type (skill, command, agent, etc.)
 }
 
 // SkillContent contains the full content of a skill for MCP responses

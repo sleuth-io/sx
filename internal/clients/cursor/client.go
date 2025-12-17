@@ -724,6 +724,17 @@ func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, sco
 	return results
 }
 
+// ScanInstalledAssets returns an empty list for Cursor (not yet supported)
+func (c *Client) ScanInstalledAssets(ctx context.Context, scope *clients.InstallScope) ([]clients.InstalledAsset, error) {
+	// Cursor asset import not yet supported
+	return []clients.InstalledAsset{}, nil
+}
+
+// GetAssetPath returns an error for Cursor (not yet supported)
+func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.Type, scope *clients.InstallScope) (string, error) {
+	return "", fmt.Errorf("asset import not supported for Cursor")
+}
+
 func init() {
 	// Auto-register on package import
 	clients.Register(NewClient())

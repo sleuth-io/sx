@@ -105,6 +105,9 @@ func runPostInit(cmd *cobra.Command, ctx context.Context, enabledClients []strin
 	// Install hooks for enabled clients only
 	installSelectedClientHooks(ctx, out, enabledClients)
 
+	// Offer to import existing assets from clients
+	promptImportAssets(cmd, ctx, enabledClients)
+
 	// Offer to install featured skills
 	promptFeaturedSkills(cmd, ctx)
 }
