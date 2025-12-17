@@ -73,7 +73,10 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 	}
 
 	// Determine target directory based on scope
-	targetBase := c.determineTargetBase(req.Scope)
+	targetBase, err := c.determineTargetBase(req.Scope)
+	if err != nil {
+		return resp, fmt.Errorf("cannot determine installation directory: %w", err)
+	}
 
 	// Ensure target directory exists
 	if err := os.MkdirAll(targetBase, 0755); err != nil {
@@ -135,7 +138,10 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 		Results: make([]clients.AssetResult, 0, len(req.Assets)),
 	}
 
-	targetBase := c.determineTargetBase(req.Scope)
+	targetBase, err := c.determineTargetBase(req.Scope)
+	if err != nil {
+		return resp, fmt.Errorf("cannot determine uninstall directory: %w", err)
+	}
 
 	for _, a := range req.Assets {
 		result := clients.AssetResult{
@@ -186,18 +192,25 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 }
 
 // determineTargetBase returns the installation directory based on scope
-func (c *Client) determineTargetBase(scope *clients.InstallScope) string {
+// Returns an error if a repo/path-scoped install is requested without a valid RepoRoot
+func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error) {
 	home, _ := os.UserHomeDir()
 
 	switch scope.Type {
 	case clients.ScopeGlobal:
-		return filepath.Join(home, ".cursor")
+		return filepath.Join(home, ".cursor"), nil
 	case clients.ScopeRepository:
-		return filepath.Join(scope.RepoRoot, ".cursor")
+		if scope.RepoRoot == "" {
+			return "", fmt.Errorf("repo-scoped install requires RepoRoot but none provided (not in a git repository?)")
+		}
+		return filepath.Join(scope.RepoRoot, ".cursor"), nil
 	case clients.ScopePath:
-		return filepath.Join(scope.RepoRoot, scope.Path, ".cursor")
+		if scope.RepoRoot == "" {
+			return "", fmt.Errorf("path-scoped install requires RepoRoot but none provided (not in a git repository?)")
+		}
+		return filepath.Join(scope.RepoRoot, scope.Path, ".cursor"), nil
 	default:
-		return filepath.Join(home, ".cursor")
+		return filepath.Join(home, ".cursor"), nil
 	}
 }
 
@@ -397,7 +410,10 @@ func (c *Client) registerSkillsMCPServer() error {
 
 // ListAssets returns all installed skills for a given scope
 func (c *Client) ListAssets(ctx context.Context, scope *clients.InstallScope) ([]clients.InstalledSkill, error) {
-	targetBase := c.determineTargetBase(scope)
+	targetBase, err := c.determineTargetBase(scope)
+	if err != nil {
+		return nil, fmt.Errorf("cannot determine target directory: %w", err)
+	}
 
 	installed, err := skillOps.ScanInstalled(targetBase)
 	if err != nil {
@@ -418,7 +434,10 @@ func (c *Client) ListAssets(ctx context.Context, scope *clients.InstallScope) ([
 
 // ReadSkill reads the content of a specific skill by name
 func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.InstallScope) (*clients.SkillContent, error) {
-	targetBase := c.determineTargetBase(scope)
+	targetBase, err := c.determineTargetBase(scope)
+	if err != nil {
+		return nil, fmt.Errorf("cannot determine target directory: %w", err)
+	}
 
 	result, err := skillOps.ReadPromptContent(targetBase, name, "SKILL.md", func(m *metadata.Metadata) string { return m.Skill.PromptFile })
 	if err != nil {
@@ -666,8 +685,20 @@ func (c *Client) installBeforeSubmitPromptHook() error {
 
 // VerifyAssets checks if assets are actually installed on the filesystem
 func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, scope *clients.InstallScope) []clients.VerifyResult {
-	targetBase := c.determineTargetBase(scope)
 	results := make([]clients.VerifyResult, 0, len(assets))
+
+	targetBase, err := c.determineTargetBase(scope)
+	if err != nil {
+		// Can't determine target - mark all assets as not installed
+		for _, a := range assets {
+			results = append(results, clients.VerifyResult{
+				Asset:     a,
+				Installed: false,
+				Message:   fmt.Sprintf("cannot determine target directory: %v", err),
+			})
+		}
+		return results
+	}
 
 	for _, a := range assets {
 		result := clients.VerifyResult{

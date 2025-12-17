@@ -1,4 +1,4 @@
-.PHONY: help build install test lint format clean release demo
+.PHONY: help build build-darwin build-darwin-amd64 install test lint format clean release demo
 
 # Default target
 help: ## Show this help message
@@ -18,6 +18,16 @@ build: ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
 	@go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
 	@echo "Built: $(BUILD_DIR)/$(BINARY_NAME)"
+
+build-darwin: ## Build for macOS (arm64)
+	@echo "Building $(BINARY_NAME) for macOS (arm64)..."
+	@GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(MAIN_PATH)
+	@echo "Built: $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64"
+
+build-darwin-amd64: ## Build for macOS (amd64/Intel)
+	@echo "Building $(BINARY_NAME) for macOS (amd64)..."
+	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(MAIN_PATH)
+	@echo "Built: $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64"
 
 install: build ## Install binary to ~/.local/bin
 	@echo "Installing $(BINARY_NAME)..."
