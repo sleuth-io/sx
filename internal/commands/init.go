@@ -14,6 +14,7 @@ import (
 	"github.com/sleuth-io/sx/internal/registry"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
+	"github.com/sleuth-io/sx/internal/utils"
 )
 
 const (
@@ -122,14 +123,14 @@ func runInitInteractive(cmd *cobra.Command, ctx context.Context) error {
 	}
 }
 
-// initPersonalRepository sets up a local vault in ~/.config/sx/vault
+// initPersonalRepository sets up a local vault in the user's config directory
 func initPersonalRepository(cmd *cobra.Command, ctx context.Context) error {
-	home, err := os.UserHomeDir()
+	configDir, err := utils.GetConfigDir()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return fmt.Errorf("failed to get config directory: %w", err)
 	}
 
-	vaultPath := filepath.Join(home, ".config", "sx", "vault")
+	vaultPath := filepath.Join(configDir, "vault")
 	return configurePathRepo(cmd, ctx, vaultPath)
 }
 
