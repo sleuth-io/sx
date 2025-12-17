@@ -33,6 +33,10 @@ type Config struct {
 	// - For git: git repository URL (https://github.com/org/repo.git)
 	// - For path: file:// URL pointing to local directory (file:///path/to/repo)
 	RepositoryURL string `json:"repositoryUrl,omitempty"`
+
+	// EnabledClients is the list of client IDs that assets should be installed to.
+	// An empty/nil slice means "all detected clients" (backwards compatible default).
+	EnabledClients []string `json:"enabledClients,omitempty"`
 }
 
 // getLegacyConfigFile returns the old config file path for backwards compatibility
@@ -179,4 +183,24 @@ func (c *Config) GetRepositoryURL() string {
 // IsSilent checks if silent mode is enabled via environment variable
 func IsSilent() bool {
 	return os.Getenv("SX_SYNC_SILENT") == "true" || os.Getenv("SKILLS_SYNC_SILENT") == "true"
+}
+
+// IsClientEnabled checks if a specific client ID is enabled.
+// If EnabledClients is empty/nil, all clients are considered enabled (backwards compatible).
+func (c *Config) IsClientEnabled(clientID string) bool {
+	if len(c.EnabledClients) == 0 {
+		return true
+	}
+	for _, id := range c.EnabledClients {
+		if id == clientID {
+			return true
+		}
+	}
+	return false
+}
+
+// GetEnabledClients returns the list of enabled client IDs.
+// Returns nil if not explicitly configured (meaning use all detected).
+func (c *Config) GetEnabledClients() []string {
+	return c.EnabledClients
 }

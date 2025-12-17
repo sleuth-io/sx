@@ -26,7 +26,7 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		BaseClient: clients.NewBaseClient(
-			"claude-code",
+			clients.ClientIDClaudeCode,
 			"Claude Code",
 			asset.AllTypes(),
 		),

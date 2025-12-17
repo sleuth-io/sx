@@ -174,10 +174,16 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	matcherScope := scope.NewMatcher(currentScope)
 
-	// Detect installed clients
+	// Detect installed clients and filter by config
 	registry := clients.Global()
-	targetClients := registry.DetectInstalled()
+	detectedClients := registry.DetectInstalled()
+	targetClients := filterClientsByConfig(cfg, detectedClients)
 	if len(targetClients) == 0 {
+		if len(detectedClients) > 0 {
+			status.Fail("No enabled AI coding clients available")
+			return fmt.Errorf("no enabled AI coding clients available (detected: %d, enabled in config: %v)",
+				len(detectedClients), cfg.EnabledClients)
+		}
 		status.Fail("No AI coding clients detected")
 		return fmt.Errorf("no AI coding clients detected")
 	}
@@ -796,4 +802,27 @@ func saveInstallationState(tracker *assets.Tracker, sortedAssets []*lockfile.Ass
 		log := logger.Get()
 		log.Error("failed to save tracker", "error", err)
 	}
+}
+
+// filterClientsByConfig returns only the clients that are both detected as installed
+// and enabled in the config. If EnabledClients is empty/nil, all detected clients are returned.
+func filterClientsByConfig(cfg *config.Config, detectedClients []clients.Client) []clients.Client {
+	if len(cfg.EnabledClients) == 0 {
+		// No restrictions - use all detected clients (backwards compatible)
+		return detectedClients
+	}
+
+	enabledMap := make(map[string]bool)
+	for _, id := range cfg.EnabledClients {
+		enabledMap[id] = true
+	}
+
+	var filtered []clients.Client
+	for _, client := range detectedClients {
+		if enabledMap[client.ID()] {
+			filtered = append(filtered, client)
+		}
+	}
+
+	return filtered
 }

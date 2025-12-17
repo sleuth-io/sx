@@ -30,7 +30,7 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		BaseClient: clients.NewBaseClient(
-			"cursor",
+			clients.ClientIDCursor,
 			"Cursor",
 			[]asset.Type{
 				asset.TypeMCP,

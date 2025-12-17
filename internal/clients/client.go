@@ -109,6 +109,27 @@ const (
 	ScopePath       ScopeType = "path"
 )
 
+// ClientID constants for supported AI coding clients
+const (
+	ClientIDClaudeCode = "claude-code"
+	ClientIDCursor     = "cursor"
+)
+
+// AllClientIDs returns all known client IDs
+func AllClientIDs() []string {
+	return []string{ClientIDClaudeCode, ClientIDCursor}
+}
+
+// IsValidClientID checks if the given ID is a known client ID
+func IsValidClientID(id string) bool {
+	for _, valid := range AllClientIDs() {
+		if id == valid {
+			return true
+		}
+	}
+	return false
+}
+
 // InstallOptions contains optional installation settings
 type InstallOptions struct {
 	Force   bool // Force reinstall even if already installed

@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/registry"
 	"github.com/sleuth-io/sx/internal/ui"
@@ -24,9 +25,10 @@ const (
 // NewInitCommand creates the init command
 func NewInitCommand() *cobra.Command {
 	var (
-		repoType  string
-		serverURL string
-		repoURL   string
+		repoType    string
+		serverURL   string
+		repoURL     string
+		clientsFlag string
 	)
 
 	cmd := &cobra.Command{
@@ -38,41 +40,52 @@ or Skills.new as the asset source.
 By default, runs in interactive mode with local path as the default option.
 Use flags for non-interactive mode.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInit(cmd, args, repoType, serverURL, repoURL)
+			return runInit(cmd, args, repoType, serverURL, repoURL, clientsFlag)
 		},
 	}
 
 	cmd.Flags().StringVar(&repoType, "type", "", "Repository type: 'path', 'git', or 'sleuth'")
 	cmd.Flags().StringVar(&serverURL, "server-url", "", "Skills.new server URL (for type=sleuth)")
 	cmd.Flags().StringVar(&repoURL, "repo-url", "", "Repository URL (git URL, file:// URL, or directory path)")
+	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Comma-separated client IDs (e.g., 'claude-code,cursor') or 'all'")
 
 	return cmd
 }
 
 // runInit executes the init command
-func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL string) error {
+func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL, clientsFlag string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
-	// Check if config already exists
+	// Load existing config if present (for pre-populating options)
+	var existingCfg *config.Config
 	if config.Exists() {
 		styledOut.Warning("Configuration already exists.")
 		confirmed, err := components.Confirm("Overwrite existing configuration?", false)
 		if err != nil || !confirmed {
 			return fmt.Errorf("initialization cancelled")
 		}
+		// Load existing config to pre-populate options
+		existingCfg, _ = config.Load()
 	}
 
 	// Determine if we're in non-interactive mode
 	nonInteractive := repoType != ""
 
+	var enabledClients []string
 	var err error
+
 	if nonInteractive {
-		err = runInitNonInteractive(cmd, ctx, repoType, serverURL, repoURL)
+		// Parse clients flag for non-interactive mode
+		enabledClients, err = parseClientsFlag(clientsFlag)
+		if err != nil {
+			return err
+		}
+		err = runInitNonInteractive(cmd, ctx, repoType, serverURL, repoURL, enabledClients)
 	} else {
-		err = runInitInteractive(cmd, ctx)
+		enabledClients, err = runInitInteractive(cmd, ctx, existingCfg)
 	}
 
 	if err != nil {
@@ -80,24 +93,26 @@ func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL str
 	}
 
 	// Post-init steps (hooks and featured skills)
-	runPostInit(cmd, ctx)
+	runPostInit(cmd, ctx, enabledClients)
 
 	return nil
 }
 
 // runPostInit runs common steps after successful initialization
-func runPostInit(cmd *cobra.Command, ctx context.Context) {
+func runPostInit(cmd *cobra.Command, ctx context.Context, enabledClients []string) {
 	out := newOutputHelper(cmd)
 
-	// Install hooks for all detected clients
-	installAllClientHooks(ctx, out)
+	// Install hooks for enabled clients only
+	installSelectedClientHooks(ctx, out, enabledClients)
 
 	// Offer to install featured skills
 	promptFeaturedSkills(cmd, ctx)
 }
 
 // runInitInteractive runs the init command in interactive mode
-func runInitInteractive(cmd *cobra.Command, ctx context.Context) error {
+// Returns the list of enabled client IDs
+// existingCfg may be nil if no previous config exists
+func runInitInteractive(cmd *cobra.Command, ctx context.Context, existingCfg *config.Config) ([]string, error) {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
 	styledOut.Header("Initialize sx")
@@ -108,74 +123,102 @@ func runInitInteractive(cmd *cobra.Command, ctx context.Context) error {
 		{Label: "Share with my team", Value: "team", Description: "Git or Skills.new"},
 	}
 
-	selected, err := components.SelectWithDefault("How will you use sx?", options, 0)
+	// Pre-select based on existing config
+	defaultIndex := 0
+	if existingCfg != nil && (existingCfg.Type == config.RepositoryTypeGit || existingCfg.Type == config.RepositoryTypeSleuth) {
+		defaultIndex = 1 // "Share with my team"
+	}
+
+	selected, err := components.SelectWithDefault("How will you use sx?", options, defaultIndex)
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	// Prompt for client selection (with existing enabled clients pre-selected)
+	var existingEnabledClients []string
+	if existingCfg != nil {
+		existingEnabledClients = existingCfg.EnabledClients
+	}
+	enabledClients, err := promptClientSelection(styledOut, existingEnabledClients)
+	if err != nil {
+		return nil, err
 	}
 
 	switch selected.Value {
 	case "personal":
-		return initPersonalRepository(cmd, ctx)
+		err = initPersonalRepository(cmd, ctx, enabledClients)
 	case "team":
-		return initTeamRepository(cmd, ctx)
+		err = initTeamRepository(cmd, ctx, enabledClients, existingCfg)
 	default:
-		return fmt.Errorf("invalid choice: %s", selected.Value)
+		return nil, fmt.Errorf("invalid choice: %s", selected.Value)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return enabledClients, nil
 }
 
 // initPersonalRepository sets up a local vault in the user's config directory
-func initPersonalRepository(cmd *cobra.Command, ctx context.Context) error {
+func initPersonalRepository(cmd *cobra.Command, ctx context.Context, enabledClients []string) error {
 	configDir, err := utils.GetConfigDir()
 	if err != nil {
 		return fmt.Errorf("failed to get config directory: %w", err)
 	}
 
 	vaultPath := filepath.Join(configDir, "vault")
-	return configurePathRepo(cmd, ctx, vaultPath)
+	return configurePathRepo(cmd, ctx, vaultPath, enabledClients)
 }
 
 // initTeamRepository prompts for team repository options (git or sleuth)
-func initTeamRepository(cmd *cobra.Command, ctx context.Context) error {
+func initTeamRepository(cmd *cobra.Command, ctx context.Context, enabledClients []string, existingCfg *config.Config) error {
 	options := []components.Option{
 		{Label: "Skills.new", Value: "sleuth", Description: "Managed assets platform"},
 		{Label: "Git repository", Value: "git", Description: "Self-hosted Git repo"},
 	}
 
-	selected, err := components.SelectWithDefault("Choose how to share with your team:", options, 0)
+	// Pre-select based on existing config
+	defaultIndex := 0
+	if existingCfg != nil && existingCfg.Type == config.RepositoryTypeGit {
+		defaultIndex = 1 // "Git repository"
+	}
+
+	selected, err := components.SelectWithDefault("Choose how to share with your team:", options, defaultIndex)
 	if err != nil {
 		return err
 	}
 
 	switch selected.Value {
 	case "sleuth":
-		return initSleuthServer(cmd, ctx)
+		return initSleuthServer(cmd, ctx, enabledClients, existingCfg)
 	case "git":
-		return initGitRepository(cmd, ctx)
+		return initGitRepository(cmd, ctx, enabledClients, existingCfg)
 	default:
 		return fmt.Errorf("invalid choice: %s", selected.Value)
 	}
 }
 
 // runInitNonInteractive runs the init command in non-interactive mode
-func runInitNonInteractive(cmd *cobra.Command, ctx context.Context, repoType, serverURL, repoURL string) error {
+func runInitNonInteractive(cmd *cobra.Command, ctx context.Context, repoType, serverURL, repoURL string, enabledClients []string) error {
 	switch repoType {
 	case "sleuth":
 		if serverURL == "" {
 			serverURL = defaultSleuthServerURL
 		}
-		return authenticateSleuth(cmd, ctx, serverURL)
+		return authenticateSleuth(cmd, ctx, serverURL, enabledClients)
 
 	case "git":
 		if repoURL == "" {
 			return fmt.Errorf("--repo-url is required for type=git")
 		}
-		return configureGitRepo(cmd, ctx, repoURL)
+		return configureGitRepo(cmd, ctx, repoURL, enabledClients)
 
 	case "path":
 		if repoURL == "" {
 			return fmt.Errorf("--repo-url is required for type=path")
 		}
-		return configurePathRepo(cmd, ctx, repoURL)
+		return configurePathRepo(cmd, ctx, repoURL, enabledClients)
 
 	default:
 		return fmt.Errorf("invalid repository type: %s (must be 'path', 'git', or 'sleuth')", repoType)
@@ -183,20 +226,26 @@ func runInitNonInteractive(cmd *cobra.Command, ctx context.Context, repoType, se
 }
 
 // initSleuthServer initializes Skills.new server configuration
-func initSleuthServer(cmd *cobra.Command, ctx context.Context) error {
+func initSleuthServer(cmd *cobra.Command, ctx context.Context, enabledClients []string, existingCfg *config.Config) error {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 	styledOut.Newline()
 
-	serverURL, err := components.InputWithDefault("Enter Skills.new server URL", defaultSleuthServerURL)
+	// Pre-populate with existing server URL if available
+	defaultURL := defaultSleuthServerURL
+	if existingCfg != nil && existingCfg.Type == config.RepositoryTypeSleuth && existingCfg.RepositoryURL != "" {
+		defaultURL = existingCfg.RepositoryURL
+	}
+
+	serverURL, err := components.InputWithDefault("Enter Skills.new server URL", defaultURL)
 	if err != nil {
 		return err
 	}
 
-	return authenticateSleuth(cmd, ctx, serverURL)
+	return authenticateSleuth(cmd, ctx, serverURL, enabledClients)
 }
 
 // authenticateSleuth performs OAuth authentication with Skills.new server
-func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL string) error {
+func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL string, enabledClients []string) error {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
 	styledOut.Newline()
@@ -237,9 +286,10 @@ func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL strin
 
 	// Save configuration
 	cfg := &config.Config{
-		Type:          config.RepositoryTypeSleuth,
-		RepositoryURL: serverURL,
-		AuthToken:     tokenResp.AccessToken,
+		Type:           config.RepositoryTypeSleuth,
+		RepositoryURL:  serverURL,
+		AuthToken:      tokenResp.AccessToken,
+		EnabledClients: enabledClients,
 	}
 
 	if err := config.Save(cfg); err != nil {
@@ -254,11 +304,18 @@ func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL strin
 }
 
 // initGitRepository initializes Git repository configuration
-func initGitRepository(cmd *cobra.Command, ctx context.Context) error {
+func initGitRepository(cmd *cobra.Command, ctx context.Context, enabledClients []string, existingCfg *config.Config) error {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 	styledOut.Newline()
 
-	repoURL, err := components.Input("Enter Git repository URL")
+	// Pre-populate with existing Git URL if available
+	var repoURL string
+	var err error
+	if existingCfg != nil && existingCfg.Type == config.RepositoryTypeGit && existingCfg.RepositoryURL != "" {
+		repoURL, err = components.InputWithDefault("Enter Git repository URL", existingCfg.RepositoryURL)
+	} else {
+		repoURL, err = components.Input("Enter Git repository URL")
+	}
 	if err != nil {
 		return err
 	}
@@ -267,17 +324,18 @@ func initGitRepository(cmd *cobra.Command, ctx context.Context) error {
 		return fmt.Errorf("repository URL is required")
 	}
 
-	return configureGitRepo(cmd, ctx, repoURL)
+	return configureGitRepo(cmd, ctx, repoURL, enabledClients)
 }
 
 // configureGitRepo configures a Git repository
-func configureGitRepo(cmd *cobra.Command, ctx context.Context, repoURL string) error {
+func configureGitRepo(cmd *cobra.Command, ctx context.Context, repoURL string, enabledClients []string) error {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
 	// Save configuration
 	cfg := &config.Config{
-		Type:          config.RepositoryTypeGit,
-		RepositoryURL: repoURL,
+		Type:           config.RepositoryTypeGit,
+		RepositoryURL:  repoURL,
+		EnabledClients: enabledClients,
 	}
 
 	if err := config.Save(cfg); err != nil {
@@ -292,7 +350,7 @@ func configureGitRepo(cmd *cobra.Command, ctx context.Context, repoURL string) e
 }
 
 // configurePathRepo configures a local path repository
-func configurePathRepo(cmd *cobra.Command, ctx context.Context, repoPath string) error {
+func configurePathRepo(cmd *cobra.Command, ctx context.Context, repoPath string, enabledClients []string) error {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
 	// Convert path to absolute path first
@@ -322,8 +380,9 @@ func configurePathRepo(cmd *cobra.Command, ctx context.Context, repoPath string)
 
 	// Save configuration
 	cfg := &config.Config{
-		Type:          config.RepositoryTypePath,
-		RepositoryURL: "file://" + absPath,
+		Type:           config.RepositoryTypePath,
+		RepositoryURL:  "file://" + absPath,
+		EnabledClients: enabledClients,
 	}
 
 	if err := config.Save(cfg); err != nil {
@@ -354,6 +413,124 @@ func expandPath(path string) (string, error) {
 	}
 
 	return absPath, nil
+}
+
+// parseClientsFlag parses the --clients flag value and validates client IDs
+// Returns nil for "all" or empty string (meaning all detected clients)
+func parseClientsFlag(clientsFlag string) ([]string, error) {
+	if clientsFlag == "" || strings.ToLower(clientsFlag) == "all" {
+		return nil, nil // nil means all detected clients
+	}
+
+	parts := strings.Split(clientsFlag, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if !clients.IsValidClientID(p) {
+			return nil, fmt.Errorf("invalid client ID: %s (valid options: %s)", p, strings.Join(clients.AllClientIDs(), ", "))
+		}
+		result = append(result, p)
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+
+	return result, nil
+}
+
+// promptClientSelection detects installed clients and prompts user for selection
+// existingEnabledClients can be used to pre-select previously enabled clients
+func promptClientSelection(styledOut *ui.Output, existingEnabledClients []string) ([]string, error) {
+	registry := clients.Global()
+	installedClients := registry.DetectInstalled()
+
+	if len(installedClients) == 0 {
+		styledOut.Warning("No AI coding clients detected")
+		return nil, nil
+	}
+
+	if len(installedClients) == 1 {
+		// Only one client - no need to prompt
+		client := installedClients[0]
+		styledOut.Newline()
+		styledOut.Muted(fmt.Sprintf("Detected %s - will install assets there", client.DisplayName()))
+		return []string{client.ID()}, nil
+	}
+
+	// Build set of previously enabled clients for quick lookup
+	previouslyEnabled := make(map[string]bool)
+	for _, id := range existingEnabledClients {
+		previouslyEnabled[id] = true
+	}
+
+	// Build client names list for display
+	var clientNames []string
+	for _, client := range installedClients {
+		clientNames = append(clientNames, client.DisplayName())
+	}
+	clientList := strings.Join(clientNames, ", ")
+
+	// Step 1: Ask if user wants all clients
+	// Default to "yes" if no previous config, or if all detected clients were previously enabled
+	allPreviouslyEnabled := len(existingEnabledClients) == 0
+	if !allPreviouslyEnabled {
+		allPreviouslyEnabled = true
+		for _, client := range installedClients {
+			if !previouslyEnabled[client.ID()] {
+				allPreviouslyEnabled = false
+				break
+			}
+		}
+	}
+
+	styledOut.Newline()
+	installAll, err := components.Confirm(fmt.Sprintf("Install to all detected clients (%s)?", clientList), allPreviouslyEnabled)
+	if err != nil {
+		return nil, err
+	}
+
+	if installAll {
+		var clientIDs []string
+		for _, client := range installedClients {
+			clientIDs = append(clientIDs, client.ID())
+		}
+		return clientIDs, nil
+	}
+
+	// Step 2: Show multi-select for individual client selection
+	// Pre-select based on existing config, or all if no existing config
+	options := make([]components.MultiSelectOption, len(installedClients))
+	for i, client := range installedClients {
+		// If we have previous config, use it; otherwise default to all selected
+		selected := len(existingEnabledClients) == 0 || previouslyEnabled[client.ID()]
+		options[i] = components.MultiSelectOption{
+			Label:    client.DisplayName(),
+			Value:    client.ID(),
+			Selected: selected,
+		}
+	}
+
+	selected, err := components.MultiSelect("Select clients to install to:", options)
+	if err != nil {
+		return nil, err
+	}
+
+	var clientIDs []string
+	for _, opt := range selected {
+		if opt.Selected {
+			clientIDs = append(clientIDs, opt.Value)
+		}
+	}
+
+	if len(clientIDs) == 0 {
+		styledOut.Warning("No clients selected - assets will not be installed anywhere")
+	}
+
+	return clientIDs, nil
 }
 
 // promptFeaturedSkills offers to install featured skills after init
