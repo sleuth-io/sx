@@ -2,9 +2,11 @@ package commands
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
 
@@ -25,15 +27,39 @@ func createZipFromSingleFile(filePath string) ([]byte, error) {
 	// Determine asset type from path and content
 	assetType := detectSingleFileAssetType(filePath, content)
 
-	// Determine prompt file name based on type
-	var promptFileName string
-	if assetType == asset.TypeAgent {
-		promptFileName = "AGENT.md"
-	} else {
-		promptFileName = "COMMAND.md"
+	// Keep the original filename instead of renaming to AGENT.md/COMMAND.md
+	promptFileName := filepath.Base(filePath)
+	assetName := strings.TrimSuffix(promptFileName, filepath.Ext(promptFileName))
+
+	// Create zip with the original filename
+	zipData, err := utils.CreateZipFromContent(promptFileName, content)
+	if err != nil {
+		return nil, err
 	}
 
-	return utils.CreateZipFromContent(promptFileName, content)
+	// Create metadata with correct PromptFile
+	meta := &metadata.Metadata{
+		MetadataVersion: "1.0",
+		Asset: metadata.Asset{
+			Name:    assetName,
+			Type:    assetType,
+			Version: "1.0", // Default version, user will confirm
+		},
+	}
+
+	if assetType == asset.TypeAgent {
+		meta.Agent = &metadata.AgentConfig{PromptFile: promptFileName}
+	} else {
+		meta.Command = &metadata.CommandConfig{PromptFile: promptFileName}
+	}
+
+	// Add metadata.toml to zip
+	metaBytes, err := metadata.Marshal(meta)
+	if err != nil {
+		return nil, err
+	}
+
+	return utils.AddFileToZip(zipData, "metadata.toml", metaBytes)
 }
 
 // detectSingleFileAssetType analyzes path and content to determine if it's an agent or command
