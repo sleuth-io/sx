@@ -29,3 +29,15 @@
 - name: aws-cdk-development
   description: AWS CDK best practices, validation scripts, and patterns
   url: https://github.com/zxkane/aws-skills/tree/main/skills/aws-cdk-development
+
+- name: webapp-testing
+  description: Comprehensive web application testing using browser automation
+  url: https://github.com/anthropics/skills/tree/main/skills/webapp-testing
+
+- name: frontend-design
+  description: Build modern, responsive UI components with design best practices
+  url: https://github.com/anthropics/skills/tree/main/skills/frontend-design
+
+- name: web-artifacts-builder
+  description: Create interactive web artifacts and prototypes
+  url: https://github.com/anthropics/skills/tree/main/skills/web-artifacts-builder
