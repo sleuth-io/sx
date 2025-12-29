@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/cache"
 	"github.com/sleuth-io/sx/internal/clients"
@@ -240,16 +239,15 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 		}
 	}
 
-	if len(applicableAssets) == 0 {
-		styledOut.Muted("No assets to install.")
-		return nil
-	}
-
-	// Resolve dependencies
-	resolver := assets.NewDependencyResolver(lockFile)
-	sortedAssets, err := resolver.Resolve(applicableAssets)
-	if err != nil {
-		return fmt.Errorf("dependency resolution failed: %w", err)
+	// Resolve dependencies (even if empty, we need to check for cleanup)
+	var sortedAssets []*lockfile.Asset
+	if len(applicableAssets) > 0 {
+		resolver := assets.NewDependencyResolver(lockFile)
+		var err error
+		sortedAssets, err = resolver.Resolve(applicableAssets)
+		if err != nil {
+			return fmt.Errorf("dependency resolution failed: %w", err)
+		}
 	}
 
 	// Load tracker
@@ -268,7 +266,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	assetsToInstall := determineAssetsToInstall(tracker, sortedAssets, currentScope, targetClientIDs, out)
 
-	// Clean up assets that were removed from lock file
+	// Clean up assets that were removed from lock file (must run even if no assets to install!)
 	cleanupRemovedAssets(ctx, tracker, sortedAssets, gitContext, currentScope, targetClients, out)
 
 	// Early exit if nothing to install
@@ -496,13 +494,19 @@ func cleanupRemovedAssets(ctx context.Context, tracker *assets.Tracker, sortedAs
 	key := assets.NewAssetKey("", currentScope.Type, currentScope.RepoURL, currentScope.RepoPath)
 	currentInScope := tracker.FindByScope(key.Repository, key.Path)
 
+	// Also check global assets (not scoped to any repo)
+	globalAssets := tracker.FindByScope("", "")
+
+	// Combine both scoped and global assets
+	allRelevantAssets := append(currentInScope, globalAssets...)
+
 	lockFileNames := make(map[string]bool)
 	for _, art := range sortedAssets {
 		lockFileNames[art.Name] = true
 	}
 
 	var removedAssets []assets.InstalledAsset
-	for _, installed := range currentInScope {
+	for _, installed := range allRelevantAssets {
 		if !lockFileNames[installed.Name] {
 			removedAssets = append(removedAssets, installed)
 		}
@@ -514,45 +518,17 @@ func cleanupRemovedAssets(ctx context.Context, tracker *assets.Tracker, sortedAs
 
 	out.printf("\nCleaning up %d removed asset(s)...\n", len(removedAssets))
 
-	// Build uninstall scope
-	uninstallScope := buildInstallScope(currentScope, gitContext)
+	// Group assets by scope and uninstall with appropriate scope
+	globalAssets, scopedAssets := separateGlobalAndScopedAssets(removedAssets)
 
-	// Convert InstalledAsset to asset.Asset for uninstall
-	assetsToRemove := make([]asset.Asset, len(removedAssets))
-	for i, installed := range removedAssets {
-		assetsToRemove[i] = asset.Asset{
-			Name:    installed.Name,
-			Version: installed.Version,
-			Type:    asset.FromString(installed.Type),
-		}
+	if len(globalAssets) > 0 {
+		globalScope := &clients.InstallScope{Type: clients.ScopeGlobal}
+		uninstallAssetsWithScope(ctx, globalAssets, globalScope, targetClients, out)
 	}
 
-	// Create uninstall request
-	uninstallReq := clients.UninstallRequest{
-		Assets:  assetsToRemove,
-		Scope:   uninstallScope,
-		Options: clients.UninstallOptions{},
-	}
-
-	// Uninstall from all clients
-	log := logger.Get()
-	for _, client := range targetClients {
-		resp, err := client.UninstallAssets(ctx, uninstallReq)
-		if err != nil {
-			out.printfErr("Warning: cleanup failed for %s: %v\n", client.DisplayName(), err)
-			log.Error("cleanup failed", "client", client.ID(), "error", err)
-			continue
-		}
-
-		for _, result := range resp.Results {
-			if result.Status == clients.StatusSuccess {
-				out.printf("  - Removed %s from %s\n", result.AssetName, client.DisplayName())
-				log.Info("asset removed", "name", result.AssetName, "client", client.ID())
-			} else if result.Status == clients.StatusFailed {
-				out.printfErr("Warning: failed to remove %s from %s: %v\n", result.AssetName, client.DisplayName(), result.Error)
-				log.Error("asset removal failed", "name", result.AssetName, "client", client.ID(), "error", result.Error)
-			}
-		}
+	if len(scopedAssets) > 0 {
+		uninstallScope := buildInstallScope(currentScope, gitContext)
+		uninstallAssetsWithScope(ctx, scopedAssets, uninstallScope, targetClients, out)
 	}
 
 	// Remove from tracker

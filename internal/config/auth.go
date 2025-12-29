@@ -184,9 +184,10 @@ func Authenticate(ctx context.Context, serverURL string) (string, error) {
 	}
 
 	// Try to open browser, but don't fail if it doesn't work
+	// Build complete URL with user_code parameter if not provided by server
 	browserURL := deviceResp.VerificationURIComplete
 	if browserURL == "" {
-		browserURL = deviceResp.VerificationURI
+		browserURL = fmt.Sprintf("%s?user_code=%s", deviceResp.VerificationURI, deviceResp.UserCode)
 	}
 
 	_ = OpenBrowser(browserURL) // Ignore error, user can manually open

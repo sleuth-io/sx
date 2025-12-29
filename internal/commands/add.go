@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +24,7 @@ import (
 	"github.com/sleuth-io/sx/internal/ui/components"
 	"github.com/sleuth-io/sx/internal/utils"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
+	versionpkg "github.com/sleuth-io/sx/internal/version"
 )
 
 // NewAddCommand creates the add command
@@ -735,8 +735,8 @@ func confirmNameAndType(out *outputHelper, name string, inType asset.Type) (outN
 // determineSuggestedVersionAndCheckIdentical determines the version to suggest and whether contents are identical
 func determineSuggestedVersionAndCheckIdentical(ctx context.Context, status *components.Status, vault vaultpkg.Vault, name string, versions []string, newZipData []byte) (version string, identical bool, err error) {
 	if len(versions) == 0 {
-		// No existing versions, suggest 1.0
-		return "1.0", false, nil
+		// No existing versions, suggest 1
+		return "1", false, nil
 	}
 
 	// Get the latest version
@@ -754,13 +754,13 @@ func determineSuggestedVersionAndCheckIdentical(ctx context.Context, status *com
 		// For other vaults, we'd need to construct an asset and use GetAsset
 		// For now, just suggest incrementing the version
 		status.Clear()
-		return suggestNextVersion(latestVersion), false, nil
+		return versionpkg.IncrementMajor(latestVersion), false, nil
 	}
 
 	if err != nil {
 		// If we can't get the existing version, suggest incrementing
 		status.Clear()
-		return suggestNextVersion(latestVersion), false, nil
+		return versionpkg.IncrementMajor(latestVersion), false, nil
 	}
 
 	// Compare the contents
@@ -775,23 +775,7 @@ func determineSuggestedVersionAndCheckIdentical(ctx context.Context, status *com
 	}
 
 	// Contents differ, suggest next version
-	return suggestNextVersion(latestVersion), false, nil
-}
-
-// suggestNextVersion suggests the next major version
-func suggestNextVersion(currentVersion string) string {
-	// Simple version incrementing: split by '.', increment first number
-	parts := strings.Split(currentVersion, ".")
-	if len(parts) == 0 {
-		return "2.0"
-	}
-
-	major := 1
-	if val, err := strconv.Atoi(parts[0]); err == nil {
-		major = val + 1
-	}
-
-	return fmt.Sprintf("%d.0", major)
+	return versionpkg.IncrementMajor(latestVersion), false, nil
 }
 
 // promptForVersion prompts the user to confirm or edit the version

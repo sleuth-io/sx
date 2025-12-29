@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/Masterminds/semver/v3"
 )
 
 // Version represents a semantic version
@@ -272,4 +274,72 @@ func FilterByMultiple(versions []string, specifiers []*Specifier) ([]string, err
 	}
 
 	return result, nil
+}
+
+// Sort sorts a list of version strings in ascending order (oldest first) using semantic versioning rules.
+// Invalid versions are placed at the end in their original order.
+func Sort(versions []string) []string {
+	if len(versions) == 0 {
+		return versions
+	}
+
+	// Parse all versions using semver
+	type versionPair struct {
+		parsed   *semver.Version
+		original string
+	}
+
+	parsed := make([]versionPair, 0, len(versions))
+	invalid := make([]string, 0)
+
+	for _, vStr := range versions {
+		v, err := semver.NewVersion(vStr)
+		if err != nil {
+			invalid = append(invalid, vStr) // Keep invalid at end
+			continue
+		}
+		parsed = append(parsed, versionPair{parsed: v, original: vStr})
+	}
+
+	// Sort versions in ascending order (oldest first)
+	sort.Slice(parsed, func(i, j int) bool {
+		return parsed[i].parsed.LessThan(parsed[j].parsed)
+	})
+
+	// Build result
+	result := make([]string, 0, len(versions))
+	for _, pair := range parsed {
+		result = append(result, pair.original)
+	}
+	result = append(result, invalid...)
+
+	return result
+}
+
+// IncrementMajor returns the next major version, preserving the original format.
+// Examples: "1" -> "2", "1.0" -> "2.0", "1.0.0" -> "2.0.0"
+// If the version cannot be parsed, returns "2" as a fallback.
+func IncrementMajor(currentVersion string) string {
+	v, err := semver.NewVersion(currentVersion)
+	if err != nil {
+		// Can't parse as semver, return "2" as fallback
+		return "2"
+	}
+
+	// Increment major version
+	next := v.IncMajor()
+
+	// Preserve original format by counting dots
+	dots := strings.Count(currentVersion, ".")
+	switch dots {
+	case 0:
+		// Simple integer format (e.g., "1" -> "2")
+		return fmt.Sprintf("%d", next.Major())
+	case 1:
+		// X.Y format (e.g., "1.0" -> "2.0")
+		return fmt.Sprintf("%d.%d", next.Major(), next.Minor())
+	default:
+		// X.Y.Z format or more (e.g., "1.0.0" -> "2.0.0")
+		return next.String()
+	}
 }

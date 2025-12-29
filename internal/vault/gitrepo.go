@@ -19,6 +19,7 @@ import (
 	"github.com/sleuth-io/sx/internal/constants"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
@@ -47,6 +48,7 @@ type GitVault struct {
 	httpHandler *HTTPSourceHandler
 	pathHandler *PathSourceHandler
 	gitHandler  *GitSourceHandler
+	hasSynced   bool // Track if we've synced in this CLI execution
 }
 
 // NewGitVault creates a new Git repository
@@ -275,14 +277,28 @@ func (g *GitVault) VerifyIntegrity(data []byte, hashes map[string]string, size i
 }
 
 // cloneOrUpdate clones the repository if it doesn't exist, or pulls updates if it does
+// Only performs the operation once per CLI execution to avoid redundant network calls
 func (g *GitVault) cloneOrUpdate(ctx context.Context) error {
-	if _, err := os.Stat(filepath.Join(g.repoPath, ".git")); os.IsNotExist(err) {
-		// Repository doesn't exist, clone it
-		return g.clone(ctx)
+	// Skip if we've already synced in this execution
+	if g.hasSynced {
+		return nil
 	}
 
-	// Repository exists, pull updates
-	return g.pull(ctx)
+	if _, err := os.Stat(filepath.Join(g.repoPath, ".git")); os.IsNotExist(err) {
+		// Repository doesn't exist, clone it
+		if err := g.clone(ctx); err != nil {
+			return err
+		}
+	} else {
+		// Repository exists, pull updates
+		if err := g.pull(ctx); err != nil {
+			return err
+		}
+	}
+
+	// Mark as synced for this execution
+	g.hasSynced = true
+	return nil
 }
 
 // clone clones the Git repository
@@ -657,6 +673,34 @@ func (r *GitVault) PostUsageStats(ctx context.Context, jsonlData string) error {
 	return nil
 }
 
+// SetInstallations updates the lock file with installation scopes and commits/pushes
+func (g *GitVault) SetInstallations(ctx context.Context, asset *lockfile.Asset) error {
+	// Acquire file lock to prevent concurrent git operations
+	fileLock, err := g.acquireFileLock(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	defer func() { _ = fileLock.Unlock() }()
+
+	// Clone or update repository
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+
+	// Update lock file with asset and scopes
+	lockFilePath := g.GetLockFilePath()
+	if err := lockfile.AddOrUpdateAsset(lockFilePath, asset); err != nil {
+		return fmt.Errorf("failed to update lock file: %w", err)
+	}
+
+	// Commit and push changes
+	if err := g.commitAndPush(ctx, asset); err != nil {
+		return fmt.Errorf("failed to commit and push: %w", err)
+	}
+
+	return nil
+}
+
 // RemoveAsset removes an asset from the lock file and pushes to remote
 func (g *GitVault) RemoveAsset(ctx context.Context, assetName, version string) error {
 	// Acquire file lock to prevent concurrent git operations
@@ -691,4 +735,153 @@ func (g *GitVault) RemoveAsset(ctx context.Context, assetName, version string) e
 	}
 
 	return nil
+}
+
+// ListAssets returns a list of all assets in the vault by reading the assets/ directory
+func (g *GitVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*ListAssetsResult, error) {
+	start := time.Now()
+	// Clone or update repository
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return nil, fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+	log := logger.Get()
+	log.Debug("cloneOrUpdate completed", "duration", time.Since(start))
+
+	// Read assets/ directory
+	assetsDir := filepath.Join(g.repoPath, "assets")
+	entries, err := os.ReadDir(assetsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// No assets directory means no assets
+			return &ListAssetsResult{Assets: []AssetSummary{}}, nil
+		}
+		return nil, fmt.Errorf("failed to read assets directory: %w", err)
+	}
+
+	var assets []AssetSummary
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Read list.txt for versions
+		versions, err := g.GetVersionList(ctx, entry.Name())
+		if err != nil || len(versions) == 0 {
+			continue // Skip if no versions
+		}
+
+		// Get metadata for latest version
+		latestVersion := versions[len(versions)-1]
+		metadataPath := filepath.Join(g.repoPath, "assets", entry.Name(), latestVersion, "metadata.toml")
+
+		assetSummary := AssetSummary{
+			Name:          entry.Name(),
+			LatestVersion: latestVersion,
+			VersionsCount: len(versions),
+		}
+
+		// Try to read metadata
+		if metaData, err := os.ReadFile(metadataPath); err == nil {
+			if meta, err := metadata.Parse(metaData); err == nil {
+				assetSummary.Type = meta.Asset.Type
+				assetSummary.Description = meta.Asset.Description
+			}
+		}
+
+		// Get file timestamps
+		assetDirInfo, _ := entry.Info()
+		if assetDirInfo != nil {
+			assetSummary.CreatedAt = assetDirInfo.ModTime()
+			assetSummary.UpdatedAt = assetDirInfo.ModTime()
+		}
+
+		// Apply type filter if specified
+		if opts.Type != "" && assetSummary.Type.Key != opts.Type {
+			continue
+		}
+
+		assets = append(assets, assetSummary)
+	}
+
+	// Apply limit if specified
+	if opts.Limit > 0 && len(assets) > opts.Limit {
+		assets = assets[:opts.Limit]
+	}
+
+	return &ListAssetsResult{Assets: assets}, nil
+}
+
+// GetAssetDetails returns detailed information about a specific asset
+func (g *GitVault) GetAssetDetails(ctx context.Context, name string) (*AssetDetails, error) {
+	// Clone or update repository
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return nil, fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+
+	// Check if asset directory exists
+	assetDir := filepath.Join(g.repoPath, "assets", name)
+	if _, err := os.Stat(assetDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("asset '%s' not found", name)
+	}
+
+	// Get version list
+	versions, err := g.GetVersionList(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get version list: %w", err)
+	}
+
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("asset '%s' has no versions", name)
+	}
+
+	// Build version list with file info
+	var versionList []AssetVersion
+	for _, v := range versions {
+		versionDir := filepath.Join(assetDir, v)
+		versionInfo, err := os.Stat(versionDir)
+
+		versionEntry := AssetVersion{Version: v}
+		if err == nil {
+			versionEntry.CreatedAt = versionInfo.ModTime()
+
+			// Count files in version directory
+			if entries, err := os.ReadDir(versionDir); err == nil {
+				fileCount := 0
+				for _, e := range entries {
+					if !e.IsDir() {
+						fileCount++
+					}
+				}
+				versionEntry.FilesCount = fileCount
+			}
+		}
+
+		versionList = append(versionList, versionEntry)
+	}
+
+	// Get metadata for latest version
+	latestVersion := versions[len(versions)-1]
+	metadataPath := filepath.Join(assetDir, latestVersion, "metadata.toml")
+
+	details := &AssetDetails{
+		Name:     name,
+		Versions: versionList,
+	}
+
+	// Try to read metadata
+	if metaData, err := os.ReadFile(metadataPath); err == nil {
+		if meta, err := metadata.Parse(metaData); err == nil {
+			details.Type = meta.Asset.Type
+			details.Description = meta.Asset.Description
+			details.Metadata = meta
+		}
+	}
+
+	// Get directory timestamps
+	if assetDirInfo, err := os.Stat(assetDir); err == nil {
+		details.CreatedAt = assetDirInfo.ModTime()
+		details.UpdatedAt = assetDirInfo.ModTime()
+	}
+
+	return details, nil
 }
