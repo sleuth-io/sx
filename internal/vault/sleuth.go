@@ -13,7 +13,6 @@ import (
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/cache"
-	sleuthConfig "github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
@@ -45,19 +44,9 @@ func NewSleuthVault(serverURL, authToken string) *SleuthVault {
 
 // Authenticate performs authentication with the Sleuth server
 func (s *SleuthVault) Authenticate(ctx context.Context) (string, error) {
-	if s.authToken != "" {
-		// Already have a token
-		return s.authToken, nil
-	}
-
-	// Perform OAuth device code flow
-	token, err := sleuthConfig.Authenticate(ctx, s.serverURL)
-	if err != nil {
-		return "", fmt.Errorf("authentication failed: %w", err)
-	}
-
-	s.authToken = token
-	return token, nil
+	// Token is always provided via config during initialization
+	// OAuth device flow is performed during 'sx init' and token is saved to config
+	return s.authToken, nil
 }
 
 // GetLockFile retrieves the lock file from the Sleuth server
