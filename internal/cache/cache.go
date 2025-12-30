@@ -318,3 +318,31 @@ func LoadAssetFromDisk(name, version string) ([]byte, error) {
 
 	return data, nil
 }
+
+// InvalidateLockFileCache removes cached lock file and ETag for a repository URL
+// This forces the next GetLockFile call to fetch fresh data from the backend
+func InvalidateLockFileCache(repoURL string) error {
+	// Remove lock file
+	lockPath, err := GetCachedLockFilePath(repoURL)
+	if err != nil {
+		return err
+	}
+	if utils.FileExists(lockPath) {
+		if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove cached lock file: %w", err)
+		}
+	}
+
+	// Remove ETag
+	etagPath, err := GetLockFileETagPath(repoURL)
+	if err != nil {
+		return err
+	}
+	if utils.FileExists(etagPath) {
+		if err := os.Remove(etagPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove cached etag: %w", err)
+		}
+	}
+
+	return nil
+}

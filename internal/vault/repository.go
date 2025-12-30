@@ -2,7 +2,9 @@ package vault
 
 import (
 	"context"
+	"time"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
@@ -24,8 +26,11 @@ type Vault interface {
 	GetAsset(ctx context.Context, asset *lockfile.Asset) ([]byte, error)
 
 	// AddAsset uploads an asset to the repository
-	// Updates the lock file with the new asset entry
 	AddAsset(ctx context.Context, asset *lockfile.Asset, zipData []byte) error
+
+	// SetInstallations configures where an asset should be installed
+	// Updates the lock file with the installation scopes
+	SetInstallations(ctx context.Context, asset *lockfile.Asset) error
 
 	// GetVersionList retrieves available versions for an asset (for resolution)
 	// Only applicable to repositories with version management (Sleuth, not Git)
@@ -46,6 +51,14 @@ type Vault interface {
 	// The asset remains in the vault and can be re-added later
 	// If version is empty, removes any version of the asset
 	RemoveAsset(ctx context.Context, assetName, version string) error
+
+	// ListAssets returns a list of all assets in the vault
+	// This enables asset discovery via `sx vault list`
+	ListAssets(ctx context.Context, opts ListAssetsOptions) (*ListAssetsResult, error)
+
+	// GetAssetDetails returns detailed information about a specific asset
+	// This enables asset inspection via `sx vault show <name>`
+	GetAssetDetails(ctx context.Context, name string) (*AssetDetails, error)
 }
 
 // SourceHandler handles fetching assets from specific source types
@@ -53,4 +66,45 @@ type Vault interface {
 type SourceHandler interface {
 	// Fetch retrieves asset data from the source
 	Fetch(ctx context.Context, asset *lockfile.Asset) ([]byte, error)
+}
+
+// ListAssetsOptions contains options for listing vault assets
+type ListAssetsOptions struct {
+	Type   string // Filter by asset type (skill, mcp, etc.)
+	Search string // Search query for filtering assets
+	Limit  int    // Maximum number of assets to return (default 100)
+}
+
+// AssetSummary contains summary information about a vault asset
+type AssetSummary struct {
+	Name          string
+	Type          asset.Type
+	LatestVersion string
+	VersionsCount int
+	Description   string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+// ListAssetsResult contains the results of a ListAssets call
+type ListAssetsResult struct {
+	Assets []AssetSummary
+}
+
+// AssetVersion contains version information for an asset
+type AssetVersion struct {
+	Version    string
+	CreatedAt  time.Time
+	FilesCount int
+}
+
+// AssetDetails contains detailed information about a specific asset
+type AssetDetails struct {
+	Name        string
+	Type        asset.Type
+	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Versions    []AssetVersion
+	Metadata    *metadata.Metadata // Metadata for latest version (or nil if not available)
 }

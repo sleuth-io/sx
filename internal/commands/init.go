@@ -268,10 +268,11 @@ func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL strin
 	styledOut.Printf("And enter code: %s\n", styledOut.BoldText(deviceResp.UserCode))
 	styledOut.Newline()
 
-	// Try to open browser
+	// Try to open browser with user_code prefilled
 	browserURL := deviceResp.VerificationURIComplete
 	if browserURL == "" {
-		browserURL = deviceResp.VerificationURI
+		// Construct URL with user_code parameter for auto-fill
+		browserURL = fmt.Sprintf("%s?user_code=%s", deviceResp.VerificationURI, deviceResp.UserCode)
 	}
 	if err := config.OpenBrowser(browserURL); err == nil {
 		styledOut.Muted("(Browser opened automatically)")

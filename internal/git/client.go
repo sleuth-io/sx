@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
+	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -108,10 +110,16 @@ func (c *Client) Fetch(ctx context.Context, repoPath string) error {
 
 // Pull pulls changes from the remote repository
 func (c *Client) Pull(ctx context.Context, repoPath string) error {
+	log := logger.Get()
+	start := time.Now()
+	log.Debug("git pull starting", "repoPath", repoPath)
+
 	cmd := execGitCommand(ctx, c.sshKeyPath, "pull", "--quiet")
 	cmd.Dir = repoPath
 
 	output, err := cmd.CombinedOutput()
+	log.Debug("git pull completed", "duration", time.Since(start), "error", err)
+
 	if err != nil {
 		return fmt.Errorf("git pull failed: %w\nOutput: %s", err, string(output))
 	}

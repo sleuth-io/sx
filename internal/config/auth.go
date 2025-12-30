@@ -172,30 +172,3 @@ func (o *OAuthClient) requestToken(ctx context.Context, endpoint, deviceCode str
 func OpenBrowser(verificationURI string) error {
 	return browser.OpenURL(verificationURI)
 }
-
-// Authenticate performs the full OAuth device code flow
-func Authenticate(ctx context.Context, serverURL string) (string, error) {
-	client := NewOAuthClient(serverURL)
-
-	// Start device flow
-	deviceResp, err := client.StartDeviceFlow(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to start device flow: %w", err)
-	}
-
-	// Try to open browser, but don't fail if it doesn't work
-	browserURL := deviceResp.VerificationURIComplete
-	if browserURL == "" {
-		browserURL = deviceResp.VerificationURI
-	}
-
-	_ = OpenBrowser(browserURL) // Ignore error, user can manually open
-
-	// Poll for token
-	tokenResp, err := client.PollForToken(ctx, deviceResp.DeviceCode)
-	if err != nil {
-		return "", fmt.Errorf("failed to get token: %w", err)
-	}
-
-	return tokenResp.AccessToken, nil
-}

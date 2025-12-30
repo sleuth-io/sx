@@ -115,12 +115,10 @@ func runRemove(cmd *cobra.Command, assetName, versionFlag string, yes bool) erro
 	}
 
 	if isGitVault {
-		status.Done("Removed and pushed to repository")
+		status.Done(fmt.Sprintf("Removed %s@%s", assetName, assetVersion))
 	} else {
-		status.Done("Removed from lock file")
+		status.Done(fmt.Sprintf("Removed %s@%s", assetName, assetVersion))
 	}
-
-	out.printf("✓ Removed %s@%s from lock file\n", assetName, assetVersion)
 
 	// Prompt to run install (or auto-run if --yes)
 	shouldInstall := yes

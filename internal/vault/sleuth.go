@@ -10,11 +10,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/buildinfo"
-	sleuthConfig "github.com/sleuth-io/sx/internal/config"
+	"github.com/sleuth-io/sx/internal/cache"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
+	"github.com/sleuth-io/sx/internal/version"
 )
 
 // SleuthVault implements Vault for Sleuth HTTP servers
@@ -42,19 +44,9 @@ func NewSleuthVault(serverURL, authToken string) *SleuthVault {
 
 // Authenticate performs authentication with the Sleuth server
 func (s *SleuthVault) Authenticate(ctx context.Context) (string, error) {
-	if s.authToken != "" {
-		// Already have a token
-		return s.authToken, nil
-	}
-
-	// Perform OAuth device code flow
-	token, err := sleuthConfig.Authenticate(ctx, s.serverURL)
-	if err != nil {
-		return "", fmt.Errorf("authentication failed: %w", err)
-	}
-
-	s.authToken = token
-	return token, nil
+	// Token is always provided via config during initialization
+	// OAuth device flow is performed during 'sx init' and token is saved to config
+	return s.authToken, nil
 }
 
 // GetLockFile retrieves the lock file from the Sleuth server
@@ -120,7 +112,7 @@ func (s *SleuthVault) GetAsset(ctx context.Context, asset *lockfile.Asset) ([]by
 
 // AddAsset uploads an asset to the Sleuth server
 func (s *SleuthVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipData []byte) error {
-	endpoint := s.serverURL + "/api/skills/artifacts"
+	endpoint := s.serverURL + "/api/skills/assets"
 
 	// Create multipart writer
 	body := &bytes.Buffer{}
@@ -199,7 +191,7 @@ func (s *SleuthVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipDa
 
 // GetVersionList retrieves available versions for an asset
 func (s *SleuthVault) GetVersionList(ctx context.Context, name string) ([]string, error) {
-	endpoint := fmt.Sprintf("%s/api/skills/artifacts/%s/list.txt", s.serverURL, name)
+	endpoint := fmt.Sprintf("%s/api/skills/assets/%s/list.txt", s.serverURL, name)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
@@ -229,12 +221,16 @@ func (s *SleuthVault) GetVersionList(ctx context.Context, name string) ([]string
 	}
 
 	// Parse versions using common parser
-	return parseVersionList(body), nil
+	versions := parseVersionList(body)
+
+	// Sort versions in ascending order (oldest first) to ensure consistency
+	// regardless of backend ordering
+	return version.Sort(versions), nil
 }
 
 // GetMetadata retrieves metadata for a specific asset version
 func (s *SleuthVault) GetMetadata(ctx context.Context, name, version string) (*metadata.Metadata, error) {
-	endpoint := fmt.Sprintf("%s/api/skills/artifacts/%s/%s/metadata.toml", s.serverURL, name, version)
+	endpoint := fmt.Sprintf("%s/api/skills/assets/%s/%s/metadata.toml", s.serverURL, name, version)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
@@ -308,13 +304,262 @@ func (s *SleuthVault) PostUsageStats(ctx context.Context, jsonlData string) erro
 
 // RemoveAsset removes an asset from the Sleuth server's lock file
 func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string) error {
-	endpoint := fmt.Sprintf("%s/api/skills/installations/%s/%s", s.serverURL, assetName, version)
+	// Use removeAssetInstallations mutation to clear all installations
+	mutation := `mutation RemoveAssetInstallations($input: RemoveAssetInstallationsInput!) {
+		removeAssetInstallations(input: $input) {
+			success
+			errors {
+				field
+				messages
+			}
+		}
+	}`
 
-	req, err := http.NewRequestWithContext(ctx, "DELETE", endpoint, nil)
+	variables := map[string]interface{}{
+		"input": map[string]interface{}{
+			"assetName": assetName,
+		},
+	}
+
+	var gqlResp struct {
+		Data struct {
+			RemoveAssetInstallations struct {
+				Success *bool `json:"success"`
+				Errors  []struct {
+					Field    string   `json:"field"`
+					Messages []string `json:"messages"`
+				} `json:"errors"`
+			} `json:"removeAssetInstallations"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+
+	if err := s.executeGraphQLQuery(ctx, mutation, variables, &gqlResp); err != nil {
+		return err
+	}
+
+	if len(gqlResp.Errors) > 0 {
+		return fmt.Errorf("GraphQL error: %s", gqlResp.Errors[0].Message)
+	}
+
+	if len(gqlResp.Data.RemoveAssetInstallations.Errors) > 0 {
+		err := gqlResp.Data.RemoveAssetInstallations.Errors[0]
+		return fmt.Errorf("%s: %s", err.Field, err.Messages[0])
+	}
+
+	if gqlResp.Data.RemoveAssetInstallations.Success == nil || !*gqlResp.Data.RemoveAssetInstallations.Success {
+		return fmt.Errorf("failed to remove asset installations")
+	}
+
+	return nil
+}
+
+// ListAssets retrieves a list of all assets in the vault using GraphQL
+func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*ListAssetsResult, error) {
+	// Build GraphQL query matching the actual schema (uses Relay pagination)
+	query := `query VaultAssets($first: Int, $type: String, $search: String) {
+		vault {
+			assets(first: $first, type: $type, search: $search) {
+				nodes {
+					name
+					type
+					latestVersion
+					versionsCount
+					description
+					createdAt
+					updatedAt
+				}
+			}
+		}
+	}`
+
+	// Set default limit if not specified (max 50 enforced by backend)
+	limit := opts.Limit
+	if limit == 0 || limit > 50 {
+		limit = 50
+	}
+
+	variables := map[string]interface{}{
+		"first": limit,
+	}
+	if opts.Type != "" {
+		variables["type"] = opts.Type
+	}
+	if opts.Search != "" {
+		variables["search"] = opts.Search
+	}
+
+	// Make GraphQL request
+	var gqlResp struct {
+		Data struct {
+			Vault struct {
+				Assets struct {
+					Nodes []struct {
+						Name          string    `json:"name"`
+						Type          string    `json:"type"`
+						LatestVersion string    `json:"latestVersion"`
+						VersionsCount int       `json:"versionsCount"`
+						Description   string    `json:"description"`
+						CreatedAt     time.Time `json:"createdAt"`
+						UpdatedAt     time.Time `json:"updatedAt"`
+					} `json:"nodes"`
+				} `json:"assets"`
+			} `json:"vault"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+
+	if err := s.executeGraphQLQuery(ctx, query, variables, &gqlResp); err != nil {
+		return nil, err
+	}
+
+	if len(gqlResp.Errors) > 0 {
+		return nil, fmt.Errorf("GraphQL error: %s", gqlResp.Errors[0].Message)
+	}
+
+	// Convert to result struct
+	result := &ListAssetsResult{
+		Assets: make([]AssetSummary, 0, len(gqlResp.Data.Vault.Assets.Nodes)),
+	}
+
+	for _, node := range gqlResp.Data.Vault.Assets.Nodes {
+		result.Assets = append(result.Assets, AssetSummary{
+			Name:          node.Name,
+			Type:          asset.FromString(node.Type),
+			LatestVersion: node.LatestVersion,
+			VersionsCount: node.VersionsCount,
+			Description:   node.Description,
+			CreatedAt:     node.CreatedAt,
+			UpdatedAt:     node.UpdatedAt,
+		})
+	}
+
+	return result, nil
+}
+
+// GetAssetDetails retrieves detailed information about a specific asset using GraphQL
+func (s *SleuthVault) GetAssetDetails(ctx context.Context, name string) (*AssetDetails, error) {
+	// Build GraphQL query matching the actual schema
+	query := `query VaultAsset($name: String!) {
+		vault {
+			asset(name: $name) {
+				name
+				type
+				description
+				createdAt
+				updatedAt
+				versions {
+					version
+					createdAt
+					filesCount
+				}
+			}
+		}
+	}`
+
+	variables := map[string]interface{}{
+		"name": name,
+	}
+
+	// Make GraphQL request
+	var gqlResp struct {
+		Data struct {
+			Vault struct {
+				Asset *struct {
+					Name        string    `json:"name"`
+					Type        string    `json:"type"`
+					Description string    `json:"description"`
+					CreatedAt   time.Time `json:"createdAt"`
+					UpdatedAt   time.Time `json:"updatedAt"`
+					Versions    []struct {
+						Version    string    `json:"version"`
+						CreatedAt  time.Time `json:"createdAt"`
+						FilesCount int       `json:"filesCount"`
+					} `json:"versions"`
+				} `json:"asset"`
+			} `json:"vault"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+
+	if err := s.executeGraphQLQuery(ctx, query, variables, &gqlResp); err != nil {
+		return nil, err
+	}
+
+	if len(gqlResp.Errors) > 0 {
+		return nil, fmt.Errorf("GraphQL error: %s", gqlResp.Errors[0].Message)
+	}
+
+	if gqlResp.Data.Vault.Asset == nil {
+		return nil, fmt.Errorf("asset '%s' not found", name)
+	}
+
+	assetData := gqlResp.Data.Vault.Asset
+
+	// Convert to result struct
+	details := &AssetDetails{
+		Name:        assetData.Name,
+		Type:        asset.FromString(assetData.Type),
+		Description: assetData.Description,
+		CreatedAt:   assetData.CreatedAt,
+		UpdatedAt:   assetData.UpdatedAt,
+		Versions:    make([]AssetVersion, 0, len(assetData.Versions)),
+	}
+
+	for _, v := range assetData.Versions {
+		details.Versions = append(details.Versions, AssetVersion{
+			Version:    v.Version,
+			CreatedAt:  v.CreatedAt,
+			FilesCount: v.FilesCount,
+		})
+	}
+
+	// Backend returns versions in descending order (newest first)
+	// Reverse to ascending order (oldest first) for consistency with GitVault/PathVault
+	for i, j := 0, len(details.Versions)-1; i < j; i, j = i+1, j-1 {
+		details.Versions[i], details.Versions[j] = details.Versions[j], details.Versions[i]
+	}
+
+	// Get metadata for latest version if available
+	if len(details.Versions) > 0 {
+		latestVersion := details.Versions[len(details.Versions)-1].Version
+		meta, err := s.GetMetadata(ctx, name, latestVersion)
+		if err == nil {
+			details.Metadata = meta
+		}
+		// Ignore metadata errors - not critical for asset details
+	}
+
+	return details, nil
+}
+
+// executeGraphQLQuery executes a GraphQL query against the Sleuth server
+func (s *SleuthVault) executeGraphQLQuery(ctx context.Context, query string, variables map[string]interface{}, result interface{}) error {
+	endpoint := s.serverURL + "/graphql"
+
+	// Build request body
+	reqBody := map[string]interface{}{
+		"query":     query,
+		"variables": variables,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal GraphQL request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
 	if s.authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+s.authToken)
@@ -322,14 +567,99 @@ func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to remove asset: %w", err)
+		return fmt.Errorf("failed to execute GraphQL query: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
+
+	// Parse response
+	if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+		return fmt.Errorf("failed to parse GraphQL response: %w", err)
+	}
+
+	return nil
+}
+
+// SetInstallations sets the installation scopes for an asset using GraphQL mutation
+func (s *SleuthVault) SetInstallations(ctx context.Context, asset *lockfile.Asset) error {
+	mutation := `mutation SetAssetInstallations($input: SetAssetInstallationsInput!) {
+		setAssetInstallations(input: $input) {
+			asset {
+				name
+				latestVersion
+			}
+			errors {
+				field
+				messages
+			}
+		}
+	}`
+
+	// Build repositories list from asset scopes
+	var repositories []map[string]interface{}
+
+	if asset.IsGlobal() {
+		// Empty array for global installation
+		repositories = []map[string]interface{}{}
+	} else {
+		// Convert lockfile.Scope to repository installation format
+		for _, scope := range asset.Scopes {
+			repo := map[string]interface{}{
+				"url": scope.Repo,
+			}
+			if len(scope.Paths) > 0 {
+				repo["paths"] = scope.Paths
+			}
+			repositories = append(repositories, repo)
+		}
+	}
+
+	variables := map[string]interface{}{
+		"input": map[string]interface{}{
+			"assetName":    asset.Name,
+			"assetVersion": asset.Version,
+			"repositories": repositories,
+		},
+	}
+
+	var gqlResp struct {
+		Data struct {
+			SetAssetInstallations struct {
+				Asset *struct {
+					Name          string `json:"name"`
+					LatestVersion string `json:"latestVersion"`
+				} `json:"asset"`
+				Errors []struct {
+					Field    string   `json:"field"`
+					Messages []string `json:"messages"`
+				} `json:"errors"`
+			} `json:"setAssetInstallations"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+
+	if err := s.executeGraphQLQuery(ctx, mutation, variables, &gqlResp); err != nil {
+		return err
+	}
+
+	if len(gqlResp.Errors) > 0 {
+		return fmt.Errorf("GraphQL error: %s", gqlResp.Errors[0].Message)
+	}
+
+	if len(gqlResp.Data.SetAssetInstallations.Errors) > 0 {
+		err := gqlResp.Data.SetAssetInstallations.Errors[0]
+		return fmt.Errorf("%s: %s", err.Field, err.Messages[0])
+	}
+
+	// Invalidate lock file cache so next GetLockFile fetches fresh data
+	// This is best-effort - ignore errors
+	_ = cache.InvalidateLockFileCache(s.serverURL)
 
 	return nil
 }

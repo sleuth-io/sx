@@ -24,7 +24,7 @@ Sleep 500ms
 Type "git@github.com:sleuth-io/skills-repository.git"
 Sleep 500ms
 Enter
-Sleep 2s
+Sleep 3s
 Down
 Sleep 1s
 Down
@@ -44,7 +44,7 @@ Sleep 4s
 Enter
 Sleep 3s
 Enter
-Sleep 2s
+Sleep 3s
 Type "sx install"
 Sleep 500ms
 Enter

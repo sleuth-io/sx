@@ -179,6 +179,12 @@ func (p *PathVault) GetLockFilePath() string {
 	return filepath.Join(p.repoPath, constants.SkillLockFile)
 }
 
+// SetInstallations updates the lock file with installation scopes
+func (p *PathVault) SetInstallations(ctx context.Context, asset *lockfile.Asset) error {
+	lockFilePath := p.GetLockFilePath()
+	return lockfile.AddOrUpdateAsset(lockFilePath, asset)
+}
+
 // RemoveAsset removes an asset from the lock file
 func (p *PathVault) RemoveAsset(ctx context.Context, assetName, version string) error {
 	return lockfile.RemoveAsset(p.GetLockFilePath(), assetName, version)
@@ -207,4 +213,140 @@ func (p *PathVault) updateVersionList(listPath, newVersion string) error {
 	// Write back to file
 	content := strings.Join(versions, "\n") + "\n"
 	return os.WriteFile(listPath, []byte(content), 0644)
+}
+
+// ListAssets returns a list of all assets in the vault by reading the assets/ directory
+func (p *PathVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*ListAssetsResult, error) {
+	// Read assets/ directory
+	assetsDir := filepath.Join(p.repoPath, "assets")
+	entries, err := os.ReadDir(assetsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// No assets directory means no assets
+			return &ListAssetsResult{Assets: []AssetSummary{}}, nil
+		}
+		return nil, fmt.Errorf("failed to read assets directory: %w", err)
+	}
+
+	var assets []AssetSummary
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Read list.txt for versions
+		versions, err := p.GetVersionList(ctx, entry.Name())
+		if err != nil || len(versions) == 0 {
+			continue // Skip if no versions
+		}
+
+		// Get metadata for latest version
+		latestVersion := versions[len(versions)-1]
+		metadataPath := filepath.Join(p.repoPath, "assets", entry.Name(), latestVersion, "metadata.toml")
+
+		assetSummary := AssetSummary{
+			Name:          entry.Name(),
+			LatestVersion: latestVersion,
+			VersionsCount: len(versions),
+		}
+
+		// Try to read metadata
+		if metaData, err := os.ReadFile(metadataPath); err == nil {
+			if meta, err := metadata.Parse(metaData); err == nil {
+				assetSummary.Type = meta.Asset.Type
+				assetSummary.Description = meta.Asset.Description
+			}
+		}
+
+		// Get file timestamps
+		assetDirInfo, _ := entry.Info()
+		if assetDirInfo != nil {
+			assetSummary.CreatedAt = assetDirInfo.ModTime()
+			assetSummary.UpdatedAt = assetDirInfo.ModTime()
+		}
+
+		// Apply type filter if specified
+		if opts.Type != "" && assetSummary.Type.Key != opts.Type {
+			continue
+		}
+
+		assets = append(assets, assetSummary)
+	}
+
+	// Apply limit if specified
+	if opts.Limit > 0 && len(assets) > opts.Limit {
+		assets = assets[:opts.Limit]
+	}
+
+	return &ListAssetsResult{Assets: assets}, nil
+}
+
+// GetAssetDetails returns detailed information about a specific asset
+func (p *PathVault) GetAssetDetails(ctx context.Context, name string) (*AssetDetails, error) {
+	// Check if asset directory exists
+	assetDir := filepath.Join(p.repoPath, "assets", name)
+	if _, err := os.Stat(assetDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("asset '%s' not found", name)
+	}
+
+	// Get version list
+	versions, err := p.GetVersionList(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get version list: %w", err)
+	}
+
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("asset '%s' has no versions", name)
+	}
+
+	// Build version list with file info
+	var versionList []AssetVersion
+	for _, v := range versions {
+		versionDir := filepath.Join(assetDir, v)
+		versionInfo, err := os.Stat(versionDir)
+
+		versionEntry := AssetVersion{Version: v}
+		if err == nil {
+			versionEntry.CreatedAt = versionInfo.ModTime()
+
+			// Count files in version directory
+			if entries, err := os.ReadDir(versionDir); err == nil {
+				fileCount := 0
+				for _, e := range entries {
+					if !e.IsDir() {
+						fileCount++
+					}
+				}
+				versionEntry.FilesCount = fileCount
+			}
+		}
+
+		versionList = append(versionList, versionEntry)
+	}
+
+	// Get metadata for latest version
+	latestVersion := versions[len(versions)-1]
+	metadataPath := filepath.Join(assetDir, latestVersion, "metadata.toml")
+
+	details := &AssetDetails{
+		Name:     name,
+		Versions: versionList,
+	}
+
+	// Try to read metadata
+	if metaData, err := os.ReadFile(metadataPath); err == nil {
+		if meta, err := metadata.Parse(metaData); err == nil {
+			details.Type = meta.Asset.Type
+			details.Description = meta.Asset.Description
+			details.Metadata = meta
+		}
+	}
+
+	// Get directory timestamps
+	if assetDirInfo, err := os.Stat(assetDir); err == nil {
+		details.CreatedAt = assetDirInfo.ModTime()
+		details.UpdatedAt = assetDirInfo.ModTime()
+	}
+
+	return details, nil
 }

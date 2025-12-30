@@ -2,55 +2,18 @@ package commands
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/sleuth-io/sx/internal/lockfile"
-	"github.com/sleuth-io/sx/internal/ui/components"
 	"github.com/sleuth-io/sx/internal/vault"
 )
 
 // updateLockFile updates the repository's lock file with the asset using modern UI
 func updateLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, asset *lockfile.Asset) error {
-	status := components.NewStatus(out.cmd.OutOrStdout())
-
-	// For git repos, update the lock file and commit
-	if gitRepo, ok := repo.(*vault.GitVault); ok {
-		status.Start("Updating repository lock file")
-		lockFilePath := gitRepo.GetLockFilePath()
-		if err := lockfile.AddOrUpdateAsset(lockFilePath, asset); err != nil {
-			status.Fail("Failed to update lock file")
-			return err
-		}
-
-		if asset.IsGlobal() {
-			status.Done("Updated lock file (global installation)")
-		} else {
-			status.Done("Updated lock file with repository installation(s)")
-		}
-
-		status.Start("Committing and pushing to repository")
-		if err := gitRepo.CommitAndPush(ctx, asset); err != nil {
-			status.Fail("Failed to push changes")
-			return err
-		}
-		status.Done("Changes pushed to repository")
-		return nil
-	}
-
-	// For path repos, update the lock file directly
-	if pathRepo, ok := repo.(*vault.PathVault); ok {
-		status.Start("Updating repository lock file")
-		lockFilePath := pathRepo.GetLockFilePath()
-		if err := lockfile.AddOrUpdateAsset(lockFilePath, asset); err != nil {
-			status.Fail("Failed to update lock file")
-			return err
-		}
-
-		if asset.IsGlobal() {
-			status.Done("Updated lock file (global installation)")
-		} else {
-			status.Done("Updated lock file with repository installation(s)")
-		}
-		return nil
+	// SetInstallations updates the vault's lock file with the installation configuration
+	// The user was already shown their choice in the prompt, so we don't need to show it again
+	if err := repo.SetInstallations(ctx, asset); err != nil {
+		return fmt.Errorf("failed to set installations: %w", err)
 	}
 
 	return nil
