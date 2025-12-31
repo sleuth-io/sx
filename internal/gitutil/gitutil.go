@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/git"
@@ -130,20 +129,4 @@ func HasUncommittedChanges(ctx context.Context, repoPath string) (bool, error) {
 
 	// If output is empty, there are no changes
 	return len(strings.TrimSpace(string(output))) > 0, nil
-}
-
-// ParseRepoFromURL extracts the repository name (org/repo) from a git URL
-// Examples:
-//   - git@github.com:sleuth-io/pulse.git -> sleuth-io/pulse
-//   - https://github.com/sleuth-io/pulse.git -> sleuth-io/pulse
-//   - https://github.com/sleuth-io/pulse -> sleuth-io/pulse
-func ParseRepoFromURL(url string) string {
-	// Match the last two path components, optionally ending with .git
-	// Works for both SSH (git@github.com:org/repo.git) and HTTPS (https://github.com/org/repo.git)
-	re := regexp.MustCompile(`[:/]([^/]+/[^/]+?)(?:\.git)?$`)
-	matches := re.FindStringSubmatch(url)
-	if len(matches) > 1 {
-		return matches[1]
-	}
-	return "unknown"
 }

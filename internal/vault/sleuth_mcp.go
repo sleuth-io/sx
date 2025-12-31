@@ -68,17 +68,14 @@ func (s *SleuthVault) handleQueryTool(ctx context.Context, req *mcp.CallToolRequ
 		return nil, nil, fmt.Errorf("failed to get current commit: %w", err)
 	}
 
-	// Parse repo name from URL
-	repoName := gitutil.ParseRepoFromURL(gitCtx.RepoURL)
-
 	// Build context for API call (matches AiQueryContextInput schema)
 	apiContext := map[string]interface{}{
-		"repo":      repoName,
+		"repoUrl":   gitCtx.RepoURL,
 		"branch":    branch,
 		"commitSha": commit,
 	}
 
-	log.Debug("calling sleuth query API", "repo", repoName, "branch", branch, "commit", commit)
+	log.Debug("calling sleuth query API", "repoUrl", gitCtx.RepoURL, "branch", branch, "commit", commit)
 
 	// Call Sleuth API
 	result, err := s.QueryIntegration(ctx, input.Query, input.Integration, apiContext)
