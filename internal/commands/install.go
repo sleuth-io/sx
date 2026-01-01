@@ -740,7 +740,7 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, o
 func installClientHooks(ctx context.Context, targetClients []clients.Client, out *outputHelper) {
 	log := logger.Get()
 	for _, client := range targetClients {
-		if err := client.InstallHooks(ctx); err != nil {
+		if err := client.InstallBootstrap(ctx); err != nil {
 			out.printfErr("Warning: failed to install hooks for %s: %v\n", client.DisplayName(), err)
 			log.Error("failed to install client hooks", "client", client.ID(), "error", err)
 			// Don't fail the install command if hook installation fails

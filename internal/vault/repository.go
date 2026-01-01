@@ -59,6 +59,10 @@ type Vault interface {
 	// GetAssetDetails returns detailed information about a specific asset
 	// This enables asset inspection via `sx vault show <name>`
 	GetAssetDetails(ctx context.Context, name string) (*AssetDetails, error)
+
+	// GetMCPTools returns additional MCP tools provided by this vault
+	// Returns nil if the vault doesn't provide any MCP tools
+	GetMCPTools() interface{}
 }
 
 // SourceHandler handles fetching assets from specific source types

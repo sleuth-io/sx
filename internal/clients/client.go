@@ -40,15 +40,17 @@ type Client interface {
 	// Clients that don't need post-install setup can return nil.
 	EnsureAssetSupport(ctx context.Context, scope *InstallScope) error
 
-	// InstallHooks installs client-specific hooks (e.g., auto-update, usage tracking).
-	// This is called during installation to set up hooks in the client's configuration.
-	// Clients that don't need hooks can return nil.
-	InstallHooks(ctx context.Context) error
+	// InstallBootstrap installs client infrastructure (hooks, MCP servers, etc.).
+	// This sets up hooks for auto-update/usage tracking and registers the sx MCP server.
+	// Called during installation to ensure all client infrastructure is in place.
+	// Clients that don't need bootstrap can return nil.
+	InstallBootstrap(ctx context.Context) error
 
-	// UninstallHooks removes client-specific hooks installed by InstallHooks.
-	// This is called during full uninstall (--all flag) to clean up system hooks.
-	// Clients that don't need hooks can return nil.
-	UninstallHooks(ctx context.Context) error
+	// UninstallBootstrap removes client infrastructure installed by InstallBootstrap.
+	// This removes hooks and unregisters the sx MCP server.
+	// Called during full uninstall (--all flag) to clean up system infrastructure.
+	// Clients that don't need bootstrap can return nil.
+	UninstallBootstrap(ctx context.Context) error
 
 	// ShouldInstall checks if installation should proceed in hook mode.
 	// Returns true to proceed, false to skip.

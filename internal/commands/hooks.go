@@ -30,7 +30,7 @@ func installSelectedClientHooks(ctx context.Context, out *outputHelper, enabledC
 			continue
 		}
 
-		if err := client.InstallHooks(ctx); err != nil {
+		if err := client.InstallBootstrap(ctx); err != nil {
 			out.printfErr("Warning: failed to install hooks for %s: %v\n", client.DisplayName(), err)
 			log.Error("failed to install client hooks", "client", client.ID(), "error", err)
 		}

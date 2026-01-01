@@ -63,9 +63,9 @@ func TestUninstallHooks(t *testing.T) {
 		t.Fatal("PostToolUse hook not present before test")
 	}
 
-	// Run uninstallHooks
-	if err := uninstallHooks(); err != nil {
-		t.Fatalf("uninstallHooks failed: %v", err)
+	// Run uninstallBootstrap
+	if err := uninstallBootstrap(); err != nil {
+		t.Fatalf("uninstallBootstrap failed: %v", err)
 	}
 
 	// Verify hooks were removed
@@ -153,9 +153,9 @@ func TestUninstallHooksPreservesOtherHooks(t *testing.T) {
 		t.Fatalf("Failed to write settings.json: %v", err)
 	}
 
-	// Run uninstallHooks
-	if err := uninstallHooks(); err != nil {
-		t.Fatalf("uninstallHooks failed: %v", err)
+	// Run uninstallBootstrap
+	if err := uninstallBootstrap(); err != nil {
+		t.Fatalf("uninstallBootstrap failed: %v", err)
 	}
 
 	// Verify custom hooks are preserved
@@ -255,9 +255,9 @@ func TestUninstallHooksNoSettingsFile(t *testing.T) {
 
 	// Don't create settings.json - it shouldn't exist
 
-	// Run uninstallHooks - should not error
-	if err := uninstallHooks(); err != nil {
-		t.Fatalf("uninstallHooks should not fail when settings.json doesn't exist: %v", err)
+	// Run uninstallBootstrap - should not error
+	if err := uninstallBootstrap(); err != nil {
+		t.Fatalf("uninstallBootstrap should not fail when settings.json doesn't exist: %v", err)
 	}
 
 	t.Log("Handled missing settings.json gracefully")
@@ -286,9 +286,9 @@ func TestUninstallHooksNoHooksSection(t *testing.T) {
 		t.Fatalf("Failed to write settings.json: %v", err)
 	}
 
-	// Run uninstallHooks - should not error
-	if err := uninstallHooks(); err != nil {
-		t.Fatalf("uninstallHooks should not fail when hooks section doesn't exist: %v", err)
+	// Run uninstallBootstrap - should not error
+	if err := uninstallBootstrap(); err != nil {
+		t.Fatalf("uninstallBootstrap should not fail when hooks section doesn't exist: %v", err)
 	}
 
 	// Verify settings file wasn't corrupted

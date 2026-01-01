@@ -574,7 +574,7 @@ func uninstallSystemHooks(ctx context.Context, out *outputHelper) {
 	installedClients := registry.DetectInstalled()
 
 	for _, client := range installedClients {
-		if err := client.UninstallHooks(ctx); err != nil {
+		if err := client.UninstallBootstrap(ctx); err != nil {
 			out.printfErr("  ✗ Failed to remove hooks from %s: %v\n", client.DisplayName(), err)
 		} else {
 			out.printf("  ✓ Removed hooks from %s\n", client.DisplayName())

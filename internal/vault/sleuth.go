@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/sleuth-io/sx/internal/asset"
@@ -537,6 +538,51 @@ func (s *SleuthVault) GetAssetDetails(ctx context.Context, name string) (*AssetD
 	}
 
 	return details, nil
+}
+
+// QueryIntegration queries integrated services (GitHub, CircleCI, Linear) using natural language
+func (s *SleuthVault) QueryIntegration(ctx context.Context, query, integration string, gitContext interface{}) (string, error) {
+	// Convert integration string to uppercase for Provider enum (github -> GITHUB)
+	provider := strings.ToUpper(integration)
+
+	gqlQuery := `query AiQuery($input: AiQueryInput!) {
+		aiQuery(input: $input) {
+			status
+			data
+			toolCallsMade
+		}
+	}`
+
+	variables := map[string]interface{}{
+		"input": map[string]interface{}{
+			"query":    query,
+			"provider": provider,
+			"context":  gitContext,
+		},
+	}
+
+	var gqlResp struct {
+		Data struct {
+			AiQuery struct {
+				Status        string   `json:"status"`
+				Data          string   `json:"data"`
+				ToolCallsMade []string `json:"toolCallsMade"`
+			} `json:"aiQuery"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+
+	if err := s.executeGraphQLQuery(ctx, gqlQuery, variables, &gqlResp); err != nil {
+		return "", err
+	}
+
+	if len(gqlResp.Errors) > 0 {
+		return "", fmt.Errorf("GraphQL error: %s", gqlResp.Errors[0].Message)
+	}
+
+	return gqlResp.Data.AiQuery.Data, nil
 }
 
 // executeGraphQLQuery executes a GraphQL query against the Sleuth server

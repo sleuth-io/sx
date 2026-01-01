@@ -350,3 +350,8 @@ func (p *PathVault) GetAssetDetails(ctx context.Context, name string) (*AssetDet
 
 	return details, nil
 }
+
+// GetMCPTools returns no additional MCP tools for PathVault
+func (p *PathVault) GetMCPTools() interface{} {
+	return nil
+}

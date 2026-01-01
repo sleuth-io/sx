@@ -79,6 +79,7 @@ pulse-client
 demo
 .claude/skills
 .claude/.claude
+.claude/settings.local.json
 
 .cursor
 pulse

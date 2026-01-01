@@ -2,9 +2,7 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -101,7 +99,7 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 		return err
 	}
 
-	// Update .mcp.json to register the MCP server
+	// Update settings.json to register the MCP server
 	installPath := filepath.Join(targetBase, h.GetInstallPath())
 	if err := h.updateMCPConfig(targetBase, installPath); err != nil {
 		return fmt.Errorf("failed to update MCP config: %w", err)
@@ -112,7 +110,7 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 
 // Remove uninstalls the MCP server asset
 func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
-	// Remove from .mcp.json first
+	// Remove from settings.json first
 	if err := h.removeFromMCPConfig(targetBase); err != nil {
 		return fmt.Errorf("failed to remove from MCP config: %w", err)
 	}
@@ -168,93 +166,22 @@ func (h *MCPHandler) Validate(zipData []byte) error {
 	return nil
 }
 
-// updateMCPConfig updates .mcp.json to register the MCP server
+// updateMCPConfig updates settings.json to register the MCP server
 func (h *MCPHandler) updateMCPConfig(targetBase, installPath string) error {
-	mcpConfigPath := filepath.Join(targetBase, ".mcp.json")
-
-	// Read existing config or create new
-	var config map[string]interface{}
-	if utils.FileExists(mcpConfigPath) {
-		data, err := os.ReadFile(mcpConfigPath)
-		if err != nil {
-			return fmt.Errorf("failed to read .mcp.json: %w", err)
-		}
-		if err := json.Unmarshal(data, &config); err != nil {
-			return fmt.Errorf("failed to parse .mcp.json: %w", err)
-		}
-	} else {
-		config = map[string]interface{}{
-			"mcpServers": make(map[string]interface{}),
-		}
-	}
-
-	// Ensure mcpServers section exists
-	if config["mcpServers"] == nil {
-		config["mcpServers"] = make(map[string]interface{})
-	}
-	mcpServers := config["mcpServers"].(map[string]interface{})
-
 	// Build MCP server configuration
 	serverConfig := h.buildMCPServerConfig(installPath)
 
-	// Add/update MCP server entry
-	mcpServers[h.metadata.Asset.Name] = serverConfig
-
-	// Write updated config
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal MCP config: %w", err)
-	}
-
-	if err := os.WriteFile(mcpConfigPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write .mcp.json: %w", err)
-	}
-
-	return nil
+	// Use shared utility to add/update the server
+	return AddMCPServer(targetBase, h.metadata.Asset.Name, serverConfig)
 }
 
-// removeFromMCPConfig removes the MCP server from .mcp.json
+// removeFromMCPConfig removes the MCP server from settings.json
 func (h *MCPHandler) removeFromMCPConfig(targetBase string) error {
-	mcpConfigPath := filepath.Join(targetBase, ".mcp.json")
-
-	if !utils.FileExists(mcpConfigPath) {
-		return nil // Nothing to remove
-	}
-
-	// Read config
-	data, err := os.ReadFile(mcpConfigPath)
-	if err != nil {
-		return fmt.Errorf("failed to read .mcp.json: %w", err)
-	}
-
-	var config map[string]interface{}
-	if err := json.Unmarshal(data, &config); err != nil {
-		return fmt.Errorf("failed to parse .mcp.json: %w", err)
-	}
-
-	// Check if mcpServers section exists
-	if config["mcpServers"] == nil {
-		return nil
-	}
-	mcpServers := config["mcpServers"].(map[string]interface{})
-
-	// Remove this MCP server
-	delete(mcpServers, h.metadata.Asset.Name)
-
-	// Write updated config
-	data, err = json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal MCP config: %w", err)
-	}
-
-	if err := os.WriteFile(mcpConfigPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write .mcp.json: %w", err)
-	}
-
-	return nil
+	// Use shared utility to remove the server
+	return RemoveMCPServer(targetBase, h.metadata.Asset.Name)
 }
 
-// buildMCPServerConfig builds the MCP server configuration for .mcp.json
+// buildMCPServerConfig builds the MCP server configuration for settings.json
 func (h *MCPHandler) buildMCPServerConfig(installPath string) map[string]interface{} {
 	mcpConfig := h.metadata.MCP
 
@@ -276,6 +203,7 @@ func (h *MCPHandler) buildMCPServerConfig(installPath string) map[string]interfa
 	}
 
 	config := map[string]interface{}{
+		"type":      "stdio",
 		"command":   command,
 		"args":      args,
 		"_artifact": h.metadata.Asset.Name,

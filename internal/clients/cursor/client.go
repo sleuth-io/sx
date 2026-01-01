@@ -453,14 +453,20 @@ func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.Inst
 	}, nil
 }
 
-// InstallHooks installs Cursor-specific hooks (auto-install on prompt submission).
-func (c *Client) InstallHooks(ctx context.Context) error {
-	return c.installBeforeSubmitPromptHook()
+// InstallBootstrap installs Cursor infrastructure (hooks and MCP servers).
+func (c *Client) InstallBootstrap(ctx context.Context) error {
+	if err := c.installBeforeSubmitPromptHook(); err != nil {
+		return err
+	}
+	return c.installSxMCPServer()
 }
 
-// UninstallHooks removes Cursor-specific hooks (beforeSubmitPrompt).
-func (c *Client) UninstallHooks(ctx context.Context) error {
-	return c.uninstallBeforeSubmitPromptHook()
+// UninstallBootstrap removes Cursor infrastructure (hooks and MCP servers).
+func (c *Client) UninstallBootstrap(ctx context.Context) error {
+	if err := c.uninstallBeforeSubmitPromptHook(); err != nil {
+		return err
+	}
+	return c.uninstallSxMCPServer()
 }
 
 // ShouldInstall checks if installation should proceed based on conversation tracking.
@@ -733,6 +739,52 @@ func (c *Client) ScanInstalledAssets(ctx context.Context, scope *clients.Install
 // GetAssetPath returns an error for Cursor (not yet supported)
 func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.Type, scope *clients.InstallScope) (string, error) {
 	return "", fmt.Errorf("asset import not supported for Cursor")
+}
+
+// installSxMCPServer installs the sx MCP server in Cursor's mcp.json
+func (c *Client) installSxMCPServer() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	cursorDir := filepath.Join(home, ".cursor")
+	log := logger.Get()
+
+	// Find sx binary path
+	sxPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get sx executable path: %w", err)
+	}
+
+	// Add sx MCP server configuration
+	serverConfig := map[string]interface{}{
+		"command": sxPath,
+		"args":    []string{"serve"},
+	}
+
+	if err := handlers.AddMCPServer(cursorDir, "sx", serverConfig); err != nil {
+		return err
+	}
+
+	log.Info("MCP server installed", "server", "sx", "command", sxPath+" serve")
+	return nil
+}
+
+// uninstallSxMCPServer removes the sx MCP server from Cursor's mcp.json
+func (c *Client) uninstallSxMCPServer() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	cursorDir := filepath.Join(home, ".cursor")
+	log := logger.Get()
+
+	if err := handlers.RemoveMCPServer(cursorDir, "sx"); err != nil {
+		return err
+	}
+
+	log.Info("MCP server uninstalled", "server", "sx")
+	return nil
 }
 
 func init() {

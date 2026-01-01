@@ -7,12 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sleuth-io/sx/internal/clients/claude_code/handlers"
 	"github.com/sleuth-io/sx/internal/logger"
 )
 
-// installHooks installs system hooks for Claude Code (auto-update and usage tracking).
-// This is different from installing hook assets - these are the skills CLI's own hooks.
-func installHooks() error {
+// installBootstrap installs Claude Code infrastructure (hooks and MCP servers).
+// This sets up hooks for auto-update/usage tracking and registers the sx MCP server.
+func installBootstrap() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
@@ -31,6 +32,12 @@ func installHooks() error {
 	if err := installSessionStartHook(claudeDir); err != nil {
 		log.Error("failed to install session start hook", "error", err)
 		return fmt.Errorf("failed to install session start hook: %w", err)
+	}
+
+	// Install sx MCP server globally (in ~/.claude.json)
+	if err := installSxMCPServer(home); err != nil {
+		log.Error("failed to install sx MCP server", "error", err)
+		return fmt.Errorf("failed to install sx MCP server: %w", err)
 	}
 
 	return nil
@@ -134,9 +141,9 @@ func installSessionStartHook(claudeDir string) error {
 	return nil
 }
 
-// uninstallHooks removes system hooks for Claude Code.
-// This removes the SessionStart hook (auto-install) and PostToolUse hook (usage tracking).
-func uninstallHooks() error {
+// uninstallBootstrap removes Claude Code infrastructure (hooks and MCP servers).
+// This removes the SessionStart hook (auto-install), PostToolUse hook (usage tracking), and sx MCP server.
+func uninstallBootstrap() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
@@ -214,6 +221,12 @@ func uninstallHooks() error {
 
 	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write settings.json: %w", err)
+	}
+
+	// Remove sx MCP server from ~/.claude.json
+	if err := uninstallSxMCPServer(home); err != nil {
+		log.Error("failed to uninstall sx MCP server", "error", err)
+		return fmt.Errorf("failed to uninstall sx MCP server: %w", err)
 	}
 
 	return nil
@@ -357,5 +370,43 @@ func installUsageReportingHook(claudeDir string) error {
 		return fmt.Errorf("failed to write settings.json: %w", err)
 	}
 
+	return nil
+}
+
+// installSxMCPServer installs the sx MCP server in ~/.claude.json
+func installSxMCPServer(homeDir string) error {
+	log := logger.Get()
+
+	// Find sx binary path
+	sxPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get sx executable path: %w", err)
+	}
+
+	// Add sx MCP server configuration
+	serverConfig := map[string]interface{}{
+		"type":    "stdio",
+		"command": sxPath,
+		"args":    []string{"serve"},
+		"env":     map[string]interface{}{},
+	}
+
+	if err := handlers.AddMCPServer(homeDir, "sx", serverConfig); err != nil {
+		return err
+	}
+
+	log.Info("MCP server installed", "server", "sx", "command", sxPath+" serve")
+	return nil
+}
+
+// uninstallSxMCPServer removes the sx MCP server from ~/.claude.json
+func uninstallSxMCPServer(homeDir string) error {
+	log := logger.Get()
+
+	if err := handlers.RemoveMCPServer(homeDir, "sx"); err != nil {
+		return err
+	}
+
+	log.Info("MCP server uninstalled", "server", "sx")
 	return nil
 }

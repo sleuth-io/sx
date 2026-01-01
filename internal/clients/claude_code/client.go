@@ -258,14 +258,14 @@ func (c *Client) EnsureAssetSupport(ctx context.Context, scope *clients.InstallS
 	return nil
 }
 
-// InstallHooks installs Claude Code-specific hooks (auto-update and usage tracking)
-func (c *Client) InstallHooks(ctx context.Context) error {
-	return installHooks()
+// InstallBootstrap installs Claude Code infrastructure (hooks and MCP servers)
+func (c *Client) InstallBootstrap(ctx context.Context) error {
+	return installBootstrap()
 }
 
-// UninstallHooks removes Claude Code-specific hooks (SessionStart and PostToolUse)
-func (c *Client) UninstallHooks(ctx context.Context) error {
-	return uninstallHooks()
+// UninstallBootstrap removes Claude Code infrastructure (hooks and MCP servers)
+func (c *Client) UninstallBootstrap(ctx context.Context) error {
+	return uninstallBootstrap()
 }
 
 // ShouldInstall always returns true for Claude Code.
