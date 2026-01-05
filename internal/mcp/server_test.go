@@ -61,11 +61,11 @@ func (m *mockClient) EnsureAssetSupport(ctx context.Context, scope *clients.Inst
 	return nil
 }
 
-func (m *mockClient) InstallHooks(ctx context.Context) error {
+func (m *mockClient) InstallBootstrap(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockClient) UninstallHooks(ctx context.Context) error {
+func (m *mockClient) UninstallBootstrap(ctx context.Context) error {
 	return nil
 }
 

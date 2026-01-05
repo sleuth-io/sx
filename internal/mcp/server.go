@@ -65,8 +65,51 @@ func (s *Server) Run(ctx context.Context) error {
 		Description: "Read a skill's full instructions and content. Returns the skill content as markdown with @file references resolved to absolute paths.",
 	}, s.handleReadSkill)
 
+	// Register additional tools from vault (e.g., query tool for Sleuth vault)
+	s.registerVaultTools(ctx, mcpServer)
+
 	// Run over stdio
 	return mcpServer.Run(ctx, &mcp.StdioTransport{})
+}
+
+// registerVaultTools registers additional MCP tools provided by the configured vault
+func (s *Server) registerVaultTools(ctx context.Context, mcpServer *mcp.Server) {
+	log := logger.Get()
+
+	// Load config to get vault
+	cfg, err := config.Load()
+	if err != nil {
+		log.Warn("failed to load config for vault tools", "error", err)
+		return // No config, skip vault tools
+	}
+
+	log.Debug("loaded config for vault tools", "vault_type", cfg.Type)
+
+	// Create vault instance
+	vault, err := vaultpkg.NewFromConfig(cfg)
+	if err != nil {
+		log.Warn("failed to create vault for MCP tools", "error", err)
+		return // Failed to create vault, skip tools
+	}
+
+	log.Debug("created vault instance", "vault_type", cfg.Type)
+
+	// Get MCP tools from vault
+	tools := vault.GetMCPTools()
+	if tools == nil {
+		log.Debug("no MCP tools provided by vault")
+		return // No tools provided by this vault
+	}
+
+	// Register tools with the MCP server
+	// The tools are expected to be []vaultpkg.ToolDef from Sleuth vault
+	if toolDefs, ok := tools.([]vaultpkg.ToolDef); ok {
+		log.Debug("registering MCP tools from vault", "count", len(toolDefs))
+		for _, def := range toolDefs {
+			mcp.AddTool(mcpServer, def.Tool, def.Handler)
+			log.Debug("registered MCP tool", "name", def.Tool.Name)
+		}
+	}
 }
 
 // handleReadSkill handles the read_skill tool invocation

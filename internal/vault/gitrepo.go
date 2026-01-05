@@ -885,3 +885,8 @@ func (g *GitVault) GetAssetDetails(ctx context.Context, name string) (*AssetDeta
 
 	return details, nil
 }
+
+// GetMCPTools returns no additional MCP tools for GitVault
+func (g *GitVault) GetMCPTools() interface{} {
+	return nil
+}
