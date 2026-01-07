@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -22,24 +23,26 @@ import (
 
 // SleuthVault implements Vault for Sleuth HTTP servers
 type SleuthVault struct {
-	serverURL   string
-	authToken   string
-	httpClient  *http.Client
-	httpHandler *HTTPSourceHandler
-	pathHandler *PathSourceHandler
-	gitHandler  *GitSourceHandler
+	serverURL       string
+	authToken       string
+	httpClient      *http.Client
+	streamingClient *http.Client // Longer timeout for SSE streaming
+	httpHandler     *HTTPSourceHandler
+	pathHandler     *PathSourceHandler
+	gitHandler      *GitSourceHandler
 }
 
 // NewSleuthVault creates a new Sleuth repository
 func NewSleuthVault(serverURL, authToken string) *SleuthVault {
 	gitClient := git.NewClient()
 	return &SleuthVault{
-		serverURL:   serverURL,
-		authToken:   authToken,
-		httpClient:  &http.Client{Timeout: 30 * time.Second},
-		httpHandler: NewHTTPSourceHandler(authToken),
-		pathHandler: NewPathSourceHandler(""), // Lock file dir not applicable for Sleuth
-		gitHandler:  NewGitSourceHandler(gitClient),
+		serverURL:       serverURL,
+		authToken:       authToken,
+		httpClient:      &http.Client{Timeout: 30 * time.Second},
+		streamingClient: &http.Client{Timeout: 120 * time.Second}, // Longer timeout for AI queries
+		httpHandler:     NewHTTPSourceHandler(authToken),
+		pathHandler:     NewPathSourceHandler(""), // Lock file dir not applicable for Sleuth
+		gitHandler:      NewGitSourceHandler(gitClient),
 	}
 }
 
@@ -583,6 +586,108 @@ func (s *SleuthVault) QueryIntegration(ctx context.Context, query, integration s
 	}
 
 	return gqlResp.Data.AiQuery.Data, nil
+}
+
+// QueryIntegrationStream queries integrated services using SSE streaming.
+// The onEvent callback is called for each event received, which can be used
+// to send MCP log notifications to keep the connection alive.
+func (s *SleuthVault) QueryIntegrationStream(
+	ctx context.Context,
+	query, integration string,
+	gitContext interface{},
+	onEvent func(eventType, content string),
+) (string, error) {
+	endpoint := s.serverURL + "/api/skills/ai-query/stream"
+
+	// Build JSON body matching the SSE endpoint format
+	reqBody := map[string]interface{}{
+		"query":    query,
+		"provider": strings.ToUpper(integration),
+		"context":  gitContext,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
+	if s.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.authToken)
+	}
+
+	resp, err := s.streamingClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute SSE request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Read SSE events line by line
+	scanner := bufio.NewScanner(resp.Body)
+	var finalResult string
+	var finalError string
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// SSE format: "data: {...}"
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := strings.TrimPrefix(line, "data: ")
+
+		var event map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+
+		eventType, _ := event["type"].(string)
+
+		// Stream tool call events to callback for progress visibility
+		if eventType == "ToolCallEvent" {
+			toolName, _ := event["tool"].(string)
+			if onEvent != nil && toolName != "" {
+				onEvent("tool_call", fmt.Sprintf("Calling %s...", toolName))
+			}
+		}
+
+		// Capture final result
+		if eventType == "done" {
+			if result, ok := event["result"].(map[string]interface{}); ok {
+				finalResult, _ = result["data"].(string)
+			}
+			break
+		}
+
+		// Capture error
+		if eventType == "error" {
+			finalError, _ = event["error"].(string)
+			break
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("error reading SSE stream: %w", err)
+	}
+
+	if finalError != "" {
+		return "", fmt.Errorf("query error: %s", finalError)
+	}
+
+	return finalResult, nil
 }
 
 // executeGraphQLQuery executes a GraphQL query against the Sleuth server
