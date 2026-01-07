@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -17,7 +18,7 @@ type ToolDef struct {
 
 // QueryInput is the input type for query tool
 type QueryInput struct {
-	Query       string `json:"query" jsonschema:"natural language query (e.g., 'Get PR comments from Claude Code bot', 'Get failed CI checks')"`
+	Query       string `json:"query" jsonschema:"A simple, focused natural language query. Keep queries atomic - ask for one specific thing (e.g., 'Get PR comments', 'Get failed CI checks', 'Get open issues assigned to me'). Avoid complex multi-part queries."`
 	Integration string `json:"integration" jsonschema:"which integration to query (github, circleci, or linear)"`
 }
 
@@ -27,7 +28,7 @@ func (s *SleuthVault) GetMCPTools() interface{} {
 		{
 			Tool: &mcp.Tool{
 				Name:        "query",
-				Description: "Query integrated services (GitHub, CircleCI, Linear) using natural language. Context (repo, branch, commit) is automatically detected from git.",
+				Description: "Query integrated services (GitHub, CircleCI, Linear) using natural language. Context (repo, branch, commit) is automatically detected from git. For best performance, use simple atomic queries that ask for one specific thing - complex queries take longer and may timeout.",
 			},
 			Handler: s.handleQueryTool,
 		},
@@ -75,10 +76,27 @@ func (s *SleuthVault) handleQueryTool(ctx context.Context, req *mcp.CallToolRequ
 		"commitSha": commit,
 	}
 
-	log.Debug("calling sleuth query API", "repoUrl", gitCtx.RepoURL, "branch", branch, "commit", commit)
+	log.Debug("calling sleuth query API with SSE streaming", "repoUrl", gitCtx.RepoURL, "branch", branch, "commit", commit)
 
-	// Call Sleuth API
-	result, err := s.QueryIntegration(ctx, input.Query, input.Integration, apiContext)
+	// Create event callback that sends MCP log notifications to keep connection alive
+	onEvent := func(eventType, content string) {
+		log.Debug("query progress", "type", eventType, "content", content)
+
+		// Send log notification to Claude Code via MCP
+		// This writes to stdio, keeping the connection alive and preventing timeout
+		logData, _ := json.Marshal(map[string]string{
+			"event":   eventType,
+			"message": content,
+		})
+		_ = req.Session.Log(ctx, &mcp.LoggingMessageParams{
+			Level:  "info",
+			Logger: "sleuth-query",
+			Data:   logData,
+		})
+	}
+
+	// Call Sleuth API with SSE streaming
+	result, err := s.QueryIntegrationStream(ctx, input.Query, input.Integration, apiContext, onEvent)
 	if err != nil {
 		log.Warn("sleuth query API failed", "error", err)
 		return nil, nil, fmt.Errorf("sleuth query failed: %w", err)
