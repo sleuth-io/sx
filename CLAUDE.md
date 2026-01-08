@@ -23,6 +23,7 @@ make lint           # Run linter
 - [Metadata Spec](docs/metadata-spec.md) - Asset metadata format and fields
 - [Requirements Spec](docs/requirements-spec.md) - Dependency requirements syntax
 - [Lock Spec](docs/lock-spec.md) - Lock file format for resolved dependencies
+- [MCP Spec](docs/mcp-spec.md) - MCP server tools (read_skill, query)
 
 ## Development
 
