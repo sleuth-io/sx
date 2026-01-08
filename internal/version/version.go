@@ -1,6 +1,7 @@
 package version
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -208,7 +209,7 @@ func (s *Specifier) Filter(versions []string) ([]string, error) {
 // SelectBest selects the best (highest) version from a list
 func SelectBest(versions []string) (string, error) {
 	if len(versions) == 0 {
-		return "", fmt.Errorf("no versions available")
+		return "", errors.New("no versions available")
 	}
 
 	// Parse all versions
@@ -225,7 +226,7 @@ func SelectBest(versions []string) (string, error) {
 	}
 
 	if len(parsed) == 0 {
-		return "", fmt.Errorf("no valid versions found")
+		return "", errors.New("no valid versions found")
 	}
 
 	// Sort versions in descending order
@@ -334,7 +335,7 @@ func IncrementMajor(currentVersion string) string {
 	switch dots {
 	case 0:
 		// Simple integer format (e.g., "1" -> "2")
-		return fmt.Sprintf("%d", next.Major())
+		return strconv.FormatUint(next.Major(), 10)
 	case 1:
 		// X.Y format (e.g., "1.0" -> "2.0")
 		return fmt.Sprintf("%d.%d", next.Major(), next.Minor())

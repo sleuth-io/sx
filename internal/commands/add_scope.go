@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/lockfile"
@@ -83,7 +85,7 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 		return nil, nil // nil means don't install
 
 	default:
-		return nil, fmt.Errorf("invalid selection")
+		return nil, errors.New("invalid selection")
 	}
 }
 
@@ -129,7 +131,7 @@ func modifyRepositories(currentRepos []lockfile.Scope, styledOut *ui.Output, ioc
 				continue
 			}
 			workingRepos = append(workingRepos, repo)
-			styledOut.Success(fmt.Sprintf("Added %s", formatRepository(repo)))
+			styledOut.Success("Added " + formatRepository(repo))
 
 		case "remove": // Remove repository
 			if len(workingRepos) == 0 {
@@ -142,7 +144,7 @@ func modifyRepositories(currentRepos []lockfile.Scope, styledOut *ui.Output, ioc
 			for i, repo := range workingRepos {
 				repoOptions[i] = components.Option{
 					Label: formatRepository(repo),
-					Value: fmt.Sprintf("%d", i),
+					Value: strconv.Itoa(i),
 				}
 			}
 
@@ -160,7 +162,7 @@ func modifyRepositories(currentRepos []lockfile.Scope, styledOut *ui.Output, ioc
 
 			removed := workingRepos[idx]
 			workingRepos = append(workingRepos[:idx], workingRepos[idx+1:]...)
-			styledOut.Success(fmt.Sprintf("Removed %s", formatRepository(removed)))
+			styledOut.Success("Removed " + formatRepository(removed))
 
 		case "modify": // Modify repository paths
 			if len(workingRepos) == 0 {
@@ -173,7 +175,7 @@ func modifyRepositories(currentRepos []lockfile.Scope, styledOut *ui.Output, ioc
 			for i, repo := range workingRepos {
 				repoOptions[i] = components.Option{
 					Label: formatRepository(repo),
-					Value: fmt.Sprintf("%d", i),
+					Value: strconv.Itoa(i),
 				}
 			}
 
@@ -206,7 +208,7 @@ func modifyRepositories(currentRepos []lockfile.Scope, styledOut *ui.Output, ioc
 			}
 
 			workingRepos[idx].Paths = paths
-			styledOut.Success(fmt.Sprintf("Updated %s", formatRepository(workingRepos[idx])))
+			styledOut.Success("Updated " + formatRepository(workingRepos[idx]))
 
 		case "done": // Done with modifications
 			// Preview changes if any
@@ -234,7 +236,7 @@ func promptForNewRepository(styledOut *ui.Output, ioc *components.IOContext) (lo
 
 	repoURL = strings.TrimSpace(repoURL)
 	if repoURL == "" {
-		return lockfile.Scope{}, fmt.Errorf("repository URL is required")
+		return lockfile.Scope{}, errors.New("repository URL is required")
 	}
 
 	// If it's just a slug (e.g., "user/repo"), convert to full GitHub URL

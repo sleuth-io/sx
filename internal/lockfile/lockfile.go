@@ -2,6 +2,7 @@ package lockfile
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/sleuth-io/sx/internal/asset"
@@ -73,13 +74,7 @@ func (a *Asset) MatchesClient(clientName string) bool {
 	}
 
 	// Check if client is in the list
-	for _, client := range a.Clients {
-		if client == clientName {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(a.Clients, clientName)
 }
 
 // SourceHTTP represents an HTTP source for an asset
@@ -123,8 +118,8 @@ func (a *Asset) GetSourceType() string {
 }
 
 // GetSourceConfig returns the source configuration as a map for generic handling
-func (a *Asset) GetSourceConfig() map[string]interface{} {
-	config := make(map[string]interface{})
+func (a *Asset) GetSourceConfig() map[string]any {
+	config := make(map[string]any)
 
 	if a.SourceHTTP != nil {
 		config["type"] = "http"

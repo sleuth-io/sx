@@ -26,7 +26,7 @@ func TestUninstallHooks(t *testing.T) {
 	hooksPath := filepath.Join(cursorDir, "hooks.json")
 	hooksConfig := &handlers.HooksConfig{
 		Version: 1,
-		Hooks: map[string][]map[string]interface{}{
+		Hooks: map[string][]map[string]any{
 			"beforeSubmitPrompt": {
 				{
 					"command": "skills install --hook-mode --client=cursor",
@@ -84,7 +84,7 @@ func TestUninstallHooksPreservesOtherHooks(t *testing.T) {
 	hooksPath := filepath.Join(cursorDir, "hooks.json")
 	hooksConfig := &handlers.HooksConfig{
 		Version: 1,
-		Hooks: map[string][]map[string]interface{}{
+		Hooks: map[string][]map[string]any{
 			"beforeSubmitPrompt": {
 				// Custom hook (should be preserved)
 				{
@@ -203,7 +203,7 @@ func TestUninstallHooksEmptyBeforeSubmitPrompt(t *testing.T) {
 	hooksPath := filepath.Join(cursorDir, "hooks.json")
 	hooksConfig := &handlers.HooksConfig{
 		Version: 1,
-		Hooks: map[string][]map[string]interface{}{
+		Hooks: map[string][]map[string]any{
 			"afterFileEdit": {
 				{
 					"command": "my-other-hook",
@@ -248,7 +248,7 @@ func TestUninstallHooksOnlySkillsHook(t *testing.T) {
 	hooksPath := filepath.Join(cursorDir, "hooks.json")
 	hooksConfig := &handlers.HooksConfig{
 		Version: 1,
-		Hooks: map[string][]map[string]interface{}{
+		Hooks: map[string][]map[string]any{
 			"beforeSubmitPrompt": {
 				{
 					"command": "skills install --hook-mode --client=cursor",
@@ -268,10 +268,10 @@ func TestUninstallHooksOnlySkillsHook(t *testing.T) {
 
 	// Verify beforeSubmitPrompt section was removed entirely
 	data, _ := os.ReadFile(hooksPath)
-	var config map[string]interface{}
+	var config map[string]any
 	_ = json.Unmarshal(data, &config)
 
-	if hooks, ok := config["hooks"].(map[string]interface{}); ok {
+	if hooks, ok := config["hooks"].(map[string]any); ok {
 		if _, exists := hooks["beforeSubmitPrompt"]; exists {
 			t.Error("Empty beforeSubmitPrompt section should have been removed")
 		}

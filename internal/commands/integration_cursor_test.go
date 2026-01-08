@@ -173,9 +173,9 @@ prompt-file = "SKILL.md"
 		if err != nil {
 			t.Errorf("Failed to read mcp.json: %v", err)
 		} else {
-			var mcpConfig map[string]interface{}
+			var mcpConfig map[string]any
 			if err := json.Unmarshal(mcpData, &mcpConfig); err == nil {
-				mcpServers, ok := mcpConfig["mcpServers"].(map[string]interface{})
+				mcpServers, ok := mcpConfig["mcpServers"].(map[string]any)
 				if ok {
 					if _, exists := mcpServers["skills"]; !exists {
 						t.Errorf("skills MCP server not registered in mcp.json")
@@ -343,12 +343,12 @@ args = [
 		t.Fatalf("Failed to read mcp.json: %v", err)
 	}
 
-	var mcpConfig map[string]interface{}
+	var mcpConfig map[string]any
 	if err := json.Unmarshal(mcpConfigData, &mcpConfig); err != nil {
 		t.Fatalf("Failed to parse mcp.json: %v", err)
 	}
 
-	mcpServers, ok := mcpConfig["mcpServers"].(map[string]interface{})
+	mcpServers, ok := mcpConfig["mcpServers"].(map[string]any)
 	if !ok {
 		t.Fatalf("mcp.json does not have mcpServers section")
 	}
@@ -470,12 +470,12 @@ exit 0
 		t.Fatalf("Failed to read hooks.json: %v", err)
 	}
 
-	var hooksConfig map[string]interface{}
+	var hooksConfig map[string]any
 	if err := json.Unmarshal(hooksJSONData, &hooksConfig); err != nil {
 		t.Fatalf("Failed to parse hooks.json: %v", err)
 	}
 
-	hooks, ok := hooksConfig["hooks"].(map[string]interface{})
+	hooks, ok := hooksConfig["hooks"].(map[string]any)
 	if !ok {
 		t.Fatalf("hooks.json does not have hooks section")
 	}
@@ -486,7 +486,7 @@ exit 0
 		t.Fatalf("beforeShellExecution entry not found in hooks.json")
 	}
 
-	hooksList, ok := beforeShellExec.([]interface{})
+	hooksList, ok := beforeShellExec.([]any)
 	if !ok || len(hooksList) == 0 {
 		t.Fatalf("beforeShellExecution is not a non-empty array")
 	}
@@ -494,7 +494,7 @@ exit 0
 	// Verify our hook is in the list
 	found := false
 	for _, hookEntry := range hooksList {
-		if hookMap, ok := hookEntry.(map[string]interface{}); ok {
+		if hookMap, ok := hookEntry.(map[string]any); ok {
 			if asset, ok := hookMap["_artifact"].(string); ok && asset == "test-hook" {
 				found = true
 				// Verify command path
@@ -609,24 +609,24 @@ prompt-file = "SKILL.md"
 		t.Fatalf("Failed to read hooks.json: %v", err)
 	}
 
-	var hooksConfig map[string]interface{}
+	var hooksConfig map[string]any
 	if err := json.Unmarshal(hooksData, &hooksConfig); err != nil {
 		t.Fatalf("Failed to parse hooks.json: %v", err)
 	}
 
-	hooks, ok := hooksConfig["hooks"].(map[string]interface{})
+	hooks, ok := hooksConfig["hooks"].(map[string]any)
 	if !ok {
 		t.Fatal("hooks.json missing 'hooks' section")
 	}
 
-	beforeSubmitHooks, ok := hooks["beforeSubmitPrompt"].([]interface{})
+	beforeSubmitHooks, ok := hooks["beforeSubmitPrompt"].([]any)
 	if !ok {
 		t.Fatal("beforeSubmitPrompt hook not found in hooks.json")
 	}
 
 	foundAutoInstallHook := false
 	for _, hook := range beforeSubmitHooks {
-		if hookMap, ok := hook.(map[string]interface{}); ok {
+		if hookMap, ok := hook.(map[string]any); ok {
 			if cmd, ok := hookMap["command"].(string); ok && strings.HasPrefix(cmd, "sx install") {
 				foundAutoInstallHook = true
 				break

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -57,7 +58,7 @@ func (s *SleuthVault) Authenticate(ctx context.Context) (string, error) {
 func (s *SleuthVault) GetLockFile(ctx context.Context, cachedETag string) (content []byte, etag string, notModified bool, err error) {
 	endpoint := s.serverURL + "/api/skills/sx.lock"
 
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, "", false, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -142,7 +143,7 @@ func (s *SleuthVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipDa
 	}
 
 	// Create request
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, body)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -180,7 +181,7 @@ func (s *SleuthVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipDa
 	}
 
 	if !uploadResp.Success {
-		return fmt.Errorf("upload failed: server returned success=false")
+		return errors.New("upload failed: server returned success=false")
 	}
 
 	// Update asset with source information if server returns URL
@@ -197,7 +198,7 @@ func (s *SleuthVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipDa
 func (s *SleuthVault) GetVersionList(ctx context.Context, name string) ([]string, error) {
 	endpoint := fmt.Sprintf("%s/api/skills/assets/%s/list.txt", s.serverURL, name)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -236,7 +237,7 @@ func (s *SleuthVault) GetVersionList(ctx context.Context, name string) ([]string
 func (s *SleuthVault) GetMetadata(ctx context.Context, name, version string) (*metadata.Metadata, error) {
 	endpoint := fmt.Sprintf("%s/api/skills/assets/%s/%s/metadata.toml", s.serverURL, name, version)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -283,7 +284,7 @@ func (s *SleuthVault) VerifyIntegrity(data []byte, hashes map[string]string, siz
 func (s *SleuthVault) PostUsageStats(ctx context.Context, jsonlData string) error {
 	endpoint := s.serverURL + "/api/skills/usage"
 
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader([]byte(jsonlData)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader([]byte(jsonlData)))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -319,8 +320,8 @@ func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string
 		}
 	}`
 
-	variables := map[string]interface{}{
-		"input": map[string]interface{}{
+	variables := map[string]any{
+		"input": map[string]any{
 			"assetName": assetName,
 		},
 	}
@@ -354,7 +355,7 @@ func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string
 	}
 
 	if gqlResp.Data.RemoveAssetInstallations.Success == nil || !*gqlResp.Data.RemoveAssetInstallations.Success {
-		return fmt.Errorf("failed to remove asset installations")
+		return errors.New("failed to remove asset installations")
 	}
 
 	return nil
@@ -385,7 +386,7 @@ func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*
 		limit = 50
 	}
 
-	variables := map[string]interface{}{
+	variables := map[string]any{
 		"first": limit,
 	}
 	if opts.Type != "" {
@@ -465,7 +466,7 @@ func (s *SleuthVault) GetAssetDetails(ctx context.Context, name string) (*AssetD
 		}
 	}`
 
-	variables := map[string]interface{}{
+	variables := map[string]any{
 		"name": name,
 	}
 
@@ -544,7 +545,7 @@ func (s *SleuthVault) GetAssetDetails(ctx context.Context, name string) (*AssetD
 }
 
 // QueryIntegration queries integrated services (GitHub, CircleCI, Linear) using natural language
-func (s *SleuthVault) QueryIntegration(ctx context.Context, query, integration string, gitContext interface{}) (string, error) {
+func (s *SleuthVault) QueryIntegration(ctx context.Context, query, integration string, gitContext any) (string, error) {
 	// Convert integration string to uppercase for Provider enum (github -> GITHUB)
 	provider := strings.ToUpper(integration)
 
@@ -556,8 +557,8 @@ func (s *SleuthVault) QueryIntegration(ctx context.Context, query, integration s
 		}
 	}`
 
-	variables := map[string]interface{}{
-		"input": map[string]interface{}{
+	variables := map[string]any{
+		"input": map[string]any{
 			"query":    query,
 			"provider": provider,
 			"context":  gitContext,
@@ -594,13 +595,13 @@ func (s *SleuthVault) QueryIntegration(ctx context.Context, query, integration s
 func (s *SleuthVault) QueryIntegrationStream(
 	ctx context.Context,
 	query, integration string,
-	gitContext interface{},
+	gitContext any,
 	onEvent func(eventType, content string),
 ) (string, error) {
 	endpoint := s.serverURL + "/api/skills/ai-query/stream"
 
 	// Build JSON body matching the SSE endpoint format
-	reqBody := map[string]interface{}{
+	reqBody := map[string]any{
 		"query":    query,
 		"provider": strings.ToUpper(integration),
 		"context":  gitContext,
@@ -611,7 +612,7 @@ func (s *SleuthVault) QueryIntegrationStream(
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -649,7 +650,7 @@ func (s *SleuthVault) QueryIntegrationStream(
 
 		data := strings.TrimPrefix(line, "data: ")
 
-		var event map[string]interface{}
+		var event map[string]any
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
 			continue
 		}
@@ -666,7 +667,7 @@ func (s *SleuthVault) QueryIntegrationStream(
 
 		// Capture final result
 		if eventType == "done" {
-			if result, ok := event["result"].(map[string]interface{}); ok {
+			if result, ok := event["result"].(map[string]any); ok {
 				finalResult, _ = result["data"].(string)
 			}
 			break
@@ -691,11 +692,11 @@ func (s *SleuthVault) QueryIntegrationStream(
 }
 
 // executeGraphQLQuery executes a GraphQL query against the Sleuth server
-func (s *SleuthVault) executeGraphQLQuery(ctx context.Context, query string, variables map[string]interface{}, result interface{}) error {
+func (s *SleuthVault) executeGraphQLQuery(ctx context.Context, query string, variables map[string]any, result any) error {
 	endpoint := s.serverURL + "/graphql"
 
 	// Build request body
-	reqBody := map[string]interface{}{
+	reqBody := map[string]any{
 		"query":     query,
 		"variables": variables,
 	}
@@ -705,7 +706,7 @@ func (s *SleuthVault) executeGraphQLQuery(ctx context.Context, query string, var
 		return fmt.Errorf("failed to marshal GraphQL request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -751,15 +752,15 @@ func (s *SleuthVault) SetInstallations(ctx context.Context, asset *lockfile.Asse
 	}`
 
 	// Build repositories list from asset scopes
-	var repositories []map[string]interface{}
+	var repositories []map[string]any
 
 	if asset.IsGlobal() {
 		// Empty array for global installation
-		repositories = []map[string]interface{}{}
+		repositories = []map[string]any{}
 	} else {
 		// Convert lockfile.Scope to repository installation format
 		for _, scope := range asset.Scopes {
-			repo := map[string]interface{}{
+			repo := map[string]any{
 				"url": scope.Repo,
 			}
 			if len(scope.Paths) > 0 {
@@ -769,8 +770,8 @@ func (s *SleuthVault) SetInstallations(ctx context.Context, asset *lockfile.Asse
 		}
 	}
 
-	variables := map[string]interface{}{
-		"input": map[string]interface{}{
+	variables := map[string]any{
+		"input": map[string]any{
 			"assetName":    asset.Name,
 			"assetVersion": asset.Version,
 			"repositories": repositories,

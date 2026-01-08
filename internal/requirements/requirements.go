@@ -2,6 +2,7 @@ package requirements
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -117,26 +118,26 @@ func parseGitRequirement(line string) (Requirement, error) {
 	line = strings.TrimPrefix(line, "git+")
 
 	// Split by @ to separate URL and ref+params
-	atIndex := strings.Index(line, "@")
-	if atIndex == -1 {
+	before, after, ok := strings.Cut(line, "@")
+	if !ok {
 		return Requirement{}, fmt.Errorf("git requirement missing @ref: %s", line)
 	}
 
-	url := line[:atIndex]
-	refAndParams := line[atIndex+1:]
+	url := before
+	refAndParams := after
 
 	// Split ref and params by #
-	hashIndex := strings.Index(refAndParams, "#")
-	if hashIndex == -1 {
+	before, after, ok = strings.Cut(refAndParams, "#")
+	if !ok {
 		return Requirement{}, fmt.Errorf("git requirement missing #name parameter: %s", line)
 	}
 
-	ref := refAndParams[:hashIndex]
-	params := refAndParams[hashIndex+1:]
+	ref := before
+	params := after
 
 	// Parse parameters
 	var name, subdirectory string
-	for _, param := range strings.Split(params, "&") {
+	for param := range strings.SplitSeq(params, "&") {
 		parts := strings.SplitN(param, "=", 2)
 		if len(parts) != 2 {
 			return Requirement{}, fmt.Errorf("invalid git parameter: %s", param)
@@ -156,7 +157,7 @@ func parseGitRequirement(line string) (Requirement, error) {
 	}
 
 	if name == "" {
-		return Requirement{}, fmt.Errorf("git requirement missing name parameter")
+		return Requirement{}, errors.New("git requirement missing name parameter")
 	}
 
 	return Requirement{
@@ -174,9 +175,9 @@ func parseRegistryRequirement(line string) (Requirement, error) {
 	operators := []string{"~=", "==", ">=", "<=", "!=", ">", "<"}
 
 	for _, op := range operators {
-		if idx := strings.Index(line, op); idx != -1 {
-			name := strings.TrimSpace(line[:idx])
-			versionSpec := strings.TrimSpace(line[idx+len(op):])
+		if before, after, ok := strings.Cut(line, op); ok {
+			name := strings.TrimSpace(before)
+			versionSpec := strings.TrimSpace(after)
 
 			return Requirement{
 				Type:            RequirementTypeRegistry,
@@ -205,7 +206,7 @@ func (r Requirement) String() string {
 	case RequirementTypeGit:
 		result := fmt.Sprintf("git+%s@%s#name=%s", r.GitURL, r.GitRef, r.GitName)
 		if r.GitSubdirectory != "" {
-			result += fmt.Sprintf("&path=%s", r.GitSubdirectory)
+			result += "&path=" + r.GitSubdirectory
 		}
 		return result
 	case RequirementTypePath:

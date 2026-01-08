@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -176,7 +177,7 @@ func printVaultListText(out *outputHelper, result *vaultpkg.ListAssetsResult, ty
 
 	ui.Newline()
 	if typeFilter != "" {
-		ui.Header(fmt.Sprintf("%s Assets", typeFilter))
+		ui.Header(typeFilter + " Assets")
 	} else {
 		ui.Header("Vault Assets")
 	}
@@ -224,9 +225,9 @@ func printVaultListText(out *outputHelper, result *vaultpkg.ListAssetsResult, ty
 
 func printVaultListJSON(out *outputHelper, result *vaultpkg.ListAssetsResult) error {
 	// Create JSON-friendly output
-	output := make([]map[string]interface{}, 0, len(result.Assets))
+	output := make([]map[string]any, 0, len(result.Assets))
 	for _, assetInfo := range result.Assets {
-		output = append(output, map[string]interface{}{
+		output = append(output, map[string]any{
 			"name":          assetInfo.Name,
 			"type":          assetInfo.Type.Key,
 			"latestVersion": assetInfo.LatestVersion,
@@ -272,14 +273,14 @@ func printVaultShowText(out *outputHelper, details *vaultpkg.AssetDetails, scope
 		// Versions are in ascending order (oldest first), so last element is latest
 		latestVersion := details.Versions[len(details.Versions)-1].Version
 		ui.KeyValue("Latest Version", "v"+latestVersion)
-		ui.KeyValue("Total Versions", fmt.Sprintf("%d", len(details.Versions)))
+		ui.KeyValue("Total Versions", strconv.Itoa(len(details.Versions)))
 		ui.Newline()
 
 		ui.Bold("Versions")
 		// Display in descending order (newest first) for readability
 		for i := len(details.Versions) - 1; i >= 0; i-- {
 			v := details.Versions[i]
-			versionLine := fmt.Sprintf("  %s", ui.EmphasisText("v"+v.Version))
+			versionLine := "  " + ui.EmphasisText("v"+v.Version)
 
 			if !v.CreatedAt.IsZero() {
 				versionLine += ui.MutedText(" · " + v.CreatedAt.Format("Jan 2, 2006"))
@@ -309,16 +310,16 @@ func printVaultShowText(out *outputHelper, details *vaultpkg.AssetDetails, scope
 
 func printVaultShowJSON(out *outputHelper, details *vaultpkg.AssetDetails, scopesFound bool, currentScopes []lockfile.Scope) error {
 	// Create JSON-friendly output
-	versions := make([]map[string]interface{}, 0, len(details.Versions))
+	versions := make([]map[string]any, 0, len(details.Versions))
 	for _, v := range details.Versions {
-		versions = append(versions, map[string]interface{}{
+		versions = append(versions, map[string]any{
 			"version":    v.Version,
 			"createdAt":  v.CreatedAt,
 			"filesCount": v.FilesCount,
 		})
 	}
 
-	output := map[string]interface{}{
+	output := map[string]any{
 		"name":        details.Name,
 		"type":        details.Type.Key,
 		"description": details.Description,

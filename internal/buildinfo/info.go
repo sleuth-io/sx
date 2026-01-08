@@ -1,7 +1,5 @@
 package buildinfo
 
-import "fmt"
-
 var (
 	// Version will be set via ldflags during build
 	Version = "dev"
@@ -13,10 +11,10 @@ var (
 
 // GetUserAgent returns a user agent string for HTTP requests
 func GetUserAgent() string {
-	return fmt.Sprintf("skills/%s", Version)
+	return "skills/" + Version
 }
 
 // GetCreatedBy returns the "created-by" string for lock files
 func GetCreatedBy() string {
-	return fmt.Sprintf("skills/%s", Version)
+	return "skills/" + Version
 }

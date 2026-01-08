@@ -47,7 +47,7 @@ func (h *CommandDetector) CreateDefaultMetadata(name, version string) *metadata.
 }
 
 // DetectUsageFromToolCall detects command usage from tool calls
-func (h *CommandDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+func (h *CommandDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
 	if toolName != "SlashCommand" {
 		return "", false
 	}

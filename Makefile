@@ -102,7 +102,7 @@ update-deps: ## Update all dependencies to latest versions
 init: ## Initialize development environment (install tools, download deps)
 	@echo "Initializing development environment..."
 	@echo "Installing development tools..."
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	@echo "Downloading dependencies..."
 	@go mod download
 	@if ! which golangci-lint > /dev/null 2>&1; then \

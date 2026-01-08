@@ -2,10 +2,12 @@ package assets
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/schollz/progressbar/v3"
+
 	"github.com/sleuth-io/sx/internal/cache"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/lockfile"
@@ -51,7 +53,7 @@ func (f *AssetFetcher) FetchAsset(ctx context.Context, asset *lockfile.Asset) (z
 
 	// Verify it's a valid zip
 	if !utils.IsZipFile(zipData) {
-		return nil, nil, fmt.Errorf("downloaded file is not a valid zip archive")
+		return nil, nil, errors.New("downloaded file is not a valid zip archive")
 	}
 
 	// Extract and parse metadata from zip
@@ -112,7 +114,7 @@ func (f *AssetFetcher) FetchAssetWithProgress(ctx context.Context, asset *lockfi
 
 	// Verify it's a valid zip
 	if !utils.IsZipFile(zipData) {
-		return nil, nil, fmt.Errorf("downloaded file is not a valid zip archive")
+		return nil, nil, errors.New("downloaded file is not a valid zip archive")
 	}
 
 	// Extract and parse metadata from zip
@@ -150,10 +152,8 @@ func (f *AssetFetcher) FetchAssets(ctx context.Context, assets []*lockfile.Asset
 
 	// Create worker pool
 	var wg sync.WaitGroup
-	for w := 0; w < concurrency; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range concurrency {
+		wg.Go(func() {
 			for task := range tasks {
 				select {
 				case <-ctx.Done():
@@ -193,7 +193,7 @@ func (f *AssetFetcher) FetchAssets(ctx context.Context, assets []*lockfile.Asset
 					Index:    task.Index,
 				}
 			}
-		}()
+		})
 	}
 
 	// Send tasks

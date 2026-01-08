@@ -1,10 +1,12 @@
 package metadata
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 
 	"github.com/Masterminds/semver/v3"
+
 	"github.com/sleuth-io/sx/internal/asset"
 )
 
@@ -34,7 +36,7 @@ func (m *Metadata) Validate() error {
 	switch m.Asset.Type {
 	case asset.TypeSkill:
 		if m.Skill == nil {
-			return fmt.Errorf("[skill] section is required for skill assets")
+			return errors.New("[skill] section is required for skill assets")
 		}
 		if err := m.Skill.Validate(); err != nil {
 			return fmt.Errorf("skill: %w", err)
@@ -42,7 +44,7 @@ func (m *Metadata) Validate() error {
 
 	case asset.TypeCommand:
 		if m.Command == nil {
-			return fmt.Errorf("[command] section is required for command assets")
+			return errors.New("[command] section is required for command assets")
 		}
 		if err := m.Command.Validate(); err != nil {
 			return fmt.Errorf("command: %w", err)
@@ -50,7 +52,7 @@ func (m *Metadata) Validate() error {
 
 	case asset.TypeAgent:
 		if m.Agent == nil {
-			return fmt.Errorf("[agent] section is required for agent assets")
+			return errors.New("[agent] section is required for agent assets")
 		}
 		if err := m.Agent.Validate(); err != nil {
 			return fmt.Errorf("agent: %w", err)
@@ -58,7 +60,7 @@ func (m *Metadata) Validate() error {
 
 	case asset.TypeHook:
 		if m.Hook == nil {
-			return fmt.Errorf("[hook] section is required for hook assets")
+			return errors.New("[hook] section is required for hook assets")
 		}
 		if err := m.Hook.Validate(); err != nil {
 			return fmt.Errorf("hook: %w", err)
@@ -80,15 +82,15 @@ func (m *Metadata) Validate() error {
 func (a *Asset) Validate() error {
 	// Validate required fields
 	if a.Name == "" {
-		return fmt.Errorf("name is required")
+		return errors.New("name is required")
 	}
 
 	if !nameRegex.MatchString(a.Name) {
-		return fmt.Errorf("name must contain only alphanumeric characters, dashes, and underscores")
+		return errors.New("name must contain only alphanumeric characters, dashes, and underscores")
 	}
 
 	if a.Version == "" {
-		return fmt.Errorf("version is required")
+		return errors.New("version is required")
 	}
 
 	// Validate semantic version
@@ -106,7 +108,7 @@ func (a *Asset) Validate() error {
 // Validate validates the [skill] section
 func (s *SkillConfig) Validate() error {
 	if s.PromptFile == "" {
-		return fmt.Errorf("prompt-file is required")
+		return errors.New("prompt-file is required")
 	}
 	return nil
 }
@@ -114,7 +116,7 @@ func (s *SkillConfig) Validate() error {
 // Validate validates the [command] section
 func (c *CommandConfig) Validate() error {
 	if c.PromptFile == "" {
-		return fmt.Errorf("prompt-file is required")
+		return errors.New("prompt-file is required")
 	}
 	return nil
 }
@@ -122,7 +124,7 @@ func (c *CommandConfig) Validate() error {
 // Validate validates the [agent] section
 func (a *AgentConfig) Validate() error {
 	if a.PromptFile == "" {
-		return fmt.Errorf("prompt-file is required")
+		return errors.New("prompt-file is required")
 	}
 	return nil
 }
@@ -130,7 +132,7 @@ func (a *AgentConfig) Validate() error {
 // Validate validates the [hook] section
 func (h *HookConfig) Validate() error {
 	if h.Event == "" {
-		return fmt.Errorf("event is required")
+		return errors.New("event is required")
 	}
 
 	if !validHookEvents[h.Event] {
@@ -138,11 +140,11 @@ func (h *HookConfig) Validate() error {
 	}
 
 	if h.ScriptFile == "" {
-		return fmt.Errorf("script-file is required")
+		return errors.New("script-file is required")
 	}
 
 	if h.Timeout < 0 {
-		return fmt.Errorf("timeout must be non-negative")
+		return errors.New("timeout must be non-negative")
 	}
 
 	return nil
@@ -151,15 +153,15 @@ func (h *HookConfig) Validate() error {
 // Validate validates the [mcp] section
 func (m *MCPConfig) Validate() error {
 	if m.Command == "" {
-		return fmt.Errorf("command is required")
+		return errors.New("command is required")
 	}
 
 	if len(m.Args) == 0 {
-		return fmt.Errorf("args is required (must be a non-empty array)")
+		return errors.New("args is required (must be a non-empty array)")
 	}
 
 	if m.Timeout < 0 {
-		return fmt.Errorf("timeout must be non-negative")
+		return errors.New("timeout must be non-negative")
 	}
 
 	return nil

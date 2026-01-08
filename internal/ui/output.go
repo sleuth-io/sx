@@ -123,7 +123,7 @@ func (o *Output) SubHeader(text string) {
 }
 
 // Println prints a line to stdout.
-func (o *Output) Println(args ...interface{}) {
+func (o *Output) Println(args ...any) {
 	if o.silent {
 		return
 	}
@@ -131,7 +131,7 @@ func (o *Output) Println(args ...interface{}) {
 }
 
 // Printf prints formatted output to stdout.
-func (o *Output) Printf(format string, args ...interface{}) {
+func (o *Output) Printf(format string, args ...any) {
 	if o.silent {
 		return
 	}
@@ -139,7 +139,7 @@ func (o *Output) Printf(format string, args ...interface{}) {
 }
 
 // PrintlnAlways prints even in silent mode.
-func (o *Output) PrintlnAlways(args ...interface{}) {
+func (o *Output) PrintlnAlways(args ...any) {
 	fmt.Fprintln(o.out, args...)
 }
 

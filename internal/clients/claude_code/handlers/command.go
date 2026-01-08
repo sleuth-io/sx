@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -71,16 +72,16 @@ func (h *CommandHandler) GetScriptFile(meta *metadata.Metadata) string {
 // ValidateMetadata validates command-specific metadata
 func (h *CommandHandler) ValidateMetadata(meta *metadata.Metadata) error {
 	if meta.Command == nil {
-		return fmt.Errorf("command configuration missing")
+		return errors.New("command configuration missing")
 	}
 	if meta.Command.PromptFile == "" {
-		return fmt.Errorf("command prompt-file is required")
+		return errors.New("command prompt-file is required")
 	}
 	return nil
 }
 
 // DetectUsageFromToolCall detects command usage from tool calls
-func (h *CommandHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+func (h *CommandHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
 	if toolName != "SlashCommand" {
 		return "", false
 	}
@@ -126,7 +127,7 @@ func (h *CommandHandler) Validate(zipData []byte) error {
 
 	// Check that metadata.toml exists
 	if !containsFile(files, "metadata.toml") {
-		return fmt.Errorf("metadata.toml not found in zip")
+		return errors.New("metadata.toml not found in zip")
 	}
 
 	// Extract and validate metadata
@@ -152,7 +153,7 @@ func (h *CommandHandler) Validate(zipData []byte) error {
 
 	// Check that prompt file exists
 	if meta.Command == nil {
-		return fmt.Errorf("[command] section missing in metadata")
+		return errors.New("[command] section missing in metadata")
 	}
 
 	if !containsFile(files, meta.Command.PromptFile) {

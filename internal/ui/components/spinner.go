@@ -1,6 +1,7 @@
 package components
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -56,7 +57,7 @@ func (m spinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			m.done = true
-			m.err = fmt.Errorf("cancelled")
+			m.err = errors.New("cancelled")
 			return m, tea.Quit
 		}
 

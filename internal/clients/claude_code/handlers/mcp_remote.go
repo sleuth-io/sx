@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -68,7 +69,7 @@ func (h *MCPRemoteHandler) Validate(zipData []byte) error {
 
 	// Check that metadata.toml exists
 	if !containsFile(files, "metadata.toml") {
-		return fmt.Errorf("metadata.toml not found in zip")
+		return errors.New("metadata.toml not found in zip")
 	}
 
 	// Extract and validate metadata
@@ -94,7 +95,7 @@ func (h *MCPRemoteHandler) Validate(zipData []byte) error {
 
 	// Check that MCP config exists
 	if meta.MCP == nil {
-		return fmt.Errorf("[mcp] section missing in metadata")
+		return errors.New("[mcp] section missing in metadata")
 	}
 
 	return nil
@@ -105,7 +106,7 @@ func (h *MCPRemoteHandler) updateMCPConfig(targetBase string) error {
 	mcpConfigPath := filepath.Join(targetBase, ".mcp.json")
 
 	// Read existing config or create new
-	var config map[string]interface{}
+	var config map[string]any
 	if utils.FileExists(mcpConfigPath) {
 		data, err := os.ReadFile(mcpConfigPath)
 		if err != nil {
@@ -115,16 +116,16 @@ func (h *MCPRemoteHandler) updateMCPConfig(targetBase string) error {
 			return fmt.Errorf("failed to parse .mcp.json: %w", err)
 		}
 	} else {
-		config = map[string]interface{}{
-			"mcpServers": make(map[string]interface{}),
+		config = map[string]any{
+			"mcpServers": make(map[string]any),
 		}
 	}
 
 	// Ensure mcpServers section exists
 	if config["mcpServers"] == nil {
-		config["mcpServers"] = make(map[string]interface{})
+		config["mcpServers"] = make(map[string]any)
 	}
-	mcpServers := config["mcpServers"].(map[string]interface{})
+	mcpServers := config["mcpServers"].(map[string]any)
 
 	// Build MCP server configuration
 	serverConfig := h.buildMCPServerConfig()
@@ -159,7 +160,7 @@ func (h *MCPRemoteHandler) removeFromMCPConfig(targetBase string) error {
 		return fmt.Errorf("failed to read .mcp.json: %w", err)
 	}
 
-	var config map[string]interface{}
+	var config map[string]any
 	if err := json.Unmarshal(data, &config); err != nil {
 		return fmt.Errorf("failed to parse .mcp.json: %w", err)
 	}
@@ -168,7 +169,7 @@ func (h *MCPRemoteHandler) removeFromMCPConfig(targetBase string) error {
 	if config["mcpServers"] == nil {
 		return nil
 	}
-	mcpServers := config["mcpServers"].(map[string]interface{})
+	mcpServers := config["mcpServers"].(map[string]any)
 
 	// Remove this MCP server
 	delete(mcpServers, h.metadata.Asset.Name)
@@ -187,17 +188,17 @@ func (h *MCPRemoteHandler) removeFromMCPConfig(targetBase string) error {
 }
 
 // buildMCPServerConfig builds the MCP server configuration for .mcp.json
-func (h *MCPRemoteHandler) buildMCPServerConfig() map[string]interface{} {
+func (h *MCPRemoteHandler) buildMCPServerConfig() map[string]any {
 	mcpConfig := h.metadata.MCP
 
 	// For remote MCPs, commands are external (npx, docker, etc.)
 	// No path conversion needed
-	args := make([]interface{}, len(mcpConfig.Args))
+	args := make([]any, len(mcpConfig.Args))
 	for i, arg := range mcpConfig.Args {
 		args[i] = arg
 	}
 
-	config := map[string]interface{}{
+	config := map[string]any{
 		"command":   mcpConfig.Command,
 		"args":      args,
 		"_artifact": h.metadata.Asset.Name,
@@ -232,12 +233,12 @@ func (h *MCPRemoteHandler) VerifyInstalled(targetBase string) (bool, string) {
 		return false, "failed to read .mcp.json: " + err.Error()
 	}
 
-	var config map[string]interface{}
+	var config map[string]any
 	if err := json.Unmarshal(data, &config); err != nil {
 		return false, "failed to parse .mcp.json: " + err.Error()
 	}
 
-	mcpServers, ok := config["mcpServers"].(map[string]interface{})
+	mcpServers, ok := config["mcpServers"].(map[string]any)
 	if !ok {
 		return false, "mcpServers section not found"
 	}
@@ -251,7 +252,7 @@ func (h *MCPRemoteHandler) VerifyInstalled(targetBase string) (bool, string) {
 
 // DetectUsageFromToolCall detects MCP remote server usage from tool calls
 // MCP remote uses the same tool naming pattern as regular MCP, so we use the same logic
-func (h *MCPRemoteHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+func (h *MCPRemoteHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
 	// MCP tools follow pattern: mcp__server__tool
 	if !strings.HasPrefix(toolName, "mcp__") {
 		return "", false

@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,7 +29,7 @@ func NewGitSourceHandler(gitClient *git.Client) *GitSourceHandler {
 // Fetch clones/fetches a git repository and retrieves the asset
 func (g *GitSourceHandler) Fetch(ctx context.Context, asset *lockfile.Asset) ([]byte, error) {
 	if asset.SourceGit == nil {
-		return nil, fmt.Errorf("asset does not have source-git")
+		return nil, errors.New("asset does not have source-git")
 	}
 
 	source := asset.SourceGit

@@ -40,8 +40,8 @@ and report it to the vault. Intended to be called from Claude Code hooks.`,
 
 // PostToolUseEvent represents the JSON payload from Claude Code PostToolUse hook
 type PostToolUseEvent struct {
-	ToolName  string                 `json:"tool_name"`
-	ToolInput map[string]interface{} `json:"tool_input"`
+	ToolName  string         `json:"tool_name"`
+	ToolInput map[string]any `json:"tool_input"`
 }
 
 // runReportUsage executes the report-usage command

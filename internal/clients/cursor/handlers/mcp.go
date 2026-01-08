@@ -46,7 +46,7 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 
 	// Add to config
 	if config.MCPServers == nil {
-		config.MCPServers = make(map[string]interface{})
+		config.MCPServers = make(map[string]any)
 	}
 	config.MCPServers[h.metadata.Asset.Name] = entry
 
@@ -83,7 +83,7 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 	return nil
 }
 
-func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]interface{} {
+func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]any {
 	mcpConfig := h.metadata.MCP
 
 	// Convert relative command paths to absolute (relative to server directory)
@@ -93,7 +93,7 @@ func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]interface{} {
 	}
 
 	// Convert relative args paths to absolute
-	args := make([]interface{}, len(mcpConfig.Args))
+	args := make([]any, len(mcpConfig.Args))
 	for i, arg := range mcpConfig.Args {
 		// If arg looks like a relative path (contains / or \), make it absolute
 		if !filepath.IsAbs(arg) && (filepath.Base(arg) != arg) {
@@ -103,7 +103,7 @@ func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]interface{} {
 		}
 	}
 
-	entry := map[string]interface{}{
+	entry := map[string]any{
 		"command": command,
 		"args":    args,
 	}
@@ -118,13 +118,13 @@ func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]interface{} {
 
 // MCPConfig represents Cursor's mcp.json structure
 type MCPConfig struct {
-	MCPServers map[string]interface{} `json:"mcpServers"`
+	MCPServers map[string]any `json:"mcpServers"`
 }
 
 // ReadMCPConfig reads Cursor's mcp.json file
 func ReadMCPConfig(path string) (*MCPConfig, error) {
 	config := &MCPConfig{
-		MCPServers: make(map[string]interface{}),
+		MCPServers: make(map[string]any),
 	}
 
 	data, err := os.ReadFile(path)

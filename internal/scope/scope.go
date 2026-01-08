@@ -3,6 +3,7 @@ package scope
 import (
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/lockfile"
@@ -76,13 +77,7 @@ func (m *Matcher) matchesRepository(repo *lockfile.Scope) bool {
 		return false
 	}
 
-	for _, path := range repo.Paths {
-		if m.matchesPath(path) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(repo.Paths, m.matchesPath)
 }
 
 // matchesRepoURL checks if the asset's repo matches the current repo
@@ -166,9 +161,9 @@ func isKnownGitService(host string) bool {
 
 // extractHost extracts the host from a git URL
 func extractHost(repoURL string) string {
-	if strings.HasPrefix(repoURL, "git@") {
+	if after, ok := strings.CutPrefix(repoURL, "git@"); ok {
 		// git@github.com:owner/repo
-		parts := strings.SplitN(strings.TrimPrefix(repoURL, "git@"), ":", 2)
+		parts := strings.SplitN(after, ":", 2)
 		if len(parts) > 0 {
 			return parts[0]
 		}

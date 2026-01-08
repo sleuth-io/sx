@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -126,135 +127,38 @@ func runAddWithOptions(cmd *cobra.Command, input string, promptInstall bool) err
 
 // configureExistingAsset handles configuring scope for an asset that already exists in the vault
 func configureExistingAsset(ctx context.Context, cmd *cobra.Command, out *outputHelper, status *components.Status, assetName string, promptInstall bool) error {
-	// Create vault instance
-	vault, err := createVault()
+	// Load vault and lock file
+	vault, lockFile, err := loadVaultAndLockFile(ctx, status)
 	if err != nil {
 		return err
 	}
 
-	// Load lock file to find the asset
-	status.Start("Syncing vault")
-	lockFileContent, _, _, err := vault.GetLockFile(ctx, "")
-	status.Clear()
-	var lockFile *lockfile.LockFile
+	// Find and select asset version
+	foundAssets := findAssetsByName(lockFile, assetName)
+	foundAsset, err := selectAssetVersion(foundAssets, assetName, out)
+	if errors.Is(err, ErrAssetNotFound) {
+		// Not in lock file - check if it exists in vault
+		return handleNewAssetFromVault(ctx, cmd, out, status, vault, assetName, promptInstall)
+	}
 	if err != nil {
-		// Lock file doesn't exist yet - create empty one
-		lockFile = &lockfile.LockFile{
-			Assets: []lockfile.Asset{},
-		}
-	} else {
-		lockFile, err = lockfile.Parse(lockFileContent)
-		if err != nil {
-			return fmt.Errorf("failed to parse lock file: %w", err)
-		}
+		return err
 	}
 
-	// Find all assets with this name in lock file
-	var foundAssets []*lockfile.Asset
-	for i := range lockFile.Assets {
-		if lockFile.Assets[i].Name == assetName {
-			foundAssets = append(foundAssets, &lockFile.Assets[i])
-		}
-	}
+	// Configure existing asset
+	return configureFoundAsset(ctx, cmd, out, vault, foundAsset, promptInstall)
+}
 
-	// Handle multiple versions - ask user which to configure
-	var foundAsset *lockfile.Asset
-	if len(foundAssets) > 1 {
-		// Build options for version selection
-		options := make([]components.Option, len(foundAssets))
-		for i, art := range foundAssets {
-			scopeDesc := "global"
-			if len(art.Scopes) > 0 {
-				scopeDesc = fmt.Sprintf("%d repositories", len(art.Scopes))
-			}
-			options[i] = components.Option{
-				Label:       fmt.Sprintf("v%s", art.Version),
-				Value:       art.Version,
-				Description: fmt.Sprintf("Currently installed: %s", scopeDesc),
-			}
-		}
-
-		out.println()
-		out.printf("Multiple versions of %s found in lock file\n", assetName)
-		selected, err := components.SelectWithIO("Which version would you like to configure?", options, out.cmd.InOrStdin(), out.cmd.OutOrStdout())
-		if err != nil {
-			return fmt.Errorf("failed to select version: %w", err)
-		}
-
-		// Find the selected asset
-		for _, art := range foundAssets {
-			if art.Version == selected.Value {
-				foundAsset = art
-				break
-			}
-		}
-	} else if len(foundAssets) == 1 {
-		foundAsset = foundAssets[0]
-	}
-
-	// If not in lock file, check if it exists in assets directory
-	if foundAsset == nil {
-		// Try to find versions in assets directory
-		status.Start("Checking for asset versions")
-		versions, err := vault.GetVersionList(ctx, assetName)
-		status.Clear()
-		if err != nil || len(versions) == 0 {
-			return fmt.Errorf("asset '%s' not found in vault", assetName)
-		}
-
-		// Use the latest version (last in list)
-		latestVersion := versions[len(versions)-1]
-
-		// Asset exists in vault but not installed - treat as first-time install
-		out.printf("Found asset: %s v%s in vault (not yet installed)\n", assetName, latestVersion)
-
-		// Prompt for repositories with nil current state (new install)
-		repositories, err := promptForRepositories(out, assetName, latestVersion, nil)
-		if err != nil {
-			return fmt.Errorf("failed to configure repositories: %w", err)
-		}
-
-		// If nil, user chose not to install
-		if repositories == nil {
-			out.println()
-			out.println("Asset available in vault only")
-			return nil
-		}
-
-		// Create new asset entry for lock file
-		newAsset := &lockfile.Asset{
-			Name:    assetName,
-			Type:    asset.TypeSkill, // Default to skill, could enhance later
-			Version: latestVersion,
-			SourcePath: &lockfile.SourcePath{
-				Path: fmt.Sprintf("./assets/%s/%s", assetName, latestVersion),
-			},
-			Scopes: repositories,
-		}
-
-		// Add to lock file
-		if err := updateLockFile(ctx, out, vault, newAsset); err != nil {
-			return fmt.Errorf("failed to update lock file: %w", err)
-		}
-
-		// Prompt to run install (if enabled)
-		if promptInstall {
-			promptRunInstall(cmd, ctx, out)
-		}
-
-		return nil
-	}
-
+// configureFoundAsset handles configuring an asset that was found in the lock file
+func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHelper, vault vaultpkg.Vault, foundAsset *lockfile.Asset, promptInstall bool) error {
 	out.printf("Configuring scope for %s@%s\n", foundAsset.Name, foundAsset.Version)
 
 	// Normalize nil to empty slice for global installations
-	// When asset is in lock file with nil Repositories, it means global (TOML parses empty array as nil)
 	currentScopes := foundAsset.Scopes
 	if currentScopes == nil {
 		currentScopes = []lockfile.Scope{}
 	}
 
-	// Prompt for scope configurations (pass current scopes for modification)
+	// Prompt for scope configurations
 	scopes, err := promptForRepositories(out, foundAsset.Name, foundAsset.Version, currentScopes)
 	if err != nil {
 		return fmt.Errorf("failed to configure repositories: %w", err)
@@ -262,41 +166,7 @@ func configureExistingAsset(ctx context.Context, cmd *cobra.Command, out *output
 
 	// If nil, user chose to remove from installation
 	if scopes == nil {
-		// Remove asset from lock file
-		if pathVault, ok := vault.(*vaultpkg.PathVault); ok {
-			lockFilePath := pathVault.GetLockFilePath()
-			if err := lockfile.RemoveAsset(lockFilePath, foundAsset.Name, foundAsset.Version); err != nil {
-				return fmt.Errorf("failed to remove asset from lock file: %w", err)
-			}
-		} else if gitVault, ok := vault.(*vaultpkg.GitVault); ok {
-			lockFilePath := gitVault.GetLockFilePath()
-			if err := lockfile.RemoveAsset(lockFilePath, foundAsset.Name, foundAsset.Version); err != nil {
-				return fmt.Errorf("failed to remove asset from lock file: %w", err)
-			}
-			// Commit and push the removal
-			if err := gitVault.CommitAndPush(ctx, foundAsset); err != nil {
-				return fmt.Errorf("failed to push removal: %w", err)
-			}
-		}
-
-		// Prompt to run install to clean up the removed asset (if enabled)
-		if promptInstall {
-			out.println()
-			confirmed, err := components.ConfirmWithIO("Run install now to remove the asset from clients?", true, cmd.InOrStdin(), cmd.OutOrStdout())
-			if err != nil {
-				return nil
-			}
-
-			if confirmed {
-				out.println()
-				if err := runInstall(cmd, nil, false, "", false); err != nil {
-					out.printfErr("Install failed: %v\n", err)
-				}
-			} else {
-				out.println("Run 'sx install' when ready to clean up.")
-			}
-		}
-		return nil
+		return handleAssetRemoval(ctx, cmd, out, vault, foundAsset, promptInstall)
 	}
 
 	// Update asset with new repositories
@@ -351,7 +221,7 @@ func loadZipFile(out *outputHelper, status *components.Status, zipFile string) (
 	}
 
 	if zipFile == "" {
-		return "", nil, fmt.Errorf("zip file, directory path, or URL is required")
+		return "", nil, errors.New("zip file, directory path, or URL is required")
 	}
 
 	// Check if it's a GitHub tree URL (directory)
@@ -420,7 +290,7 @@ func loadZipFile(out *outputHelper, status *components.Status, zipFile string) (
 		// Verify it's a valid zip
 		if !utils.IsZipFile(zipData) {
 			status.Fail("Invalid zip file")
-			return "", nil, fmt.Errorf("file is not a valid zip archive")
+			return "", nil, errors.New("file is not a valid zip archive")
 		}
 		status.Done("")
 	}
@@ -438,7 +308,7 @@ func downloadZipFromURL(ctx context.Context, status *components.Status, zipURL s
 	}
 
 	// Create request with context
-	req, err := http.NewRequestWithContext(ctx, "GET", zipURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, zipURL, nil)
 	if err != nil {
 		status.Fail("Failed to create request")
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -470,7 +340,7 @@ func downloadZipFromURL(ctx context.Context, status *components.Status, zipURL s
 	// Verify it's a valid zip
 	if !utils.IsZipFile(data) {
 		status.Fail("Invalid zip archive")
-		return nil, fmt.Errorf("downloaded file is not a valid zip archive")
+		return nil, errors.New("downloaded file is not a valid zip archive")
 	}
 
 	status.Done("")
@@ -743,7 +613,7 @@ func determineSuggestedVersionAndCheckIdentical(ctx context.Context, status *com
 	latestVersion := versions[len(versions)-1]
 
 	// Try to get the asset for comparison
-	status.Start(fmt.Sprintf("Comparing with v%s", latestVersion))
+	status.Start("Comparing with v" + latestVersion)
 
 	var existingZipData []byte
 

@@ -49,12 +49,15 @@ func uninstallAssetsWithScope(ctx context.Context, installedAssets []assets.Inst
 		}
 
 		for _, result := range resp.Results {
-			if result.Status == clients.StatusSuccess {
+			switch result.Status {
+			case clients.StatusSuccess:
 				out.printf("  - Removed %s from %s\n", result.AssetName, client.DisplayName())
 				log.Info("asset removed", "name", result.AssetName, "client", client.ID())
-			} else if result.Status == clients.StatusFailed {
+			case clients.StatusFailed:
 				out.printfErr("Warning: failed to remove %s from %s: %v\n", result.AssetName, client.DisplayName(), result.Error)
 				log.Error("asset removal failed", "name", result.AssetName, "client", client.ID(), "error", result.Error)
+			case clients.StatusSkipped:
+				// Skipped assets don't need cleanup logging
 			}
 		}
 	}

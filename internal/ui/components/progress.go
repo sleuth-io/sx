@@ -80,10 +80,7 @@ func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		m.progress.Width = msg.Width - 4
-		if m.progress.Width > m.width {
-			m.progress.Width = m.width
-		}
+		m.progress.Width = min(msg.Width-4, m.width)
 
 	case progress.FrameMsg:
 		progressModel, cmd := m.progress.Update(msg)

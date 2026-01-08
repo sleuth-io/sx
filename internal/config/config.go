@@ -2,9 +2,11 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/sleuth-io/sx/internal/utils"
 )
@@ -87,7 +89,7 @@ func Load() (*Config, error) {
 		return &cfg, nil
 	}
 
-	return nil, fmt.Errorf("configuration not found. Run 'sx init' first")
+	return nil, errors.New("configuration not found. Run 'sx init' first")
 }
 
 // Save saves the configuration to the config file
@@ -135,18 +137,18 @@ func (c *Config) Validate() error {
 	switch c.Type {
 	case RepositoryTypeSleuth:
 		if c.RepositoryURL == "" && c.ServerURL == "" {
-			return fmt.Errorf("repositoryUrl is required for sleuth repository type")
+			return errors.New("repositoryUrl is required for sleuth repository type")
 		}
 		if c.AuthToken == "" {
-			return fmt.Errorf("authToken is required for sleuth repository type")
+			return errors.New("authToken is required for sleuth repository type")
 		}
 	case RepositoryTypeGit:
 		if c.RepositoryURL == "" {
-			return fmt.Errorf("repositoryUrl is required for git repository type")
+			return errors.New("repositoryUrl is required for git repository type")
 		}
 	case RepositoryTypePath:
 		if c.RepositoryURL == "" {
-			return fmt.Errorf("repositoryUrl is required for path repository type")
+			return errors.New("repositoryUrl is required for path repository type")
 		}
 	}
 
@@ -191,12 +193,7 @@ func (c *Config) IsClientEnabled(clientID string) bool {
 	if len(c.EnabledClients) == 0 {
 		return true
 	}
-	for _, id := range c.EnabledClients {
-		if id == clientID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.EnabledClients, clientID)
 }
 
 // GetEnabledClients returns the list of enabled client IDs.

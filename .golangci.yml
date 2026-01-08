@@ -1,0 +1,180 @@
+version: "2"
+
+run:
+  go: "1.25"
+  # Ensure we fail if the AI tries to use a linter that isn't configured
+  modules-download-mode: readonly
+
+linters:
+  default: none
+  enable:
+    # --- Structural & Complexity (The "Rails") ---
+    # - funlen         # Limits function length to prevent "God Functions" (6 issues)
+    # - gocognit       # Forces decomposition of complex logic (49 issues)
+    - gocyclo        # Standard cyclomatic complexity
+    # - cyclop         # Stricter version of gocyclo (17 issues)
+    # - lll            # Strict line length for better diffs/tokenization (22 issues)
+    # - revive         # General purpose style & convention (63 issues)
+    # - interfacebloat # Prevents overly large interfaces (2 issues)
+    # - nestif         # Deeply nested if statements are forbidden (21 issues)
+
+    # --- Safety & Error Handling ---
+    # - errcheck       # No unhandled errors (146 issues)
+    - errorlint      # Go 1.13+ error wrapping issues (auto-fix)
+    # - gosec          # Security audits (91 issues)
+    # - wrapcheck      # Forces wrapping of errors from external packages (52 issues)
+    # - forcetypeassert # Disallows 'v.(T)' without the 'ok' check (17 issues)
+    # - makezero       # Prevents slice append bugs (2 issues)
+    # - nilerr         # Returns nil when error is not nil (5 issues)
+    - nilnil         # Disallows returning (nil, nil)
+    # - noctx          # Requires Context in HTTP requests (4 issues)
+    - bodyclose      # Forces closing of HTTP bodies
+    - fatcontext     # Context creation in loops (auto-fix)
+    - sqlclosecheck  # SQL rows/stmt close checks
+
+    # --- Maintenance & Logic ---
+    # - govet          # Standard compiler-standard checks (69 issues)
+    - staticcheck    # Advanced logic/bug detection (includes gosimple, stylecheck)
+    - unused         # No dead code
+    - ineffassign    # No useless assignments
+    # - unparam        # No unused function parameters (15 issues)
+    - exhaustive     # Enum switches must be complete
+    - dogsled        # Prevents ignoring too many return values
+    # - unconvert      # Unnecessary type conversions (3 issues)
+    # - wastedassign   # Wasted assignments (2 issues)
+    # - predeclared    # Shadowing predeclared identifiers (error, string, etc.) (2 issues)
+
+    # --- Style & Cleanliness ---
+    # - gocritic       # Massive suite of opinionated style checks (15 issues)
+    - misspell       # Typos
+    - dupword        # Duplicate words in comments (auto-fix)
+    - whitespace     # Proper spacing
+    # - varnamelen     # Prevents tiny, unhelpful variable names (63 issues)
+    # - prealloc       # Suggests preallocating slices for performance (4 issues)
+    - usestdlibvars  # Use http.StatusOK instead of 200 (auto-fix)
+
+    # --- Performance ---
+    - perfsprint     # Faster fmt.Sprintf alternatives (auto-fix)
+
+    # --- Testing ---
+    - testifylint    # Testify best practices (auto-fix)
+
+    # --- Modernization ---
+    - modernize      # Suggests modern Go idioms (any, min/max, slices pkg, etc.)
+    - copyloopvar    # Loop variable copying issues (auto-fix)
+    - intrange       # Integer range in for loops (auto-fix)
+    - exptostd       # Replace x/exp with stdlib (auto-fix)
+    - mirror         # Wrong bytes/strings patterns (auto-fix)
+
+  settings:
+    # 1. Complexity Limits (STRICT - do not increase further)
+    funlen:
+      lines: 60           # CEILING: Do not exceed 60 lines
+      statements: 40      # CEILING: Do not exceed 40 statements
+    gocognit:
+      min-complexity: 15  # CEILING: 15 is absolute maximum
+    cyclop:
+      max-complexity: 10
+
+    # 2. Variable Naming (Stops AI from being lazy)
+    varnamelen:
+      max-distance: 5   # If a variable is used far from its declaration, it needs a long name
+      min-name-length: 3
+      # Go idioms + project-specific terms:
+      # tt=table test, tc=test case, ts=test server, tp=transport
+      # w=writer, r=reader/request, b=bytes, d=duration
+      # fc=FeatureCollection, vr=validation rule, bc=barchart
+      ignore-names: [err, ok, ctx, tt, tc, ts, tp, w, r, b, d, id, fc, vr, bc, ft]
+      ignore-decls:
+        - t testing.T
+        - i int
+        - T any
+
+    # 3. Error Handling
+    wrapcheck:
+      # Forces AI to wrap errors from any package that isn't the current one.
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+      # Don't require wrapping for our own internal packages
+      ignore-package-globs:
+        - github.com/sleuth-io/sx/internal/*
+
+    # 4. Line Length
+    lll:
+      line-length: 140    # 140 chars max
+
+    # 5. Revive (Policy Enforcement)
+    revive:
+      severity: error
+      rules:
+        - name: file-length-limit
+          arguments: [{max: 350}] # Production code: 350 LOC max
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: indent-error-flow
+        - name: cognitive-complexity
+          arguments: [15]   # Aligned with gocognit ceiling
+
+    # 6. Security (gosec)
+    gosec:
+      excludes:
+        # G304: File path from variable - acceptable for CLI tools
+        - G304
+        # G301: Dir perms 0755 (world-readable) - acceptable for output directories
+        - G301
+
+    # 7. Switch logic
+    exhaustive:
+      default-signifies-exhaustive: false # Forces every case to be explicit
+    govet:
+      enable-all: true
+      disable: [fieldalignment] # Subjective/Noisy
+
+    # 8. Test linting
+    testifylint:
+      disable:
+        - require-error  # Style preference, not a bug - assert.Error is acceptable
+
+  exclusions:
+    generated: lax
+    rules:
+      # Test files: exempt from file-length-limit (revive rule)
+      - path: _test\.go
+        linters: [revive]
+        text: file-length-limit
+      # Test files: exempt from cognitive-complexity (revive rule)
+      - path: _test\.go
+        linters: [revive]
+        text: cognitive-complexity
+      # Test files: exempt from complexity linters (table-driven tests naturally have high complexity)
+      - path: _test\.go
+        linters: [gocognit, gocyclo, cyclop, funlen, nestif]
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+issues:
+  # Do not hide anything. If it's wrong, the AI needs to see it to fix it.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt          # Standard formatting
+    - gci            # Strict import ordering
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/sleuth-io/sx)
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

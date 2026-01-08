@@ -5,16 +5,19 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"text/template"
 	"time"
 
 	"github.com/gofrs/flock"
+
 	"github.com/sleuth-io/sx/internal/cache"
 	"github.com/sleuth-io/sx/internal/constants"
 	"github.com/sleuth-io/sx/internal/git"
@@ -104,7 +107,7 @@ func (g *GitVault) acquireFileLock(ctx context.Context) (*flock.Flock, error) {
 		return nil, fmt.Errorf("failed to acquire file lock: %w", err)
 	}
 	if !locked {
-		return nil, fmt.Errorf("could not acquire file lock (timeout)")
+		return nil, errors.New("could not acquire file lock (timeout)")
 	}
 
 	return fileLock, nil
@@ -266,7 +269,7 @@ func (g *GitVault) GetAssetByVersion(ctx context.Context, name, version string) 
 // GetMetadata retrieves metadata for a specific asset version
 // Not applicable for Git repositories (metadata is inside the zip)
 func (g *GitVault) GetMetadata(ctx context.Context, name, version string) (*metadata.Metadata, error) {
-	return nil, fmt.Errorf("GetMetadata not supported for Git repositories")
+	return nil, errors.New("GetMetadata not supported for Git repositories")
 }
 
 // VerifyIntegrity checks hashes and sizes for downloaded assets
@@ -410,12 +413,12 @@ func (g *GitVault) updateTemplates(ctx context.Context, commit bool) ([]string, 
 // extractTemplateVersion extracts the version number from a template or file content
 // Returns empty string if no version found
 func extractTemplateVersion(content, prefix string) string {
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(content, "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, prefix) {
+		if after, ok := strings.CutPrefix(line, prefix); ok {
 			// Extract version after the prefix
-			version := strings.TrimPrefix(line, prefix)
+			version := after
 			// Remove trailing comment markers
 			version = strings.TrimSuffix(version, "-->")
 			return strings.TrimSpace(version)
@@ -437,7 +440,7 @@ func shouldUpdateTemplate(fileVersion, templateVersion string) bool {
 	// Parse template version as integer
 	templateVer, err := strconv.Atoi(templateVersion)
 	if err != nil {
-		panic(fmt.Sprintf("template version is invalid: %s", templateVersion))
+		panic("template version is invalid: " + templateVersion)
 	}
 
 	// If no version in file (empty string), treat as version 0 and update
@@ -639,7 +642,7 @@ func (g *GitVault) updateVersionList(listPath, newVersion string) error {
 
 	// Read existing versions if file exists
 	if data, err := os.ReadFile(listPath); err == nil {
-		for _, line := range bytes.Split(data, []byte("\n")) {
+		for line := range bytes.SplitSeq(data, []byte("\n")) {
 			version := string(bytes.TrimSpace(line))
 			if version != "" {
 				versions = append(versions, version)
@@ -648,10 +651,8 @@ func (g *GitVault) updateVersionList(listPath, newVersion string) error {
 	}
 
 	// Check if version already exists
-	for _, v := range versions {
-		if v == newVersion {
-			return nil // Version already in list
-		}
+	if slices.Contains(versions, newVersion) {
+		return nil // Version already in list
 	}
 
 	// Add new version
@@ -887,6 +888,6 @@ func (g *GitVault) GetAssetDetails(ctx context.Context, name string) (*AssetDeta
 }
 
 // GetMCPTools returns no additional MCP tools for GitVault
-func (g *GitVault) GetMCPTools() interface{} {
+func (g *GitVault) GetMCPTools() any {
 	return nil
 }

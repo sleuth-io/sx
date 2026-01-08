@@ -2,14 +2,16 @@ package git
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
-	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/spf13/cobra"
+
+	"github.com/sleuth-io/sx/internal/logger"
 )
 
 // globalSSHKeyPath stores the SSH key path for the current execution
@@ -182,7 +184,7 @@ func (c *Client) LsRemote(ctx context.Context, repoURL, ref string) (string, err
 	// Parse the output: <commit-hash>\t<ref-name>
 	parts := strings.Fields(lines[0])
 	if len(parts) < 1 {
-		return "", fmt.Errorf("invalid git ls-remote output")
+		return "", errors.New("invalid git ls-remote output")
 	}
 
 	return parts[0], nil
@@ -264,7 +266,8 @@ func (c *Client) HasStagedChanges(ctx context.Context, repoPath string) (bool, e
 	err := cmd.Run()
 	if err != nil {
 		// Exit code 1 means there are changes
-		if exitError, ok := err.(*exec.ExitError); ok {
+		exitError := &exec.ExitError{}
+		if errors.As(err, &exitError) {
 			if exitError.ExitCode() == 1 {
 				return true, nil
 			}
@@ -278,8 +281,9 @@ func (c *Client) HasStagedChanges(ctx context.Context, repoPath string) (bool, e
 
 // isHexString checks if a string contains only hexadecimal characters
 func isHexString(s string) bool {
+	const hexChars = "0123456789abcdefABCDEF"
 	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+		if !strings.ContainsRune(hexChars, c) {
 			return false
 		}
 	}

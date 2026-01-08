@@ -2,18 +2,14 @@ package commands
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/sleuth-io/sx/internal/assets"
-	"github.com/sleuth-io/sx/internal/cache"
 	"github.com/sleuth-io/sx/internal/clients"
-	"github.com/sleuth-io/sx/internal/clients/cursor"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/constants"
 	"github.com/sleuth-io/sx/internal/gitutil"
@@ -22,7 +18,6 @@ import (
 	"github.com/sleuth-io/sx/internal/scope"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
-	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
 // NewInstallCommand creates the install command
@@ -57,390 +52,99 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	log := logger.Get()
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
-	styledOut.SetSilent(hookMode) // Suppress normal output in hook mode
+	styledOut.SetSilent(hookMode)
 
-	// Status line for transient updates
 	status := components.NewStatus(cmd.OutOrStdout())
 	status.SetSilent(hookMode)
 
-	// Keep old outputHelper for functions that still use it (will migrate incrementally)
 	out := newOutputHelper(cmd)
 	out.silent = hookMode
 
-	// When running in hook mode for Cursor, parse stdin to get workspace directory
-	// and chdir to it so git detection and scope logic work correctly
-	if hookMode && hookClientID == "cursor" {
-		if workspaceDir := cursor.ParseWorkspaceDir(); workspaceDir != "" {
-			if err := os.Chdir(workspaceDir); err != nil {
-				log.Warn("failed to chdir to workspace", "workspace", workspaceDir, "error", err)
-			} else {
-				log.Debug("changed to workspace directory", "workspace", workspaceDir)
-			}
-		}
-	}
+	// Handle Cursor workspace directory in hook mode
+	handleCursorWorkspace(hookMode, hookClientID, log)
 
-	// Load configuration
-	cfg, err := config.Load()
+	// Load and validate configuration
+	cfg, vault, err := loadConfigAndVault()
 	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w\nRun 'sx init' to configure", err)
+		return err
 	}
 
-	// Validate configuration
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("invalid configuration: %w", err)
-	}
-
-	// Create vault instance
-	vault, err := vaultpkg.NewFromConfig(cfg)
+	// Fetch and parse lock file
+	lockFile, err := fetchLockFileWithCache(ctx, vault, cfg, status)
 	if err != nil {
-		return fmt.Errorf("failed to create vault: %w", err)
+		return err
 	}
 
-	// Fetch lock file with spinner
-	status.Start("Fetching lock file")
-
-	cachedETag, _ := cache.LoadETag(cfg.RepositoryURL)
-
-	lockFileData, newETag, notModified, err := vault.GetLockFile(ctx, cachedETag)
+	// Detect environment (git context, scope, clients)
+	env, err := detectInstallEnvironment(ctx, cfg, status)
 	if err != nil {
-		status.Fail("Failed to fetch lock file")
-		return fmt.Errorf("failed to fetch lock file: %w", err)
+		return err
 	}
 
-	if notModified {
-		lockFileData, err = cache.LoadLockFile(cfg.RepositoryURL)
-		if err != nil {
-			status.Fail("Failed to load cached lock file")
-			return fmt.Errorf("failed to load cached lock file: %w", err)
-		}
-	} else {
-		// Save ETag and lock file content
-		log := logger.Get()
-		if newETag != "" {
-			if err := cache.SaveETag(cfg.RepositoryURL, newETag); err != nil {
-				log.Error("failed to save ETag", "error", err)
-			}
-		}
-		if err := cache.SaveLockFile(cfg.RepositoryURL, lockFileData); err != nil {
-			log.Error("failed to cache lock file", "error", err)
-		}
+	// Hook mode fast path check
+	if hookMode && checkHookModeFastPath(ctx, hookClientID, out) {
+		return nil
 	}
 
-	// Parse lock file
-	lockFile, err := lockfile.Parse(lockFileData)
+	// Filter and resolve assets
+	matcherScope := scope.NewMatcher(env.CurrentScope)
+	applicableAssets := filterAssetsByScope(lockFile, env.Clients, matcherScope)
+
+	sortedAssets, err := resolveAssetDependencies(lockFile, applicableAssets)
 	if err != nil {
-		status.Fail("Failed to parse lock file")
-		return fmt.Errorf("failed to parse lock file: %w", err)
-	}
-
-	// Validate lock file
-	if err := lockFile.Validate(); err != nil {
-		status.Fail("Lock file validation failed")
-		return fmt.Errorf("lock file validation failed: %w", err)
-	}
-
-	status.Clear() // Clear the spinner, no permanent message needed
-
-	// Detect Git context (transient)
-	status.Start("Detecting context")
-	gitContext, err := gitutil.DetectContext(ctx)
-	if err != nil {
-		status.Fail("Failed to detect git context")
-		return fmt.Errorf("failed to detect git context: %w", err)
-	}
-
-	// Build scope and matcher
-	var currentScope *scope.Scope
-	if gitContext.IsRepo {
-		if gitContext.RelativePath == "." {
-			currentScope = &scope.Scope{
-				Type:     scope.TypeRepo,
-				RepoURL:  gitContext.RepoURL,
-				RepoPath: "",
-			}
-		} else {
-			currentScope = &scope.Scope{
-				Type:     scope.TypePath,
-				RepoURL:  gitContext.RepoURL,
-				RepoPath: gitContext.RelativePath,
-			}
-		}
-	} else {
-		currentScope = &scope.Scope{
-			Type: scope.TypeGlobal,
-		}
-	}
-
-	matcherScope := scope.NewMatcher(currentScope)
-
-	// Detect installed clients and filter by config
-	registry := clients.Global()
-	detectedClients := registry.DetectInstalled()
-	targetClients := filterClientsByConfig(cfg, detectedClients)
-	if len(targetClients) == 0 {
-		if len(detectedClients) > 0 {
-			status.Fail("No enabled AI coding clients available")
-			return fmt.Errorf("no enabled AI coding clients available (detected: %d, enabled in config: %v)",
-				len(detectedClients), cfg.EnabledClients)
-		}
-		status.Fail("No AI coding clients detected")
-		return fmt.Errorf("no AI coding clients detected")
-	}
-
-	status.Clear() // Clear status, we'll show summary at end
-
-	// In hook mode, check if the triggering client says to skip installation
-	// This is the fast path for clients like Cursor that fire hooks on every prompt
-	if hookMode && hookClientID != "" {
-		// Find the specific client that triggered the hook
-		hookClient, err := registry.Get(hookClientID)
-		if err == nil {
-			shouldInstall, err := hookClient.ShouldInstall(ctx)
-			if err != nil {
-				log := logger.Get()
-				log.Warn("ShouldInstall check failed", "client", hookClientID, "error", err)
-				// Continue on error
-			}
-			if !shouldInstall {
-				// Fast path - client says skip (e.g., already seen this conversation)
-				log := logger.Get()
-				log.Info("install skipped by client", "client", hookClientID, "reason", "already ran for this session")
-				response := map[string]interface{}{
-					"continue": true,
-				}
-				jsonBytes, err := json.MarshalIndent(response, "", "  ")
-				if err != nil {
-					return fmt.Errorf("failed to marshal JSON response: %w", err)
-				}
-				out.printlnAlways(string(jsonBytes))
-				return nil
-			}
-		}
-	}
-
-	// Filter assets by client compatibility and scope
-	var applicableAssets []*lockfile.Asset
-	for i := range lockFile.Assets {
-		asset := &lockFile.Assets[i]
-
-		// Check if ANY target client supports this asset AND matches scope
-		supported := false
-		for _, client := range targetClients {
-			if asset.MatchesClient(client.ID()) &&
-				client.SupportsAssetType(asset.Type) &&
-				matcherScope.MatchesAsset(asset) {
-				supported = true
-				break
-			}
-		}
-
-		if supported {
-			applicableAssets = append(applicableAssets, asset)
-		}
-	}
-
-	// Resolve dependencies (even if empty, we need to check for cleanup)
-	var sortedAssets []*lockfile.Asset
-	if len(applicableAssets) > 0 {
-		resolver := assets.NewDependencyResolver(lockFile)
-		var err error
-		sortedAssets, err = resolver.Resolve(applicableAssets)
-		if err != nil {
-			return fmt.Errorf("dependency resolution failed: %w", err)
-		}
+		return err
 	}
 
 	// Load tracker
 	tracker := loadTracker(out)
-
-	// Determine which assets need to be installed (new or changed versions or missing from clients)
-	targetClientIDs := make([]string, len(targetClients))
-	for i, client := range targetClients {
-		targetClientIDs[i] = client.ID()
-	}
+	targetClientIDs := getTargetClientIDs(env.Clients)
 
 	// In repair mode, verify assets against filesystem and update tracker
 	if repairMode {
-		repairTracker(ctx, tracker, sortedAssets, targetClients, gitContext, currentScope, out)
+		repairTracker(ctx, tracker, sortedAssets, env.Clients, env.GitContext, env.CurrentScope, out)
 	}
 
-	assetsToInstall := determineAssetsToInstall(tracker, sortedAssets, currentScope, targetClientIDs, out)
+	assetsToInstall := determineAssetsToInstall(tracker, sortedAssets, env.CurrentScope, targetClientIDs, out)
 
 	// Clean up assets that were removed from lock file (must run even if no assets to install!)
-	cleanupRemovedAssets(ctx, tracker, sortedAssets, gitContext, currentScope, targetClients, out)
+	cleanupRemovedAssets(ctx, tracker, sortedAssets, env.GitContext, env.CurrentScope, env.Clients, out)
 
 	// Early exit if nothing to install
 	if len(assetsToInstall) == 0 {
-		// Save state even if nothing changed
-		saveInstallationState(tracker, sortedAssets, currentScope, targetClientIDs, out)
-
-		// Install client-specific hooks (e.g., auto-update, usage tracking)
-		installClientHooks(ctx, targetClients, out)
-
-		// Ensure asset support is configured for all clients (creates local rules files, etc.)
-		// This is important even when no new assets are installed, as the local rules file
-		// may not exist yet (e.g., running in a new repo with only global assets)
-		ensureAssetSupport(ctx, targetClients, buildInstallScope(currentScope, gitContext), out)
-
-		// Log summary
-		log := logger.Get()
-		log.Info("install completed", "installed", 0, "total_up_to_date", len(sortedAssets))
-
-		// In hook mode, output JSON even when nothing changed
-		if hookMode {
-			response := map[string]interface{}{
-				"continue": true,
-			}
-			jsonBytes, err := json.MarshalIndent(response, "", "  ")
-			if err != nil {
-				return fmt.Errorf("failed to marshal JSON response: %w", err)
-			}
-			styledOut.PrintlnAlways(string(jsonBytes))
-		} else {
-			styledOut.Success("All assets up to date")
-		}
-
-		return nil
+		return handleNothingToInstall(ctx, hookMode, tracker, sortedAssets, env, targetClientIDs, styledOut, out)
 	}
 
-	// Download only the assets that need to be installed
-	status.Start(fmt.Sprintf("Downloading %d assets", len(assetsToInstall)))
-	fetcher := assets.NewAssetFetcher(vault)
-	results, err := fetcher.FetchAssets(ctx, assetsToInstall, 10)
+	// Download assets
+	downloadResult, err := downloadAssetsWithStatus(ctx, vault, assetsToInstall, status, styledOut)
 	if err != nil {
-		return fmt.Errorf("failed to fetch assets: %w", err)
-	}
-
-	// Check for download errors
-	var downloadErrors []error
-	var successfulDownloads []*assets.AssetWithMetadata
-	for _, result := range results {
-		if result.Error != nil {
-			downloadErrors = append(downloadErrors, fmt.Errorf("%s: %w", result.Asset.Name, result.Error))
-		} else {
-			successfulDownloads = append(successfulDownloads, &assets.AssetWithMetadata{
-				Asset:    result.Asset,
-				Metadata: result.Metadata,
-				ZipData:  result.ZipData,
-			})
-		}
-	}
-
-	status.Clear()
-
-	if len(downloadErrors) > 0 {
-		log := logger.Get()
-		for _, err := range downloadErrors {
-			styledOut.ErrorItem(err.Error())
-			log.Error("asset download failed", "error", err)
-		}
-	}
-
-	if len(successfulDownloads) == 0 {
-		styledOut.Error("No assets downloaded successfully")
-		return fmt.Errorf("no assets downloaded successfully")
+		return err
 	}
 
 	// Install assets to their appropriate locations
-	installResult := installAssets(ctx, successfulDownloads, gitContext, currentScope, targetClients, out)
+	installResult := installAssets(ctx, downloadResult.Downloads, env.GitContext, env.CurrentScope, env.Clients, out)
 
 	// Save new installation state (saves ALL assets from lock file, not just changed ones)
-	saveInstallationState(tracker, sortedAssets, currentScope, targetClientIDs, out)
+	saveInstallationState(tracker, sortedAssets, env.CurrentScope, targetClientIDs, out)
 
 	// Ensure skills support is configured for all clients (creates local rules files, etc.)
-	ensureAssetSupport(ctx, targetClients, buildInstallScope(currentScope, gitContext), out)
+	ensureAssetSupport(ctx, env.Clients, buildInstallScope(env.CurrentScope, env.GitContext), out)
 
-	// Report results - clean summary
-	if len(installResult.Installed) > 0 {
-		styledOut.Success(fmt.Sprintf("Installed %d assets", len(installResult.Installed)))
-		for _, name := range installResult.Installed {
-			styledOut.SuccessItem(name)
-			// Log version for this asset
-			for _, art := range successfulDownloads {
-				if art.Asset.Name == name {
-					log.Info("asset installed", "name", name, "version", art.Asset.Version, "type", art.Metadata.Asset.Type, "scope", currentScope.Type)
-					break
-				}
-			}
-		}
-	}
-
-	if len(installResult.Failed) > 0 {
-		styledOut.Error(fmt.Sprintf("Failed to install %d assets", len(installResult.Failed)))
-		for i, name := range installResult.Failed {
-			styledOut.ErrorItem(fmt.Sprintf("%s: %v", name, installResult.Errors[i]))
-			log.Error("asset installation failed", "name", name, "error", installResult.Errors[i])
-		}
-		return fmt.Errorf("some assets failed to install")
+	// Report results
+	if err := reportInstallResults(installResult, downloadResult.Downloads, env.CurrentScope, styledOut); err != nil {
+		return err
 	}
 
 	// Install client-specific hooks (e.g., auto-update, usage tracking)
-	installClientHooks(ctx, targetClients, out)
+	installClientHooks(ctx, env.Clients, out)
 
 	// Log summary
 	log.Info("install completed", "installed", len(installResult.Installed), "failed", len(installResult.Failed))
 
 	// If in hook mode and assets were installed, output JSON message
 	if hookMode && len(installResult.Installed) > 0 {
-		// Build asset list message with type info
-		type assetInfo struct {
-			name string
-			typ  string
+		if err := outputHookModeInstallResult(out, installResult, downloadResult.Downloads); err != nil {
+			return err
 		}
-		var installedAssets []assetInfo
-		for _, name := range installResult.Installed {
-			for _, art := range successfulDownloads {
-				if art.Asset.Name == name {
-					installedAssets = append(installedAssets, assetInfo{
-						name: name,
-						typ:  strings.ToLower(art.Metadata.Asset.Type.Label),
-					})
-					break
-				}
-			}
-		}
-
-		// ANSI color codes (using bold and blue for better visibility on light/dark terminals)
-		const (
-			bold      = "\033[1m"
-			blue      = "\033[34m"
-			red       = "\033[31m"
-			resetBold = "\033[22m"
-			reset     = "\033[0m"
-		)
-
-		var message string
-		if len(installedAssets) == 1 {
-			// Single asset - more compact message
-			message = fmt.Sprintf("%ssx%s installed the %s%s %s%s.",
-				bold, resetBold, blue, installedAssets[0].name, installedAssets[0].typ, reset)
-		} else if len(installedAssets) <= 3 {
-			// List all items
-			message = fmt.Sprintf("%ssx%s installed:\n", bold, resetBold)
-			for _, asset := range installedAssets {
-				message += fmt.Sprintf("- The %s%s %s%s\n", blue, asset.name, asset.typ, reset)
-			}
-			message = strings.TrimSuffix(message, "\n")
-		} else {
-			// Show first 3 and count remaining
-			message = fmt.Sprintf("%ssx%s installed:\n", bold, resetBold)
-			for i := 0; i < 3; i++ {
-				message += fmt.Sprintf("- The %s%s %s%s\n", blue, installedAssets[i].name, installedAssets[i].typ, reset)
-			}
-			remaining := len(installedAssets) - 3
-			message += fmt.Sprintf("and %d more", remaining)
-		}
-
-		// Output JSON response
-		response := map[string]interface{}{
-			"systemMessage": message,
-			"continue":      true,
-		}
-		jsonBytes, err := json.MarshalIndent(response, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal JSON response: %w", err)
-		}
-		out.printlnAlways(string(jsonBytes))
 	}
 
 	return nil
@@ -730,7 +434,7 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, o
 
 	// Add error if ANY client failed
 	if clients.HasAnyErrors(allResults) {
-		installResult.Errors = append(installResult.Errors, fmt.Errorf("installation failed for one or more clients"))
+		installResult.Errors = append(installResult.Errors, errors.New("installation failed for one or more clients"))
 	}
 
 	return installResult

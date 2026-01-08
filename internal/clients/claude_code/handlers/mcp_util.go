@@ -11,12 +11,12 @@ import (
 
 // AddMCPServer adds or updates an MCP server entry in .claude.json
 // For Claude Code, MCP servers are configured in ~/.claude.json (global) or .claude/.mcp.json (project)
-func AddMCPServer(targetBase, serverName string, serverConfig map[string]interface{}) error {
+func AddMCPServer(targetBase, serverName string, serverConfig map[string]any) error {
 	// Claude Code stores MCP servers globally in .claude.json
 	mcpConfigPath := filepath.Join(targetBase, ".claude.json")
 
 	// Read existing config or create new
-	var config map[string]interface{}
+	var config map[string]any
 	if utils.FileExists(mcpConfigPath) {
 		data, err := os.ReadFile(mcpConfigPath)
 		if err != nil {
@@ -26,14 +26,14 @@ func AddMCPServer(targetBase, serverName string, serverConfig map[string]interfa
 			return fmt.Errorf("failed to parse .claude.json: %w", err)
 		}
 	} else {
-		config = make(map[string]interface{})
+		config = make(map[string]any)
 	}
 
 	// Ensure mcpServers section exists
 	if config["mcpServers"] == nil {
-		config["mcpServers"] = make(map[string]interface{})
+		config["mcpServers"] = make(map[string]any)
 	}
-	mcpServers := config["mcpServers"].(map[string]interface{})
+	mcpServers := config["mcpServers"].(map[string]any)
 
 	// Add/update MCP server entry
 	mcpServers[serverName] = serverConfig
@@ -70,7 +70,7 @@ func RemoveMCPServer(targetBase, serverName string) error {
 		return fmt.Errorf("failed to read .claude.json: %w", err)
 	}
 
-	var config map[string]interface{}
+	var config map[string]any
 	if err := json.Unmarshal(data, &config); err != nil {
 		return fmt.Errorf("failed to parse .claude.json: %w", err)
 	}
@@ -79,7 +79,7 @@ func RemoveMCPServer(targetBase, serverName string) error {
 	if config["mcpServers"] == nil {
 		return nil
 	}
-	mcpServers := config["mcpServers"].(map[string]interface{})
+	mcpServers := config["mcpServers"].(map[string]any)
 
 	// Remove this MCP server
 	delete(mcpServers, serverName)

@@ -3,6 +3,7 @@ package components
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -224,7 +225,7 @@ func MultiSelect(title string, options []MultiSelectOption) ([]MultiSelectOption
 // MultiSelectWithIO displays an interactive multi-selection menu using custom IO.
 func MultiSelectWithIO(title string, options []MultiSelectOption, in io.Reader, out io.Writer) ([]MultiSelectOption, error) {
 	if len(options) == 0 {
-		return nil, fmt.Errorf("no options provided")
+		return nil, errors.New("no options provided")
 	}
 
 	// Fall back to numbered menu for non-TTY
@@ -301,8 +302,8 @@ func multiSelectNumbered(title string, options []MultiSelectOption, in io.Reader
 	}
 
 	// Parse comma-separated numbers
-	parts := strings.Split(input, ",")
-	for _, part := range parts {
+	parts := strings.SplitSeq(input, ",")
+	for part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue

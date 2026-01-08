@@ -20,7 +20,7 @@ type AssetTypeDetector interface {
 type UsageDetector interface {
 	// DetectUsageFromToolCall checks if this handler's asset type was used in a tool call
 	// Returns (asset_name, detected)
-	DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool)
+	DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool)
 }
 
 // detectorRegistry holds all registered detectors

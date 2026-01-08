@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/sleuth-io/sx/internal/cache"
 	"gopkg.in/natefinch/lumberjack.v2"
+
+	"github.com/sleuth-io/sx/internal/cache"
 )
 
 var (

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/sleuth-io/sx/internal/asset"
@@ -70,16 +71,16 @@ func (h *AgentHandler) GetScriptFile(meta *metadata.Metadata) string {
 // ValidateMetadata validates agent-specific metadata
 func (h *AgentHandler) ValidateMetadata(meta *metadata.Metadata) error {
 	if meta.Agent == nil {
-		return fmt.Errorf("agent configuration missing")
+		return errors.New("agent configuration missing")
 	}
 	if meta.Agent.PromptFile == "" {
-		return fmt.Errorf("agent prompt-file is required")
+		return errors.New("agent prompt-file is required")
 	}
 	return nil
 }
 
 // DetectUsageFromToolCall detects agent usage from tool calls
-func (h *AgentHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+func (h *AgentHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
 	if toolName != "Task" {
 		return "", false
 	}
@@ -120,7 +121,7 @@ func (h *AgentHandler) Validate(zipData []byte) error {
 
 	// Check that metadata.toml exists
 	if !containsFile(files, "metadata.toml") {
-		return fmt.Errorf("metadata.toml not found in zip")
+		return errors.New("metadata.toml not found in zip")
 	}
 
 	// Extract and validate metadata
@@ -146,7 +147,7 @@ func (h *AgentHandler) Validate(zipData []byte) error {
 
 	// Check that prompt file exists
 	if meta.Agent == nil {
-		return fmt.Errorf("[agent] section missing in metadata")
+		return errors.New("[agent] section missing in metadata")
 	}
 
 	if !containsFile(files, meta.Agent.PromptFile) {

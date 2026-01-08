@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -74,20 +75,20 @@ func (h *HookHandler) GetScriptFile(meta *metadata.Metadata) string {
 // ValidateMetadata validates hook-specific metadata
 func (h *HookHandler) ValidateMetadata(meta *metadata.Metadata) error {
 	if meta.Hook == nil {
-		return fmt.Errorf("hook configuration missing")
+		return errors.New("hook configuration missing")
 	}
 	if meta.Hook.Event == "" {
-		return fmt.Errorf("hook event is required")
+		return errors.New("hook event is required")
 	}
 	if meta.Hook.ScriptFile == "" {
-		return fmt.Errorf("hook script-file is required")
+		return errors.New("hook script-file is required")
 	}
 	return nil
 }
 
 // DetectUsageFromToolCall detects hook usage from tool calls
 // Hooks are not detectable from tool usage, so this always returns false
-func (h *HookHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+func (h *HookHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
 	return "", false
 }
 
@@ -137,7 +138,7 @@ func (h *HookHandler) Validate(zipData []byte) error {
 
 	// Check that metadata.toml exists
 	if !containsFile(files, "metadata.toml") {
-		return fmt.Errorf("metadata.toml not found in zip")
+		return errors.New("metadata.toml not found in zip")
 	}
 
 	// Extract and validate metadata
@@ -163,7 +164,7 @@ func (h *HookHandler) Validate(zipData []byte) error {
 
 	// Check that script file exists
 	if meta.Hook == nil {
-		return fmt.Errorf("[hook] section missing in metadata")
+		return errors.New("[hook] section missing in metadata")
 	}
 
 	if !containsFile(files, meta.Hook.ScriptFile) {
@@ -178,7 +179,7 @@ func (h *HookHandler) updateSettings(targetBase string) error {
 	settingsPath := filepath.Join(targetBase, "settings.json")
 
 	// Read existing settings or create new
-	var settings map[string]interface{}
+	var settings map[string]any
 	if utils.FileExists(settingsPath) {
 		data, err := os.ReadFile(settingsPath)
 		if err != nil {
@@ -188,14 +189,14 @@ func (h *HookHandler) updateSettings(targetBase string) error {
 			return fmt.Errorf("failed to parse settings.json: %w", err)
 		}
 	} else {
-		settings = make(map[string]interface{})
+		settings = make(map[string]any)
 	}
 
 	// Ensure hooks section exists
 	if settings["hooks"] == nil {
-		settings["hooks"] = make(map[string]interface{})
+		settings["hooks"] = make(map[string]any)
 	}
-	hooks := settings["hooks"].(map[string]interface{})
+	hooks := settings["hooks"].(map[string]any)
 
 	// Build hook configuration
 	hookConfig := h.buildHookConfig()
@@ -203,16 +204,16 @@ func (h *HookHandler) updateSettings(targetBase string) error {
 	// Add/update hook entry
 	hookEvent := h.metadata.Hook.Event
 	if hooks[hookEvent] == nil {
-		hooks[hookEvent] = []interface{}{}
+		hooks[hookEvent] = []any{}
 	}
 
 	// Get existing hooks for this event
-	eventHooks := hooks[hookEvent].([]interface{})
+	eventHooks := hooks[hookEvent].([]any)
 
 	// Remove any existing entry for this asset (by checking _artifact field)
-	var filtered []interface{}
+	var filtered []any
 	for _, hook := range eventHooks {
-		hookMap, ok := hook.(map[string]interface{})
+		hookMap, ok := hook.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -253,7 +254,7 @@ func (h *HookHandler) removeFromSettings(targetBase string) error {
 		return fmt.Errorf("failed to read settings.json: %w", err)
 	}
 
-	var settings map[string]interface{}
+	var settings map[string]any
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return fmt.Errorf("failed to parse settings.json: %w", err)
 	}
@@ -262,7 +263,7 @@ func (h *HookHandler) removeFromSettings(targetBase string) error {
 	if settings["hooks"] == nil {
 		return nil
 	}
-	hooks := settings["hooks"].(map[string]interface{})
+	hooks := settings["hooks"].(map[string]any)
 
 	// Remove from the specific event
 	hookEvent := h.metadata.Hook.Event
@@ -270,12 +271,12 @@ func (h *HookHandler) removeFromSettings(targetBase string) error {
 		return nil
 	}
 
-	eventHooks := hooks[hookEvent].([]interface{})
+	eventHooks := hooks[hookEvent].([]any)
 
 	// Filter out this asset's hook
-	var filtered []interface{}
+	var filtered []any
 	for _, hook := range eventHooks {
-		hookMap, ok := hook.(map[string]interface{})
+		hookMap, ok := hook.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -301,11 +302,11 @@ func (h *HookHandler) removeFromSettings(targetBase string) error {
 }
 
 // buildHookConfig builds the hook configuration for settings.json
-func (h *HookHandler) buildHookConfig() map[string]interface{} {
+func (h *HookHandler) buildHookConfig() map[string]any {
 	// Get absolute path to script file
 	scriptPath := filepath.Join(h.GetInstallPath(), h.metadata.Hook.ScriptFile)
 
-	config := map[string]interface{}{
+	config := map[string]any{
 		"script":    scriptPath,
 		"_artifact": h.metadata.Asset.Name,
 	}

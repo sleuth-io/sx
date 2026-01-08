@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -90,7 +91,7 @@ func promptImportAssets(cmd *cobra.Command, ctx context.Context, enabledClients 
 		}
 		options[i] = components.MultiSelectOption{
 			Label:    label,
-			Value:    fmt.Sprintf("%d", i),
+			Value:    strconv.Itoa(i),
 			Selected: true, // Default to selecting all
 		}
 	}
@@ -175,7 +176,7 @@ func cleanupGlobalCopyIfNeeded(ctx context.Context, vault vaultpkg.Vault, client
 
 				for _, result := range resp.Results {
 					if result.Status == clients.StatusSuccess {
-						out.Success(fmt.Sprintf("Removed global copy of %s", result.AssetName))
+						out.Success("Removed global copy of " + result.AssetName)
 					}
 				}
 			}

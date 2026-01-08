@@ -2,6 +2,7 @@ package components
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -115,7 +116,7 @@ func InputWithIO(prompt, placeholder, defaultValue string, in io.Reader, out io.
 
 	final := result.(inputModel)
 	if final.cancelled {
-		return "", fmt.Errorf("input cancelled")
+		return "", errors.New("input cancelled")
 	}
 
 	value := final.Value()
@@ -190,7 +191,7 @@ func PasswordWithIO(prompt string, in io.Reader, out io.Writer) (string, error) 
 
 	final := result.(inputModel)
 	if final.cancelled {
-		return "", fmt.Errorf("input cancelled")
+		return "", errors.New("input cancelled")
 	}
 
 	return final.Value(), nil

@@ -13,7 +13,7 @@ var _ UsageDetector = (*MCPRemoteDetector)(nil)
 
 // DetectUsageFromToolCall detects MCP remote server usage from tool calls
 // MCP remote uses the same tool naming pattern as regular MCP, so we use the same logic
-func (h *MCPRemoteDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+func (h *MCPRemoteDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
 	// MCP tools follow pattern: mcp__server__tool
 	if !strings.HasPrefix(toolName, "mcp__") {
 		return "", false

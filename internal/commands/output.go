@@ -46,31 +46,31 @@ func WithPrompter(ctx context.Context, prompter Prompter) context.Context {
 }
 
 // println writes a line to the command's output
-func (o *outputHelper) println(args ...interface{}) {
+func (o *outputHelper) println(args ...any) {
 	if !o.silent {
 		fmt.Fprintln(o.cmd.OutOrStdout(), args...)
 	}
 }
 
 // printlnAlways writes a line to the command's output (even in silent mode)
-func (o *outputHelper) printlnAlways(args ...interface{}) {
+func (o *outputHelper) printlnAlways(args ...any) {
 	fmt.Fprintln(o.cmd.OutOrStdout(), args...)
 }
 
 // printf writes formatted output to the command's output
-func (o *outputHelper) printf(format string, args ...interface{}) {
+func (o *outputHelper) printf(format string, args ...any) {
 	if !o.silent {
 		fmt.Fprintf(o.cmd.OutOrStdout(), format, args...)
 	}
 }
 
 // printErr writes a line to the command's error output
-func (o *outputHelper) printErr(args ...interface{}) {
+func (o *outputHelper) printErr(args ...any) {
 	fmt.Fprintln(o.cmd.ErrOrStderr(), args...)
 }
 
 // printfErr writes formatted output to the command's error output
-func (o *outputHelper) printfErr(format string, args ...interface{}) {
+func (o *outputHelper) printfErr(format string, args ...any) {
 	fmt.Fprintf(o.cmd.ErrOrStderr(), format, args...)
 }
 

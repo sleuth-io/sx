@@ -100,7 +100,7 @@ func TestVaultCommandWithPathRepository(t *testing.T) {
 		output := stdout.String()
 
 		// Parse JSON to verify it's valid
-		var assets []map[string]interface{}
+		var assets []map[string]any
 		if err := json.Unmarshal([]byte(output), &assets); err != nil {
 			t.Fatalf("Invalid JSON output: %v\nOutput:\n%s", err, output)
 		}
@@ -122,7 +122,7 @@ func TestVaultCommandWithPathRepository(t *testing.T) {
 		}
 
 		// Find code-review asset and verify version count
-		var codeReview map[string]interface{}
+		var codeReview map[string]any
 		for _, asset := range assets {
 			if name, ok := asset["name"].(string); ok && name == "code-review" {
 				codeReview = asset
@@ -200,7 +200,7 @@ func TestVaultCommandWithPathRepository(t *testing.T) {
 		output := stdout.String()
 
 		// Parse JSON to verify it's valid
-		var assetDetails map[string]interface{}
+		var assetDetails map[string]any
 		if err := json.Unmarshal([]byte(output), &assetDetails); err != nil {
 			t.Fatalf("Invalid JSON output: %v\nOutput:\n%s", err, output)
 		}
@@ -219,13 +219,13 @@ func TestVaultCommandWithPathRepository(t *testing.T) {
 		}
 
 		// Verify versions array
-		if versions, ok := assetDetails["versions"].([]interface{}); !ok {
+		if versions, ok := assetDetails["versions"].([]any); !ok {
 			t.Errorf("Expected 'versions' to be an array")
 		} else if len(versions) != 1 {
 			t.Errorf("Expected 1 version, got %d", len(versions))
 		} else {
 			// Verify version structure
-			version := versions[0].(map[string]interface{})
+			version := versions[0].(map[string]any)
 			if v, ok := version["version"].(string); !ok || v != "1.0.0" {
 				t.Errorf("Expected version '1.0.0', got %v", version["version"])
 			}
@@ -303,7 +303,7 @@ func TestVaultCommandEmptyRepository(t *testing.T) {
 		output := stdout.String()
 
 		// Parse JSON to verify it's valid
-		var assets []map[string]interface{}
+		var assets []map[string]any
 		if err := json.Unmarshal([]byte(output), &assets); err != nil {
 			t.Fatalf("Invalid JSON output: %v\nOutput:\n%s", err, output)
 		}

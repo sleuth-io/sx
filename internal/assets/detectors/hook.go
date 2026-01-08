@@ -47,6 +47,6 @@ func (h *HookDetector) CreateDefaultMetadata(name, version string) *metadata.Met
 
 // DetectUsageFromToolCall detects hook usage from tool calls
 // Hooks are not detectable from tool usage, so this always returns false
-func (h *HookDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+func (h *HookDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
 	return "", false
 }

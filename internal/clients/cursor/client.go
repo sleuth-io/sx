@@ -3,6 +3,7 @@ package cursor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -109,7 +110,7 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
-			result.Message = fmt.Sprintf("Unsupported asset type: %s", bundle.Metadata.Asset.Type.Key)
+			result.Message = "Unsupported asset type: " + bundle.Metadata.Asset.Type.Key
 			resp.Results = append(resp.Results, result)
 			continue
 		}
@@ -120,7 +121,7 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 			result.Message = fmt.Sprintf("Installation failed: %v", err)
 		} else {
 			result.Status = clients.StatusSuccess
-			result.Message = fmt.Sprintf("Installed to %s", targetBase)
+			result.Message = "Installed to " + targetBase
 		}
 
 		resp.Results = append(resp.Results, result)
@@ -172,7 +173,7 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 			err = handler.Remove(ctx, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
-			result.Message = fmt.Sprintf("Unsupported asset type: %s", a.Type.Key)
+			result.Message = "Unsupported asset type: " + a.Type.Key
 			resp.Results = append(resp.Results, result)
 			continue
 		}
@@ -201,12 +202,12 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 		return filepath.Join(home, ".cursor"), nil
 	case clients.ScopeRepository:
 		if scope.RepoRoot == "" {
-			return "", fmt.Errorf("repo-scoped install requires RepoRoot but none provided (not in a git repository?)")
+			return "", errors.New("repo-scoped install requires RepoRoot but none provided (not in a git repository?)")
 		}
 		return filepath.Join(scope.RepoRoot, ".cursor"), nil
 	case clients.ScopePath:
 		if scope.RepoRoot == "" {
-			return "", fmt.Errorf("path-scoped install requires RepoRoot but none provided (not in a git repository?)")
+			return "", errors.New("path-scoped install requires RepoRoot but none provided (not in a git repository?)")
 		}
 		return filepath.Join(scope.RepoRoot, scope.Path, ".cursor"), nil
 	default:
@@ -296,6 +297,14 @@ func (c *Client) collectAllScopeSkills(scope *clients.InstallScope) []clients.In
 // This is where the rules file will be created so Cursor can load it
 func (c *Client) determineLocalTarget(scope *clients.InstallScope) string {
 	switch scope.Type {
+	case clients.ScopeGlobal:
+		// For global scope, use current working directory if in a repo
+		// Otherwise, no local target (global rules don't work in Cursor)
+		cwd, err := os.Getwd()
+		if err != nil {
+			return ""
+		}
+		return filepath.Join(cwd, ".cursor")
 	case clients.ScopePath:
 		if scope.RepoRoot != "" && scope.Path != "" {
 			return filepath.Join(scope.RepoRoot, scope.Path, ".cursor")
@@ -305,16 +314,13 @@ func (c *Client) determineLocalTarget(scope *clients.InstallScope) string {
 		if scope.RepoRoot != "" {
 			return filepath.Join(scope.RepoRoot, ".cursor")
 		}
-		fallthrough
-	default:
-		// For global scope, use current working directory if in a repo
-		// Otherwise, no local target (global rules don't work in Cursor)
-		cwd, err := os.Getwd()
-		if err != nil {
-			return ""
-		}
-		return filepath.Join(cwd, ".cursor")
 	}
+	// Fallback: use current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(cwd, ".cursor")
 }
 
 // generateSkillsRulesFileFromSkills creates the rules file from a list of skills
@@ -336,10 +342,12 @@ func (c *Client) generateSkillsRulesFileFromSkills(skills []clients.InstalledSki
 
 	// Build skill list
 	var skillsList string
+	var skillsListSb339 strings.Builder
 	for _, skill := range skills {
-		skillsList += fmt.Sprintf("\n<skill>\n<name>%s</name>\n<description>%s</description>\n</skill>\n",
-			skill.Name, skill.Description)
+		skillsListSb339.WriteString(fmt.Sprintf("\n<skill>\n<name>%s</name>\n<description>%s</description>\n</skill>\n",
+			skill.Name, skill.Description))
 	}
+	skillsList += skillsListSb339.String()
 
 	// Generate complete skills.md with frontmatter
 	content := fmt.Sprintf(`---
@@ -385,7 +393,7 @@ func (c *Client) registerSkillsMCPServer() error {
 
 	// Only add if missing (don't overwrite existing entry)
 	if config.MCPServers == nil {
-		config.MCPServers = make(map[string]interface{})
+		config.MCPServers = make(map[string]any)
 	}
 
 	if _, exists := config.MCPServers["skills"]; exists {
@@ -400,7 +408,7 @@ func (c *Client) registerSkillsMCPServer() error {
 	}
 
 	// Add skills MCP server entry
-	config.MCPServers["skills"] = map[string]interface{}{
+	config.MCPServers["skills"] = map[string]any{
 		"command": skillsBinary,
 		"args":    []string{"serve"},
 	}
@@ -593,7 +601,7 @@ func (c *Client) uninstallBeforeSubmitPromptHook() error {
 		return nil
 	}
 
-	filtered := []map[string]interface{}{}
+	filtered := []map[string]any{}
 	for _, hook := range hooks {
 		cmd, ok := hook["command"].(string)
 		if !ok {
@@ -645,7 +653,7 @@ func (c *Client) installBeforeSubmitPromptHook() error {
 
 	// First, check if exact hook command already exists
 	exactMatch := false
-	var oldHookRef map[string]interface{}
+	var oldHookRef map[string]any
 	if hooks, ok := config.Hooks["beforeSubmitPrompt"]; ok {
 		for _, hook := range hooks {
 			if cmd, ok := hook["command"].(string); ok {
@@ -674,9 +682,9 @@ func (c *Client) installBeforeSubmitPromptHook() error {
 		log.Info("hook updated", "hook", "beforeSubmitPrompt", "command", hookCommand, "cwd", cwd)
 	} else {
 		if config.Hooks["beforeSubmitPrompt"] == nil {
-			config.Hooks["beforeSubmitPrompt"] = []map[string]interface{}{}
+			config.Hooks["beforeSubmitPrompt"] = []map[string]any{}
 		}
-		config.Hooks["beforeSubmitPrompt"] = append(config.Hooks["beforeSubmitPrompt"], map[string]interface{}{
+		config.Hooks["beforeSubmitPrompt"] = append(config.Hooks["beforeSubmitPrompt"], map[string]any{
 			"command": hookCommand,
 		})
 		log.Info("hook installed", "hook", "beforeSubmitPrompt", "command", hookCommand, "cwd", cwd)
@@ -738,7 +746,7 @@ func (c *Client) ScanInstalledAssets(ctx context.Context, scope *clients.Install
 
 // GetAssetPath returns an error for Cursor (not yet supported)
 func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.Type, scope *clients.InstallScope) (string, error) {
-	return "", fmt.Errorf("asset import not supported for Cursor")
+	return "", errors.New("asset import not supported for Cursor")
 }
 
 // installSxMCPServer installs the sx MCP server in Cursor's mcp.json
@@ -757,7 +765,7 @@ func (c *Client) installSxMCPServer() error {
 	}
 
 	// Add sx MCP server configuration
-	serverConfig := map[string]interface{}{
+	serverConfig := map[string]any{
 		"command": sxPath,
 		"args":    []string{"serve"},
 	}
