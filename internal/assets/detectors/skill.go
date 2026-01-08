@@ -45,7 +45,7 @@ func (h *SkillDetector) CreateDefaultMetadata(name, version string) *metadata.Me
 }
 
 // DetectUsageFromToolCall detects skill usage from tool calls
-func (h *SkillDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+func (h *SkillDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
 	if toolName != "Skill" {
 		return "", false
 	}

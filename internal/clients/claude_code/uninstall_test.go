@@ -22,23 +22,23 @@ func TestUninstallHooks(t *testing.T) {
 
 	// Create settings.json with skills hooks installed
 	settingsPath := filepath.Join(claudeDir, "settings.json")
-	settings := map[string]interface{}{
-		"hooks": map[string]interface{}{
-			"SessionStart": []interface{}{
-				map[string]interface{}{
-					"hooks": []interface{}{
-						map[string]interface{}{
+	settings := map[string]any{
+		"hooks": map[string]any{
+			"SessionStart": []any{
+				map[string]any{
+					"hooks": []any{
+						map[string]any{
 							"type":    "command",
 							"command": "skills install --hook-mode --client=claude-code",
 						},
 					},
 				},
 			},
-			"PostToolUse": []interface{}{
-				map[string]interface{}{
+			"PostToolUse": []any{
+				map[string]any{
 					"matcher": "Skill|Task|SlashCommand|mcp__.*",
-					"hooks": []interface{}{
-						map[string]interface{}{
+					"hooks": []any{
+						map[string]any{
 							"type":    "command",
 							"command": "skills report-usage --client=claude-code",
 						},
@@ -55,7 +55,7 @@ func TestUninstallHooks(t *testing.T) {
 	// Verify hooks exist before uninstall
 	data, _ = os.ReadFile(settingsPath)
 	_ = json.Unmarshal(data, &settings)
-	hooks := settings["hooks"].(map[string]interface{})
+	hooks := settings["hooks"].(map[string]any)
 	if _, exists := hooks["SessionStart"]; !exists {
 		t.Fatal("SessionStart hook not present before test")
 	}
@@ -74,7 +74,7 @@ func TestUninstallHooks(t *testing.T) {
 		t.Fatalf("Failed to read settings after uninstall: %v", err)
 	}
 
-	var settingsAfter map[string]interface{}
+	var settingsAfter map[string]any
 	if err := json.Unmarshal(data, &settingsAfter); err != nil {
 		t.Fatalf("Failed to parse settings after uninstall: %v", err)
 	}
@@ -102,44 +102,44 @@ func TestUninstallHooksPreservesOtherHooks(t *testing.T) {
 
 	// Create settings.json with both custom and skills hooks
 	settingsPath := filepath.Join(claudeDir, "settings.json")
-	settings := map[string]interface{}{
-		"hooks": map[string]interface{}{
-			"SessionStart": []interface{}{
+	settings := map[string]any{
+		"hooks": map[string]any{
+			"SessionStart": []any{
 				// Custom hook (should be preserved)
-				map[string]interface{}{
-					"hooks": []interface{}{
-						map[string]interface{}{
+				map[string]any{
+					"hooks": []any{
+						map[string]any{
 							"type":    "command",
 							"command": "my-custom-startup-script",
 						},
 					},
 				},
 				// Skills hook (should be removed)
-				map[string]interface{}{
-					"hooks": []interface{}{
-						map[string]interface{}{
+				map[string]any{
+					"hooks": []any{
+						map[string]any{
 							"type":    "command",
 							"command": "skills install --hook-mode --client=claude-code",
 						},
 					},
 				},
 			},
-			"PostToolUse": []interface{}{
+			"PostToolUse": []any{
 				// Custom hook (should be preserved)
-				map[string]interface{}{
+				map[string]any{
 					"matcher": "Bash",
-					"hooks": []interface{}{
-						map[string]interface{}{
+					"hooks": []any{
+						map[string]any{
 							"type":    "command",
 							"command": "my-bash-logger",
 						},
 					},
 				},
 				// Skills hook (should be removed)
-				map[string]interface{}{
+				map[string]any{
 					"matcher": "Skill|Task|SlashCommand|mcp__.*",
-					"hooks": []interface{}{
-						map[string]interface{}{
+					"hooks": []any{
+						map[string]any{
 							"type":    "command",
 							"command": "skills report-usage --client=claude-code",
 						},
@@ -168,23 +168,23 @@ func TestUninstallHooksPreservesOtherHooks(t *testing.T) {
 		t.Fatalf("Failed to parse settings after uninstall: %v", err)
 	}
 
-	hooks, ok := settings["hooks"].(map[string]interface{})
+	hooks, ok := settings["hooks"].(map[string]any)
 	if !ok {
 		t.Fatal("Hooks section was completely removed")
 	}
 
 	// Check SessionStart - custom hook should remain
-	sessionStart, ok := hooks["SessionStart"].([]interface{})
+	sessionStart, ok := hooks["SessionStart"].([]any)
 	if !ok || len(sessionStart) == 0 {
 		t.Error("SessionStart section was removed but had custom hook")
 	} else {
 		foundCustom := false
 		foundSkills := false
 		for _, item := range sessionStart {
-			if hookMap, ok := item.(map[string]interface{}); ok {
-				if hooksArray, ok := hookMap["hooks"].([]interface{}); ok {
+			if hookMap, ok := item.(map[string]any); ok {
+				if hooksArray, ok := hookMap["hooks"].([]any); ok {
 					for _, h := range hooksArray {
-						if hMap, ok := h.(map[string]interface{}); ok {
+						if hMap, ok := h.(map[string]any); ok {
 							cmd, _ := hMap["command"].(string)
 							if cmd == "my-custom-startup-script" {
 								foundCustom = true
@@ -206,17 +206,17 @@ func TestUninstallHooksPreservesOtherHooks(t *testing.T) {
 	}
 
 	// Check PostToolUse - custom hook should remain
-	postToolUse, ok := hooks["PostToolUse"].([]interface{})
+	postToolUse, ok := hooks["PostToolUse"].([]any)
 	if !ok || len(postToolUse) == 0 {
 		t.Error("PostToolUse section was removed but had custom hook")
 	} else {
 		foundCustom := false
 		foundSkills := false
 		for _, item := range postToolUse {
-			if hookMap, ok := item.(map[string]interface{}); ok {
-				if hooksArray, ok := hookMap["hooks"].([]interface{}); ok {
+			if hookMap, ok := item.(map[string]any); ok {
+				if hooksArray, ok := hookMap["hooks"].([]any); ok {
 					for _, h := range hooksArray {
-						if hMap, ok := h.(map[string]interface{}); ok {
+						if hMap, ok := h.(map[string]any); ok {
 							cmd, _ := hMap["command"].(string)
 							if cmd == "my-bash-logger" {
 								foundCustom = true
@@ -278,7 +278,7 @@ func TestUninstallHooksNoHooksSection(t *testing.T) {
 
 	// Create settings.json without hooks section
 	settingsPath := filepath.Join(claudeDir, "settings.json")
-	settings := map[string]interface{}{
+	settings := map[string]any{
 		"someSetting": "someValue",
 	}
 	data, _ := json.MarshalIndent(settings, "", "  ")

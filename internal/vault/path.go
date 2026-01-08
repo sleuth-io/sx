@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,7 +26,7 @@ func NewPathSourceHandler(lockFileDir string) *PathSourceHandler {
 // Fetch reads an asset from a local file path
 func (p *PathSourceHandler) Fetch(ctx context.Context, asset *lockfile.Asset) ([]byte, error) {
 	if asset.SourcePath == nil {
-		return nil, fmt.Errorf("asset does not have source-path")
+		return nil, errors.New("asset does not have source-path")
 	}
 
 	source := asset.SourcePath
@@ -47,7 +48,7 @@ func (p *PathSourceHandler) Fetch(ctx context.Context, asset *lockfile.Asset) ([
 	} else {
 		// Relative path - resolve from lock file directory
 		if p.lockFileDir == "" {
-			return nil, fmt.Errorf("relative paths require lock file directory to be set")
+			return nil, errors.New("relative paths require lock file directory to be set")
 		}
 		resolvedPath = filepath.Join(p.lockFileDir, path)
 	}
@@ -95,7 +96,7 @@ func (p *PathSourceHandler) ResolvePath(path string) (string, error) {
 	}
 
 	if p.lockFileDir == "" {
-		return "", fmt.Errorf("relative paths require lock file directory to be set")
+		return "", errors.New("relative paths require lock file directory to be set")
 	}
 
 	return filepath.Join(p.lockFileDir, path), nil

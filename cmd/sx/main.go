@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/sleuth-io/sx/internal/autoupdate"
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/clients"
@@ -13,7 +15,6 @@ import (
 	"github.com/sleuth-io/sx/internal/commands"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/logger"
-	"github.com/spf13/cobra"
 )
 
 func init() {
@@ -30,8 +31,8 @@ func main() {
 	// Extract --client flag if present (for hook mode context)
 	client := ""
 	for i, arg := range os.Args {
-		if strings.HasPrefix(arg, "--client=") {
-			client = strings.TrimPrefix(arg, "--client=")
+		if after, ok := strings.CutPrefix(arg, "--client="); ok {
+			client = after
 			break
 		}
 		if arg == "--client" && i+1 < len(os.Args) {

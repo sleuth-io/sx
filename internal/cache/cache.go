@@ -2,6 +2,7 @@ package cache
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -287,7 +288,7 @@ func SaveAssetToDisk(name, version string, data []byte) error {
 
 	// Verify it's a valid zip before caching
 	if !utils.IsZipFile(data) {
-		return fmt.Errorf("not a valid zip file")
+		return errors.New("not a valid zip file")
 	}
 
 	return os.WriteFile(cachePath, data, 0644)
@@ -313,7 +314,7 @@ func LoadAssetFromDisk(name, version string) ([]byte, error) {
 	if !utils.IsZipFile(data) {
 		// Corrupted cache, remove it
 		os.Remove(cachePath)
-		return nil, fmt.Errorf("cached file corrupted")
+		return nil, errors.New("cached file corrupted")
 	}
 
 	return data, nil

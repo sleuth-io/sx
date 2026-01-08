@@ -3,6 +3,7 @@ package components
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -183,7 +184,7 @@ func Select(title string, options []Option) (*Option, error) {
 // SelectWithIO displays an interactive selection menu using custom IO.
 func SelectWithIO(title string, options []Option, in io.Reader, out io.Writer) (*Option, error) {
 	if len(options) == 0 {
-		return nil, fmt.Errorf("no options provided")
+		return nil, errors.New("no options provided")
 	}
 
 	// Fall back to numbered menu for non-TTY
@@ -201,7 +202,7 @@ func SelectWithIO(title string, options []Option, in io.Reader, out io.Writer) (
 
 	final := result.(selectModel)
 	if final.selected < 0 {
-		return nil, fmt.Errorf("selection cancelled")
+		return nil, errors.New("selection cancelled")
 	}
 
 	return &options[final.selected], nil
@@ -255,7 +256,7 @@ func SelectWithDefault(title string, options []Option, defaultIndex int) (*Optio
 // SelectWithDefaultAndIO selects with a default option highlighted using custom IO.
 func SelectWithDefaultAndIO(title string, options []Option, defaultIndex int, in io.Reader, out io.Writer) (*Option, error) {
 	if len(options) == 0 {
-		return nil, fmt.Errorf("no options provided")
+		return nil, errors.New("no options provided")
 	}
 
 	if defaultIndex < 0 || defaultIndex >= len(options) {
@@ -279,7 +280,7 @@ func SelectWithDefaultAndIO(title string, options []Option, defaultIndex int, in
 
 	final := result.(selectModel)
 	if final.selected < 0 {
-		return nil, fmt.Errorf("selection cancelled")
+		return nil, errors.New("selection cancelled")
 	}
 
 	return &options[final.selected], nil

@@ -2,6 +2,7 @@ package claude_code
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -111,7 +112,7 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 			result.Message = fmt.Sprintf("Installation failed: %v", err)
 		} else {
 			result.Status = clients.StatusSuccess
-			result.Message = fmt.Sprintf("Installed to %s", targetBase)
+			result.Message = "Installed to " + targetBase
 		}
 
 		resp.Results = append(resp.Results, result)
@@ -192,12 +193,12 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 		return filepath.Join(home, ".claude"), nil
 	case clients.ScopeRepository:
 		if scope.RepoRoot == "" {
-			return "", fmt.Errorf("repo-scoped install requires RepoRoot but none provided (not in a git repository?)")
+			return "", errors.New("repo-scoped install requires RepoRoot but none provided (not in a git repository?)")
 		}
 		return filepath.Join(scope.RepoRoot, ".claude"), nil
 	case clients.ScopePath:
 		if scope.RepoRoot == "" {
-			return "", fmt.Errorf("path-scoped install requires RepoRoot but none provided (not in a git repository?)")
+			return "", errors.New("path-scoped install requires RepoRoot but none provided (not in a git repository?)")
 		}
 		return filepath.Join(scope.RepoRoot, scope.Path, ".claude"), nil
 	default:

@@ -622,7 +622,7 @@ func printText(output ConfigOutput, showAll bool) error {
 			for _, asset := range s.Assets {
 				clientsStr := ""
 				if len(asset.Clients) > 0 {
-					clientsStr = fmt.Sprintf(" → %s", strings.Join(asset.Clients, ", "))
+					clientsStr = " → " + strings.Join(asset.Clients, ", ")
 				}
 
 				// Format status indicator

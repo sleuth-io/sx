@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
+
 	"github.com/sleuth-io/sx/internal/asset"
 )
 
@@ -15,12 +16,12 @@ type Metadata struct {
 	Asset           Asset  `toml:"asset"`
 
 	// Type-specific sections (only one should be present based on asset.type)
-	Skill   *SkillConfig           `toml:"skill,omitempty"`
-	Command *CommandConfig         `toml:"command,omitempty"`
-	Agent   *AgentConfig           `toml:"agent,omitempty"`
-	Hook    *HookConfig            `toml:"hook,omitempty"`
-	MCP     *MCPConfig             `toml:"mcp,omitempty"`
-	Custom  map[string]interface{} `toml:"custom,omitempty"`
+	Skill   *SkillConfig   `toml:"skill,omitempty"`
+	Command *CommandConfig `toml:"command,omitempty"`
+	Agent   *AgentConfig   `toml:"agent,omitempty"`
+	Hook    *HookConfig    `toml:"hook,omitempty"`
+	MCP     *MCPConfig     `toml:"mcp,omitempty"`
+	Custom  map[string]any `toml:"custom,omitempty"`
 }
 
 // Asset represents the [asset] section (formerly [artifact])
@@ -144,7 +145,7 @@ func Write(metadata *Metadata, filePath string) error {
 }
 
 // GetTypeConfig returns the type-specific configuration section
-func (m *Metadata) GetTypeConfig() interface{} {
+func (m *Metadata) GetTypeConfig() any {
 	switch m.Asset.Type {
 	case asset.TypeSkill:
 		return m.Skill

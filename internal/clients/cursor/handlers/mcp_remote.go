@@ -34,7 +34,7 @@ func (h *MCPRemoteHandler) Install(ctx context.Context, zipData []byte, targetBa
 
 	// Add to config
 	if config.MCPServers == nil {
-		config.MCPServers = make(map[string]interface{})
+		config.MCPServers = make(map[string]any)
 	}
 	config.MCPServers[h.metadata.Asset.Name] = entry
 
@@ -67,17 +67,17 @@ func (h *MCPRemoteHandler) Remove(ctx context.Context, targetBase string) error 
 	return nil
 }
 
-func (h *MCPRemoteHandler) generateMCPEntry() map[string]interface{} {
+func (h *MCPRemoteHandler) generateMCPEntry() map[string]any {
 	mcpConfig := h.metadata.MCP
 
 	// For remote MCPs, commands are external (npx, docker, etc.)
 	// No path conversion needed
-	args := make([]interface{}, len(mcpConfig.Args))
+	args := make([]any, len(mcpConfig.Args))
 	for i, arg := range mcpConfig.Args {
 		args[i] = arg
 	}
 
-	entry := map[string]interface{}{
+	entry := map[string]any{
 		"command": mcpConfig.Command,
 		"args":    args,
 	}

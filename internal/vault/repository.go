@@ -62,7 +62,7 @@ type Vault interface {
 
 	// GetMCPTools returns additional MCP tools provided by this vault
 	// Returns nil if the vault doesn't provide any MCP tools
-	GetMCPTools() interface{}
+	GetMCPTools() any
 }
 
 // SourceHandler handles fetching assets from specific source types

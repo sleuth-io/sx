@@ -1,7 +1,9 @@
 package assets
 
 import (
+	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/sleuth-io/sx/internal/lockfile"
 )
@@ -97,7 +99,7 @@ func (r *DependencyResolver) Resolve(assets []*lockfile.Asset) ([]*lockfile.Asse
 
 	// Check for cycles
 	if len(result) != len(assetSet) {
-		return nil, fmt.Errorf("circular dependency detected")
+		return nil, errors.New("circular dependency detected")
 	}
 
 	return result, nil
@@ -135,12 +137,7 @@ func (r *DependencyResolver) addDependenciesRecursive(asset *lockfile.Asset, gra
 
 // contains checks if a slice contains a string
 func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }
 
 // ValidateDependencies checks that all dependencies are present and resolvable

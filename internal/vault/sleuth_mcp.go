@@ -3,9 +3,11 @@ package vault
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/sleuth-io/sx/internal/gitutil"
 	"github.com/sleuth-io/sx/internal/logger"
 )
@@ -23,7 +25,7 @@ type QueryInput struct {
 }
 
 // GetMCPTools returns the query tool for Sleuth vault
-func (s *SleuthVault) GetMCPTools() interface{} {
+func (s *SleuthVault) GetMCPTools() any {
 	return []ToolDef{
 		{
 			Tool: &mcp.Tool{
@@ -41,10 +43,10 @@ func (s *SleuthVault) handleQueryTool(ctx context.Context, req *mcp.CallToolRequ
 	log.Debug("query tool invoked", "query", input.Query, "integration", input.Integration, "sleuth_url", s.serverURL)
 
 	if input.Query == "" {
-		return nil, nil, fmt.Errorf("query is required")
+		return nil, nil, errors.New("query is required")
 	}
 	if input.Integration == "" {
-		return nil, nil, fmt.Errorf("integration is required")
+		return nil, nil, errors.New("integration is required")
 	}
 
 	// Detect git context using existing gitutil
@@ -54,7 +56,7 @@ func (s *SleuthVault) handleQueryTool(ctx context.Context, req *mcp.CallToolRequ
 	}
 
 	if !gitCtx.IsRepo {
-		return nil, nil, fmt.Errorf("not in a git repository")
+		return nil, nil, errors.New("not in a git repository")
 	}
 
 	// Get current branch
@@ -70,7 +72,7 @@ func (s *SleuthVault) handleQueryTool(ctx context.Context, req *mcp.CallToolRequ
 	}
 
 	// Build context for API call (matches AiQueryContextInput schema)
-	apiContext := map[string]interface{}{
+	apiContext := map[string]any{
 		"repoUrl":   gitCtx.RepoURL,
 		"branch":    branch,
 		"commitSha": commit,

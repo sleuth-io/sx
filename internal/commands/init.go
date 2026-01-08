@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -65,7 +66,7 @@ func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL, cl
 		styledOut.Warning("Configuration already exists.")
 		confirmed, err := components.Confirm("Overwrite existing configuration?", false)
 		if err != nil || !confirmed {
-			return fmt.Errorf("initialization cancelled")
+			return errors.New("initialization cancelled")
 		}
 		// Load existing config to pre-populate options
 		existingCfg, _ = config.Load()
@@ -213,13 +214,13 @@ func runInitNonInteractive(cmd *cobra.Command, ctx context.Context, repoType, se
 
 	case "git":
 		if repoURL == "" {
-			return fmt.Errorf("--repo-url is required for type=git")
+			return errors.New("--repo-url is required for type=git")
 		}
 		return configureGitRepo(cmd, ctx, repoURL, enabledClients)
 
 	case "path":
 		if repoURL == "" {
-			return fmt.Errorf("--repo-url is required for type=path")
+			return errors.New("--repo-url is required for type=path")
 		}
 		return configurePathRepo(cmd, ctx, repoURL, enabledClients)
 
@@ -325,7 +326,7 @@ func initGitRepository(cmd *cobra.Command, ctx context.Context, enabledClients [
 	}
 
 	if repoURL == "" {
-		return fmt.Errorf("repository URL is required")
+		return errors.New("repository URL is required")
 	}
 
 	return configureGitRepo(cmd, ctx, repoURL, enabledClients)
@@ -360,9 +361,9 @@ func configurePathRepo(cmd *cobra.Command, ctx context.Context, repoPath string,
 	// Convert path to absolute path first
 	var absPath string
 	var err error
-	if strings.HasPrefix(repoPath, "file://") {
+	if after, ok := strings.CutPrefix(repoPath, "file://"); ok {
 		// Extract path from file:// URL and expand
-		repoPath = strings.TrimPrefix(repoPath, "file://")
+		repoPath = after
 		absPath, err = expandPath(repoPath)
 		if err != nil {
 			return fmt.Errorf("invalid path: %w", err)

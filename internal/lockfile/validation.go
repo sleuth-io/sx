@@ -1,6 +1,7 @@
 package lockfile
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 
@@ -19,15 +20,15 @@ var (
 func (lf *LockFile) Validate() error {
 	// Validate top-level fields
 	if lf.LockVersion == "" {
-		return fmt.Errorf("lock-version is required")
+		return errors.New("lock-version is required")
 	}
 
 	if lf.Version == "" {
-		return fmt.Errorf("version is required")
+		return errors.New("version is required")
 	}
 
 	if lf.CreatedBy == "" {
-		return fmt.Errorf("created-by is required")
+		return errors.New("created-by is required")
 	}
 
 	// Validate each asset
@@ -66,15 +67,15 @@ func (lf *LockFile) Validate() error {
 func (a *Asset) Validate() error {
 	// Validate required fields
 	if a.Name == "" {
-		return fmt.Errorf("name is required")
+		return errors.New("name is required")
 	}
 
 	if !nameRegex.MatchString(a.Name) {
-		return fmt.Errorf("name must contain only alphanumeric characters, dashes, and underscores")
+		return errors.New("name must contain only alphanumeric characters, dashes, and underscores")
 	}
 
 	if a.Version == "" {
-		return fmt.Errorf("version is required")
+		return errors.New("version is required")
 	}
 
 	// Validate semantic version
@@ -99,10 +100,10 @@ func (a *Asset) Validate() error {
 	}
 
 	if sourceCount == 0 {
-		return fmt.Errorf("exactly one source must be specified (http, path, or git)")
+		return errors.New("exactly one source must be specified (http, path, or git)")
 	}
 	if sourceCount > 1 {
-		return fmt.Errorf("only one source type can be specified")
+		return errors.New("only one source type can be specified")
 	}
 
 	// Validate source-specific requirements
@@ -135,7 +136,7 @@ func (a *Asset) Validate() error {
 // Validate validates a Scope entry
 func (s *Scope) Validate() error {
 	if s.Repo == "" {
-		return fmt.Errorf("repo is required")
+		return errors.New("repo is required")
 	}
 
 	return nil
@@ -144,12 +145,12 @@ func (s *Scope) Validate() error {
 // Validate validates an HTTP source
 func (s *SourceHTTP) Validate() error {
 	if s.URL == "" {
-		return fmt.Errorf("url is required")
+		return errors.New("url is required")
 	}
 
 	// Hashes are required for HTTP sources
 	if len(s.Hashes) == 0 {
-		return fmt.Errorf("hashes are required for HTTP sources")
+		return errors.New("hashes are required for HTTP sources")
 	}
 
 	// Validate hash algorithms
@@ -165,7 +166,7 @@ func (s *SourceHTTP) Validate() error {
 // Validate validates a path source
 func (s *SourcePath) Validate() error {
 	if s.Path == "" {
-		return fmt.Errorf("path is required")
+		return errors.New("path is required")
 	}
 	return nil
 }
@@ -173,11 +174,11 @@ func (s *SourcePath) Validate() error {
 // Validate validates a Git source
 func (s *SourceGit) Validate() error {
 	if s.URL == "" {
-		return fmt.Errorf("url is required")
+		return errors.New("url is required")
 	}
 
 	if s.Ref == "" {
-		return fmt.Errorf("ref is required")
+		return errors.New("ref is required")
 	}
 
 	// In lock files, ref must be a full commit SHA
@@ -191,13 +192,13 @@ func (s *SourceGit) Validate() error {
 // validateDependency validates a dependency reference
 func validateDependency(dep *Dependency, assetMap map[string]*Asset, parent *Asset) error {
 	if dep.Name == "" {
-		return fmt.Errorf("dependency name is required")
+		return errors.New("dependency name is required")
 	}
 
 	// Check if dependency exists in lock file
 	ast, exists := assetMap[dep.Name]
 	if !exists {
-		return fmt.Errorf("dependency not found in lock file")
+		return errors.New("dependency not found in lock file")
 	}
 
 	// If version is specified, it must match
@@ -207,7 +208,7 @@ func validateDependency(dep *Dependency, assetMap map[string]*Asset, parent *Ass
 
 	// Check for self-dependency
 	if dep.Name == parent.Name {
-		return fmt.Errorf("asset cannot depend on itself")
+		return errors.New("asset cannot depend on itself")
 	}
 
 	return nil

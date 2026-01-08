@@ -1,6 +1,7 @@
 package detectors
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
@@ -18,12 +19,7 @@ var (
 
 // DetectType returns true if files indicate this is an MCP asset
 func (h *MCPDetector) DetectType(files []string) bool {
-	for _, file := range files {
-		if file == "package.json" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(files, "package.json")
 }
 
 // GetType returns the asset type string
@@ -45,7 +41,7 @@ func (h *MCPDetector) CreateDefaultMetadata(name, version string) *metadata.Meta
 }
 
 // DetectUsageFromToolCall detects MCP server usage from tool calls
-func (h *MCPDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+func (h *MCPDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
 	// MCP tools follow pattern: mcp__server__tool
 	if !strings.HasPrefix(toolName, "mcp__") {
 		return "", false

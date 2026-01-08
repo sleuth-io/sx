@@ -4,10 +4,12 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -25,12 +27,10 @@ var SkipDirectories = []string{
 
 // ShouldSkipPath checks if a path contains any directory that should be skipped
 func ShouldSkipPath(path string) bool {
-	parts := strings.Split(filepath.ToSlash(path), "/")
-	for _, part := range parts {
-		for _, skip := range SkipDirectories {
-			if part == skip {
-				return true
-			}
+	parts := strings.SplitSeq(filepath.ToSlash(path), "/")
+	for part := range parts {
+		if slices.Contains(SkipDirectories, part) {
+			return true
 		}
 	}
 	return false
@@ -50,7 +50,7 @@ func IsZipFile(data []byte) bool {
 // ExtractZip extracts a zip file to a target directory
 func ExtractZip(zipData []byte, targetDir string) error {
 	if !IsZipFile(zipData) {
-		return fmt.Errorf("invalid zip file: missing magic bytes")
+		return errors.New("invalid zip file: missing magic bytes")
 	}
 
 	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
@@ -107,7 +107,7 @@ func extractZipFile(file *zip.File, targetDir string) error {
 // ReadZipFile reads a specific file from a zip archive without extracting
 func ReadZipFile(zipData []byte, filename string) ([]byte, error) {
 	if !IsZipFile(zipData) {
-		return nil, fmt.Errorf("invalid zip file: missing magic bytes")
+		return nil, errors.New("invalid zip file: missing magic bytes")
 	}
 
 	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
@@ -137,7 +137,7 @@ func ReadZipFile(zipData []byte, filename string) ([]byte, error) {
 // ListZipFiles returns a list of all files in a zip archive
 func ListZipFiles(zipData []byte) ([]string, error) {
 	if !IsZipFile(zipData) {
-		return nil, fmt.Errorf("invalid zip file: missing magic bytes")
+		return nil, errors.New("invalid zip file: missing magic bytes")
 	}
 
 	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
@@ -253,7 +253,7 @@ func CreateZipFromContent(filename string, content []byte) ([]byte, error) {
 // AddFileToZip adds or updates a file in a zip archive
 func AddFileToZip(zipData []byte, filename string, content []byte) ([]byte, error) {
 	if !IsZipFile(zipData) {
-		return nil, fmt.Errorf("invalid zip file: missing magic bytes")
+		return nil, errors.New("invalid zip file: missing magic bytes")
 	}
 
 	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
@@ -331,7 +331,7 @@ func copyZipFile(writer *zip.Writer, file *zip.File) error {
 // Files are hashed individually, then combined in alphabetical order by filename
 func ComputeZipHash(zipData []byte) ([]byte, error) {
 	if !IsZipFile(zipData) {
-		return nil, fmt.Errorf("invalid zip file: missing magic bytes")
+		return nil, errors.New("invalid zip file: missing magic bytes")
 	}
 
 	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
@@ -384,7 +384,7 @@ func ComputeZipHash(zipData []byte) ([]byte, error) {
 // RemoveFileFromZip removes a file from a zip archive
 func RemoveFileFromZip(zipData []byte, filename string) ([]byte, error) {
 	if !IsZipFile(zipData) {
-		return nil, fmt.Errorf("invalid zip file: missing magic bytes")
+		return nil, errors.New("invalid zip file: missing magic bytes")
 	}
 
 	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))

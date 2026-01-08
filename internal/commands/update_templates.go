@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -46,7 +47,7 @@ func runUpdateTemplates(cmd *cobra.Command, args []string) error {
 	}
 
 	if cfg.RepositoryURL == "" {
-		return fmt.Errorf("git vault URL not configured")
+		return errors.New("git vault URL not configured")
 	}
 
 	// Create vault instance

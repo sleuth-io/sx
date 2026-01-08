@@ -3,9 +3,11 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
@@ -76,11 +78,11 @@ func (h *HookHandler) Validate(zipData []byte) error {
 	}
 
 	if !containsFile(files, "metadata.toml") {
-		return fmt.Errorf("metadata.toml not found in zip")
+		return errors.New("metadata.toml not found in zip")
 	}
 
 	if h.metadata.Hook == nil {
-		return fmt.Errorf("[hook] section missing in metadata")
+		return errors.New("[hook] section missing in metadata")
 	}
 
 	if !containsFile(files, h.metadata.Hook.ScriptFile) {
@@ -92,8 +94,8 @@ func (h *HookHandler) Validate(zipData []byte) error {
 
 // HooksConfig represents Cursor's hooks.json structure
 type HooksConfig struct {
-	Version int                                 `json:"version"`
-	Hooks   map[string][]map[string]interface{} `json:"hooks"`
+	Version int                         `json:"version"`
+	Hooks   map[string][]map[string]any `json:"hooks"`
 }
 
 func (h *HookHandler) updateHooksJSON(targetBase string) error {
@@ -112,18 +114,18 @@ func (h *HookHandler) updateHooksJSON(targetBase string) error {
 
 	// Build entry with absolute path to script
 	scriptPath := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name, h.metadata.Hook.ScriptFile)
-	entry := map[string]interface{}{
+	entry := map[string]any{
 		"command":   scriptPath,
 		"_artifact": h.metadata.Asset.Name,
 	}
 
 	// Add to hooks array
 	if config.Hooks[cursorEvent] == nil {
-		config.Hooks[cursorEvent] = []map[string]interface{}{}
+		config.Hooks[cursorEvent] = []map[string]any{}
 	}
 
 	// Remove existing entry for this asset (if any)
-	filtered := []map[string]interface{}{}
+	filtered := []map[string]any{}
 	for _, hook := range config.Hooks[cursorEvent] {
 		if assetName, ok := hook["_artifact"].(string); !ok || assetName != h.metadata.Asset.Name {
 			filtered = append(filtered, hook)
@@ -150,7 +152,7 @@ func (h *HookHandler) removeFromHooksJSON(targetBase string) error {
 
 	// Remove from all hook types
 	for eventName, hooks := range config.Hooks {
-		filtered := []map[string]interface{}{}
+		filtered := []map[string]any{}
 		for _, hook := range hooks {
 			if assetName, ok := hook["_artifact"].(string); !ok || assetName != h.metadata.Asset.Name {
 				filtered = append(filtered, hook)
@@ -166,7 +168,7 @@ func (h *HookHandler) removeFromHooksJSON(targetBase string) error {
 func ReadHooksJSON(path string) (*HooksConfig, error) {
 	config := &HooksConfig{
 		Version: 1,
-		Hooks:   make(map[string][]map[string]interface{}),
+		Hooks:   make(map[string][]map[string]any),
 	}
 
 	data, err := os.ReadFile(path)
@@ -182,7 +184,7 @@ func ReadHooksJSON(path string) (*HooksConfig, error) {
 	}
 
 	if config.Hooks == nil {
-		config.Hooks = make(map[string][]map[string]interface{})
+		config.Hooks = make(map[string][]map[string]any)
 	}
 
 	return config, nil
@@ -221,12 +223,7 @@ func mapEventToCursorHook(event string) string {
 }
 
 func containsFile(files []string, name string) bool {
-	for _, f := range files {
-		if f == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(files, name)
 }
 
 // VerifyInstalled checks if the hook is properly installed

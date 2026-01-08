@@ -2,10 +2,12 @@ package vault
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/constants"
@@ -157,7 +159,7 @@ func (p *PathVault) GetVersionList(ctx context.Context, name string) ([]string, 
 // GetMetadata retrieves metadata for a specific asset version
 // Not applicable for path repositories (metadata is inside the asset)
 func (p *PathVault) GetMetadata(ctx context.Context, name, version string) (*metadata.Metadata, error) {
-	return nil, fmt.Errorf("GetMetadata not supported for path repositories")
+	return nil, errors.New("GetMetadata not supported for path repositories")
 }
 
 // VerifyIntegrity checks hashes and sizes for downloaded assets
@@ -201,10 +203,8 @@ func (p *PathVault) updateVersionList(listPath, newVersion string) error {
 	}
 
 	// Check if version already exists
-	for _, v := range versions {
-		if v == newVersion {
-			return nil // Version already in list
-		}
+	if slices.Contains(versions, newVersion) {
+		return nil // Version already in list
 	}
 
 	// Add new version
@@ -352,6 +352,6 @@ func (p *PathVault) GetAssetDetails(ctx context.Context, name string) (*AssetDet
 }
 
 // GetMCPTools returns no additional MCP tools for PathVault
-func (p *PathVault) GetMCPTools() interface{} {
+func (p *PathVault) GetMCPTools() any {
 	return nil
 }

@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
@@ -28,12 +30,7 @@ func NewMCPHandler(meta *metadata.Metadata) *MCPHandler {
 
 // DetectType returns true if files indicate this is an MCP asset
 func (h *MCPHandler) DetectType(files []string) bool {
-	for _, file := range files {
-		if file == "package.json" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(files, "package.json")
 }
 
 // GetType returns the asset type string
@@ -67,13 +64,13 @@ func (h *MCPHandler) GetScriptFile(meta *metadata.Metadata) string {
 // ValidateMetadata validates MCP-specific metadata
 func (h *MCPHandler) ValidateMetadata(meta *metadata.Metadata) error {
 	if meta.MCP == nil {
-		return fmt.Errorf("mcp configuration missing")
+		return errors.New("mcp configuration missing")
 	}
 	return nil
 }
 
 // DetectUsageFromToolCall detects MCP server usage from tool calls
-func (h *MCPHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+func (h *MCPHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
 	// MCP tools follow pattern: mcp__server__tool
 	if !strings.HasPrefix(toolName, "mcp__") {
 		return "", false
@@ -134,7 +131,7 @@ func (h *MCPHandler) Validate(zipData []byte) error {
 
 	// Check that metadata.toml exists
 	if !containsFile(files, "metadata.toml") {
-		return fmt.Errorf("metadata.toml not found in zip")
+		return errors.New("metadata.toml not found in zip")
 	}
 
 	// Extract and validate metadata
@@ -160,7 +157,7 @@ func (h *MCPHandler) Validate(zipData []byte) error {
 
 	// Check that MCP config exists
 	if meta.MCP == nil {
-		return fmt.Errorf("[mcp] section missing in metadata")
+		return errors.New("[mcp] section missing in metadata")
 	}
 
 	return nil
@@ -182,7 +179,7 @@ func (h *MCPHandler) removeFromMCPConfig(targetBase string) error {
 }
 
 // buildMCPServerConfig builds the MCP server configuration for settings.json
-func (h *MCPHandler) buildMCPServerConfig(installPath string) map[string]interface{} {
+func (h *MCPHandler) buildMCPServerConfig(installPath string) map[string]any {
 	mcpConfig := h.metadata.MCP
 
 	// Convert relative command paths to absolute (relative to install path)
@@ -192,7 +189,7 @@ func (h *MCPHandler) buildMCPServerConfig(installPath string) map[string]interfa
 	}
 
 	// Convert relative args paths to absolute
-	args := make([]interface{}, len(mcpConfig.Args))
+	args := make([]any, len(mcpConfig.Args))
 	for i, arg := range mcpConfig.Args {
 		// If arg looks like a relative path (contains / or \), make it absolute
 		if !filepath.IsAbs(arg) && (filepath.Base(arg) != arg) {
@@ -202,7 +199,7 @@ func (h *MCPHandler) buildMCPServerConfig(installPath string) map[string]interfa
 		}
 	}
 
-	config := map[string]interface{}{
+	config := map[string]any{
 		"type":      "stdio",
 		"command":   command,
 		"args":      args,

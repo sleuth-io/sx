@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,7 +31,7 @@ func (h *CommandHandler) Install(ctx context.Context, zipData []byte, targetBase
 	// Get prompt file from metadata
 	promptFile := h.getPromptFile()
 	if promptFile == "" {
-		return fmt.Errorf("no prompt file specified in metadata")
+		return errors.New("no prompt file specified in metadata")
 	}
 
 	// Read prompt file from zip

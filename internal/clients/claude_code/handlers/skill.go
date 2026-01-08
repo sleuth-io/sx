@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
@@ -71,16 +73,16 @@ func (h *SkillHandler) GetScriptFile(meta *metadata.Metadata) string {
 // ValidateMetadata validates skill-specific metadata
 func (h *SkillHandler) ValidateMetadata(meta *metadata.Metadata) error {
 	if meta.Skill == nil {
-		return fmt.Errorf("skill configuration missing")
+		return errors.New("skill configuration missing")
 	}
 	if meta.Skill.PromptFile == "" {
-		return fmt.Errorf("skill prompt-file is required")
+		return errors.New("skill prompt-file is required")
 	}
 	return nil
 }
 
 // DetectUsageFromToolCall detects skill usage from tool calls
-func (h *SkillHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+func (h *SkillHandler) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
 	if toolName != "Skill" {
 		return "", false
 	}
@@ -118,7 +120,7 @@ func (h *SkillHandler) Validate(zipData []byte) error {
 
 	// Check that metadata.toml exists
 	if !containsFile(files, "metadata.toml") {
-		return fmt.Errorf("metadata.toml not found in zip")
+		return errors.New("metadata.toml not found in zip")
 	}
 
 	// Extract and validate metadata
@@ -144,7 +146,7 @@ func (h *SkillHandler) Validate(zipData []byte) error {
 
 	// Check that prompt file exists
 	if meta.Skill == nil {
-		return fmt.Errorf("[skill] section missing in metadata")
+		return errors.New("[skill] section missing in metadata")
 	}
 
 	if !containsFile(files, meta.Skill.PromptFile) {
@@ -166,10 +168,5 @@ func (h *SkillHandler) VerifyInstalled(targetBase string) (bool, string) {
 
 // containsFile checks if a file exists in the file list
 func containsFile(files []string, filename string) bool {
-	for _, f := range files {
-		if f == filename {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(files, filename)
 }

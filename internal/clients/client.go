@@ -2,6 +2,7 @@ package clients
 
 import (
 	"context"
+	"slices"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/lockfile"
@@ -141,12 +142,7 @@ func AllClientIDs() []string {
 
 // IsValidClientID checks if the given ID is a known client ID
 func IsValidClientID(id string) bool {
-	for _, valid := range AllClientIDs() {
-		if id == valid {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(AllClientIDs(), id)
 }
 
 // InstallOptions contains optional installation settings

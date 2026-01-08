@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pkg/browser"
+
 	"github.com/sleuth-io/sx/internal/buildinfo"
 )
 
@@ -66,7 +68,7 @@ func (o *OAuthClient) StartDeviceFlow(ctx context.Context) (*OAuthDeviceCodeResp
 	data := url.Values{}
 	data.Set("client_id", OAuthClientID)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -129,9 +131,9 @@ func (o *OAuthClient) PollForToken(ctx context.Context, deviceCode string) (*OAu
 				ticker.Reset(o.pollInterval)
 				continue
 			case "expired_token":
-				return nil, fmt.Errorf("device code expired")
+				return nil, errors.New("device code expired")
 			case "access_denied":
-				return nil, fmt.Errorf("authorization denied by user")
+				return nil, errors.New("authorization denied by user")
 			default:
 				return nil, fmt.Errorf("authorization failed: %s (%s)", token.ErrorDesc, token.Error)
 			}
@@ -146,7 +148,7 @@ func (o *OAuthClient) requestToken(ctx context.Context, endpoint, deviceCode str
 	data.Set("device_code", deviceCode)
 	data.Set("client_id", OAuthClientID)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

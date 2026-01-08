@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/sleuth-io/sx/internal/cache"
 	"github.com/sleuth-io/sx/internal/vault"
 )

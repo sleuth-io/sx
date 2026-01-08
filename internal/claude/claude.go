@@ -12,7 +12,7 @@ import (
 // Output is an interface for printing messages during hook installation
 type Output interface {
 	Println(string)
-	PrintfErr(string, ...interface{})
+	PrintfErr(string, ...any)
 }
 
 // GetClaudeDir returns the Claude Code directory (~/.claude)
@@ -49,35 +49,35 @@ func installSessionStartHook(claudeDir string, out Output) error {
 	settingsPath := filepath.Join(claudeDir, "settings.json")
 
 	// Read existing settings or create new
-	var settings map[string]interface{}
+	var settings map[string]any
 	if data, err := os.ReadFile(settingsPath); err == nil {
 		if err := json.Unmarshal(data, &settings); err != nil {
 			return fmt.Errorf("failed to parse settings.json: %w", err)
 		}
 	} else {
-		settings = make(map[string]interface{})
+		settings = make(map[string]any)
 	}
 
 	// Get or create hooks section
-	hooks, ok := settings["hooks"].(map[string]interface{})
+	hooks, ok := settings["hooks"].(map[string]any)
 	if !ok {
-		hooks = make(map[string]interface{})
+		hooks = make(map[string]any)
 		settings["hooks"] = hooks
 	}
 
 	// Get or create SessionStart array
-	sessionStart, ok := hooks["SessionStart"].([]interface{})
+	sessionStart, ok := hooks["SessionStart"].([]any)
 	if !ok {
-		sessionStart = []interface{}{}
+		sessionStart = []any{}
 	}
 
 	// Check if our hook already exists
 	hookExists := false
 	for _, item := range sessionStart {
-		if hookMap, ok := item.(map[string]interface{}); ok {
-			if hooksArray, ok := hookMap["hooks"].([]interface{}); ok {
+		if hookMap, ok := item.(map[string]any); ok {
+			if hooksArray, ok := hookMap["hooks"].([]any); ok {
 				for _, h := range hooksArray {
-					if hMap, ok := h.(map[string]interface{}); ok {
+					if hMap, ok := h.(map[string]any); ok {
 						if cmd, ok := hMap["command"].(string); ok && (cmd == "sx install --hook-mode" || cmd == "sx install" || cmd == "sx install --error-on-change" || cmd == "skills install --hook-mode" || cmd == "skills install" || cmd == "skills install --error-on-change") {
 							hookExists = true
 							break
@@ -93,9 +93,9 @@ func installSessionStartHook(claudeDir string, out Output) error {
 
 	// Add hook if it doesn't exist
 	if !hookExists {
-		newHook := map[string]interface{}{
-			"hooks": []interface{}{
-				map[string]interface{}{
+		newHook := map[string]any{
+			"hooks": []any{
+				map[string]any{
 					"type":    "command",
 					"command": "sx install --hook-mode",
 				},
@@ -127,38 +127,38 @@ func installUsageReportingHook(claudeDir string, out Output) error {
 	settingsPath := filepath.Join(claudeDir, "settings.json")
 
 	// Read existing settings or create new
-	var settings map[string]interface{}
+	var settings map[string]any
 	if data, err := os.ReadFile(settingsPath); err == nil {
 		if err := json.Unmarshal(data, &settings); err != nil {
 			return fmt.Errorf("failed to parse settings.json: %w", err)
 		}
 	} else {
-		settings = make(map[string]interface{})
+		settings = make(map[string]any)
 	}
 
 	// Get or create hooks section
-	hooks, ok := settings["hooks"].(map[string]interface{})
+	hooks, ok := settings["hooks"].(map[string]any)
 	if !ok {
-		hooks = make(map[string]interface{})
+		hooks = make(map[string]any)
 		settings["hooks"] = hooks
 	}
 
 	// Get or create PostToolUse array
-	postToolUse, ok := hooks["PostToolUse"].([]interface{})
+	postToolUse, ok := hooks["PostToolUse"].([]any)
 	if !ok {
-		postToolUse = []interface{}{}
+		postToolUse = []any{}
 	}
 
 	hookCommand := "sx report-usage --client=claude-code"
 
 	// Check if our hook already exists (check for both old and new command formats)
 	hookExists := false
-	var oldHookRef map[string]interface{}
+	var oldHookRef map[string]any
 	for _, item := range postToolUse {
-		if hookMap, ok := item.(map[string]interface{}); ok {
-			if hooksArray, ok := hookMap["hooks"].([]interface{}); ok {
+		if hookMap, ok := item.(map[string]any); ok {
+			if hooksArray, ok := hookMap["hooks"].([]any); ok {
 				for _, h := range hooksArray {
-					if hMap, ok := h.(map[string]interface{}); ok {
+					if hMap, ok := h.(map[string]any); ok {
 						if cmd, ok := hMap["command"].(string); ok {
 							if cmd == hookCommand || cmd == "skills report-usage --client=claude-code" {
 								hookExists = true
@@ -189,10 +189,10 @@ func installUsageReportingHook(claudeDir string, out Output) error {
 		oldHookRef["command"] = hookCommand
 		log.Info("hook updated", "hook", "PostToolUse", "command", hookCommand)
 	} else {
-		newHook := map[string]interface{}{
+		newHook := map[string]any{
 			"matcher": "Skill|Task|SlashCommand|mcp__.*",
-			"hooks": []interface{}{
-				map[string]interface{}{
+			"hooks": []any{
+				map[string]any{
 					"type":    "command",
 					"command": hookCommand,
 				},

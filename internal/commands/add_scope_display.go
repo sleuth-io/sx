@@ -11,7 +11,7 @@ import (
 // formatRepository formats a repository entry for display
 func formatRepository(repo lockfile.Scope) string {
 	if len(repo.Paths) == 0 {
-		return fmt.Sprintf("%s (entire repository)", repo.Repo)
+		return repo.Repo + " (entire repository)"
 	}
 	return fmt.Sprintf("%s → %s", repo.Repo, strings.Join(repo.Paths, ", "))
 }
@@ -132,7 +132,7 @@ func displayRepositoryChanges(before, after []lockfile.Scope, styledOut *ui.Outp
 	for repo, paths := range afterMap {
 		if _, exists := beforeMap[repo]; !exists {
 			repoFormatted := formatRepository(lockfile.Scope{Repo: repo, Paths: paths})
-			styledOut.Success(fmt.Sprintf("Added: %s", repoFormatted))
+			styledOut.Success("Added: " + repoFormatted)
 		}
 	}
 
@@ -141,7 +141,7 @@ func displayRepositoryChanges(before, after []lockfile.Scope, styledOut *ui.Outp
 		if beforePaths, exists := beforeMap[repo]; exists {
 			// Check if paths changed
 			if len(beforePaths) != len(afterPaths) {
-				styledOut.Warning(fmt.Sprintf("Modified: %s", repo))
+				styledOut.Warning("Modified: " + repo)
 				styledOut.Printf("      Before: %s\n", formatPaths(beforePaths))
 				styledOut.Printf("      After:  %s\n", formatPaths(afterPaths))
 				continue
@@ -156,7 +156,7 @@ func displayRepositoryChanges(before, after []lockfile.Scope, styledOut *ui.Outp
 			}
 
 			if pathsChanged {
-				styledOut.Warning(fmt.Sprintf("Modified: %s", repo))
+				styledOut.Warning("Modified: " + repo)
 				styledOut.Printf("      Before: %s\n", formatPaths(beforePaths))
 				styledOut.Printf("      After:  %s\n", formatPaths(afterPaths))
 			}

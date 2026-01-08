@@ -45,7 +45,7 @@ func (h *AgentDetector) CreateDefaultMetadata(name, version string) *metadata.Me
 }
 
 // DetectUsageFromToolCall detects agent usage from tool calls
-func (h *AgentDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]interface{}) (string, bool) {
+func (h *AgentDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
 	if toolName != "Task" {
 		return "", false
 	}

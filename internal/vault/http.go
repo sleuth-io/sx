@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,13 +32,13 @@ func NewHTTPSourceHandler(authToken string) *HTTPSourceHandler {
 // Fetch downloads an asset from an HTTP URL
 func (h *HTTPSourceHandler) Fetch(ctx context.Context, asset *lockfile.Asset) ([]byte, error) {
 	if asset.SourceHTTP == nil {
-		return nil, fmt.Errorf("asset does not have source-http")
+		return nil, errors.New("asset does not have source-http")
 	}
 
 	source := asset.SourceHTTP
 
 	// Create request with context
-	req, err := http.NewRequestWithContext(ctx, "GET", source.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -81,7 +82,7 @@ func (h *HTTPSourceHandler) Fetch(ctx context.Context, asset *lockfile.Asset) ([
 
 	// Verify it's a valid zip file
 	if !utils.IsZipFile(data) {
-		return nil, fmt.Errorf("downloaded file is not a valid zip archive")
+		return nil, errors.New("downloaded file is not a valid zip archive")
 	}
 
 	return data, nil
@@ -90,7 +91,7 @@ func (h *HTTPSourceHandler) Fetch(ctx context.Context, asset *lockfile.Asset) ([
 // verifyHashes verifies the downloaded data against provided hashes
 func (h *HTTPSourceHandler) verifyHashes(data []byte, hashes map[string]string) error {
 	if len(hashes) == 0 {
-		return fmt.Errorf("no hashes provided for verification")
+		return errors.New("no hashes provided for verification")
 	}
 
 	for algo, expected := range hashes {
@@ -105,7 +106,7 @@ func (h *HTTPSourceHandler) verifyHashes(data []byte, hashes map[string]string) 
 // DownloadWithProgress downloads a file with progress reporting
 // This is used for user-facing downloads with progress bars
 func (h *HTTPSourceHandler) DownloadWithProgress(ctx context.Context, url string, progressCallback func(current, total int64)) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

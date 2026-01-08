@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -56,7 +57,7 @@ func (f *Fetcher) FetchDirectory(ctx context.Context, treeURL *TreeURL) ([]byte,
 	}
 
 	if len(files) == 0 {
-		return nil, fmt.Errorf("no files found in directory")
+		return nil, errors.New("no files found in directory")
 	}
 
 	// Download all files and create zip
@@ -84,7 +85,7 @@ func (f *Fetcher) listFilesRecursive(ctx context.Context, treeURL *TreeURL, subp
 	apiURL += "?ref=" + treeURL.Ref
 
 	// Make API request
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -102,7 +103,7 @@ func (f *Fetcher) listFilesRecursive(ctx context.Context, treeURL *TreeURL, subp
 		return nil, fmt.Errorf("directory not found: %s", currentPath)
 	}
 	if resp.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("rate limited or access denied (consider using a GitHub token)")
+		return nil, errors.New("rate limited or access denied (consider using a GitHub token)")
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -175,7 +176,7 @@ func (f *Fetcher) downloadAndZip(ctx context.Context, treeURL *TreeURL, files []
 
 // downloadFile downloads a single file from a URL.
 func (f *Fetcher) downloadFile(ctx context.Context, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}

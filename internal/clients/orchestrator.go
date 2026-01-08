@@ -30,7 +30,6 @@ func (o *Orchestrator) InstallToClients(ctx context.Context,
 	scope *InstallScope,
 	options InstallOptions,
 	targetClients []Client) map[string]InstallResponse {
-
 	// Install to clients concurrently
 	results := make(map[string]InstallResponse)
 	resultsMu := sync.Mutex{}

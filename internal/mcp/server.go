@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/gitutil"
@@ -116,7 +118,7 @@ func (s *Server) registerVaultTools(ctx context.Context, mcpServer *mcp.Server) 
 // Returns plain markdown text with @file references resolved to absolute paths
 func (s *Server) handleReadSkill(ctx context.Context, req *mcp.CallToolRequest, input ReadSkillInput) (*mcp.CallToolResult, any, error) {
 	if input.Name == "" {
-		return nil, nil, fmt.Errorf("skill name is required")
+		return nil, nil, errors.New("skill name is required")
 	}
 
 	// Determine scope from current working directory
