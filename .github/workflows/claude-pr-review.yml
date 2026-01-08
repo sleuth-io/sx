@@ -1,0 +1,106 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build sx
+        run: make build
+
+      - name: Setup sx config
+        run: |
+          mkdir -p $HOME/.config/sx
+          mkdir -p $HOME/.claude
+          printf '%s\n' '{' '  "type": "sleuth",' '  "repositoryUrl": "https://app.skills.new",' '  "authToken": "${{ secrets.SKILLS_SITE_API_KEY }}"' '}' > $HOME/.config/sx/config.json
+
+      - name: Install skills
+        run: ./dist/sx install
+
+      - name: Discover installed Claude skills
+        id: discover-skills
+        run: |
+          if [ -d ".claude/skills" ]; then
+            SKILLS=$(find .claude/skills -name "SKILL.md" -type f | \
+              sed 's|.claude/skills/||' | \
+              sed 's|/SKILL.md||' | \
+              tr '\n' ',' | \
+              sed 's/,$//')
+
+            if [ -z "$SKILLS" ]; then
+              echo "skills=none" >> $GITHUB_OUTPUT
+              echo "No Claude skills found"
+            else
+              echo "skills=$SKILLS" >> $GITHUB_OUTPUT
+              echo "Found skills: $SKILLS"
+            fi
+          else
+            echo "skills=none" >> $GITHUB_OUTPUT
+            echo ".claude/skills directory not found"
+          fi
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: "--max-turns 50"
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request using the project's installed Claude skills and CLAUDE.md standards.
+
+            **Installed Skills**: ${{ steps.discover-skills.outputs.skills }}
+
+            **Process**:
+            1. Read SKILL.md files in .claude/skills/[skill-name]/SKILL.md
+            2. Review PR changes and match to relevant skills
+            3. Validate against skill guidelines and CLAUDE.md standards
+            4. Check for security, performance, and architecture issues
+
+            **Output Format**:
+
+            Start with a single sentence summarizing the overall review.
+
+            Then output ONLY the collapsible sections below (one per issue):
+
+            <details>
+            <summary><b>[PRIORITY]</b> Single sentence summary</summary>
+
+            **Location**: file:line
+
+            **Issue**: Detailed description
+
+            **Suggestion**: Concrete fix
+
+            </details>
+
+            If no issues found, output: "Review complete. No issues found."
+
+            **Rules**:
+            - First line: one sentence overall summary
+            - Then ONLY the <details> blocks, nothing else
+            - Do NOT include headings, categories, or additional summaries
+            - Do NOT add explanatory text between issues
+            - Each issue is one <details> block with priority in the summary
+            - Ensure blank lines before and after markdown content inside details tags
+        timeout-minutes: 15
