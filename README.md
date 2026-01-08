@@ -121,6 +121,7 @@ See LICENSE file for details.
 - [Vault Spec](docs/vault-spec.md) - Skills vault structure
 - [Metadata Spec](docs/metadata-spec.md) - Skill metadata format
 - [Lock Spec](docs/lock-spec.md) - Lock file format
+- [MCP Spec](docs/mcp-spec.md) - MCP server and query tool
 
 
 ### Prerequisites

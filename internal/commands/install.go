@@ -412,15 +412,15 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 		var message string
 		if len(installedAssets) == 1 {
 			// Single asset - more compact message
-			message = fmt.Sprintf("%ssx%s installed the %s%s %s%s. %sRestart Claude Code to use it.%s",
-				bold, resetBold, blue, installedAssets[0].name, installedAssets[0].typ, reset, red, reset)
+			message = fmt.Sprintf("%ssx%s installed the %s%s %s%s.",
+				bold, resetBold, blue, installedAssets[0].name, installedAssets[0].typ, reset)
 		} else if len(installedAssets) <= 3 {
 			// List all items
 			message = fmt.Sprintf("%ssx%s installed:\n", bold, resetBold)
 			for _, asset := range installedAssets {
 				message += fmt.Sprintf("- The %s%s %s%s\n", blue, asset.name, asset.typ, reset)
 			}
-			message += fmt.Sprintf("\n%sRestart Claude Code to use them.%s", red, reset)
+			message = strings.TrimSuffix(message, "\n")
 		} else {
 			// Show first 3 and count remaining
 			message = fmt.Sprintf("%ssx%s installed:\n", bold, resetBold)
@@ -428,7 +428,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 				message += fmt.Sprintf("- The %s%s %s%s\n", blue, installedAssets[i].name, installedAssets[i].typ, reset)
 			}
 			remaining := len(installedAssets) - 3
-			message += fmt.Sprintf("and %d more\n\n%sRestart Claude Code to use them.%s", remaining, red, reset)
+			message += fmt.Sprintf("and %d more", remaining)
 		}
 
 		// Output JSON response
