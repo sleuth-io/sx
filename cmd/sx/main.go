@@ -13,6 +13,7 @@ import (
 	"github.com/sleuth-io/sx/internal/clients/claude_code"
 	"github.com/sleuth-io/sx/internal/clients/cursor"
 	"github.com/sleuth-io/sx/internal/commands"
+	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/logger"
 )
@@ -62,6 +63,11 @@ from remote Sleuth servers or Git vaults.`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Initialize SSH key path from flag or environment variable
 			git.SetSSHKeyPath(cmd)
+
+			// Set active profile from flag (env var is handled in config package)
+			if profile, _ := cmd.Flags().GetString("profile"); profile != "" {
+				config.SetActiveProfile(profile)
+			}
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Default command: run install if lock file exists
@@ -76,9 +82,12 @@ from remote Sleuth servers or Git vaults.`,
 	// Add global flags
 	rootCmd.PersistentFlags().String("ssh-key", "",
 		"Path to SSH private key file or key content for git operations (can also use SX_SSH_KEY environment variable)")
+	rootCmd.PersistentFlags().String("profile", "",
+		"Use a specific profile (can also use SX_PROFILE environment variable)")
 
 	// Add subcommands
 	rootCmd.AddCommand(commands.NewInitCommand())
+	rootCmd.AddCommand(commands.NewProfileCommand())
 	rootCmd.AddCommand(commands.NewInstallCommand())
 	rootCmd.AddCommand(commands.NewUninstallCommand())
 	rootCmd.AddCommand(commands.NewRemoveCommand())

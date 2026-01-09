@@ -1,11 +1,9 @@
 package config
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 
 	"github.com/sleuth-io/sx/internal/utils"
@@ -41,82 +39,65 @@ type Config struct {
 	EnabledClients []string `json:"enabledClients,omitempty"`
 }
 
-// getLegacyConfigFile returns the old config file path for backwards compatibility
-func getLegacyConfigFile() (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(homeDir, ".claude", "plugins", "skills", "config.json"), nil
-}
-
 // Load loads the configuration from the config file
-// Falls back to the old location (~/.claude/plugins/skills/config.json) for backwards compatibility
+// Uses the multi-profile system and returns the active profile as a Config
 func Load() (*Config, error) {
-	configFile, err := utils.GetConfigFile()
+	mpc, err := LoadMultiProfile()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get config file path: %w", err)
+		return nil, err
 	}
 
-	// Try new location first
-	if utils.FileExists(configFile) {
-		data, err := os.ReadFile(configFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read config file: %w", err)
+	profileName := GetActiveProfileName(mpc)
+	profile, ok := mpc.GetProfile(profileName)
+	if !ok {
+		// If the requested profile doesn't exist, try the default
+		if profileName != mpc.DefaultProfile && mpc.DefaultProfile != "" {
+			profile, ok = mpc.GetProfile(mpc.DefaultProfile)
 		}
-
-		var cfg Config
-		if err := json.Unmarshal(data, &cfg); err != nil {
-			return nil, fmt.Errorf("failed to parse config file: %w", err)
+		if !ok {
+			return nil, fmt.Errorf("profile not found: %s", profileName)
 		}
-
-		return &cfg, nil
 	}
 
-	// Fallback to legacy location
-	legacyConfigFile, err := getLegacyConfigFile()
-	if err == nil && utils.FileExists(legacyConfigFile) {
-		data, err := os.ReadFile(legacyConfigFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read legacy config file: %w", err)
-		}
-
-		var cfg Config
-		if err := json.Unmarshal(data, &cfg); err != nil {
-			return nil, fmt.Errorf("failed to parse legacy config file: %w", err)
-		}
-
-		return &cfg, nil
-	}
-
-	return nil, errors.New("configuration not found. Run 'sx init' first")
+	return profile.ToConfig(mpc.EnabledClients), nil
 }
 
 // Save saves the configuration to the config file
+// This updates the active profile while preserving other profiles
 func Save(cfg *Config) error {
-	configFile, err := utils.GetConfigFile()
+	return SaveToProfile(cfg, "")
+}
+
+// SaveToProfile saves the configuration to a specific profile
+// If profileName is empty, uses the active profile
+func SaveToProfile(cfg *Config, profileName string) error {
+	// Try to load existing multi-profile config
+	mpc, err := LoadMultiProfile()
 	if err != nil {
-		return fmt.Errorf("failed to get config file path: %w", err)
+		// No existing config, create new multi-profile config
+		mpc = &MultiProfileConfig{
+			DefaultProfile: DefaultProfileName,
+			Profiles:       make(map[string]*Profile),
+		}
 	}
 
-	// Ensure config directory exists
-	configDir := filepath.Dir(configFile)
-	if err := utils.EnsureDir(configDir); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
+	// Determine which profile to save to
+	if profileName == "" {
+		profileName = GetActiveProfileName(mpc)
 	}
 
-	// Marshal config to JSON with indentation
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+	// Update the profile
+	mpc.SetProfile(profileName, ProfileFromConfig(cfg))
+
+	// Update enabled clients (global setting)
+	mpc.EnabledClients = cfg.EnabledClients
+
+	// If this is the first profile, make it the default
+	if mpc.DefaultProfile == "" {
+		mpc.DefaultProfile = profileName
 	}
 
-	// Write to file with secure permissions
-	if err := os.WriteFile(configFile, data, 0600); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
-	return nil
+	return SaveMultiProfile(mpc)
 }
 
 // Exists checks if a configuration file exists
