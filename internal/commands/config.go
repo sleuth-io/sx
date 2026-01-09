@@ -51,6 +51,7 @@ type PlatformInfo struct {
 type ConfigInfo struct {
 	Path          string `json:"path"`
 	Exists        bool   `json:"exists"`
+	Profile       string `json:"profile,omitempty"`
 	Type          string `json:"type,omitempty"`
 	RepositoryURL string `json:"repositoryUrl,omitempty"`
 	ServerURL     string `json:"serverUrl,omitempty"`
@@ -188,6 +189,10 @@ func gatherConfigDetails() ConfigInfo {
 	info := ConfigInfo{
 		Path:   configPath,
 		Exists: utils.FileExists(configPath),
+	}
+
+	if mpc, err := config.LoadMultiProfile(); err == nil {
+		info.Profile = config.GetActiveProfileName(mpc)
 	}
 
 	if cfg, err := config.Load(); err == nil {
@@ -557,6 +562,9 @@ func printText(output ConfigOutput, showAll bool) error {
 		existsStr = "not found"
 	}
 	fmt.Printf("Config File: %s (%s)\n", output.Config.Path, existsStr)
+	if output.Config.Profile != "" {
+		fmt.Printf("Profile: %s\n", output.Config.Profile)
+	}
 	if output.Config.Type != "" {
 		fmt.Printf("Type: %s\n", output.Config.Type)
 	}

@@ -9,35 +9,38 @@ import (
 	"github.com/sleuth-io/sx/internal/utils"
 )
 
-func TestLoadFallbackToLegacy(t *testing.T) {
+func TestLoadMigratesOldFormat(t *testing.T) {
 	// Create a temporary home directory for testing
 	tmpHome := t.TempDir()
 	originalHome := os.Getenv("HOME")
 	os.Setenv("HOME", tmpHome)
 	defer os.Setenv("HOME", originalHome)
 
-	// Create legacy config file
-	legacyDir := filepath.Join(tmpHome, ".claude", "plugins", "skills")
-	if err := os.MkdirAll(legacyDir, 0755); err != nil {
-		t.Fatalf("Failed to create legacy dir: %v", err)
+	// Create old single-config format file in the new location
+	configFile, err := utils.GetConfigFile()
+	if err != nil {
+		t.Fatalf("Failed to get config file: %v", err)
 	}
 
-	legacyConfig := &Config{
-		Type:          RepositoryTypeGit,
-		RepositoryURL: "git@github.com:test/repo",
+	if err := os.MkdirAll(filepath.Dir(configFile), 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
 	}
 
-	data, err := json.MarshalIndent(legacyConfig, "", "  ")
+	oldConfig := map[string]any{
+		"type":          "git",
+		"repositoryUrl": "git@github.com:test/repo",
+	}
+
+	data, err := json.MarshalIndent(oldConfig, "", "  ")
 	if err != nil {
 		t.Fatalf("Failed to marshal config: %v", err)
 	}
 
-	legacyConfigPath := filepath.Join(legacyDir, "config.json")
-	if err := os.WriteFile(legacyConfigPath, data, 0600); err != nil {
-		t.Fatalf("Failed to write legacy config: %v", err)
+	if err := os.WriteFile(configFile, data, 0600); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
 	}
 
-	// Load should find the legacy config
+	// Load should migrate the old format
 	loaded, err := Load()
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)
@@ -52,56 +55,117 @@ func TestLoadFallbackToLegacy(t *testing.T) {
 	}
 }
 
-func TestLoadPreferNewLocation(t *testing.T) {
+func TestLoadMultiProfileFormat(t *testing.T) {
 	// Create a temporary home directory for testing
 	tmpHome := t.TempDir()
 	originalHome := os.Getenv("HOME")
 	os.Setenv("HOME", tmpHome)
 	defer os.Setenv("HOME", originalHome)
 
-	// Create BOTH new and legacy config files
-	legacyDir := filepath.Join(tmpHome, ".claude", "plugins", "skills")
-	if err := os.MkdirAll(legacyDir, 0755); err != nil {
-		t.Fatalf("Failed to create legacy dir: %v", err)
-	}
-
-	legacyConfig := &Config{
-		Type:          RepositoryTypeGit,
-		RepositoryURL: "git@github.com:legacy/repo",
-	}
-	legacyData, _ := json.MarshalIndent(legacyConfig, "", "  ")
-	legacyConfigPath := filepath.Join(legacyDir, "config.json")
-	if err := os.WriteFile(legacyConfigPath, legacyData, 0600); err != nil {
-		t.Fatalf("Failed to write legacy config: %v", err)
-	}
-
-	// Create new config file
-	newConfigFile, err := utils.GetConfigFile()
+	// Create multi-profile format config file
+	configFile, err := utils.GetConfigFile()
 	if err != nil {
 		t.Fatalf("Failed to get config file: %v", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(newConfigFile), 0755); err != nil {
-		t.Fatalf("Failed to create new config dir: %v", err)
+	if err := os.MkdirAll(filepath.Dir(configFile), 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
 	}
 
-	newConfig := &Config{
-		Type:          RepositoryTypeGit,
-		RepositoryURL: "git@github.com:new/repo",
-	}
-	newData, _ := json.MarshalIndent(newConfig, "", "  ")
-	if err := os.WriteFile(newConfigFile, newData, 0600); err != nil {
-		t.Fatalf("Failed to write new config: %v", err)
+	mpc := &MultiProfileConfig{
+		DefaultProfile: "production",
+		Profiles: map[string]*Profile{
+			"default": {
+				Type:          RepositoryTypeGit,
+				RepositoryURL: "git@github.com:default/repo",
+			},
+			"production": {
+				Type:          RepositoryTypeSleuth,
+				RepositoryURL: "https://app.skills.new",
+				AuthToken:     "test-token",
+			},
+		},
 	}
 
-	// Load should prefer the new location
+	data, err := json.MarshalIndent(mpc, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal config: %v", err)
+	}
+
+	if err := os.WriteFile(configFile, data, 0600); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	// Load should return the active profile (production)
 	loaded, err := Load()
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)
 	}
 
-	if loaded.RepositoryURL != "git@github.com:new/repo" {
-		t.Errorf("Expected new repo URL git@github.com:new/repo (should prefer new location), got %s", loaded.RepositoryURL)
+	if loaded.Type != RepositoryTypeSleuth {
+		t.Errorf("Expected type sleuth, got %s", loaded.Type)
+	}
+
+	if loaded.RepositoryURL != "https://app.skills.new" {
+		t.Errorf("Expected repo URL https://app.skills.new, got %s", loaded.RepositoryURL)
+	}
+}
+
+func TestLoadWithProfileOverride(t *testing.T) {
+	// Create a temporary home directory for testing
+	tmpHome := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create multi-profile format config file
+	configFile, err := utils.GetConfigFile()
+	if err != nil {
+		t.Fatalf("Failed to get config file: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(configFile), 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	mpc := &MultiProfileConfig{
+		DefaultProfile: "production",
+		Profiles: map[string]*Profile{
+			"staging": {
+				Type:          RepositoryTypeGit,
+				RepositoryURL: "git@github.com:staging/repo",
+			},
+			"production": {
+				Type:          RepositoryTypeSleuth,
+				RepositoryURL: "https://app.skills.new",
+			},
+		},
+	}
+
+	data, err := json.MarshalIndent(mpc, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal config: %v", err)
+	}
+
+	if err := os.WriteFile(configFile, data, 0600); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	// Override the active profile
+	SetActiveProfile("staging")
+	defer SetActiveProfile("") // Clean up
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if loaded.Type != RepositoryTypeGit {
+		t.Errorf("Expected type git (staging profile), got %s", loaded.Type)
+	}
+
+	if loaded.RepositoryURL != "git@github.com:staging/repo" {
+		t.Errorf("Expected staging repo URL, got %s", loaded.RepositoryURL)
 	}
 }
 
@@ -130,5 +194,85 @@ func TestLoadNoConfig(t *testing.T) {
 
 	if err != nil && err.Error() != "configuration not found. Run 'sx init' first" {
 		t.Errorf("Expected 'configuration not found' error, got: %v", err)
+	}
+}
+
+func TestSaveToProfile(t *testing.T) {
+	// Create a temporary home directory for testing
+	tmpHome := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	defer os.Setenv("HOME", originalHome)
+
+	// Save a new config
+	cfg := &Config{
+		Type:          RepositoryTypeGit,
+		RepositoryURL: "git@github.com:test/repo",
+	}
+
+	if err := SaveToProfile(cfg, "myprofile"); err != nil {
+		t.Fatalf("SaveToProfile() failed: %v", err)
+	}
+
+	// Load and verify
+	mpc, err := LoadMultiProfile()
+	if err != nil {
+		t.Fatalf("LoadMultiProfile() failed: %v", err)
+	}
+
+	profile, ok := mpc.GetProfile("myprofile")
+	if !ok {
+		t.Fatal("Expected myprofile to exist")
+	}
+
+	if profile.RepositoryURL != "git@github.com:test/repo" {
+		t.Errorf("Expected repo URL git@github.com:test/repo, got %s", profile.RepositoryURL)
+	}
+}
+
+func TestProfileListAndSwitch(t *testing.T) {
+	// Create a temporary home directory for testing
+	tmpHome := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create multi-profile config
+	mpc := &MultiProfileConfig{
+		DefaultProfile: "default",
+		Profiles: map[string]*Profile{
+			"default": {
+				Type:          RepositoryTypeGit,
+				RepositoryURL: "git@github.com:default/repo",
+			},
+			"staging": {
+				Type:          RepositoryTypeGit,
+				RepositoryURL: "git@github.com:staging/repo",
+			},
+		},
+	}
+
+	if err := SaveMultiProfile(mpc); err != nil {
+		t.Fatalf("SaveMultiProfile() failed: %v", err)
+	}
+
+	// List profiles
+	profiles := mpc.ListProfiles()
+	if len(profiles) != 2 {
+		t.Errorf("Expected 2 profiles, got %d", len(profiles))
+	}
+
+	// Switch to staging
+	if err := mpc.SetDefaultProfile("staging"); err != nil {
+		t.Fatalf("SetDefaultProfile() failed: %v", err)
+	}
+
+	if mpc.DefaultProfile != "staging" {
+		t.Errorf("Expected default profile to be staging, got %s", mpc.DefaultProfile)
+	}
+
+	// Try to switch to non-existent profile
+	if err := mpc.SetDefaultProfile("nonexistent"); err == nil {
+		t.Error("Expected error when switching to non-existent profile")
 	}
 }
