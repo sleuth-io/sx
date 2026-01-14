@@ -91,7 +91,7 @@ func (h *ClaudeCodePluginHandler) Install(ctx context.Context, zipData []byte, t
 
 	// Register plugin in installed_plugins.json
 	if err := RegisterPlugin(targetBase, h.metadata.Asset.Name, marketplace, h.metadata.Asset.Version, installPath); err != nil {
-		return fmt.Errorf("failed to register plugin: %w", err)
+		return fmt.Errorf("failed to register plugin %q: %w", h.metadata.Asset.Name, err)
 	}
 
 	// Enable the plugin in settings.json if auto-enable is not disabled

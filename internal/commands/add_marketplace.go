@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -37,6 +38,10 @@ func IsMarketplaceReference(input string) bool {
 	}
 	pluginName := parts[0]
 	marketplace := parts[1]
+	// Reject "git" as plugin name to avoid conflict with git SSH URLs (git@github.com:user/repo)
+	if pluginName == "git" {
+		return false
+	}
 	return pluginName != "" && marketplace != "" && !strings.Contains(pluginName, "/") && !strings.Contains(pluginName, "\\")
 }
 
@@ -52,9 +57,24 @@ func ParseMarketplaceReference(input string) MarketplaceReference {
 	return MarketplaceReference{PluginName: input}
 }
 
+// ValidateMarketplaceReference validates that a marketplace reference doesn't contain path traversal characters
+func ValidateMarketplaceReference(ref MarketplaceReference) error {
+	if strings.Contains(ref.Marketplace, "..") || strings.Contains(ref.Marketplace, "/") || strings.Contains(ref.Marketplace, "\\") {
+		return fmt.Errorf("invalid marketplace name: %q", ref.Marketplace)
+	}
+	if strings.Contains(ref.PluginName, "..") {
+		return fmt.Errorf("invalid plugin name: %q", ref.PluginName)
+	}
+	return nil
+}
+
 // addFromMarketplace handles adding a plugin from a Claude Code marketplace
 func addFromMarketplace(ctx context.Context, cmd *cobra.Command, out *outputHelper, status *components.Status, input string, promptInstall bool) error {
 	ref := ParseMarketplaceReference(input)
+
+	if err := ValidateMarketplaceReference(ref); err != nil {
+		return err
+	}
 
 	status.Start("Looking up marketplace")
 
@@ -90,7 +110,7 @@ func findMarketplacePluginPath(marketplaceName, pluginName string) (string, erro
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	knownMarketsPath := homeDir + "/.claude/plugins/known_marketplaces.json"
+	knownMarketsPath := filepath.Join(homeDir, ".claude", "plugins", "known_marketplaces.json")
 	data, err := os.ReadFile(knownMarketsPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read known_marketplaces.json: %w", err)
@@ -113,24 +133,24 @@ func findMarketplacePluginPath(marketplaceName, pluginName string) (string, erro
 	}
 
 	pluginPaths := []string{
-		marketplace.InstallLocation + "/plugins/" + pluginName,
-		marketplace.InstallLocation + "/" + pluginName,
+		filepath.Join(marketplace.InstallLocation, "plugins", pluginName),
+		filepath.Join(marketplace.InstallLocation, pluginName),
 	}
 
 	for _, path := range pluginPaths {
-		manifestPath := path + "/.claude-plugin/plugin.json"
+		manifestPath := filepath.Join(path, ".claude-plugin", "plugin.json")
 		if utils.FileExists(manifestPath) {
 			return path, nil
 		}
 	}
 
-	pluginsDir := marketplace.InstallLocation + "/plugins"
+	pluginsDir := filepath.Join(marketplace.InstallLocation, "plugins")
 	if utils.IsDirectory(pluginsDir) {
 		entries, _ := os.ReadDir(pluginsDir)
 		var available []string
 		for _, entry := range entries {
 			if entry.IsDir() && entry.Name() != "." && entry.Name() != ".." {
-				if utils.FileExists(pluginsDir + "/" + entry.Name() + "/.claude-plugin/plugin.json") {
+				if utils.FileExists(filepath.Join(pluginsDir, entry.Name(), ".claude-plugin", "plugin.json")) {
 					available = append(available, entry.Name())
 				}
 			}

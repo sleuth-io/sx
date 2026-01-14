@@ -47,10 +47,10 @@ func RegisterPlugin(targetBase, pluginName, marketplace, version, installPath st
 	if utils.FileExists(registryPath) {
 		data, err := os.ReadFile(registryPath)
 		if err != nil {
-			return fmt.Errorf("failed to read installed_plugins.json: %w", err)
+			return fmt.Errorf("failed to read %s: %w", registryPath, err)
 		}
 		if err := json.Unmarshal(data, &registry); err != nil {
-			return fmt.Errorf("failed to parse installed_plugins.json: %w", err)
+			return fmt.Errorf("failed to parse %s: %w", registryPath, err)
 		}
 	} else {
 		registry = InstalledPluginsRegistry{
@@ -109,12 +109,12 @@ func UnregisterPlugin(targetBase, pluginName, marketplace string) error {
 	// Read registry
 	data, err := os.ReadFile(registryPath)
 	if err != nil {
-		return fmt.Errorf("failed to read installed_plugins.json: %w", err)
+		return fmt.Errorf("failed to read %s: %w", registryPath, err)
 	}
 
 	var registry InstalledPluginsRegistry
 	if err := json.Unmarshal(data, &registry); err != nil {
-		return fmt.Errorf("failed to parse installed_plugins.json: %w", err)
+		return fmt.Errorf("failed to parse %s: %w", registryPath, err)
 	}
 
 	if registry.Plugins == nil {
@@ -147,10 +147,10 @@ func EnablePlugin(targetBase, pluginName, marketplace, installPath string) error
 	if utils.FileExists(settingsPath) {
 		data, err := os.ReadFile(settingsPath)
 		if err != nil {
-			return fmt.Errorf("failed to read settings.json: %w", err)
+			return fmt.Errorf("failed to read %s: %w", settingsPath, err)
 		}
 		if err := json.Unmarshal(data, &settings); err != nil {
-			return fmt.Errorf("failed to parse settings.json: %w", err)
+			return fmt.Errorf("failed to parse %s: %w", settingsPath, err)
 		}
 	} else {
 		settings = make(map[string]any)
@@ -182,7 +182,7 @@ func EnablePlugin(targetBase, pluginName, marketplace, installPath string) error
 		return fmt.Errorf("failed to create directory for settings.json: %w", err)
 	}
 
-	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+	if err := os.WriteFile(settingsPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write settings.json: %w", err)
 	}
 
@@ -200,12 +200,12 @@ func DisablePlugin(targetBase, pluginName, marketplace string) error {
 	// Read settings
 	data, err := os.ReadFile(settingsPath)
 	if err != nil {
-		return fmt.Errorf("failed to read settings.json: %w", err)
+		return fmt.Errorf("failed to read %s: %w", settingsPath, err)
 	}
 
 	var settings map[string]any
 	if err := json.Unmarshal(data, &settings); err != nil {
-		return fmt.Errorf("failed to parse settings.json: %w", err)
+		return fmt.Errorf("failed to parse %s: %w", settingsPath, err)
 	}
 
 	// Check if enabledPlugins section exists
@@ -227,7 +227,7 @@ func DisablePlugin(targetBase, pluginName, marketplace string) error {
 		return fmt.Errorf("failed to marshal settings: %w", err)
 	}
 
-	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+	if err := os.WriteFile(settingsPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write settings.json: %w", err)
 	}
 
