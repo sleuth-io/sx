@@ -10,18 +10,22 @@ import (
 	"github.com/sleuth-io/sx/internal/asset"
 )
 
+// CurrentMetadataVersion is the current version of the metadata format
+const CurrentMetadataVersion = "1.0"
+
 // Metadata represents the complete metadata.toml structure
 type Metadata struct {
 	MetadataVersion string `toml:"metadata-version,omitempty"`
 	Asset           Asset  `toml:"asset"`
 
 	// Type-specific sections (only one should be present based on asset.type)
-	Skill   *SkillConfig   `toml:"skill,omitempty"`
-	Command *CommandConfig `toml:"command,omitempty"`
-	Agent   *AgentConfig   `toml:"agent,omitempty"`
-	Hook    *HookConfig    `toml:"hook,omitempty"`
-	MCP     *MCPConfig     `toml:"mcp,omitempty"`
-	Custom  map[string]any `toml:"custom,omitempty"`
+	Skill            *SkillConfig            `toml:"skill,omitempty"`
+	Command          *CommandConfig          `toml:"command,omitempty"`
+	Agent            *AgentConfig            `toml:"agent,omitempty"`
+	Hook             *HookConfig             `toml:"hook,omitempty"`
+	MCP              *MCPConfig              `toml:"mcp,omitempty"`
+	ClaudeCodePlugin *ClaudeCodePluginConfig `toml:"claude-code-plugin,omitempty"`
+	Custom           map[string]any          `toml:"custom,omitempty"`
 }
 
 // Asset represents the [asset] section (formerly [artifact])
@@ -79,6 +83,14 @@ type MCPConfig struct {
 	Env          map[string]string `toml:"env,omitempty"`
 	Timeout      int               `toml:"timeout,omitempty"`
 	Capabilities []string          `toml:"capabilities,omitempty"`
+}
+
+// ClaudeCodePluginConfig represents the [claude-code-plugin] section
+type ClaudeCodePluginConfig struct {
+	ManifestFile     string `toml:"manifest-file,omitempty"`      // Default: .claude-plugin/plugin.json
+	AutoEnable       *bool  `toml:"auto-enable,omitempty"`        // Default: true
+	Marketplace      string `toml:"marketplace,omitempty"`        // Optional marketplace name
+	MinClientVersion string `toml:"min-client-version,omitempty"` // Optional minimum Claude Code version
 }
 
 // metadataCompat is used for parsing old-style metadata with [artifact] section
@@ -157,6 +169,8 @@ func (m *Metadata) GetTypeConfig() any {
 		return m.Hook
 	case asset.TypeMCP, asset.TypeMCPRemote:
 		return m.MCP
+	case asset.TypeClaudeCodePlugin:
+		return m.ClaudeCodePlugin
 	}
 	return nil
 }

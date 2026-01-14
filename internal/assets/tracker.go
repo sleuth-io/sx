@@ -24,12 +24,13 @@ type Tracker struct {
 // InstalledAsset represents a single installed asset with its scope
 // (formerly InstalledArtifact)
 type InstalledAsset struct {
-	Name       string   `json:"name"`
-	Version    string   `json:"version"`
-	Type       string   `json:"type,omitempty"`       // Asset type (skill, agent, mcp, etc) - added in v3
-	Repository string   `json:"repository,omitempty"` // Empty for global scope
-	Path       string   `json:"path,omitempty"`       // Path within repo (if path-scoped)
-	Clients    []string `json:"clients"`
+	Name       string            `json:"name"`
+	Version    string            `json:"version"`
+	Type       string            `json:"type,omitempty"`       // Asset type (skill, agent, mcp, etc) - added in v3
+	Repository string            `json:"repository,omitempty"` // Empty for global scope
+	Path       string            `json:"path,omitempty"`       // Path within repo (if path-scoped)
+	Clients    []string          `json:"clients"`
+	Config     map[string]string `json:"config,omitempty"` // Type-specific config (e.g., marketplace for plugins)
 }
 
 // AssetKey uniquely identifies an asset by name + scope

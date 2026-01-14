@@ -30,6 +30,7 @@ func uninstallAssetsWithScope(ctx context.Context, installedAssets []assets.Inst
 			Name:    installed.Name,
 			Version: installed.Version,
 			Type:    asset.FromString(installed.Type),
+			Config:  installed.Config,
 		}
 	}
 

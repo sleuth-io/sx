@@ -102,6 +102,9 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeMCPRemote:
 			handler := handlers.NewMCPRemoteHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeClaudeCodePlugin:
+			handler := handlers.NewClaudeCodePluginHandler(bundle.Metadata)
+			err = handler.Install(ctx, bundle.ZipData, targetBase)
 		default:
 			err = fmt.Errorf("unsupported asset type: %s", bundle.Metadata.Asset.Type.Key)
 		}
@@ -137,12 +140,19 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 			AssetName: a.Name,
 		}
 
-		// Create minimal metadata for removal
+		// Create metadata for removal, including type-specific config
 		meta := &metadata.Metadata{
 			Asset: metadata.Asset{
 				Name: a.Name,
 				Type: a.Type,
 			},
+		}
+
+		// Restore type-specific config from asset.Config
+		if a.Type == asset.TypeClaudeCodePlugin && a.Config != nil {
+			meta.ClaudeCodePlugin = &metadata.ClaudeCodePluginConfig{
+				Marketplace: a.Config["marketplace"],
+			}
 		}
 
 		var err error
@@ -164,6 +174,9 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 			err = handler.Remove(ctx, targetBase)
 		case asset.TypeMCPRemote:
 			handler := handlers.NewMCPRemoteHandler(meta)
+			err = handler.Remove(ctx, targetBase)
+		case asset.TypeClaudeCodePlugin:
+			handler := handlers.NewClaudeCodePluginHandler(meta)
 			err = handler.Remove(ctx, targetBase)
 		default:
 			err = fmt.Errorf("unsupported asset type: %s", a.Type.Key)

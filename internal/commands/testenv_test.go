@@ -185,3 +185,35 @@ func (e *TestEnv) AssertFileNotExists(path string) {
 		e.t.Errorf("Expected file to NOT exist: %s", path)
 	}
 }
+
+// AddPluginToVault adds a Claude Code plugin to the vault directory.
+// Returns the plugin source directory path.
+func (e *TestEnv) AddPluginToVault(vaultDir, name, version string) string {
+	e.t.Helper()
+
+	pluginDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "claude-code-plugin"
+version = "%s"
+description = "Test plugin %s"
+
+[claude-code-plugin]
+manifest-file = ".claude-plugin/plugin.json"
+`, name, version, name)
+
+	pluginJSON := fmt.Sprintf(`{
+  "name": "%s",
+  "description": "Test plugin %s",
+  "version": "%s",
+  "author": { "name": "Test Author" }
+}`, name, name, version)
+
+	e.WriteFile(filepath.Join(pluginDir, "metadata.toml"), metadata)
+	e.MkdirAll(filepath.Join(pluginDir, ".claude-plugin"))
+	e.WriteFile(filepath.Join(pluginDir, ".claude-plugin", "plugin.json"), pluginJSON)
+	e.WriteFile(filepath.Join(pluginDir, "README.md"), "# "+name)
+
+	return pluginDir
+}

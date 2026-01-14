@@ -89,6 +89,7 @@ readme = "README.md"         # Path to readme file in package
 - `hook`: Event hook with script or prompt file
 - `mcp`: Packaged MCP server (includes server code)
 - `mcp-remote`: Remote MCP configuration (no server code, just connection config)
+- `claude-code-plugin`: Claude Code plugin bundle (contains commands, skills, agents, etc.)
 
 ## Type-Specific Configuration
 
@@ -342,6 +343,71 @@ hosted-github/
   (that's it!)
 ```
 
+### Claude Code Plugin (`type = "claude-code-plugin"`)
+
+**Required Section**: `[claude-code-plugin]`
+
+**Optional Fields**:
+
+- `manifest-file`: Path to the plugin manifest (default: `.claude-plugin/plugin.json`)
+- `auto-enable`: Whether to automatically enable the plugin on install (default: true)
+- `marketplace`: Name of the marketplace where the plugin is published
+- `min-client-version`: Minimum required Claude Code version
+
+**Important**: Claude Code plugins are bundles that can contain multiple sub-assets (commands, skills, agents, hooks, MCP servers). The plugin must include a `.claude-plugin/plugin.json` manifest file.
+
+```toml
+[asset]
+name = "my-dev-plugin"
+version = "1.0.0"
+type = "claude-code-plugin"
+description = "Development utilities plugin for Claude Code"
+
+[claude-code-plugin]
+manifest-file = ".claude-plugin/plugin.json"
+auto-enable = true
+min-client-version = "1.0.0"
+```
+
+**Package Structure**:
+
+```
+my-dev-plugin/
+  metadata.toml
+  .claude-plugin/
+    plugin.json              # Required manifest
+  commands/                  # Optional slash commands
+    deploy.md
+    test.md
+  skills/                    # Optional skills
+    code-review/
+      SKILL.md
+  agents/                    # Optional agents
+  hooks/                     # Optional hooks
+    hooks.json
+  .mcp.json                  # Optional MCP server config
+  README.md
+```
+
+**plugin.json format**:
+
+```json
+{
+  "name": "my-dev-plugin",
+  "description": "Development utilities plugin",
+  "version": "1.0.0",
+  "author": { "name": "Your Name" }
+}
+```
+
+**Installation**:
+
+- Plugins install to `~/.claude/plugins/{plugin-name}/` (global)
+- When `auto-enable = true` (default), the plugin is automatically enabled in `settings.json`
+- Claude Code handles sub-asset loading internally
+
+**Note**: This asset type is only supported by Claude Code clients.
+
 ## Dependencies
 
 Dependencies are specified as an array of dependency strings, following PEP 508 style:
@@ -421,7 +487,7 @@ This section is ignored by the core SX tooling but available for custom tools an
 - `[asset]` section required
 - `name`, `version`, `type` fields required
 - `version` must be valid semantic version (X.Y.Z)
-- `type` must be one of: skill, command, agent, hook, mcp, mcp-remote
+- `type` must be one of: skill, command, agent, hook, mcp, mcp-remote, claude-code-plugin
 
 ### Type-Specific Validation
 
@@ -448,6 +514,12 @@ This section is ignored by the core SX tooling but available for custom tools an
 - Must have `[mcp]` section
 - Must have `command` and `args` fields
 - Package may contain only metadata.toml
+
+**claude-code-plugin**:
+
+- Must have `[claude-code-plugin]` section
+- Package must include `.claude-plugin/plugin.json` manifest
+- Plugin manifest must be valid JSON with name field
 
 ## Integration with Lock File
 
@@ -619,6 +691,29 @@ requires = ["curl", "jq"]
 
 [custom]
 supported-protocols = ["rest", "graphql", "grpc"]
+```
+
+### Claude Code Plugin
+
+```toml
+[asset]
+name = "devops-toolkit"
+version = "2.0.0"
+type = "claude-code-plugin"
+description = "DevOps utilities plugin with deployment commands and monitoring skills"
+license = "MIT"
+authors = ["DevOps Team <devops@company.com>"]
+keywords = ["devops", "deployment", "monitoring", "ci-cd"]
+repository = "https://github.com/company/devops-toolkit"
+
+[claude-code-plugin]
+manifest-file = ".claude-plugin/plugin.json"
+auto-enable = true
+min-client-version = "1.0.0"
+
+[custom]
+internal-team = "platform"
+requires-vpn = true
 ```
 
 ## Migration from Current System

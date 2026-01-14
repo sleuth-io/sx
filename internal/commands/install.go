@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/config"
@@ -15,6 +16,7 @@ import (
 	"github.com/sleuth-io/sx/internal/gitutil"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/scope"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
@@ -124,7 +126,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	installResult := installAssets(ctx, downloadResult.Downloads, env.GitContext, env.CurrentScope, env.Clients, out)
 
 	// Save new installation state (saves ALL assets from lock file, not just changed ones)
-	saveInstallationState(tracker, sortedAssets, env.CurrentScope, targetClientIDs, out)
+	saveInstallationState(tracker, sortedAssets, downloadResult.Downloads, env.CurrentScope, targetClientIDs, out)
 
 	// Ensure skills support is configured for all clients (creates local rules files, etc.)
 	ensureAssetSupport(ctx, env.Clients, buildInstallScope(env.CurrentScope, env.GitContext), out)
@@ -464,17 +466,30 @@ func ensureAssetSupport(ctx context.Context, targetClients []clients.Client, sco
 }
 
 // saveInstallationState saves the current installation state to tracker file
-func saveInstallationState(tracker *assets.Tracker, sortedAssets []*lockfile.Asset, currentScope *scope.Scope, targetClientIDs []string, out *outputHelper) {
+func saveInstallationState(tracker *assets.Tracker, sortedAssets []*lockfile.Asset, downloads []*assets.AssetWithMetadata, currentScope *scope.Scope, targetClientIDs []string, out *outputHelper) {
+	// Build metadata lookup map from downloads
+	metadataByName := make(map[string]*assets.AssetWithMetadata)
+	for _, d := range downloads {
+		metadataByName[d.Asset.Name] = d
+	}
+
 	for _, art := range sortedAssets {
 		key := assetKeyForInstall(art, currentScope)
-		tracker.UpsertAsset(assets.InstalledAsset{
+		installed := assets.InstalledAsset{
 			Name:       art.Name,
 			Version:    art.Version,
 			Type:       art.Type.Key,
 			Repository: key.Repository,
 			Path:       key.Path,
 			Clients:    targetClientIDs,
-		})
+		}
+
+		// Extract type-specific config from metadata
+		if download, ok := metadataByName[art.Name]; ok && download.Metadata != nil {
+			installed.Config = extractAssetConfig(art.Type, download.Metadata)
+		}
+
+		tracker.UpsertAsset(installed)
 	}
 
 	if err := assets.SaveTracker(tracker); err != nil {
@@ -482,6 +497,23 @@ func saveInstallationState(tracker *assets.Tracker, sortedAssets []*lockfile.Ass
 		log := logger.Get()
 		log.Error("failed to save tracker", "error", err)
 	}
+}
+
+// extractAssetConfig extracts type-specific config from metadata that should be persisted
+func extractAssetConfig(assetType asset.Type, meta *metadata.Metadata) map[string]string {
+	config := make(map[string]string)
+
+	switch assetType {
+	case asset.TypeClaudeCodePlugin:
+		if meta.ClaudeCodePlugin != nil && meta.ClaudeCodePlugin.Marketplace != "" {
+			config["marketplace"] = meta.ClaudeCodePlugin.Marketplace
+		}
+	}
+
+	if len(config) == 0 {
+		return nil
+	}
+	return config
 }
 
 // filterClientsByConfig returns only the clients that are both detected as installed

@@ -46,6 +46,8 @@ func DetectAssetType(files []string, name, version string) *metadata.Metadata {
 
 func init() {
 	// Register all detectors
+	// ClaudeCodePlugin is registered first since plugins may contain other asset types
+	RegisterDetector(func() AssetTypeDetector { return &ClaudeCodePluginDetector{} })
 	RegisterDetector(func() AssetTypeDetector { return &SkillDetector{} })
 	RegisterDetector(func() AssetTypeDetector { return &AgentDetector{} })
 	RegisterDetector(func() AssetTypeDetector { return &CommandDetector{} })

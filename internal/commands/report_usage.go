@@ -71,6 +71,7 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 		&detectors.MCPDetector{},
 		&detectors.MCPRemoteDetector{},
 		&detectors.HookDetector{},
+		&detectors.ClaudeCodePluginDetector{},
 	}
 
 	// Try to detect asset usage from each handler
