@@ -73,6 +73,14 @@ func (m *Metadata) Validate() error {
 		if err := m.MCP.Validate(); err != nil {
 			return fmt.Errorf("mcp: %w", err)
 		}
+
+	case asset.TypeClaudeCodePlugin:
+		// ClaudeCodePlugin section is optional - all fields have defaults
+		if m.ClaudeCodePlugin != nil {
+			if err := m.ClaudeCodePlugin.Validate(); err != nil {
+				return fmt.Errorf("claude-code-plugin: %w", err)
+			}
+		}
 	}
 
 	return nil
@@ -99,7 +107,7 @@ func (a *Asset) Validate() error {
 	}
 
 	if !a.Type.IsValid() {
-		return fmt.Errorf("invalid asset type: %s (must be one of: skill, command, agent, hook, mcp, mcp-remote)", a.Type)
+		return fmt.Errorf("invalid asset type: %s (must be one of: skill, command, agent, hook, mcp, mcp-remote, claude-code-plugin)", a.Type)
 	}
 
 	return nil
@@ -164,6 +172,14 @@ func (m *MCPConfig) Validate() error {
 		return errors.New("timeout must be non-negative")
 	}
 
+	return nil
+}
+
+// Validate validates the [claude-code-plugin] section
+func (c *ClaudeCodePluginConfig) Validate() error {
+	// All fields are optional with sensible defaults
+	// ManifestFile defaults to .claude-plugin/plugin.json
+	// AutoEnable defaults to true
 	return nil
 }
 

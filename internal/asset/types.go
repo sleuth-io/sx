@@ -38,6 +38,11 @@ var (
 		Label:       "Hook",
 		Description: "Git hook script",
 	}
+	TypeClaudeCodePlugin = Type{
+		Key:         "claude-code-plugin",
+		Label:       "Claude Code Plugin",
+		Description: "Claude Code plugin with bundled assets",
+	}
 )
 
 // IsValid checks if the asset type is valid
@@ -47,7 +52,8 @@ func (t Type) IsValid() bool {
 		t.Key == TypeSkill.Key ||
 		t.Key == TypeAgent.Key ||
 		t.Key == TypeCommand.Key ||
-		t.Key == TypeHook.Key
+		t.Key == TypeHook.Key ||
+		t.Key == TypeClaudeCodePlugin.Key
 }
 
 // String returns the string representation (key) of the asset type
@@ -70,6 +76,8 @@ func FromString(key string) Type {
 		return TypeCommand
 	case "hook":
 		return TypeHook
+	case "claude-code-plugin":
+		return TypeClaudeCodePlugin
 	default:
 		return Type{Key: key} // Unknown type
 	}
@@ -95,6 +103,7 @@ func AllTypes() []Type {
 		TypeAgent,
 		TypeCommand,
 		TypeHook,
+		TypeClaudeCodePlugin,
 	}
 }
 
@@ -103,4 +112,5 @@ type Asset struct {
 	Name    string
 	Version string
 	Type    Type
+	Config  map[string]string // Type-specific config (e.g., marketplace for plugins)
 }

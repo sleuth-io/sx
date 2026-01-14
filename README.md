@@ -31,12 +31,13 @@ sx install
 
 ### Already using Claude Code?
 
-If you've built up skills, commands, or MCP configs in your `.claude` directory, `sx` helps you version, sync across machines, and share with teammates.
+If you've built up skills, plugins, or MCP configs in your `.claude` directory, `sx` helps you version, sync across machines, and share with teammates.
 
 ```bash
 # Add your existing skills/commands (sx auto-detects the type)
 sx add ~/.claude/commands/my-command
 sx add ~/.claude/skills/my-skill
+sx add code-review@claude-plugins-official
 ```
 
 Your prompt files stay exactly as they are - `sx` just wraps them with metadata for versioning.
@@ -48,6 +49,7 @@ Your prompt files stay exactly as they are - `sx` just wraps them with metadata 
 - **Commands** - Slash commands for quick actions
 - **Hooks** - Automation triggers for lifecycle events
 - **MCP Servers** (experimental) - Model Context Protocol (MCP) servers for external integrations
+- **Plugins** - Claude Code plugin bundles with commands, skills, and more
 
 ## Distribution models
 

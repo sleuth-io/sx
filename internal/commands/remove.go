@@ -11,7 +11,6 @@ import (
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
-	"github.com/sleuth-io/sx/internal/version"
 )
 
 // NewRemoveCommand creates the remove command
@@ -65,58 +64,55 @@ func runRemove(cmd *cobra.Command, assetName, versionFlag string, yes bool) erro
 		return fmt.Errorf("failed to create vault: %w", err)
 	}
 
-	// If no version specified, find the highest version from the lock file
-	assetVersion := versionFlag
-	if assetVersion == "" {
-		status.Start("Loading lock file")
-		lockFileData, _, _, err := vault.GetLockFile(ctx, "")
-		if err != nil {
-			status.Fail("Failed to get lock file")
-			return fmt.Errorf("failed to get lock file: %w", err)
-		}
+	// Get all versions from the lock file
+	status.Start("Loading lock file")
+	lockFileData, _, _, err := vault.GetLockFile(ctx, "")
+	if err != nil {
+		status.Fail("Failed to get lock file")
+		return fmt.Errorf("failed to get lock file: %w", err)
+	}
 
-		lf, err := lockfile.Parse(lockFileData)
-		if err != nil {
-			status.Fail("Failed to parse lock file")
-			return fmt.Errorf("failed to parse lock file: %w", err)
-		}
-		status.Clear()
+	lf, err := lockfile.Parse(lockFileData)
+	if err != nil {
+		status.Fail("Failed to parse lock file")
+		return fmt.Errorf("failed to parse lock file: %w", err)
+	}
+	status.Clear()
 
-		// Collect all versions of this asset
-		var versions []string
-		for _, asset := range lf.Assets {
-			if asset.Name == assetName {
-				versions = append(versions, asset.Version)
-			}
+	// Collect all versions of this asset
+	var versions []string
+	for _, asset := range lf.Assets {
+		if asset.Name == assetName {
+			versions = append(versions, asset.Version)
 		}
+	}
 
-		if len(versions) == 0 {
-			return fmt.Errorf("asset %q not found in lock file", assetName)
-		}
+	if len(versions) == 0 {
+		return fmt.Errorf("asset %q not found in lock file", assetName)
+	}
 
-		// Select the highest version
-		assetVersion, err = version.SelectBest(versions)
-		if err != nil {
-			return fmt.Errorf("failed to determine version: %w", err)
-		}
+	// If version specified, only remove that version
+	// Otherwise, remove all versions
+	versionsToRemove := versions
+	if versionFlag != "" {
+		versionsToRemove = []string{versionFlag}
 	}
 
 	// Remove from vault (includes git operations for GitVault)
 	_, isGitVault := vault.(*vaultpkg.GitVault)
-	if isGitVault {
-		status.Start("Removing from lock file and pushing to repository")
-	} else {
-		status.Start("Removing from lock file")
-	}
 
-	if err := vault.RemoveAsset(ctx, assetName, assetVersion); err != nil {
-		status.Fail("Failed to remove asset")
-		return fmt.Errorf("failed to remove asset: %w", err)
-	}
+	for _, assetVersion := range versionsToRemove {
+		if isGitVault {
+			status.Start(fmt.Sprintf("Removing %s@%s from lock file and pushing", assetName, assetVersion))
+		} else {
+			status.Start(fmt.Sprintf("Removing %s@%s from lock file", assetName, assetVersion))
+		}
 
-	if isGitVault {
-		status.Done(fmt.Sprintf("Removed %s@%s", assetName, assetVersion))
-	} else {
+		if err := vault.RemoveAsset(ctx, assetName, assetVersion); err != nil {
+			status.Fail("Failed to remove asset")
+			return fmt.Errorf("failed to remove asset: %w", err)
+		}
+
 		status.Done(fmt.Sprintf("Removed %s@%s", assetName, assetVersion))
 	}
 

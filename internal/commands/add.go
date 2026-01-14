@@ -33,13 +33,14 @@ func NewAddCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add [source-or-asset-name]",
 		Short: "Add an asset or configure an existing one",
-		Long: `Add an asset from a local zip file, directory, URL, or GitHub path.
+		Long: `Add an asset from a local zip file, directory, URL, GitHub path, or marketplace.
 If the argument is an existing asset name, configure its installation scope instead.
 
 Examples:
   sx add ./my-skill           # Add from local directory
   sx add https://...          # Add from URL
   sx add https://github.com/owner/repo/tree/main/path  # Add from GitHub
+  sx add plugin@marketplace   # Add plugin from Claude Code marketplace
   sx add my-skill             # Configure scope for existing asset`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -71,6 +72,11 @@ func runAddWithOptions(cmd *cobra.Command, input string, promptInstall bool) err
 
 	out := newOutputHelper(cmd)
 	status := components.NewStatus(cmd.OutOrStdout())
+
+	// Check if input is plugin@marketplace syntax
+	if input != "" && IsMarketplaceReference(input) {
+		return addFromMarketplace(ctx, cmd, out, status, input, promptInstall)
+	}
 
 	// Check if input is an existing asset name (not a file, directory, or URL)
 	if input != "" && !isURL(input) && !github.IsTreeURL(input) {
