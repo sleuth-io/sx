@@ -61,11 +61,13 @@ func (s *Server) Run(ctx context.Context) error {
 
 	mcpServer := mcp.NewServer(impl, nil)
 
-	// Register the read_skill tool - returns plain markdown text
-	mcp.AddTool(mcpServer, &mcp.Tool{
-		Name:        "read_skill",
-		Description: "Read a skill's full instructions and content. Returns the skill content as markdown with @file references resolved to absolute paths.",
-	}, s.handleReadSkill)
+	// NOTE: read_skill tool is available but not currently registered.
+	// It can be re-enabled for clients that don't support native skill discovery.
+	// To re-enable, uncomment the following:
+	// mcp.AddTool(mcpServer, &mcp.Tool{
+	// 	Name:        "read_skill",
+	// 	Description: "Read a skill's full instructions and content. Returns the skill content as markdown with @file references resolved to absolute paths.",
+	// }, s.handleReadSkill)
 
 	// Register additional tools from vault (e.g., query tool for Sleuth vault)
 	s.registerVaultTools(ctx, mcpServer)

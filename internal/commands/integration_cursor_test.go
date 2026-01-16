@@ -139,29 +139,11 @@ prompt-file = "SKILL.md"
 		t.Errorf("Skill file content doesn't match expected content. Got: %s", string(content))
 	}
 
-	// Verify rules file was generated in the local working directory
-	// (Cursor doesn't load global rules, so we create them locally)
+	// Verify skills.md rules file does NOT exist (Cursor now discovers skills natively)
 	localCursorDir := filepath.Join(workingDir, ".cursor")
 	rulesFile := filepath.Join(localCursorDir, "rules", "skills.md")
-	if _, err := os.Stat(rulesFile); os.IsNotExist(err) {
-		t.Errorf("Rules file was not generated at: %s", rulesFile)
-	} else {
-		// Verify rules file contains the skill
-		rulesContent, err := os.ReadFile(rulesFile)
-		if err != nil {
-			t.Errorf("Failed to read rules file: %v", err)
-		} else {
-			rulesStr := string(rulesContent)
-			if !strings.Contains(rulesStr, "test-skill") {
-				t.Errorf("Rules file doesn't contain test-skill")
-			}
-			if !strings.Contains(rulesStr, "read_skill") {
-				t.Errorf("Rules file doesn't mention read_skill MCP tool")
-			}
-			if !strings.Contains(rulesStr, "alwaysApply: true") {
-				t.Errorf("Rules file missing frontmatter")
-			}
-		}
+	if _, err := os.Stat(rulesFile); err == nil {
+		t.Errorf("Legacy rules file should not exist (Cursor discovers skills natively): %s", rulesFile)
 	}
 
 	// Verify MCP server was registered in ~/.cursor/mcp.json (global scope)
@@ -189,9 +171,9 @@ prompt-file = "SKILL.md"
 
 	t.Log("✓ Cursor integration test passed!")
 
-	// Step 5: Verify that running install in a NEW directory still creates local rules
-	// This tests the scenario where global skills exist but we're in a fresh directory
-	t.Log("Step 5: Verify install in new directory creates local rules with global skills")
+	// Step 5: Verify that running install in a NEW directory works correctly
+	// Skills are discovered natively by Cursor, no rules file needed
+	t.Log("Step 5: Verify install in new directory works without creating rules file")
 
 	newWorkingDir := filepath.Join(tempDir, "new-project")
 	if err := os.MkdirAll(newWorkingDir, 0755); err != nil {
@@ -203,33 +185,19 @@ prompt-file = "SKILL.md"
 		t.Fatalf("Failed to change to new working dir: %v", err)
 	}
 
-	// Run install again - should create local rules file with global skills
+	// Run install again
 	installCmd2 := NewInstallCommand()
 	if err := installCmd2.Execute(); err != nil {
 		t.Fatalf("Failed to install in new directory: %v", err)
 	}
 
-	// Verify local rules file was created in the NEW directory
+	// Verify no rules file was created (Cursor discovers skills natively)
 	newLocalCursorDir := filepath.Join(newWorkingDir, ".cursor")
 	newRulesFile := filepath.Join(newLocalCursorDir, "rules", "skills.md")
-	if _, err := os.Stat(newRulesFile); os.IsNotExist(err) {
-		t.Errorf("Rules file was not generated in new directory at: %s", newRulesFile)
-	} else {
-		// Verify rules file contains the global skill
-		rulesContent, err := os.ReadFile(newRulesFile)
-		if err != nil {
-			t.Errorf("Failed to read rules file in new directory: %v", err)
-		} else {
-			rulesStr := string(rulesContent)
-			if !strings.Contains(rulesStr, "test-skill") {
-				t.Errorf("Rules file in new directory doesn't contain global test-skill")
-			}
-			if !strings.Contains(rulesStr, "alwaysApply: true") {
-				t.Errorf("Rules file in new directory missing frontmatter")
-			}
-			t.Log("✓ Local rules file created in new directory with global skills")
-		}
+	if _, err := os.Stat(newRulesFile); err == nil {
+		t.Errorf("Legacy rules file should not exist in new directory: %s", newRulesFile)
 	}
+	t.Log("✓ Install in new directory completed (native skill discovery)")
 }
 
 // TestCursorMCPIntegration tests MCP installation for Cursor

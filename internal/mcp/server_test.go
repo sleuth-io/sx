@@ -96,6 +96,9 @@ func (m *mockClient) addSkill(name, description, version, content, baseDir strin
 	}
 }
 
+// TestServer_ReadSkill tests the read_skill handler functionality.
+// Note: read_skill is not currently exposed via MCP (clients use native skill discovery)
+// but the code is kept for potential future use with clients that don't support it.
 func TestServer_ReadSkill(t *testing.T) {
 	// Create a mock client with test skills
 	mock := newMockClient()
@@ -199,6 +202,8 @@ func TestServer_ReadSkill(t *testing.T) {
 	})
 }
 
+// TestServer_Integration tests read_skill with actual file system.
+// Note: read_skill is not currently exposed via MCP but code is kept for future use.
 func TestServer_Integration(t *testing.T) {
 	// Create a temp directory with an actual skill
 	tempDir := t.TempDir()
@@ -391,6 +396,8 @@ func (m *mockUsageReporter) getReports() []usageReport {
 	return append([]usageReport{}, m.reports...)
 }
 
+// TestServer_ReadSkill_ReportsUsage tests that read_skill reports usage statistics.
+// Note: read_skill is not currently exposed via MCP but code is kept for future use.
 func TestServer_ReadSkill_ReportsUsage(t *testing.T) {
 	// Create a mock client with a test skill
 	mock := newMockClient()

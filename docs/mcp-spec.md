@@ -4,10 +4,11 @@
 
 sx provides a built-in MCP (Model Context Protocol) server that exposes tools to AI coding assistants. When you run `sx serve`, it starts an MCP server over stdio that provides:
 
-1. **read_skill** - Read installed skill content with resolved file references
-2. **query** - Query integrated services (GitHub, CircleCI, Linear) using natural language
+1. **query** - Query integrated services (GitHub, CircleCI, Linear) using natural language
 
-The MCP server is automatically configured when you install sx assets, allowing AI assistants to access skills and query external services without additional setup.
+The MCP server is automatically configured when you install sx assets, allowing AI assistants to query external services without additional setup.
+
+> **Note:** Skills are now discovered natively by AI clients (Cursor, Claude Code) from their respective skill directories (`.cursor/skills/`, `.claude/skills/`). The `read_skill` tool is no longer exposed but the code remains available for clients that don't support native skill discovery.
 
 ## Starting the MCP Server
 
@@ -18,41 +19,6 @@ sx serve
 This starts the MCP server over stdio, ready to accept tool calls from AI clients.
 
 ## Built-in Tools
-
-### read_skill
-
-Read a skill's full instructions and content.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `name` | string | Yes | Name of the skill to read |
-
-**Returns:** The skill content as markdown with `@file` references resolved to absolute paths.
-
-**Example:**
-
-```json
-{
-  "name": "read_skill",
-  "arguments": {
-    "name": "code-reviewer"
-  }
-}
-```
-
-**File Reference Resolution:**
-
-Skills can reference local files using `@filename` syntax. When read through the MCP server, these references are automatically resolved to absolute paths if the file exists:
-
-```markdown
-<!-- In skill content -->
-See the coding standards at @coding-standards.md
-
-<!-- Resolved output -->
-See the coding standards at @/home/user/project/.claude/skills/my-skill/coding-standards.md
-```
 
 ### query
 
@@ -206,7 +172,6 @@ This skill uses:
 When skills reference MCP tools, they follow the pattern: `mcp__<server>__<tool>`
 
 For sx tools:
-- `mcp__sx__read_skill` - Read skill content
 - `mcp__sx__query` - Query integrations
 
 ### Automatic Dependency Detection
@@ -274,27 +239,21 @@ The query tool is only available with Sleuth vault, as it connects to Sleuth's A
 │ (Claude Code)   │                │   MCP Server    │
 └─────────────────┘                └────────┬────────┘
                                             │
-                                   ┌────────┴────────┐
-                                   │                 │
-                              ┌────▼────┐     ┌──────▼──────┐
-                              │read_skill│     │   query     │
-                              │  Tool    │     │   Tool      │
-                              └────┬────┘     └──────┬──────┘
-                                   │                 │
-                              ┌────▼────┐     ┌──────▼──────┐
-                              │ Local   │     │ Sleuth API  │
-                              │ Skills  │     │ (SSE)       │
-                              └─────────┘     └─────────────┘
-                                                     │
-                                              ┌──────┴──────┐
-                                              │             │
-                                         ┌────▼───┐  ┌──────▼────┐
-                                         │ GitHub │  │ CircleCI  │
-                                         └────────┘  └───────────┘
-                                              │
-                                         ┌────▼───┐
-                                         │ Linear │
-                                         └────────┘
+                                   ┌────────▼────────┐
+                                   │     query       │
+                                   │     Tool        │
+                                   └────────┬────────┘
+                                            │
+                                   ┌────────▼────────┐
+                                   │   Sleuth API    │
+                                   │     (SSE)       │
+                                   └────────┬────────┘
+                                            │
+                          ┌─────────────────┼─────────────────┐
+                          │                 │                 │
+                     ┌────▼───┐       ┌─────▼─────┐     ┌─────▼────┐
+                     │ GitHub │       │ CircleCI  │     │  Linear  │
+                     └────────┘       └───────────┘     └──────────┘
 ```
 
 ## Future Enhancements
