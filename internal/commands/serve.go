@@ -17,13 +17,13 @@ func NewServeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the MCP server over stdio",
-		Long: `Start an MCP (Model Context Protocol) server that exposes asset operations.
+		Long: `Start an MCP (Model Context Protocol) server that exposes tools for AI clients.
 
-The server runs over stdio and provides tools for AI clients to read installed assets.
-This enables AI coding assistants like Cursor to access assets installed by sx.
+The server runs over stdio and provides tools for querying integrated services.
+This enables AI coding assistants to query GitHub, CircleCI, Linear, and other services.
 
 Tools provided:
-  - read_skill: Read a skill's content and base directory for resolving file references`,
+  - query: Query integrated services using natural language`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runServe(cmd, args)
 		},
