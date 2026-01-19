@@ -1,14 +1,25 @@
 # sx
 
-sx is a package manager for AI coding assistants. Create, version, and distribute reusable AI
-tools across your entire team. Think NPM for AI agents -- install once, use everywhere.
+sx is your team's private npm for AI assets - skills, MCP configs, commands, and more. Capture
+what your best AI users have learned and spread it to everyone automatically.
 
 ![Demo](docs/demo.gif)
 
 ## Why sx?
-- Onboard new developers instantly with your team's tribal knowledge
-- Expand successful AI use from experts to everyone
-- Spread best practices to any AI tool (coming soon)
+
+Your best developers have figured out how to make AI assistants incredibly productive - custom skills, MCP configs, slash commands, proven patterns. But that knowledge is stuck on their machines.
+
+**Current workarounds don't scale:**
+- **Copy into each repo** - Duplication nightmare, no central updates, version drift
+- **Global config** - Bloats context for projects/tasks that don't need those skills
+- **Client plugins** - Manually install each one, locked to one AI client, no bundling
+
+**sx solves this by:**
+- **Sharing expertise** - Turn individual discoveries into team assets
+- **Instant onboarding** - New devs inherit the team's AI playbook on day one
+- **Central updates** - Change once in your vault, everyone gets the update
+- **Scoped installation** - Right assets for each repo, no context bloat
+- **Works with any AI client** - Claude Code, Cursor, and more (coming soon)
 
 ## Quickstart
 
@@ -73,7 +84,7 @@ sx init --type git --repo git@github.com:yourteam/skills.git
 
 ### Skills.new (Large teams and enterprise)
 
-Centralized, effortless management with a UI for discovery, creation, and sharing at scale
+Centralized management with a UI for discovery, creation, sharing, and usage analytics
 
 ```bash
 sx init --type sleuth
@@ -81,11 +92,11 @@ sx init --type sleuth
 
 ## How it works
 
-sx uses a lock file, like package-lock.json, for deterministic installations in the right context:
+sx uses a lock file (like package-lock.json) for deterministic installations across your team:
 
 1. **Create** assets with metadata (name, version, dependencies)
-2. **Publish** to your chosen vault
-3. **Share** the asset globally, per repository, or even per path in a repository (monorepo support!)
+2. **Share** to your vault
+3. **Install** globally, per repository, or even per path (monorepo support!)
 4. **Auto-install** on new Claude Code sessions
 5. **Stay synchronized** - everyone gets the same tools automatically
 
