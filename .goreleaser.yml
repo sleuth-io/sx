@@ -59,3 +59,25 @@ release:
   draft: false
   prerelease: auto
   name_template: "{{.ProjectName}} v{{.Version}}"
+
+brews:
+  - name: sx
+    homepage: https://github.com/sleuth-io/sx
+    description: "Your team's private npm for AI assets - skills, MCP configs, commands, and more"
+    license: MIT
+    tap:
+      owner: sleuth-io
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    install: |
+      bin.install "sx"
+    caveats: |
+      To let Homebrew manage updates, disable sx's auto-updater by adding
+      to your shell profile:
+
+        export DISABLE_AUTOUPDATER=1
+
+      Then use `brew upgrade sx` to update.

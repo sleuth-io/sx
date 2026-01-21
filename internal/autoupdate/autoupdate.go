@@ -22,6 +22,16 @@ const (
 	updateTimeout   = 30 * time.Second
 )
 
+// isEnvTrue checks if an environment variable is set to a truthy value
+func isEnvTrue(key string) bool {
+	val := os.Getenv(key)
+	switch val {
+	case "1", "true", "TRUE", "yes", "YES", "on", "ON":
+		return true
+	}
+	return false
+}
+
 // CheckAndUpdateInBackground checks for updates and installs them automatically if found.
 // It only checks once per day (tracked via cache file).
 // This function returns immediately and doesn't block.
@@ -35,6 +45,12 @@ func CheckAndUpdateInBackground() {
 
 // checkAndUpdate performs the actual update check and installation
 func checkAndUpdate() error {
+	// Skip if auto-update is disabled via environment (e.g., Homebrew installations)
+	// Uses same env var as Claude Code for consistency
+	if isEnvTrue("DISABLE_AUTOUPDATER") {
+		return nil
+	}
+
 	// Only check if we're running a real release (not dev build)
 	currentVersion := buildinfo.Version
 	if currentVersion == "dev" || currentVersion == "" {

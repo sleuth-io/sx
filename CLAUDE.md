@@ -1,6 +1,6 @@
 # sx - Coding Agent Guide
 
-A CLI tool for managing AI assets - reusable units of AI agent behavior.
+Your team's private npm for AI assets - skills, MCP configs, commands, and more.
 
 ## Quick Commands
 
