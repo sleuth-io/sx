@@ -23,11 +23,20 @@ Your best developers have figured out how to make AI assistants incredibly produ
 
 ## Quickstart
 
+**Install via Homebrew (macOS/Linux):**
+
+```bash
+brew tap sleuth-io/tap
+brew install sx
+```
+
+**Or via shell script:**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sleuth-io/sx/main/install.sh | bash
 ```
 
-then
+Then
 
 ```bash
 # Initialize
