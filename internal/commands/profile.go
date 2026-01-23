@@ -38,9 +38,24 @@ func newProfileListCommand() *cobra.Command {
 func newProfileAddCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "add <profile-name>",
-		Short: "Add a new profile",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runProfileAdd,
+		Short: "<name> Add a new profile ",
+		Long: `Add a new configuration profile with the specified name.
+
+Each profile can connect to a different vault (local path, Git repo, or Skills.new).
+After creating a profile, use 'sx profile use <name>' to switch to it.`,
+		Example: `  sx profile add work
+  sx profile add personal
+  sx profile add local`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return errors.New("missing profile name\n\nUsage: sx profile add <profile-name>\n\nExample: sx profile add work")
+			}
+			if len(args) > 1 {
+				return fmt.Errorf("expected 1 argument, got %d", len(args))
+			}
+			return nil
+		},
+		RunE: runProfileAdd,
 	}
 }
 
