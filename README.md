@@ -152,7 +152,7 @@ See LICENSE file for details.
 - [Metadata Spec](docs/metadata-spec.md) - Skill metadata format
 - [Lock Spec](docs/lock-spec.md) - Lock file format
 - [MCP Spec](docs/mcp-spec.md) - MCP server and query tool
-- [Profiles Spec](docs/profiles-spec.md) - Multiple configuration profiles
+- [Profiles](docs/profiles.md) - Multiple configuration profiles
 
 
 ### Prerequisites
