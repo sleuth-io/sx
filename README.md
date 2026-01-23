@@ -49,6 +49,14 @@ sx add /path/to/my-skill
 sx install
 ```
 
+**Multiple vaults?** Use profiles to switch between them:
+
+```bash
+sx profile add work        # Add a new profile
+sx profile use work        # Switch to it
+sx profile list            # See all profiles
+```
+
 ### Already using Claude Code?
 
 If you've built up skills, plugins, or MCP configs in your `.claude` directory, `sx` helps you version, sync across machines, and share with teammates.
@@ -144,6 +152,7 @@ See LICENSE file for details.
 - [Metadata Spec](docs/metadata-spec.md) - Skill metadata format
 - [Lock Spec](docs/lock-spec.md) - Lock file format
 - [MCP Spec](docs/mcp-spec.md) - MCP server and query tool
+- [Profiles](docs/profiles.md) - Multiple configuration profiles
 
 
 ### Prerequisites

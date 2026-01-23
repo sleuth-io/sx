@@ -63,10 +63,15 @@ func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL, cl
 	// Load existing config if present (for pre-populating options)
 	var existingCfg *config.Config
 	if config.Exists() {
-		styledOut.Warning("Configuration already exists.")
-		confirmed, err := components.Confirm("Overwrite existing configuration?", false)
-		if err != nil || !confirmed {
-			return errors.New("initialization cancelled")
+		// Check if we're adding a new profile (profile override is set) or reinitializing
+		isAddingProfile := config.GetActiveProfileOverride() != ""
+		if !isAddingProfile {
+			// Only prompt for confirmation when overwriting, not when adding a profile
+			styledOut.Warning("Configuration already exists.")
+			confirmed, err := components.Confirm("Overwrite existing configuration?", false)
+			if err != nil || !confirmed {
+				return errors.New("initialization cancelled")
+			}
 		}
 		// Load existing config to pre-populate options
 		existingCfg, _ = config.Load()
