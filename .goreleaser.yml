@@ -65,7 +65,7 @@ brews:
     homepage: https://github.com/sleuth-io/sx
     description: "Your team's private npm for AI assets - skills, MCP configs, commands, and more"
     license: MIT
-    tap:
+    repository:
       owner: sleuth-io
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
