@@ -106,16 +106,61 @@ func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL, cl
 
 // runPostInit runs common steps after successful initialization
 func runPostInit(cmd *cobra.Command, ctx context.Context, enabledClients []string) {
+	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 	out := newOutputHelper(cmd)
 
 	// Install hooks for enabled clients only
 	installSelectedClientHooks(ctx, out, enabledClients)
+
+	// Show summary of what was configured
+	showInitSummary(cmd, enabledClients)
 
 	// Offer to import existing assets from clients
 	promptImportAssets(cmd, ctx, enabledClients)
 
 	// Offer to install featured skills
 	promptFeaturedSkills(cmd, ctx)
+
+	// Final hint
+	styledOut.Newline()
+	styledOut.Muted("Run 'sx list' to see your assets or 'sx add' to add more.")
+}
+
+// showInitSummary displays a summary of what was configured
+func showInitSummary(cmd *cobra.Command, enabledClients []string) {
+	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
+
+	cfg, err := config.Load()
+	if err != nil {
+		return
+	}
+
+	styledOut.Newline()
+	styledOut.Success("Setup complete!")
+
+	// Show vault type
+	switch cfg.Type {
+	case config.RepositoryTypePath:
+		styledOut.KeyValue("Vault", "Local")
+	case config.RepositoryTypeGit:
+		styledOut.KeyValue("Vault", "Git ("+cfg.RepositoryURL+")")
+	case config.RepositoryTypeSleuth:
+		styledOut.KeyValue("Vault", "Skills.new")
+	}
+
+	// Show enabled clients
+	if len(enabledClients) > 0 {
+		clientRegistry := clients.Global()
+		var clientNames []string
+		for _, id := range enabledClients {
+			if c, err := clientRegistry.Get(id); err == nil {
+				clientNames = append(clientNames, c.DisplayName())
+			}
+		}
+		if len(clientNames) > 0 {
+			styledOut.KeyValue("Clients", strings.Join(clientNames, ", "))
+		}
+	}
 }
 
 // runInitInteractive runs the init command in interactive mode
@@ -308,7 +353,6 @@ func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL strin
 
 	styledOut.Newline()
 	styledOut.Success("Authentication successful!")
-	styledOut.Muted("Configuration saved.")
 
 	return nil
 }
@@ -339,8 +383,6 @@ func initGitRepository(cmd *cobra.Command, ctx context.Context, enabledClients [
 
 // configureGitRepo configures a Git repository
 func configureGitRepo(cmd *cobra.Command, ctx context.Context, repoURL string, enabledClients []string) error {
-	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
-
 	// Save configuration
 	cfg := &config.Config{
 		Type:           config.RepositoryTypeGit,
@@ -352,17 +394,11 @@ func configureGitRepo(cmd *cobra.Command, ctx context.Context, repoURL string, e
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
-	styledOut.Newline()
-	styledOut.Success("Configuration saved!")
-	styledOut.KeyValue("Git repository", repoURL)
-
 	return nil
 }
 
 // configurePathRepo configures a local path repository
 func configurePathRepo(cmd *cobra.Command, ctx context.Context, repoPath string, enabledClients []string) error {
-	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
-
 	// Convert path to absolute path first
 	var absPath string
 	var err error
@@ -398,9 +434,6 @@ func configurePathRepo(cmd *cobra.Command, ctx context.Context, repoPath string,
 	if err := config.Save(cfg); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
-
-	styledOut.Newline()
-	styledOut.Success("Configuration saved!")
 
 	return nil
 }
@@ -552,15 +585,22 @@ func promptFeaturedSkills(cmd *cobra.Command, ctx context.Context) {
 		return
 	}
 
+	// Ask if user wants to browse community skills (default no for experienced users)
+	styledOut.Newline()
+	browse, err := components.Confirm("Browse popular community skills to help get started?", false)
+	if err != nil || !browse {
+		return
+	}
+
 	var addedAny bool
 	for {
 		styledOut.Newline()
 
-		// Build options with continue at the top, then skills
+		// Build options with done at the top, then skills
 		options := make([]components.Option, len(skills)+1)
 		options[0] = components.Option{
-			Label: "Continue",
-			Value: "continue",
+			Label: "Done",
+			Value: "done",
 		}
 		for i, skill := range skills {
 			options[i+1] = components.Option{
@@ -570,8 +610,8 @@ func promptFeaturedSkills(cmd *cobra.Command, ctx context.Context) {
 			}
 		}
 
-		selected, err := components.SelectWithDefault("Would you like to install a featured asset?", options, 0)
-		if err != nil || selected.Value == "continue" {
+		selected, err := components.SelectWithDefault("Select a skill to add:", options, 0)
+		if err != nil || selected.Value == "done" {
 			break
 		}
 
