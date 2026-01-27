@@ -14,10 +14,15 @@ type MarkdownSection struct {
 
 var headingRegex = regexp.MustCompile(`^(#{2,6})\s+(.+)$`)
 
-// ParseMarkdownSections extracts ## sections from markdown content
+// ParseMarkdownSections extracts ## sections from markdown content.
+// Returns empty slice for empty content or content without ## headings.
+// Sub-headings (###, ####, etc.) are included in their parent section's content.
 func ParseMarkdownSections(content string) []MarkdownSection {
-	var sections []MarkdownSection
+	if content == "" {
+		return []MarkdownSection{}
+	}
 
+	var sections []MarkdownSection
 	lines := strings.Split(content, "\n")
 	var currentSection *MarkdownSection
 	var currentContent strings.Builder

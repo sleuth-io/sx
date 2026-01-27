@@ -57,6 +57,9 @@ func parseRuleFile(content []byte) (*clients.ParsedRule, error) {
 		ClientFields: make(map[string]any),
 	}
 
+	// Known fields that we handle explicitly
+	knownFields := map[string]bool{"globs": true, "description": true, "alwaysApply": true}
+
 	// Extract globs (Cursor's name for path patterns)
 	if globs, ok := fm["globs"]; ok {
 		result.Globs = toStringSlice(globs)
@@ -70,6 +73,13 @@ func parseRuleFile(content []byte) (*clients.ParsedRule, error) {
 	// Extract alwaysApply (Cursor-specific)
 	if alwaysApply, ok := fm["alwaysApply"].(bool); ok {
 		result.ClientFields["alwaysApply"] = alwaysApply
+	}
+
+	// Preserve unknown fields for lossless round-trip
+	for key, value := range fm {
+		if !knownFields[key] {
+			result.ClientFields[key] = value
+		}
 	}
 
 	return result, nil

@@ -73,6 +73,7 @@ Your prompt files stay exactly as they are - `sx` just wraps them with metadata 
 ## What can you build and share?
 
 - **Skills** - Custom prompts and behaviors for specific tasks
+- **Rules** - Coding standards and guidelines that apply to specific file types or paths
 - **Agents** - Autonomous AI agents with specific goals
 - **Commands** - Slash commands for quick actions
 - **Hooks** - Automation triggers for lifecycle events

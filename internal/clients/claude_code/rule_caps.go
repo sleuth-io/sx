@@ -49,9 +49,13 @@ func parseRuleFile(content []byte) (*clients.ParsedRule, error) {
 	}
 
 	result := &clients.ParsedRule{
-		ClientName: "claude-code",
-		Content:    body,
+		ClientName:   "claude-code",
+		Content:      body,
+		ClientFields: make(map[string]any),
 	}
+
+	// Known fields that we handle explicitly
+	knownFields := map[string]bool{"paths": true, "description": true}
 
 	// Extract paths (Claude Code's name for globs)
 	if paths, ok := fm["paths"]; ok {
@@ -61,6 +65,13 @@ func parseRuleFile(content []byte) (*clients.ParsedRule, error) {
 	// Extract description
 	if desc, ok := fm["description"].(string); ok {
 		result.Description = desc
+	}
+
+	// Preserve unknown fields for lossless round-trip
+	for key, value := range fm {
+		if !knownFields[key] {
+			result.ClientFields[key] = value
+		}
 	}
 
 	return result, nil
