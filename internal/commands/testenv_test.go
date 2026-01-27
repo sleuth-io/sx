@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -186,28 +187,67 @@ func (e *TestEnv) AssertFileNotExists(path string) {
 	}
 }
 
-// AddInstructionToVault adds an instruction asset to the vault directory.
-// Returns the instruction source directory path.
-func (e *TestEnv) AddInstructionToVault(vaultDir, name, version, content string) string {
+// AddRuleToVault adds a rule asset to the vault directory.
+// Returns the rule source directory path.
+func (e *TestEnv) AddRuleToVault(vaultDir, name, version, content string) string {
 	e.t.Helper()
 
-	instrDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+	ruleDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
 
 	metadata := fmt.Sprintf(`[asset]
 name = "%s"
-type = "instruction"
+type = "rule"
 version = "%s"
-description = "Test instruction %s"
+description = "Test rule %s"
 
-[instruction]
+[rule]
 title = "%s"
-prompt-file = "INSTRUCTION.md"
+prompt-file = "RULE.md"
 `, name, version, name, name)
 
-	e.WriteFile(filepath.Join(instrDir, "metadata.toml"), metadata)
-	e.WriteFile(filepath.Join(instrDir, "INSTRUCTION.md"), content)
+	e.WriteFile(filepath.Join(ruleDir, "metadata.toml"), metadata)
+	e.WriteFile(filepath.Join(ruleDir, "RULE.md"), content)
 
-	return instrDir
+	return ruleDir
+}
+
+// AddRuleToVaultWithGlobs adds a rule asset with globs to the vault directory.
+// Returns the rule source directory path.
+func (e *TestEnv) AddRuleToVaultWithGlobs(vaultDir, name, version, content string, globs []string) string {
+	e.t.Helper()
+
+	ruleDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	// Build globs array string
+	globsStr := ""
+	if len(globs) > 0 {
+		var sb strings.Builder
+		sb.WriteString("globs = [")
+		for i, g := range globs {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(fmt.Sprintf("%q", g))
+		}
+		sb.WriteString("]\n")
+		globsStr = sb.String()
+	}
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "rule"
+version = "%s"
+description = "Test rule %s"
+
+[rule]
+title = "%s"
+prompt-file = "RULE.md"
+%s`, name, version, name, name, globsStr)
+
+	e.WriteFile(filepath.Join(ruleDir, "metadata.toml"), metadata)
+	e.WriteFile(filepath.Join(ruleDir, "RULE.md"), content)
+
+	return ruleDir
 }
 
 // AddPluginToVault adds a Claude Code plugin to the vault directory.

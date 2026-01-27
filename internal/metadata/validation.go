@@ -82,12 +82,12 @@ func (m *Metadata) Validate() error {
 			}
 		}
 
-	case asset.TypeInstruction:
-		// Instruction section is optional - all fields have defaults
-		// title defaults to asset name, prompt-file defaults to INSTRUCTION.md
-		if m.Instruction != nil {
-			if err := m.Instruction.Validate(); err != nil {
-				return fmt.Errorf("instruction: %w", err)
+	case asset.TypeRule:
+		// Rule section is optional - all fields have defaults
+		// title defaults to asset name, prompt-file defaults to RULE.md
+		if m.Rule != nil {
+			if err := m.Rule.Validate(); err != nil {
+				return fmt.Errorf("rule: %w", err)
 			}
 		}
 	}
@@ -116,7 +116,7 @@ func (a *Asset) Validate() error {
 	}
 
 	if !a.Type.IsValid() {
-		return fmt.Errorf("invalid asset type: %s (must be one of: skill, command, agent, hook, mcp, mcp-remote, claude-code-plugin, instruction)", a.Type)
+		return fmt.Errorf("invalid asset type: %s (must be one of: skill, command, agent, hook, rule, mcp, mcp-remote, claude-code-plugin)", a.Type)
 	}
 
 	return nil
@@ -192,11 +192,11 @@ func (c *ClaudeCodePluginConfig) Validate() error {
 	return nil
 }
 
-// Validate validates the [instruction] section
-func (i *InstructionConfig) Validate() error {
+// Validate validates the [rule] section
+func (r *RuleConfig) Validate() error {
 	// All fields are optional with sensible defaults:
 	// - title defaults to asset name
-	// - prompt-file defaults to INSTRUCTION.md
+	// - prompt-file defaults to RULE.md
 	return nil
 }
 

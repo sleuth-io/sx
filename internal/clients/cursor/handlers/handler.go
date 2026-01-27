@@ -34,8 +34,8 @@ func NewHandler(assetType asset.Type, meta *metadata.Metadata) (Handler, error) 
 		return NewMCPHandler(meta), nil
 	case asset.TypeMCPRemote:
 		return NewMCPRemoteHandler(meta), nil
-	case asset.TypeInstruction:
-		return NewInstructionHandler(meta, ""), nil
+	case asset.TypeRule:
+		return NewRuleHandler(meta, ""), nil
 	default:
 		return nil, fmt.Errorf("unsupported asset type: %s", assetType.Key)
 	}

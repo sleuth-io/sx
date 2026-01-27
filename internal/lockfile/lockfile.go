@@ -10,47 +10,10 @@ import (
 
 // LockFile represents the complete lock file structure
 type LockFile struct {
-	LockVersion string         `toml:"lock-version"`
-	Version     string         `toml:"version"`
-	CreatedBy   string         `toml:"created-by"`
-	Install     *InstallConfig `toml:"install,omitempty"`
-	Assets      []Asset        `toml:"assets"`
-}
-
-// InstallConfig contains per-asset-type installation settings
-type InstallConfig struct {
-	Instruction *InstructionInstallConfig `toml:"instruction,omitempty"`
-}
-
-// InstructionInstallConfig contains settings for instruction injection
-type InstructionInstallConfig struct {
-	Heading   string `toml:"heading,omitempty"`    // Default: "## Shared Instructions"
-	EndMarker string `toml:"end-marker,omitempty"` // Default: "---"
-}
-
-// DefaultInstructionHeading is the default section heading for injected instructions
-const DefaultInstructionHeading = "## Shared Instructions"
-
-// DefaultInstructionEndMarker is the default end marker for the managed section
-const DefaultInstructionEndMarker = "---"
-
-// GetInstructionConfig returns the instruction install config with defaults applied
-func (lf *LockFile) GetInstructionConfig() *InstructionInstallConfig {
-	config := &InstructionInstallConfig{
-		Heading:   DefaultInstructionHeading,
-		EndMarker: DefaultInstructionEndMarker,
-	}
-
-	if lf.Install != nil && lf.Install.Instruction != nil {
-		if lf.Install.Instruction.Heading != "" {
-			config.Heading = lf.Install.Instruction.Heading
-		}
-		if lf.Install.Instruction.EndMarker != "" {
-			config.EndMarker = lf.Install.Instruction.EndMarker
-		}
-	}
-
-	return config
+	LockVersion string  `toml:"lock-version"`
+	Version     string  `toml:"version"`
+	CreatedBy   string  `toml:"created-by"`
+	Assets      []Asset `toml:"assets"`
 }
 
 // Asset represents an asset with its metadata, source, and installation configurations

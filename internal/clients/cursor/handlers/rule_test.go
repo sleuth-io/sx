@@ -3,6 +3,7 @@ package handlers
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,23 +12,23 @@ import (
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
-func TestInstructionHandler_BuildMDCContent_AlwaysApply(t *testing.T) {
+func TestRuleHandler_BuildMDCContent_AlwaysApply(t *testing.T) {
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name:        "coding-standards",
 			Description: "Follow these coding standards",
 		},
-		Instruction: &metadata.InstructionConfig{
+		Rule: &metadata.RuleConfig{
 			Title: "Coding Standards",
 		},
 	}
 
-	handler := NewInstructionHandler(meta, "")
+	handler := NewRuleHandler(meta, "")
 	content := handler.buildMDCContent("Always follow these rules.")
 
 	// Should have alwaysApply since no path scope and no explicit globs
 	if !strings.Contains(content, "alwaysApply: true") {
-		t.Errorf("Expected alwaysApply: true for repo-wide instruction without globs")
+		t.Errorf("Expected alwaysApply: true for repo-wide rule without globs")
 	}
 
 	// Should have description
@@ -42,7 +43,7 @@ func TestInstructionHandler_BuildMDCContent_AlwaysApply(t *testing.T) {
 
 	// Should have content
 	if !strings.Contains(content, "Always follow these rules.") {
-		t.Errorf("Expected instruction content")
+		t.Errorf("Expected rule content")
 	}
 
 	// Verify frontmatter structure
@@ -54,7 +55,7 @@ func TestInstructionHandler_BuildMDCContent_AlwaysApply(t *testing.T) {
 	}
 }
 
-func TestInstructionHandler_BuildMDCContent_WithPathScope(t *testing.T) {
+func TestRuleHandler_BuildMDCContent_WithPathScope(t *testing.T) {
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name:        "backend-rules",
@@ -62,7 +63,7 @@ func TestInstructionHandler_BuildMDCContent_WithPathScope(t *testing.T) {
 		},
 	}
 
-	handler := NewInstructionHandler(meta, "backend/")
+	handler := NewRuleHandler(meta, "backend/")
 	content := handler.buildMDCContent("Backend content.")
 
 	// Should NOT have alwaysApply since it has path scope
@@ -76,20 +77,18 @@ func TestInstructionHandler_BuildMDCContent_WithPathScope(t *testing.T) {
 	}
 }
 
-func TestInstructionHandler_BuildMDCContent_ExplicitGlobs(t *testing.T) {
+func TestRuleHandler_BuildMDCContent_ExplicitGlobs(t *testing.T) {
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name:        "test-rules",
 			Description: "Test file rules",
 		},
-		Instruction: &metadata.InstructionConfig{
-			Cursor: &metadata.CursorInstructionConfig{
-				Globs: []string{"**/*_test.go"},
-			},
+		Rule: &metadata.RuleConfig{
+			Globs: []string{"**/*_test.go"},
 		},
 	}
 
-	handler := NewInstructionHandler(meta, "")
+	handler := NewRuleHandler(meta, "")
 	content := handler.buildMDCContent("Test content.")
 
 	// Should have explicit glob
@@ -103,19 +102,17 @@ func TestInstructionHandler_BuildMDCContent_ExplicitGlobs(t *testing.T) {
 	}
 }
 
-func TestInstructionHandler_BuildMDCContent_MultipleGlobs(t *testing.T) {
+func TestRuleHandler_BuildMDCContent_MultipleGlobs(t *testing.T) {
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name: "multi-glob-rules",
 		},
-		Instruction: &metadata.InstructionConfig{
-			Cursor: &metadata.CursorInstructionConfig{
-				Globs: []string{"**/*.go", "**/*.mod", "**/*.sum"},
-			},
+		Rule: &metadata.RuleConfig{
+			Globs: []string{"**/*.go", "**/*.mod", "**/*.sum"},
 		},
 	}
 
-	handler := NewInstructionHandler(meta, "")
+	handler := NewRuleHandler(meta, "")
 	content := handler.buildMDCContent("Content.")
 
 	// Multiple globs should be formatted as YAML array
@@ -133,49 +130,49 @@ func TestInstructionHandler_BuildMDCContent_MultipleGlobs(t *testing.T) {
 	}
 }
 
-func TestInstructionHandler_BuildMDCContent_CursorDescription(t *testing.T) {
+func TestRuleHandler_BuildMDCContent_RuleDescription(t *testing.T) {
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name:        "custom-desc",
 			Description: "Generic asset description",
 		},
-		Instruction: &metadata.InstructionConfig{
-			Cursor: &metadata.CursorInstructionConfig{
-				Description: "Cursor-specific description",
-				AlwaysApply: true,
+		Rule: &metadata.RuleConfig{
+			Description: "Rule-specific description",
+			Cursor: map[string]any{
+				"always-apply": true,
 			},
 		},
 	}
 
-	handler := NewInstructionHandler(meta, "")
+	handler := NewRuleHandler(meta, "")
 	content := handler.buildMDCContent("Content.")
 
-	// Should use Cursor-specific description
-	if !strings.Contains(content, "description: Cursor-specific description") {
-		t.Errorf("Expected Cursor-specific description to override asset description")
+	// Should use rule-level description
+	if !strings.Contains(content, "description: Rule-specific description") {
+		t.Errorf("Expected rule-specific description to override asset description")
 	}
 	if strings.Contains(content, "Generic asset description") {
 		t.Errorf("Should not contain generic asset description")
 	}
 }
 
-func TestInstructionHandler_BuildMDCContent_FallbackToAssetName(t *testing.T) {
+func TestRuleHandler_BuildMDCContent_FallbackToAssetName(t *testing.T) {
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
-			Name: "my-instruction",
+			Name: "my-rule",
 		},
 	}
 
-	handler := NewInstructionHandler(meta, "")
+	handler := NewRuleHandler(meta, "")
 	content := handler.buildMDCContent("Content.")
 
 	// Should use asset name as title
-	if !strings.Contains(content, "# my-instruction") {
-		t.Errorf("Expected asset name as title when no instruction title set")
+	if !strings.Contains(content, "# my-rule") {
+		t.Errorf("Expected asset name as title when no rule title set")
 	}
 }
 
-func TestInstructionHandler_GetGlobs_Priority(t *testing.T) {
+func TestRuleHandler_GetGlobs_Priority(t *testing.T) {
 	tests := []struct {
 		name         string
 		meta         *metadata.Metadata
@@ -186,10 +183,8 @@ func TestInstructionHandler_GetGlobs_Priority(t *testing.T) {
 			name: "explicit globs take priority over path scope",
 			meta: &metadata.Metadata{
 				Asset: metadata.Asset{Name: "test"},
-				Instruction: &metadata.InstructionConfig{
-					Cursor: &metadata.CursorInstructionConfig{
-						Globs: []string{"explicit/**/*"},
-					},
+				Rule: &metadata.RuleConfig{
+					Globs: []string{"explicit/**/*"},
 				},
 			},
 			pathScope:    "ignored/",
@@ -215,7 +210,7 @@ func TestInstructionHandler_GetGlobs_Priority(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := NewInstructionHandler(tt.meta, tt.pathScope)
+			handler := NewRuleHandler(tt.meta, tt.pathScope)
 			globs := handler.getGlobs()
 
 			if tt.expectedGlob == "" {
@@ -231,7 +226,7 @@ func TestInstructionHandler_GetGlobs_Priority(t *testing.T) {
 	}
 }
 
-func TestInstructionHandler_ShouldAlwaysApply(t *testing.T) {
+func TestRuleHandler_ShouldAlwaysApply(t *testing.T) {
 	tests := []struct {
 		name      string
 		meta      *metadata.Metadata
@@ -258,10 +253,8 @@ func TestInstructionHandler_ShouldAlwaysApply(t *testing.T) {
 			name: "not always apply when explicit globs",
 			meta: &metadata.Metadata{
 				Asset: metadata.Asset{Name: "test"},
-				Instruction: &metadata.InstructionConfig{
-					Cursor: &metadata.CursorInstructionConfig{
-						Globs: []string{"**/*.go"},
-					},
+				Rule: &metadata.RuleConfig{
+					Globs: []string{"**/*.go"},
 				},
 			},
 			pathScope: "",
@@ -271,9 +264,9 @@ func TestInstructionHandler_ShouldAlwaysApply(t *testing.T) {
 			name: "explicit always apply overrides",
 			meta: &metadata.Metadata{
 				Asset: metadata.Asset{Name: "test"},
-				Instruction: &metadata.InstructionConfig{
-					Cursor: &metadata.CursorInstructionConfig{
-						AlwaysApply: true,
+				Rule: &metadata.RuleConfig{
+					Cursor: map[string]any{
+						"always-apply": true,
 					},
 				},
 			},
@@ -284,7 +277,7 @@ func TestInstructionHandler_ShouldAlwaysApply(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := NewInstructionHandler(tt.meta, tt.pathScope)
+			handler := NewRuleHandler(tt.meta, tt.pathScope)
 			got := handler.shouldAlwaysApply()
 			if got != tt.expected {
 				t.Errorf("shouldAlwaysApply() = %v, want %v", got, tt.expected)
@@ -293,7 +286,7 @@ func TestInstructionHandler_ShouldAlwaysApply(t *testing.T) {
 	}
 }
 
-func TestInstructionHandler_Install_CreatesFile(t *testing.T) {
+func TestRuleHandler_Install_CreatesFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	meta := &metadata.Metadata{
@@ -301,18 +294,18 @@ func TestInstructionHandler_Install_CreatesFile(t *testing.T) {
 			Name:        "test-rule",
 			Description: "Test description",
 		},
-		Instruction: &metadata.InstructionConfig{
+		Rule: &metadata.RuleConfig{
 			Title:      "Test Rule",
-			PromptFile: "INSTRUCTION.md",
+			PromptFile: "RULE.md",
 		},
 	}
 
-	handler := NewInstructionHandler(meta, "")
+	handler := NewRuleHandler(meta, "")
 
-	// Create a test zip with instruction content
-	zipData := createTestInstructionZip(t, "Test instruction content.")
+	// Create a test zip with rule content
+	zipData := createTestRuleZip(t, "Test rule content.")
 
-	if err := handler.Install(nil, zipData, tmpDir); err != nil {
+	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
 		t.Fatalf("Install failed: %v", err)
 	}
 
@@ -328,22 +321,22 @@ func TestInstructionHandler_Install_CreatesFile(t *testing.T) {
 		t.Fatalf("Failed to read file: %v", err)
 	}
 
-	if !strings.Contains(string(content), "Test instruction content") {
-		t.Errorf("File should contain instruction content")
+	if !strings.Contains(string(content), "Test rule content") {
+		t.Errorf("File should contain rule content")
 	}
 	if !strings.Contains(string(content), "# Test Rule") {
 		t.Errorf("File should contain title")
 	}
 }
 
-func TestInstructionHandler_Remove(t *testing.T) {
+func TestRuleHandler_Remove(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{Name: "remove-test"},
 	}
 
-	handler := NewInstructionHandler(meta, "")
+	handler := NewRuleHandler(meta, "")
 
 	// Create the file first
 	rulesDir := filepath.Join(tmpDir, "rules")
@@ -356,7 +349,7 @@ func TestInstructionHandler_Remove(t *testing.T) {
 	}
 
 	// Remove it
-	if err := handler.Remove(nil, tmpDir); err != nil {
+	if err := handler.Remove(context.TODO(), tmpDir); err != nil {
 		t.Fatalf("Remove failed: %v", err)
 	}
 
@@ -366,14 +359,14 @@ func TestInstructionHandler_Remove(t *testing.T) {
 	}
 }
 
-func TestInstructionHandler_VerifyInstalled(t *testing.T) {
+func TestRuleHandler_VerifyInstalled(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{Name: "verify-test"},
 	}
 
-	handler := NewInstructionHandler(meta, "")
+	handler := NewRuleHandler(meta, "")
 
 	// Should not be installed initially
 	installed, _ := handler.VerifyInstalled(tmpDir)
@@ -398,17 +391,17 @@ func TestInstructionHandler_VerifyInstalled(t *testing.T) {
 	}
 }
 
-func TestInstructionHandler_GetTitle(t *testing.T) {
+func TestRuleHandler_GetTitle(t *testing.T) {
 	tests := []struct {
 		name     string
 		meta     *metadata.Metadata
 		expected string
 	}{
 		{
-			name: "uses instruction title",
+			name: "uses rule title",
 			meta: &metadata.Metadata{
 				Asset: metadata.Asset{Name: "asset-name"},
-				Instruction: &metadata.InstructionConfig{
+				Rule: &metadata.RuleConfig{
 					Title: "Custom Title",
 				},
 			},
@@ -425,7 +418,7 @@ func TestInstructionHandler_GetTitle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := NewInstructionHandler(tt.meta, "")
+			handler := NewRuleHandler(tt.meta, "")
 			got := handler.getTitle()
 			if got != tt.expected {
 				t.Errorf("getTitle() = %v, want %v", got, tt.expected)
@@ -434,45 +427,22 @@ func TestInstructionHandler_GetTitle(t *testing.T) {
 	}
 }
 
-// createTestInstructionZip creates a minimal zip file with instruction content
-func createTestInstructionZip(t *testing.T, content string) []byte {
+// createTestRuleZip creates a minimal zip file with rule content
+func createTestRuleZip(t *testing.T, content string) []byte {
 	t.Helper()
 
-	tmpDir := t.TempDir()
-
-	// Create metadata.toml
 	metadataContent := `[asset]
 name = "test"
-type = "instruction"
+type = "rule"
 version = "1.0.0"
 
-[instruction]
-prompt-file = "INSTRUCTION.md"
+[rule]
+prompt-file = "RULE.md"
 `
-	if err := os.WriteFile(filepath.Join(tmpDir, "metadata.toml"), []byte(metadataContent), 0644); err != nil {
-		t.Fatalf("Failed to write metadata: %v", err)
-	}
 
-	// Create INSTRUCTION.md
-	if err := os.WriteFile(filepath.Join(tmpDir, "INSTRUCTION.md"), []byte(content), 0644); err != nil {
-		t.Fatalf("Failed to write instruction: %v", err)
-	}
-
-	// Create zip
-	zipPath := filepath.Join(tmpDir, "test.zip")
-	cmd := "cd " + tmpDir + " && zip -q " + zipPath + " metadata.toml INSTRUCTION.md"
-	if err := os.WriteFile(filepath.Join(tmpDir, "run.sh"), []byte(cmd), 0755); err != nil {
-		t.Fatalf("Failed to write script: %v", err)
-	}
-
-	// Use a simpler approach - just create a zip manually
-	// For testing, we can use the internal zip utility or just test the buildMDCContent directly
-	// For now, let's read the files directly since Install() calls readInstructionContent which uses zip
-
-	// Actually for this test, we need a real zip. Let's use archive/zip
 	return createZipFromFiles(t, map[string]string{
 		"metadata.toml": metadataContent,
-		"INSTRUCTION.md": content,
+		"RULE.md":       content,
 	})
 }
 

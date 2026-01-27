@@ -38,11 +38,16 @@ func NewClient() *Client {
 				asset.TypeMCPRemote,
 				asset.TypeSkill, // Transform to commands
 				asset.TypeCommand,
-				asset.TypeHook,        // Supported via hooks.json
-				asset.TypeInstruction, // .cursor/rules/{name}.mdc
+				asset.TypeHook, // Supported via hooks.json
+				asset.TypeRule, // .cursor/rules/{name}.mdc
 			},
 		),
 	}
+}
+
+// RuleCapabilities returns Cursor's rule capabilities
+func (c *Client) RuleCapabilities() *clients.RuleCapabilities {
+	return RuleCapabilities()
 }
 
 // IsInstalled checks if Cursor is installed by checking for .cursor directory
@@ -109,8 +114,8 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeHook:
 			handler := handlers.NewHookHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
-		case asset.TypeInstruction:
-			handler := handlers.NewInstructionHandler(bundle.Metadata, "")
+		case asset.TypeRule:
+			handler := handlers.NewRuleHandler(bundle.Metadata, "")
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
@@ -175,8 +180,8 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 		case asset.TypeHook:
 			handler := handlers.NewHookHandler(meta)
 			err = handler.Remove(ctx, targetBase)
-		case asset.TypeInstruction:
-			handler := handlers.NewInstructionHandler(meta, "")
+		case asset.TypeRule:
+			handler := handlers.NewRuleHandler(meta, "")
 			err = handler.Remove(ctx, targetBase)
 		default:
 			result.Status = clients.StatusSkipped

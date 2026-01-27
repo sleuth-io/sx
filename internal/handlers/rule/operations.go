@@ -1,5 +1,5 @@
-// Package instruction provides operations for injecting instructions into markdown files.
-package instruction
+// Package rule provides operations for injecting rules into markdown files.
+package rule
 
 import (
 	"fmt"
@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-// DefaultPromptFile is the default prompt file for instruction assets
-const DefaultPromptFile = "INSTRUCTION.md"
+// DefaultPromptFile is the default prompt file for rule assets
+const DefaultPromptFile = "RULE.md"
 
 // Injection represents an instruction to be injected
 type Injection struct {

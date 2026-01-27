@@ -7,33 +7,33 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sleuth-io/sx/internal/handlers/instruction"
+	"github.com/sleuth-io/sx/internal/handlers/rule"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
 
-// InstructionHandler handles instruction asset installation for Cursor
-// Instructions are written to .cursor/rules/{name}.mdc with MDC frontmatter
-type InstructionHandler struct {
+// RuleHandler handles rule asset installation for Cursor
+// Rules are written to .cursor/rules/{name}.mdc with MDC frontmatter
+type RuleHandler struct {
 	metadata *metadata.Metadata
-	// pathScope is the path this instruction is scoped to (empty for repo-wide)
+	// pathScope is the path this rule is scoped to (empty for repo-wide)
 	pathScope string
 }
 
-// NewInstructionHandler creates a new instruction handler
-func NewInstructionHandler(meta *metadata.Metadata, pathScope string) *InstructionHandler {
-	return &InstructionHandler{
+// NewRuleHandler creates a new rule handler
+func NewRuleHandler(meta *metadata.Metadata, pathScope string) *RuleHandler {
+	return &RuleHandler{
 		metadata:  meta,
 		pathScope: pathScope,
 	}
 }
 
-// Install writes the instruction as an .mdc file to .cursor/rules/
-func (h *InstructionHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
-	// Read instruction content from zip
-	content, err := h.readInstructionContent(zipData)
+// Install writes the rule as an .mdc file to .cursor/rules/
+func (h *RuleHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
+	// Read rule content from zip
+	content, err := h.readRuleContent(zipData)
 	if err != nil {
-		return fmt.Errorf("failed to read instruction content: %w", err)
+		return fmt.Errorf("failed to read rule content: %w", err)
 	}
 
 	// Ensure rules directory exists
@@ -54,8 +54,8 @@ func (h *InstructionHandler) Install(ctx context.Context, zipData []byte, target
 	return nil
 }
 
-// Remove removes the instruction .mdc file
-func (h *InstructionHandler) Remove(ctx context.Context, targetBase string) error {
+// Remove removes the rule .mdc file
+func (h *RuleHandler) Remove(ctx context.Context, targetBase string) error {
 	filePath := filepath.Join(targetBase, "rules", h.metadata.Asset.Name+".mdc")
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
@@ -69,8 +69,8 @@ func (h *InstructionHandler) Remove(ctx context.Context, targetBase string) erro
 	return nil
 }
 
-// VerifyInstalled checks if the instruction .mdc file exists
-func (h *InstructionHandler) VerifyInstalled(targetBase string) (bool, string) {
+// VerifyInstalled checks if the rule .mdc file exists
+func (h *RuleHandler) VerifyInstalled(targetBase string) (bool, string) {
 	filePath := filepath.Join(targetBase, "rules", h.metadata.Asset.Name+".mdc")
 
 	if _, err := os.Stat(filePath); err == nil {
@@ -81,7 +81,7 @@ func (h *InstructionHandler) VerifyInstalled(targetBase string) (bool, string) {
 }
 
 // buildMDCContent creates the MDC format content with frontmatter
-func (h *InstructionHandler) buildMDCContent(content string) string {
+func (h *RuleHandler) buildMDCContent(content string) string {
 	var sb strings.Builder
 
 	// Write frontmatter
@@ -126,41 +126,41 @@ func (h *InstructionHandler) buildMDCContent(content string) string {
 	return sb.String()
 }
 
-// getTitle returns the instruction title, defaulting to asset name
-func (h *InstructionHandler) getTitle() string {
-	if h.metadata.Instruction != nil && h.metadata.Instruction.Title != "" {
-		return h.metadata.Instruction.Title
+// getTitle returns the rule title, defaulting to asset name
+func (h *RuleHandler) getTitle() string {
+	if h.metadata.Rule != nil && h.metadata.Rule.Title != "" {
+		return h.metadata.Rule.Title
 	}
 	return h.metadata.Asset.Name
 }
 
 // getDescription returns the description for the MDC frontmatter
-func (h *InstructionHandler) getDescription() string {
-	// First check cursor-specific description
-	if h.metadata.Instruction != nil && h.metadata.Instruction.Cursor != nil {
-		if h.metadata.Instruction.Cursor.Description != "" {
-			return h.metadata.Instruction.Cursor.Description
-		}
+func (h *RuleHandler) getDescription() string {
+	// First check rule-level description (common field)
+	if h.metadata.Rule != nil && h.metadata.Rule.Description != "" {
+		return h.metadata.Rule.Description
 	}
 	// Fall back to asset description
 	return h.metadata.Asset.Description
 }
 
-// shouldAlwaysApply returns true if the instruction should always apply
-func (h *InstructionHandler) shouldAlwaysApply() bool {
-	if h.metadata.Instruction != nil && h.metadata.Instruction.Cursor != nil {
-		return h.metadata.Instruction.Cursor.AlwaysApply
+// shouldAlwaysApply returns true if the rule should always apply
+func (h *RuleHandler) shouldAlwaysApply() bool {
+	// Check cursor-specific always-apply setting
+	if h.metadata.Rule != nil && h.metadata.Rule.Cursor != nil {
+		if alwaysApply, ok := h.metadata.Rule.Cursor["always-apply"].(bool); ok {
+			return alwaysApply
+		}
 	}
 	// If no path scope and no explicit globs, default to always apply
-	return h.pathScope == "" && len(h.getExplicitGlobs()) == 0
+	return h.pathScope == "" && len(h.getGlobs()) == 0
 }
 
 // getGlobs returns the globs for the MDC frontmatter
-func (h *InstructionHandler) getGlobs() []string {
-	// First check for explicit globs in cursor config
-	explicitGlobs := h.getExplicitGlobs()
-	if len(explicitGlobs) > 0 {
-		return explicitGlobs
+func (h *RuleHandler) getGlobs() []string {
+	// Check for globs in rule config (common field)
+	if h.metadata.Rule != nil && len(h.metadata.Rule.Globs) > 0 {
+		return h.metadata.Rule.Globs
 	}
 
 	// Auto-generate from path scope
@@ -173,30 +173,22 @@ func (h *InstructionHandler) getGlobs() []string {
 	return nil
 }
 
-// getExplicitGlobs returns explicitly configured globs
-func (h *InstructionHandler) getExplicitGlobs() []string {
-	if h.metadata.Instruction != nil && h.metadata.Instruction.Cursor != nil {
-		return h.metadata.Instruction.Cursor.Globs
-	}
-	return nil
-}
-
 // getPromptFile returns the prompt file, using the shared default
-func (h *InstructionHandler) getPromptFile() string {
-	if h.metadata.Instruction != nil && h.metadata.Instruction.PromptFile != "" {
-		return h.metadata.Instruction.PromptFile
+func (h *RuleHandler) getPromptFile() string {
+	if h.metadata.Rule != nil && h.metadata.Rule.PromptFile != "" {
+		return h.metadata.Rule.PromptFile
 	}
-	return instruction.DefaultPromptFile
+	return rule.DefaultPromptFile
 }
 
-// readInstructionContent reads the instruction content from the zip
-func (h *InstructionHandler) readInstructionContent(zipData []byte) (string, error) {
+// readRuleContent reads the rule content from the zip
+func (h *RuleHandler) readRuleContent(zipData []byte) (string, error) {
 	promptFile := h.getPromptFile()
 
 	content, err := utils.ReadZipFile(zipData, promptFile)
 	if err != nil {
 		// Try lowercase variant
-		content, err = utils.ReadZipFile(zipData, "instruction.md")
+		content, err = utils.ReadZipFile(zipData, "rule.md")
 		if err != nil {
 			return "", fmt.Errorf("prompt file not found: %s", promptFile)
 		}

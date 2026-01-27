@@ -1,4 +1,4 @@
-package instruction
+package rule
 
 import (
 	"os"

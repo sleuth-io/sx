@@ -53,5 +53,5 @@ func init() {
 	RegisterDetector(func() AssetTypeDetector { return &CommandDetector{} })
 	RegisterDetector(func() AssetTypeDetector { return &HookDetector{} })
 	RegisterDetector(func() AssetTypeDetector { return &MCPDetector{} })
-	RegisterDetector(func() AssetTypeDetector { return &InstructionDetector{} })
+	RegisterDetector(func() AssetTypeDetector { return &RuleDetector{} })
 }
