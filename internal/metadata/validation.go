@@ -81,6 +81,15 @@ func (m *Metadata) Validate() error {
 				return fmt.Errorf("claude-code-plugin: %w", err)
 			}
 		}
+
+	case asset.TypeInstruction:
+		// Instruction section is optional - all fields have defaults
+		// title defaults to asset name, prompt-file defaults to INSTRUCTION.md
+		if m.Instruction != nil {
+			if err := m.Instruction.Validate(); err != nil {
+				return fmt.Errorf("instruction: %w", err)
+			}
+		}
 	}
 
 	return nil
@@ -107,7 +116,7 @@ func (a *Asset) Validate() error {
 	}
 
 	if !a.Type.IsValid() {
-		return fmt.Errorf("invalid asset type: %s (must be one of: skill, command, agent, hook, mcp, mcp-remote, claude-code-plugin)", a.Type)
+		return fmt.Errorf("invalid asset type: %s (must be one of: skill, command, agent, hook, mcp, mcp-remote, claude-code-plugin, instruction)", a.Type)
 	}
 
 	return nil
@@ -180,6 +189,14 @@ func (c *ClaudeCodePluginConfig) Validate() error {
 	// All fields are optional with sensible defaults
 	// ManifestFile defaults to .claude-plugin/plugin.json
 	// AutoEnable defaults to true
+	return nil
+}
+
+// Validate validates the [instruction] section
+func (i *InstructionConfig) Validate() error {
+	// All fields are optional with sensible defaults:
+	// - title defaults to asset name
+	// - prompt-file defaults to INSTRUCTION.md
 	return nil
 }
 

@@ -105,6 +105,11 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeClaudeCodePlugin:
 			handler := handlers.NewClaudeCodePluginHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeInstruction:
+			// Instructions inject into CLAUDE.md/AGENTS.md at the scope path, not .claude/
+			instructionTarget := c.getInstructionTargetBase(req.Scope)
+			handler := handlers.NewInstructionHandler(bundle.Metadata, nil) // Uses default config
+			err = handler.Install(ctx, bundle.ZipData, instructionTarget)
 		default:
 			err = fmt.Errorf("unsupported asset type: %s", bundle.Metadata.Asset.Type.Key)
 		}
@@ -178,6 +183,10 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 		case asset.TypeClaudeCodePlugin:
 			handler := handlers.NewClaudeCodePluginHandler(meta)
 			err = handler.Remove(ctx, targetBase)
+		case asset.TypeInstruction:
+			instructionTarget := c.getInstructionTargetBase(req.Scope)
+			handler := handlers.NewInstructionHandler(meta, nil)
+			err = handler.Remove(ctx, instructionTarget)
 		default:
 			err = fmt.Errorf("unsupported asset type: %s", a.Type.Key)
 		}
@@ -216,6 +225,31 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 		return filepath.Join(scope.RepoRoot, scope.Path, ".claude"), nil
 	default:
 		return filepath.Join(home, ".claude"), nil
+	}
+}
+
+// getInstructionTargetBase returns the directory where CLAUDE.md should live.
+// Unlike other assets that go in .claude/, instructions inject into CLAUDE.md
+// at the scope path directly.
+func (c *Client) getInstructionTargetBase(scope *clients.InstallScope) string {
+	home, _ := os.UserHomeDir()
+
+	switch scope.Type {
+	case clients.ScopeGlobal:
+		// Global instructions go to ~/.claude/CLAUDE.md (user's global instructions)
+		return filepath.Join(home, ".claude")
+	case clients.ScopeRepository:
+		if scope.RepoRoot == "" {
+			return filepath.Join(home, ".claude")
+		}
+		return scope.RepoRoot
+	case clients.ScopePath:
+		if scope.RepoRoot == "" {
+			return filepath.Join(home, ".claude")
+		}
+		return filepath.Join(scope.RepoRoot, scope.Path)
+	default:
+		return filepath.Join(home, ".claude")
 	}
 }
 
@@ -311,17 +345,26 @@ func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, sco
 			Asset: a,
 		}
 
-		handler, err := handlers.NewHandler(a.Type, &metadata.Metadata{
+		meta := &metadata.Metadata{
 			Asset: metadata.Asset{
 				Name:    a.Name,
 				Version: a.Version,
 				Type:    a.Type,
 			},
-		})
-		if err != nil {
-			result.Message = err.Error()
+		}
+
+		// Instructions need special handling - different target base
+		if a.Type == asset.TypeInstruction {
+			instructionTarget := c.getInstructionTargetBase(scope)
+			handler := handlers.NewInstructionHandler(meta, nil)
+			result.Installed, result.Message = handler.VerifyInstalled(instructionTarget)
 		} else {
-			result.Installed, result.Message = handler.VerifyInstalled(targetBase)
+			handler, err := handlers.NewHandler(a.Type, meta)
+			if err != nil {
+				result.Message = err.Error()
+			} else {
+				result.Installed, result.Message = handler.VerifyInstalled(targetBase)
+			}
 		}
 
 		results = append(results, result)

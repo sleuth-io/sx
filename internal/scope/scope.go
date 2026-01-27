@@ -72,11 +72,13 @@ func (m *Matcher) matchesRepository(repo *lockfile.Scope) bool {
 		return true
 	}
 
-	// If repository has paths, check if current path matches any of them
-	if m.currentScope.Type != "path" {
-		return false
+	// When at repo root, include ALL path-scoped assets for this repo
+	// They will be installed to their respective paths
+	if m.currentScope.Type == TypeRepo {
+		return true
 	}
 
+	// If we're in a specific path, check if current path matches any of them
 	return slices.ContainsFunc(repo.Paths, m.matchesPath)
 }
 

@@ -186,6 +186,30 @@ func (e *TestEnv) AssertFileNotExists(path string) {
 	}
 }
 
+// AddInstructionToVault adds an instruction asset to the vault directory.
+// Returns the instruction source directory path.
+func (e *TestEnv) AddInstructionToVault(vaultDir, name, version, content string) string {
+	e.t.Helper()
+
+	instrDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "instruction"
+version = "%s"
+description = "Test instruction %s"
+
+[instruction]
+title = "%s"
+prompt-file = "INSTRUCTION.md"
+`, name, version, name, name)
+
+	e.WriteFile(filepath.Join(instrDir, "metadata.toml"), metadata)
+	e.WriteFile(filepath.Join(instrDir, "INSTRUCTION.md"), content)
+
+	return instrDir
+}
+
 // AddPluginToVault adds a Claude Code plugin to the vault directory.
 // Returns the plugin source directory path.
 func (e *TestEnv) AddPluginToVault(vaultDir, name, version string) string {
