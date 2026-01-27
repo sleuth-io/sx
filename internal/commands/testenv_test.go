@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -184,6 +185,69 @@ func (e *TestEnv) AssertFileNotExists(path string) {
 	if _, err := os.Stat(path); err == nil {
 		e.t.Errorf("Expected file to NOT exist: %s", path)
 	}
+}
+
+// AddRuleToVault adds a rule asset to the vault directory.
+// Returns the rule source directory path.
+func (e *TestEnv) AddRuleToVault(vaultDir, name, version, content string) string {
+	e.t.Helper()
+
+	ruleDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "rule"
+version = "%s"
+description = "Test rule %s"
+
+[rule]
+title = "%s"
+prompt-file = "RULE.md"
+`, name, version, name, name)
+
+	e.WriteFile(filepath.Join(ruleDir, "metadata.toml"), metadata)
+	e.WriteFile(filepath.Join(ruleDir, "RULE.md"), content)
+
+	return ruleDir
+}
+
+// AddRuleToVaultWithGlobs adds a rule asset with globs to the vault directory.
+// Returns the rule source directory path.
+func (e *TestEnv) AddRuleToVaultWithGlobs(vaultDir, name, version, content string, globs []string) string {
+	e.t.Helper()
+
+	ruleDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	// Build globs array string
+	globsStr := ""
+	if len(globs) > 0 {
+		var sb strings.Builder
+		sb.WriteString("globs = [")
+		for i, g := range globs {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(fmt.Sprintf("%q", g))
+		}
+		sb.WriteString("]\n")
+		globsStr = sb.String()
+	}
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "rule"
+version = "%s"
+description = "Test rule %s"
+
+[rule]
+title = "%s"
+prompt-file = "RULE.md"
+%s`, name, version, name, name, globsStr)
+
+	e.WriteFile(filepath.Join(ruleDir, "metadata.toml"), metadata)
+	e.WriteFile(filepath.Join(ruleDir, "RULE.md"), content)
+
+	return ruleDir
 }
 
 // AddPluginToVault adds a Claude Code plugin to the vault directory.

@@ -10,7 +10,8 @@ import (
 	"github.com/sleuth-io/sx/internal/utils"
 )
 
-// isSingleFileAsset checks if the path is a single .md file that can be treated as an agent or command
+// isSingleFileAsset checks if the path is a single .md file that can be treated as an asset
+// This includes agents, commands, and rule files
 func isSingleFileAsset(path string) bool {
 	lower := strings.ToLower(path)
 	return strings.HasSuffix(lower, ".md")
@@ -19,6 +20,11 @@ func isSingleFileAsset(path string) bool {
 // createZipFromSingleFile creates a zip archive from a single .md file
 // Detects asset type from path and content, creates appropriate metadata
 func createZipFromSingleFile(filePath string) ([]byte, error) {
+	// Check if this is a rule file (e.g., .claude/rules/my-rule.md)
+	if isRuleFile(filePath) {
+		return createZipFromRuleFile(filePath)
+	}
+
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err

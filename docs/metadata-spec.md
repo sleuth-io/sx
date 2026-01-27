@@ -87,6 +87,7 @@ readme = "README.md"         # Path to readme file in package
 - `command`: Slash command with prompt file
 - `agent`: AI agent with prompt file
 - `hook`: Event hook with script or prompt file
+- `rule`: Shared AI coding rule/instruction (installed to client-specific rules directories)
 - `mcp`: Packaged MCP server (includes server code)
 - `mcp-remote`: Remote MCP configuration (no server code, just connection config)
 - `claude-code-plugin`: Claude Code plugin bundle (contains commands, skills, agents, etc.)
@@ -247,6 +248,111 @@ pre-commit-linter/
   lib/
     helpers.sh
   (other optional files)
+```
+
+### Rules (`type = "rule"`)
+
+**Required Section**: `[rule]`
+
+**Optional Fields**:
+
+- `prompt-file`: Path to the rule content markdown file (default: `RULE.md`)
+- `title`: Title/heading for the rule (default: asset name)
+- `description`: Rule description (used in client UI and frontmatter)
+- `globs`: Array of glob patterns for file-type filtering (e.g., `["**/*.go", "**/*.mod"]`)
+
+**Client-Specific Configuration**:
+
+Rules can have client-specific settings in `[rule.<client>]` sections:
+
+```toml
+[asset]
+name = "go-standards"
+version = "1.0.0"
+type = "rule"
+description = "Go coding standards and conventions"
+
+[rule]
+prompt-file = "RULE.md"
+title = "Go Standards"
+globs = ["**/*.go", "**/*.mod"]
+description = "Standards for Go code"
+
+[rule.cursor]
+always-apply = true
+```
+
+**Client-Specific Fields**:
+
+Client sections (`[rule.cursor]`, `[rule.claude-code]`) accept any key-value pairs, allowing flexibility for client-specific features:
+
+- `[rule.cursor]`: Common fields include `always-apply`, `description`
+- `[rule.claude-code]`: Reserved for future Claude Code-specific settings
+
+Unknown fields are preserved and passed to the client, enabling forward compatibility.
+
+**Installation Behavior**:
+
+Rules are installed to client-specific locations with appropriate frontmatter:
+
+| Client | Install Location | Frontmatter |
+|--------|-----------------|-------------|
+| Claude Code | `.claude/rules/{name}.md` | `paths:` for globs |
+| Cursor | `.cursor/rules/{name}.mdc` | `globs:`, `alwaysApply:`, `description:` |
+| Copilot | `.github/instructions/{name}.instructions.md` | `applyTo:` |
+| Cline | `.clinerules/{name}.md` | (none) |
+| Fallback | `.sx/rules/{name}.md` + AGENTS.md import | (none) |
+
+**Frontmatter Transformation**:
+
+The canonical `globs` field is transformed to client-specific field names:
+
+| Canonical | Claude Code | Cursor | Copilot |
+|-----------|-------------|--------|---------|
+| `globs` | `paths:` | `globs:` | `applyTo:` |
+
+**Package Structure**:
+
+```
+go-standards/
+  metadata.toml
+  RULE.md
+  (other optional files)
+```
+
+**Example - Minimal Rule**:
+
+```toml
+[asset]
+name = "coding-standards"
+version = "1.0.0"
+type = "rule"
+
+[rule]
+prompt-file = "RULE.md"
+```
+
+**Example - Full-Featured Rule**:
+
+```toml
+[asset]
+name = "go-standards"
+version = "2.0.0"
+type = "rule"
+description = "Comprehensive Go coding standards"
+license = "MIT"
+authors = ["Platform Team <platform@company.com>"]
+keywords = ["go", "golang", "standards", "linting"]
+
+[rule]
+prompt-file = "RULE.md"
+title = "Go Coding Standards"
+description = "Standards and best practices for Go code"
+globs = ["**/*.go", "**/*.mod", "**/*.sum"]
+
+[rule.cursor]
+always-apply = false
+description = "Go standards - applies to Go files only"
 ```
 
 ### MCP Servers (`type = "mcp"`)
@@ -487,7 +593,7 @@ This section is ignored by the core SX tooling but available for custom tools an
 - `[asset]` section required
 - `name`, `version`, `type` fields required
 - `version` must be valid semantic version (X.Y.Z)
-- `type` must be one of: skill, command, agent, hook, mcp, mcp-remote, claude-code-plugin
+- `type` must be one of: skill, command, agent, hook, rule, mcp, mcp-remote, claude-code-plugin
 
 ### Type-Specific Validation
 
@@ -502,6 +608,12 @@ This section is ignored by the core SX tooling but available for custom tools an
 - Must have `[hook]` section
 - Must have `event` and `script-file` fields
 - File specified in `script-file` must exist in package
+
+**rule**:
+
+- Must have `[rule]` section (can be empty - all fields optional)
+- If `prompt-file` specified, file must exist in package
+- Defaults to `RULE.md` if `prompt-file` not specified
 
 **mcp**:
 
@@ -714,6 +826,34 @@ min-client-version = "1.0.0"
 [custom]
 internal-team = "platform"
 requires-vpn = true
+```
+
+### Rule with Globs and Client-Specific Settings
+
+```toml
+[asset]
+name = "python-standards"
+version = "1.5.0"
+type = "rule"
+description = "Python coding standards and type hints requirements"
+license = "MIT"
+authors = ["Python Team <python@company.com>"]
+keywords = ["python", "standards", "type-hints", "pep8"]
+repository = "https://github.com/company/python-standards"
+
+[rule]
+prompt-file = "RULE.md"
+title = "Python Coding Standards"
+description = "Standards for Python code including type hints"
+globs = ["**/*.py", "**/pyproject.toml"]
+
+[rule.cursor]
+always-apply = false
+description = "Python standards - applies to .py files"
+
+[custom]
+python-version = "3.11+"
+requires-mypy = true
 ```
 
 ## Migration from Current System
