@@ -1,6 +1,9 @@
 package clients
 
-import "github.com/sleuth-io/sx/internal/metadata"
+import (
+	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/metadata"
+)
 
 // ParsedRule is the canonical format returned by all client rule parsers.
 // When a rule file is parsed, the client-specific frontmatter is converted
@@ -52,4 +55,9 @@ type RuleCapabilities struct {
 
 	// GenerateRuleFile creates a complete rule file for this client
 	GenerateRuleFile func(cfg *metadata.RuleConfig, body string) []byte
+
+	// DetectAssetType determines what type of asset this file is.
+	// Returns nil if the client doesn't recognize the file.
+	// content may be nil if the file hasn't been read yet.
+	DetectAssetType func(path string, content []byte) *asset.Type
 }

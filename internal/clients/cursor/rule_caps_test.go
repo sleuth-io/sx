@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
@@ -320,5 +321,75 @@ func TestRuleCapabilities(t *testing.T) {
 
 	if caps.GenerateRuleFile == nil {
 		t.Error("GenerateRuleFile is nil")
+	}
+
+	if caps.DetectAssetType == nil {
+		t.Error("DetectAssetType is nil")
+	}
+}
+
+func TestDetectAssetType(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		expected *asset.Type
+	}{
+		{
+			name:     "detects .cursor/rules/ with .mdc as rule",
+			path:     ".cursor/rules/my-rule.mdc",
+			expected: &asset.TypeRule,
+		},
+		{
+			name:     "detects .cursor/rules/ with .md as rule",
+			path:     ".cursor/rules/my-rule.md",
+			expected: &asset.TypeRule,
+		},
+		{
+			name:     "detects .cursor/rules/ with .mdx as rule",
+			path:     ".cursor/rules/my-rule.mdx",
+			expected: &asset.TypeRule,
+		},
+		{
+			name:     "detects nested .cursor/rules/ as rule",
+			path:     "project/.cursor/rules/go-standards.mdc",
+			expected: &asset.TypeRule,
+		},
+		{
+			name:     "detects .cursor/skills/ as skill",
+			path:     ".cursor/skills/my-skill.md",
+			expected: &asset.TypeSkill,
+		},
+		{
+			name:     "detects .cursor/skills/ with .mdc as skill",
+			path:     ".cursor/skills/my-skill.mdc",
+			expected: &asset.TypeSkill,
+		},
+		{
+			name:     "does not detect non-.cursor paths",
+			path:     "foo/rules/my-rule.md",
+			expected: nil,
+		},
+		{
+			name:     "does not detect .claude paths",
+			path:     ".claude/rules/my-rule.md",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectAssetType(tt.path, nil)
+			if tt.expected == nil {
+				if got != nil {
+					t.Errorf("detectAssetType(%q) = %v, want nil", tt.path, got)
+				}
+			} else {
+				if got == nil {
+					t.Errorf("detectAssetType(%q) = nil, want %v", tt.path, *tt.expected)
+				} else if *got != *tt.expected {
+					t.Errorf("detectAssetType(%q) = %v, want %v", tt.path, *got, *tt.expected)
+				}
+			}
+		})
 	}
 }

@@ -8,6 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
@@ -23,7 +24,26 @@ func RuleCapabilities() *clients.RuleCapabilities {
 		MatchesContent:   matchesContent,
 		ParseRuleFile:    parseRuleFile,
 		GenerateRuleFile: generateRuleFile,
+		DetectAssetType:  detectAssetType,
 	}
+}
+
+// detectAssetType determines the asset type for Claude Code paths
+func detectAssetType(path string, _ []byte) *asset.Type {
+	lower := strings.ToLower(path)
+
+	// Only claim .claude/ subdirectories
+	if strings.Contains(lower, ".claude/rules/") {
+		return &asset.TypeRule
+	}
+	if strings.Contains(lower, ".claude/agents/") && strings.HasSuffix(lower, ".md") {
+		return &asset.TypeAgent
+	}
+	if strings.Contains(lower, ".claude/commands/") && strings.HasSuffix(lower, ".md") {
+		return &asset.TypeCommand
+	}
+
+	return nil
 }
 
 // matchesPath checks if a path belongs to Claude Code rules

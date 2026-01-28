@@ -8,6 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
@@ -23,7 +24,25 @@ func RuleCapabilities() *clients.RuleCapabilities {
 		MatchesContent:   matchesContent,
 		ParseRuleFile:    parseRuleFile,
 		GenerateRuleFile: generateRuleFile,
+		DetectAssetType:  detectAssetType,
 	}
+}
+
+// detectAssetType determines the asset type for Cursor paths
+func detectAssetType(path string, _ []byte) *asset.Type {
+	lower := strings.ToLower(path)
+
+	// Claim .cursor/rules/ with any extension
+	if strings.Contains(lower, ".cursor/rules/") {
+		return &asset.TypeRule
+	}
+
+	// Claim .cursor/skills/ with any extension
+	if strings.Contains(lower, ".cursor/skills/") {
+		return &asset.TypeSkill
+	}
+
+	return nil
 }
 
 // matchesPath checks if a path belongs to Cursor rules

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/assets/detectors"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
@@ -20,7 +21,7 @@ func TestIsSingleFileAsset(t *testing.T) {
 		{"path/to/agent.md", true},
 		{"my-skill.zip", false},
 		{"my-skill", false},
-		{"README.md", true}, // Any .md file is considered
+		{"README.md", true}, // Any .md file is considered via fallback
 	}
 
 	for _, tc := range tests {
@@ -33,7 +34,7 @@ func TestIsSingleFileAsset(t *testing.T) {
 	}
 }
 
-func TestDetectSingleFileAssetType(t *testing.T) {
+func TestDetectAssetTypeFromPath(t *testing.T) {
 	tests := []struct {
 		name     string
 		path     string
@@ -42,15 +43,27 @@ func TestDetectSingleFileAssetType(t *testing.T) {
 	}{
 		{
 			name:     "path contains agents",
-			path:     "/home/user/.claude/agents/my-agent.md",
+			path:     "/home/user/agents/my-agent.md",
 			content:  "Just some content",
 			expected: asset.TypeAgent,
 		},
 		{
 			name:     "path contains commands",
-			path:     "/home/user/.claude/commands/my-command.md",
+			path:     "/home/user/commands/my-command.md",
 			content:  "Just some content",
 			expected: asset.TypeCommand,
+		},
+		{
+			name:     "path contains rules",
+			path:     "/home/user/rules/my-rule.md",
+			content:  "Just some content",
+			expected: asset.TypeRule,
+		},
+		{
+			name:     "path contains skills",
+			path:     "/home/user/skills/my-skill.md",
+			content:  "Just some content",
+			expected: asset.TypeSkill,
 		},
 		{
 			name: "agent frontmatter with tools",
@@ -98,9 +111,12 @@ Command prompt here.`,
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := detectSingleFileAssetType(tc.path, []byte(tc.content))
-			if result != tc.expected {
-				t.Errorf("detectSingleFileAssetType() = %v, want %v", result, tc.expected)
+			result := detectors.DetectAssetTypeFromPath(tc.path, []byte(tc.content))
+			if result == nil {
+				t.Fatalf("DetectAssetTypeFromPath() returned nil, want %v", tc.expected)
+			}
+			if *result != tc.expected {
+				t.Errorf("DetectAssetTypeFromPath() = %v, want %v", *result, tc.expected)
 			}
 		})
 	}

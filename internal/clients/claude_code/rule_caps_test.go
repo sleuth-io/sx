@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
@@ -288,5 +289,70 @@ func TestRuleCapabilities(t *testing.T) {
 
 	if caps.GenerateRuleFile == nil {
 		t.Error("GenerateRuleFile is nil")
+	}
+
+	if caps.DetectAssetType == nil {
+		t.Error("DetectAssetType is nil")
+	}
+}
+
+func TestDetectAssetType(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		expected *asset.Type
+	}{
+		{
+			name:     "detects .claude/rules/ as rule",
+			path:     ".claude/rules/my-rule.md",
+			expected: &asset.TypeRule,
+		},
+		{
+			name:     "detects nested .claude/rules/ as rule",
+			path:     "project/.claude/rules/go-standards.md",
+			expected: &asset.TypeRule,
+		},
+		{
+			name:     "detects .claude/agents/ as agent",
+			path:     ".claude/agents/my-agent.md",
+			expected: &asset.TypeAgent,
+		},
+		{
+			name:     "detects .claude/commands/ as command",
+			path:     ".claude/commands/my-command.md",
+			expected: &asset.TypeCommand,
+		},
+		{
+			name:     "does not detect non-.claude paths",
+			path:     "foo/rules/my-rule.md",
+			expected: nil,
+		},
+		{
+			name:     "does not detect .cursor paths",
+			path:     ".cursor/rules/my-rule.mdc",
+			expected: nil,
+		},
+		{
+			name:     "agents requires .md extension",
+			path:     ".claude/agents/my-agent.txt",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectAssetType(tt.path, nil)
+			if tt.expected == nil {
+				if got != nil {
+					t.Errorf("detectAssetType(%q) = %v, want nil", tt.path, got)
+				}
+			} else {
+				if got == nil {
+					t.Errorf("detectAssetType(%q) = nil, want %v", tt.path, *tt.expected)
+				} else if *got != *tt.expected {
+					t.Errorf("detectAssetType(%q) = %v, want %v", tt.path, *got, *tt.expected)
+				}
+			}
+		})
 	}
 }
