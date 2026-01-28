@@ -21,7 +21,7 @@ type ToolDef struct {
 // QueryInput is the input type for query tool
 type QueryInput struct {
 	Query       string `json:"query" jsonschema:"A simple, focused natural language query. Keep queries atomic - ask for one specific thing (e.g., 'Get PR comments', 'Get failed CI checks', 'Get open issues assigned to me'). Avoid complex multi-part queries."`
-	Integration string `json:"integration" jsonschema:"which integration to query (github, circleci, or linear)"`
+	Integration string `json:"integration" jsonschema:"which integration to query (github, circleci, linear, or datadog)"`
 }
 
 // GetMCPTools returns the query tool for Sleuth vault
@@ -30,7 +30,7 @@ func (s *SleuthVault) GetMCPTools() any {
 		{
 			Tool: &mcp.Tool{
 				Name:        "query",
-				Description: "Query integrated services (GitHub, CircleCI, Linear) using natural language. Context (repo, branch, commit) is automatically detected from git. For best performance, use simple atomic queries that ask for one specific thing - complex queries take longer and may timeout.",
+				Description: "Query integrated services (GitHub, CircleCI, Linear, Datadog) using natural language. Context (repo, branch, commit) is automatically detected from git. For best performance, use simple atomic queries that ask for one specific thing - complex queries take longer and may timeout.",
 			},
 			Handler: s.handleQueryTool,
 		},

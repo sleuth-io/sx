@@ -637,6 +637,9 @@ func (s *SleuthVault) QueryIntegrationStream(
 
 	// Read SSE events line by line
 	scanner := bufio.NewScanner(resp.Body)
+	// Increase buffer size to 1MB to handle large SSE responses (default is 64KB)
+	buf := make([]byte, 1024*1024)
+	scanner.Buffer(buf, 1024*1024)
 	var finalResult string
 	var finalError string
 
