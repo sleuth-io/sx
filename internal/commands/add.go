@@ -86,6 +86,11 @@ func runAddWithOptions(cmd *cobra.Command, input string, promptInstall bool) err
 		}
 	}
 
+	// Check if input is an instruction file (CLAUDE.md, AGENTS.md) that can be parsed for sections
+	if input != "" && isInstructionFile(input) {
+		return addFromInstructionFile(ctx, cmd, out, status, input, promptInstall)
+	}
+
 	// Get and validate zip file
 	zipFile, zipData, err := loadZipFile(out, status, input)
 	if err != nil {

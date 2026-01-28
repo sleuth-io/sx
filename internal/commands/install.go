@@ -268,39 +268,41 @@ func repairTracker(ctx context.Context, tracker *assets.Tracker, sortedAssets []
 
 	// Verify each asset at its proper install location (based on asset's scope)
 	for _, art := range sortedAssets {
-		// Get the proper scope for this asset
-		artScope := buildInstallScopeForAsset(art, gitContext)
+		// Get the proper scopes for this asset (may have multiple for path-scoped assets)
+		artScopes := buildInstallScopesForAsset(art, gitContext)
 
 		for _, client := range targetClients {
-			// Verify this single asset at its proper location
-			results := client.VerifyAssets(ctx, []*lockfile.Asset{art}, artScope)
+			// Verify this asset at each of its install locations
+			for _, artScope := range artScopes {
+				results := client.VerifyAssets(ctx, []*lockfile.Asset{art}, artScope)
 
-			for _, result := range results {
-				if !result.Installed {
-					out.printf("  ✗ %s not installed for %s: %s\n", result.Asset.Name, client.DisplayName(), result.Message)
-					log.Info("asset verification failed", "name", result.Asset.Name, "client", client.ID(), "reason", result.Message)
+				for _, result := range results {
+					if !result.Installed {
+						out.printf("  ✗ %s not installed for %s: %s\n", result.Asset.Name, client.DisplayName(), result.Message)
+						log.Info("asset verification failed", "name", result.Asset.Name, "client", client.ID(), "reason", result.Message)
 
-					// Remove this client from the asset's tracker entry
-					key := assetKeyForInstall(result.Asset, currentScope)
-					existing := tracker.FindAsset(key)
-					if existing != nil {
-						// Remove this client from the list
-						var updatedClients []string
-						for _, c := range existing.Clients {
-							if c != client.ID() {
-								updatedClients = append(updatedClients, c)
+						// Remove this client from the asset's tracker entry
+						key := assetKeyForInstall(result.Asset, currentScope)
+						existing := tracker.FindAsset(key)
+						if existing != nil {
+							// Remove this client from the list
+							var updatedClients []string
+							for _, c := range existing.Clients {
+								if c != client.ID() {
+									updatedClients = append(updatedClients, c)
+								}
+							}
+
+							if len(updatedClients) == 0 {
+								// No clients left, remove entirely
+								tracker.RemoveAsset(key)
+							} else {
+								existing.Clients = updatedClients
+								tracker.UpsertAsset(*existing)
 							}
 						}
-
-						if len(updatedClients) == 0 {
-							// No clients left, remove entirely
-							tracker.RemoveAsset(key)
-						} else {
-							existing.Clients = updatedClients
-							tracker.UpsertAsset(*existing)
-						}
+						totalMissing++
 					}
-					totalMissing++
 				}
 			}
 		}
@@ -334,19 +336,22 @@ func installAssets(ctx context.Context, successfulDownloads []*assets.AssetWithM
 			ZipData:  download.ZipData,
 		}
 
-		// Determine installation scope based on the ASSET's scope, not current directory
-		installScope := buildInstallScopeForAsset(download.Asset, gitContext)
+		// Determine installation scopes based on the ASSET's scope, not current directory
+		// Path-scoped assets may have multiple scopes (one per path)
+		installScopes := buildInstallScopesForAsset(download.Asset, gitContext)
 
-		// Run installation for this asset
-		results := runMultiClientInstallation(ctx, []*clients.AssetBundle{bundle}, installScope, targetClients)
+		// Run installation for this asset at each of its scopes
+		for _, installScope := range installScopes {
+			results := runMultiClientInstallation(ctx, []*clients.AssetBundle{bundle}, installScope, targetClients)
 
-		// Merge results
-		for clientID, resp := range results {
-			if existing, ok := allResults[clientID]; ok {
-				existing.Results = append(existing.Results, resp.Results...)
-				allResults[clientID] = existing
-			} else {
-				allResults[clientID] = resp
+			// Merge results
+			for clientID, resp := range results {
+				if existing, ok := allResults[clientID]; ok {
+					existing.Results = append(existing.Results, resp.Results...)
+					allResults[clientID] = existing
+				} else {
+					allResults[clientID] = resp
+				}
 			}
 		}
 	}
@@ -370,17 +375,40 @@ func buildInstallScope(currentScope *scope.Scope, gitContext *gitutil.GitContext
 	return installScope
 }
 
-// buildInstallScopeForAsset creates the installation scope based on the asset's own scope
+// buildInstallScopesForAsset creates installation scopes based on the asset's own scope
+// Returns multiple scopes for path-scoped assets (one per path)
 // Global assets go to ~/.claude, repo-scoped assets go to {repoRoot}/.claude
-func buildInstallScopeForAsset(art *lockfile.Asset, gitContext *gitutil.GitContext) *clients.InstallScope {
+func buildInstallScopesForAsset(art *lockfile.Asset, gitContext *gitutil.GitContext) []*clients.InstallScope {
 	if art.IsGlobal() {
 		// Global asset - install to ~/.claude
-		return &clients.InstallScope{
+		return []*clients.InstallScope{{
 			Type: clients.ScopeGlobal,
+		}}
+	}
+
+	// Check if asset has path scopes
+	var paths []string
+	for _, scope := range art.Scopes {
+		if len(scope.Paths) > 0 {
+			paths = append(paths, scope.Paths...)
 		}
 	}
 
-	// Repo or path-scoped asset - install to repo's .claude directory
+	// If asset has specific paths, create a scope for each path
+	if len(paths) > 0 && gitContext.IsRepo {
+		var scopes []*clients.InstallScope
+		for _, path := range paths {
+			scopes = append(scopes, &clients.InstallScope{
+				Type:     clients.ScopePath,
+				RepoRoot: gitContext.RepoRoot,
+				RepoURL:  gitContext.RepoURL,
+				Path:     path,
+			})
+		}
+		return scopes
+	}
+
+	// Repo-scoped asset - install to repo's .claude directory
 	installScope := &clients.InstallScope{
 		Type: clients.ScopeRepository,
 	}
@@ -390,9 +418,7 @@ func buildInstallScopeForAsset(art *lockfile.Asset, gitContext *gitutil.GitConte
 		installScope.RepoURL = gitContext.RepoURL
 	}
 
-	// For path-scoped assets, we'd need to handle the path too
-	// but for now we install to repo root
-	return installScope
+	return []*clients.InstallScope{installScope}
 }
 
 // runMultiClientInstallation executes installation across all clients concurrently

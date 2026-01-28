@@ -35,6 +35,11 @@ func NewClient() *Client {
 	}
 }
 
+// RuleCapabilities returns Claude Code's rule capabilities
+func (c *Client) RuleCapabilities() *clients.RuleCapabilities {
+	return RuleCapabilities()
+}
+
 // IsInstalled checks if Claude Code is installed by checking for .claude directory
 func (c *Client) IsInstalled() bool {
 	home, err := os.UserHomeDir()
@@ -104,6 +109,10 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
 		case asset.TypeClaudeCodePlugin:
 			handler := handlers.NewClaudeCodePluginHandler(bundle.Metadata)
+			err = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeRule:
+			// Rules go to .claude/rules/{name}.md
+			handler := handlers.NewRuleHandler(bundle.Metadata, nil)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
 		default:
 			err = fmt.Errorf("unsupported asset type: %s", bundle.Metadata.Asset.Type.Key)
@@ -177,6 +186,9 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 			err = handler.Remove(ctx, targetBase)
 		case asset.TypeClaudeCodePlugin:
 			handler := handlers.NewClaudeCodePluginHandler(meta)
+			err = handler.Remove(ctx, targetBase)
+		case asset.TypeRule:
+			handler := handlers.NewRuleHandler(meta, nil)
 			err = handler.Remove(ctx, targetBase)
 		default:
 			err = fmt.Errorf("unsupported asset type: %s", a.Type.Key)
@@ -311,17 +323,25 @@ func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, sco
 			Asset: a,
 		}
 
-		handler, err := handlers.NewHandler(a.Type, &metadata.Metadata{
+		meta := &metadata.Metadata{
 			Asset: metadata.Asset{
 				Name:    a.Name,
 				Version: a.Version,
 				Type:    a.Type,
 			},
-		})
-		if err != nil {
-			result.Message = err.Error()
-		} else {
+		}
+
+		// Rules now use same targetBase as other assets (.claude/rules/)
+		if a.Type == asset.TypeRule {
+			handler := handlers.NewRuleHandler(meta, nil)
 			result.Installed, result.Message = handler.VerifyInstalled(targetBase)
+		} else {
+			handler, err := handlers.NewHandler(a.Type, meta)
+			if err != nil {
+				result.Message = err.Error()
+			} else {
+				result.Installed, result.Message = handler.VerifyInstalled(targetBase)
+			}
 		}
 
 		results = append(results, result)
@@ -478,4 +498,9 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 	default:
 		return "", fmt.Errorf("import not supported for type: %s", assetType)
 	}
+}
+
+func init() {
+	// Auto-register on package import
+	clients.Register(NewClient())
 }

@@ -39,9 +39,15 @@ func NewClient() *Client {
 				asset.TypeSkill, // Transform to commands
 				asset.TypeCommand,
 				asset.TypeHook, // Supported via hooks.json
+				asset.TypeRule, // .cursor/rules/{name}.mdc
 			},
 		),
 	}
+}
+
+// RuleCapabilities returns Cursor's rule capabilities
+func (c *Client) RuleCapabilities() *clients.RuleCapabilities {
+	return RuleCapabilities()
 }
 
 // IsInstalled checks if Cursor is installed by checking for .cursor directory
@@ -108,6 +114,9 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeHook:
 			handler := handlers.NewHookHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeRule:
+			handler := handlers.NewRuleHandler(bundle.Metadata, "")
+			err = handler.Install(ctx, bundle.ZipData, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + bundle.Metadata.Asset.Type.Key
@@ -170,6 +179,9 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 			err = handler.Remove(ctx, targetBase)
 		case asset.TypeHook:
 			handler := handlers.NewHookHandler(meta)
+			err = handler.Remove(ctx, targetBase)
+		case asset.TypeRule:
+			handler := handlers.NewRuleHandler(meta, "")
 			err = handler.Remove(ctx, targetBase)
 		default:
 			result.Status = clients.StatusSkipped

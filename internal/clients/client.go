@@ -73,6 +73,10 @@ type Client interface {
 	// Used during import to pass the asset directory to the add command.
 	// Returns an error for asset types that don't have a simple directory structure.
 	GetAssetPath(ctx context.Context, name string, assetType asset.Type, scope *InstallScope) (string, error)
+
+	// RuleCapabilities returns this client's capabilities for handling rules.
+	// Returns nil if the client doesn't support rules.
+	RuleCapabilities() *RuleCapabilities
 }
 
 // InstalledSkill represents a skill that has been installed
@@ -210,6 +214,11 @@ func (b *BaseClient) DisplayName() string { return b.displayName }
 
 func (b *BaseClient) SupportsAssetType(assetType asset.Type) bool {
 	return b.capabilities[assetType.Key]
+}
+
+// RuleCapabilities returns nil by default - clients override this if they support rules
+func (b *BaseClient) RuleCapabilities() *RuleCapabilities {
+	return nil
 }
 
 // NewBaseClient creates a new base client with capabilities

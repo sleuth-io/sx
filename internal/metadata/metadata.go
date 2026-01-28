@@ -25,6 +25,7 @@ type Metadata struct {
 	Hook             *HookConfig             `toml:"hook,omitempty"`
 	MCP              *MCPConfig              `toml:"mcp,omitempty"`
 	ClaudeCodePlugin *ClaudeCodePluginConfig `toml:"claude-code-plugin,omitempty"`
+	Rule             *RuleConfig             `toml:"rule,omitempty"`
 	Custom           map[string]any          `toml:"custom,omitempty"`
 }
 
@@ -91,6 +92,16 @@ type ClaudeCodePluginConfig struct {
 	AutoEnable       *bool  `toml:"auto-enable,omitempty"`        // Default: true
 	Marketplace      string `toml:"marketplace,omitempty"`        // Optional marketplace name
 	MinClientVersion string `toml:"min-client-version,omitempty"` // Optional minimum Claude Code version
+}
+
+// RuleConfig represents the [rule] section
+type RuleConfig struct {
+	Title       string         `toml:"title,omitempty"`       // Title/heading for the rule (defaults to asset name)
+	PromptFile  string         `toml:"prompt-file,omitempty"` // Defaults to RULE.md
+	Description string         `toml:"description,omitempty"` // Rule description (used in frontmatter)
+	Globs       []string       `toml:"globs,omitempty"`       // File patterns this rule applies to
+	Cursor      map[string]any `toml:"cursor,omitempty"`      // Cursor-specific settings
+	ClaudeCode  map[string]any `toml:"claude-code,omitempty"` // Claude Code-specific settings
 }
 
 // metadataCompat is used for parsing old-style metadata with [artifact] section
@@ -171,6 +182,8 @@ func (m *Metadata) GetTypeConfig() any {
 		return m.MCP
 	case asset.TypeClaudeCodePlugin:
 		return m.ClaudeCodePlugin
+	case asset.TypeRule:
+		return m.Rule
 	}
 	return nil
 }

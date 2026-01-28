@@ -9,20 +9,13 @@ import (
 
 	"github.com/sleuth-io/sx/internal/autoupdate"
 	"github.com/sleuth-io/sx/internal/buildinfo"
-	"github.com/sleuth-io/sx/internal/clients"
-	"github.com/sleuth-io/sx/internal/clients/claude_code"
-	"github.com/sleuth-io/sx/internal/clients/cursor"
+	_ "github.com/sleuth-io/sx/internal/clients/claude_code" // Register Claude Code client
+	_ "github.com/sleuth-io/sx/internal/clients/cursor"      // Register Cursor client
 	"github.com/sleuth-io/sx/internal/commands"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/logger"
 )
-
-func init() {
-	// Register all clients
-	clients.Register(claude_code.NewClient())
-	clients.Register(cursor.NewClient()) // TODO: Uncomment after thorough testing
-}
 
 func main() {
 	// Log command invocation with context

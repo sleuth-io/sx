@@ -1,33 +1,50 @@
 package commands
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
 
-// isSingleFileAsset checks if the path is a single .md file that can be treated as an agent or command
+// isSingleFileAsset checks if the path is a single file that can be treated as an asset.
+// This includes agents, commands, skills, and rule files.
 func isSingleFileAsset(path string) bool {
-	lower := strings.ToLower(path)
-	return strings.HasSuffix(lower, ".md")
+	// Check if any client or fallback recognizes this as an asset
+	return clients.DetectAssetType(path, nil) != nil
 }
 
-// createZipFromSingleFile creates a zip archive from a single .md file
-// Detects asset type from path and content, creates appropriate metadata
+// createZipFromSingleFile creates a zip archive from a single file.
+// Detects asset type from path and content, creates appropriate metadata.
 func createZipFromSingleFile(filePath string) ([]byte, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
 
-	// Determine asset type from path and content
-	assetType := detectSingleFileAssetType(filePath, content)
+	// Ask clients/fallback to detect the asset type
+	detectedType := clients.DetectAssetType(filePath, content)
+	if detectedType == nil {
+		return nil, fmt.Errorf("unrecognized file type: %s", filePath)
+	}
 
-	// Keep the original filename instead of renaming to AGENT.md/COMMAND.md
+	switch *detectedType {
+	case asset.TypeRule:
+		return createZipFromRuleFile(filePath)
+	case asset.TypeAgent, asset.TypeCommand, asset.TypeSkill:
+		return createZipFromPromptFile(filePath, *detectedType, content)
+	default:
+		return nil, fmt.Errorf("unsupported asset type: %s", detectedType.Label)
+	}
+}
+
+// createZipFromPromptFile creates a zip for agent/command/skill files
+func createZipFromPromptFile(filePath string, assetType asset.Type, content []byte) ([]byte, error) {
 	promptFileName := filepath.Base(filePath)
 	assetName := strings.TrimSuffix(promptFileName, filepath.Ext(promptFileName))
 
@@ -37,7 +54,7 @@ func createZipFromSingleFile(filePath string) ([]byte, error) {
 		return nil, err
 	}
 
-	// Create metadata with correct PromptFile
+	// Create metadata
 	meta := &metadata.Metadata{
 		MetadataVersion: "1.0",
 		Asset: metadata.Asset{
@@ -47,10 +64,14 @@ func createZipFromSingleFile(filePath string) ([]byte, error) {
 		},
 	}
 
-	if assetType == asset.TypeAgent {
+	// Set appropriate config based on type
+	switch assetType {
+	case asset.TypeAgent:
 		meta.Agent = &metadata.AgentConfig{PromptFile: promptFileName}
-	} else {
+	case asset.TypeCommand:
 		meta.Command = &metadata.CommandConfig{PromptFile: promptFileName}
+	case asset.TypeSkill:
+		meta.Skill = &metadata.SkillConfig{PromptFile: promptFileName}
 	}
 
 	// Add metadata.toml to zip
@@ -60,45 +81,4 @@ func createZipFromSingleFile(filePath string) ([]byte, error) {
 	}
 
 	return utils.AddFileToZip(zipData, "metadata.toml", metaBytes)
-}
-
-// detectSingleFileAssetType analyzes path and content to determine if it's an agent or command
-func detectSingleFileAssetType(filePath string, content []byte) asset.Type {
-	lowerPath := strings.ToLower(filePath)
-
-	// Check path for hints - most reliable indicator
-	if strings.Contains(lowerPath, "/agents/") || strings.Contains(lowerPath, "\\agents\\") {
-		return asset.TypeAgent
-	}
-	if strings.Contains(lowerPath, "/commands/") || strings.Contains(lowerPath, "\\commands\\") {
-		return asset.TypeCommand
-	}
-
-	// Check for YAML frontmatter (agents typically have this)
-	contentStr := string(content)
-	if strings.HasPrefix(contentStr, "---") {
-		lines := strings.Split(contentStr, "\n")
-		inFrontmatter := false
-		for _, line := range lines {
-			if line == "---" {
-				if inFrontmatter {
-					break
-				}
-				inFrontmatter = true
-				continue
-			}
-			if inFrontmatter {
-				lower := strings.ToLower(line)
-				// Agent frontmatter typically has: tools, model, permissionMode
-				if strings.HasPrefix(lower, "tools:") ||
-					strings.HasPrefix(lower, "model:") ||
-					strings.HasPrefix(lower, "permissionmode:") {
-					return asset.TypeAgent
-				}
-			}
-		}
-	}
-
-	// Default to command if no agent indicators found
-	return asset.TypeCommand
 }

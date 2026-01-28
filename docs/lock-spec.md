@@ -61,6 +61,7 @@ dependencies = [ ... ]                  # Array of dependency references
 - `agent`: Packaged agent (zip contains agent code)
 - `command`: Slash command (zip contains command markdown file)
 - `hook`: Event hook (zip contains hook scripts and hook-config.yml)
+- `rule`: Shared AI coding rule (installed to client-specific rules directories)
 
 ## Source Types
 
