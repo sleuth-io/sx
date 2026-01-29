@@ -161,14 +161,10 @@ func (s *SleuthVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipDa
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
-	}
-
 	// Parse response
 	var uploadResp struct {
-		Success bool `json:"success"`
+		Success bool   `json:"success"`
+		Error   string `json:"error"`
 		Asset   struct {
 			Name    string `json:"name"`
 			Version string `json:"version"`
@@ -177,10 +173,31 @@ func (s *SleuthVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipDa
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&uploadResp); err != nil {
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+			return fmt.Errorf("HTTP %d", resp.StatusCode)
+		}
 		return fmt.Errorf("failed to parse response: %w", err)
 	}
 
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		if uploadResp.Error != "" {
+			// Check for version conflict error
+			if strings.Contains(uploadResp.Error, "already exists") {
+				return &ErrVersionExists{
+					Name:    asset.Name,
+					Version: asset.Version,
+					Message: uploadResp.Error,
+				}
+			}
+			return errors.New(uploadResp.Error)
+		}
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
 	if !uploadResp.Success {
+		if uploadResp.Error != "" {
+			return errors.New(uploadResp.Error)
+		}
 		return errors.New("upload failed: server returned success=false")
 	}
 
@@ -265,6 +282,34 @@ func (s *SleuthVault) GetMetadata(ctx context.Context, name, version string) (*m
 	}
 
 	return metadata.Parse(data)
+}
+
+// GetAssetByVersion downloads an asset by name and version
+func (s *SleuthVault) GetAssetByVersion(ctx context.Context, name, ver string) ([]byte, error) {
+	endpoint := fmt.Sprintf("%s/api/skills/assets/%s/%s/%s-%s.zip", s.serverURL, name, ver, name, ver)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
+	if s.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.authToken)
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch asset: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	return io.ReadAll(resp.Body)
 }
 
 // VerifyIntegrity checks hashes and sizes for downloaded assets

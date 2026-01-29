@@ -2,12 +2,27 @@ package vault
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
+
+// ErrVersionExists is returned when attempting to add an asset version that already exists
+type ErrVersionExists struct {
+	Name    string
+	Version string
+	Message string
+}
+
+func (e *ErrVersionExists) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return fmt.Sprintf("version %s already exists for asset %s", e.Version, e.Name)
+}
 
 // Vault represents a source of assets with read and write capabilities
 // This interface unifies the concepts of "vault" and "source fetcher"
@@ -37,8 +52,11 @@ type Vault interface {
 	GetVersionList(ctx context.Context, name string) ([]string, error)
 
 	// GetMetadata retrieves metadata for a specific asset version
-	// Only applicable to repositories with version management (Sleuth, not Git)
 	GetMetadata(ctx context.Context, name, version string) (*metadata.Metadata, error)
+
+	// GetAssetByVersion downloads an asset by name and version
+	// Used for comparing content when adding assets
+	GetAssetByVersion(ctx context.Context, name, version string) ([]byte, error)
 
 	// VerifyIntegrity checks hashes and sizes for downloaded assets
 	VerifyIntegrity(data []byte, hashes map[string]string, size int64) error

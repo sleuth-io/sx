@@ -207,7 +207,10 @@ marketplace = %q
 
 // runAddWithZipData continues the add flow with pre-loaded zip data
 func runAddWithZipData(ctx context.Context, cmd *cobra.Command, out *outputHelper, status *components.Status, sourcePath string, zipData []byte, promptInstall bool) error {
-	name, assetType, metadataExists, err := detectAssetInfo(out, status, sourcePath, zipData)
+	// Marketplace flow is always interactive, so use empty options
+	opts := addOptions{}
+
+	name, assetType, metadataExists, err := detectAssetInfo(out, status, sourcePath, zipData, opts)
 	if err != nil {
 		return err
 	}
@@ -224,9 +227,9 @@ func runAddWithZipData(ctx context.Context, cmd *cobra.Command, out *outputHelpe
 
 	var addErr error
 	if contentsIdentical {
-		addErr = handleIdenticalAsset(ctx, out, status, vault, name, version, assetType)
+		addErr = handleIdenticalAsset(ctx, out, status, vault, name, version, assetType, opts)
 	} else {
-		addErr = addNewAsset(ctx, out, status, vault, name, assetType, version, sourcePath, zipData, metadataExists)
+		addErr = addNewAsset(ctx, out, status, vault, name, assetType, version, sourcePath, zipData, metadataExists, opts)
 	}
 
 	if addErr != nil {
