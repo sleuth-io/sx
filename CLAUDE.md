@@ -5,11 +5,21 @@ Your team's private npm for AI assets - skills, MCP configs, commands, and more.
 ## Quick Commands
 
 ```bash
-make build          # Build binary
+make build          # Build binary to ./dist/sx
 make test           # Run tests
 make format         # Format code
 make lint           # Run linter
 ```
+
+## Testing Local Changes
+
+After making code changes, build and test with:
+
+```bash
+make build && ./dist/sx <command>
+```
+
+Example: `make build && ./dist/sx vault list`
 
 ## Tech Stack
 

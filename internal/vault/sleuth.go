@@ -408,10 +408,54 @@ func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string
 
 // ListAssets retrieves a list of all assets in the vault using GraphQL
 func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*ListAssetsResult, error) {
-	// Build GraphQL query matching the actual schema (uses Relay pagination)
-	query := `query VaultAssets($first: Int, $type: String, $search: String) {
+	// If no type specified, query all asset types and combine results
+	if opts.Type == "" {
+		allAssets := make([]AssetSummary, 0)
+		for _, t := range asset.AllTypes() {
+			typeOpts := ListAssetsOptions{
+				Type:   t.Key,
+				Search: opts.Search,
+				Limit:  opts.Limit,
+			}
+			result, err := s.listAssetsByType(ctx, typeOpts)
+			if err != nil {
+				// Continue on error - some types may not exist in the vault
+				continue
+			}
+			allAssets = append(allAssets, result.Assets...)
+		}
+		return &ListAssetsResult{Assets: allAssets}, nil
+	}
+
+	return s.listAssetsByType(ctx, opts)
+}
+
+// listAssetsByType retrieves assets of a specific type from the vault
+func (s *SleuthVault) listAssetsByType(ctx context.Context, opts ListAssetsOptions) (*ListAssetsResult, error) {
+	// Set default limit if not specified (max 50 enforced by backend)
+	limit := opts.Limit
+	if limit == 0 || limit > 50 {
+		limit = 50
+	}
+
+	variables := map[string]any{
+		"first": limit,
+		"type":  strings.ToUpper(strings.ReplaceAll(opts.Type, "-", "_")),
+	}
+
+	// Build query - type is always required
+	queryParams := "$first: Int, $type: AssetType!"
+	assetArgs := "first: $first, type: $type"
+
+	if opts.Search != "" {
+		queryParams += ", $search: String"
+		assetArgs += ", search: $search"
+		variables["search"] = opts.Search
+	}
+
+	query := fmt.Sprintf(`query VaultAssets(%s) {
 		vault {
-			assets(first: $first, type: $type, search: $search) {
+			assets(%s) {
 				nodes {
 					name
 					type
@@ -423,23 +467,7 @@ func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*
 				}
 			}
 		}
-	}`
-
-	// Set default limit if not specified (max 50 enforced by backend)
-	limit := opts.Limit
-	if limit == 0 || limit > 50 {
-		limit = 50
-	}
-
-	variables := map[string]any{
-		"first": limit,
-	}
-	if opts.Type != "" {
-		variables["type"] = opts.Type
-	}
-	if opts.Search != "" {
-		variables["search"] = opts.Search
-	}
+	}`, queryParams, assetArgs)
 
 	// Make GraphQL request
 	var gqlResp struct {
