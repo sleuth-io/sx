@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -81,6 +82,11 @@ func runAddWithFlags(cmd *cobra.Command, input string, opts addOptions) error {
 	if opts.ScopeGlobal && len(opts.ScopeRepos) > 0 {
 		return errors.New("cannot use --scope-global with --scope-repo")
 	}
+	for _, repo := range opts.ScopeRepos {
+		if strings.TrimSpace(repo) == "" {
+			return errors.New("--scope-repo cannot be empty")
+		}
+	}
 
 	// In non-interactive mode, input is required
 	if opts.isNonInteractive() && input == "" {
@@ -141,6 +147,11 @@ func runAddWithOptions(cmd *cobra.Command, input string, opts addOptions) error 
 	name, assetType, metadataExists, err := detectAssetInfo(out, status, zipFile, zipData, opts)
 	if err != nil {
 		return err
+	}
+
+	// Check for context cancellation before expensive vault operations
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	// Create vault instance
@@ -376,6 +387,11 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 		SourcePath: &lockfile.SourcePath{
 			Path: fmt.Sprintf("./assets/%s/%s", meta.Asset.Name, meta.Asset.Version),
 		},
+	}
+
+	// Check for context cancellation before vault upload
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	// Upload asset files to vault

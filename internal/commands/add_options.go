@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"errors"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/lockfile"
@@ -29,10 +28,11 @@ func (o addOptions) isNonInteractive() bool {
 // - ScopeRepos: slice with repo scopes (parsed from "repo#path1,path2" format)
 // - Neither + NoInstall: nil (vault only, no lock file update)
 // - Neither + Yes: empty slice (default to global)
+//
+// Note: Validation of mutually exclusive flags (--scope-global with --scope-repo)
+// is performed in runAddWithFlags for early error reporting. This function
+// assumes valid input.
 func (o addOptions) getScopes() ([]lockfile.Scope, error) {
-	if o.ScopeGlobal && len(o.ScopeRepos) > 0 {
-		return nil, errors.New("cannot use --scope-global with --scope-repo")
-	}
 	if o.ScopeGlobal {
 		return []lockfile.Scope{}, nil // Empty = global
 	}
@@ -52,6 +52,9 @@ func (o addOptions) getScopes() ([]lockfile.Scope, error) {
 
 // parseRepoSpec parses "repo#path1,path2" format
 // Returns repo URL and slice of paths (nil if no paths specified)
+//
+// Note: Uses # as delimiter, so repo URLs containing # (e.g., URL fragments)
+// are not supported. Standard git remote URLs (SSH, HTTPS) don't use fragments.
 func parseRepoSpec(spec string) (string, []string) {
 	repo, pathStr, found := strings.Cut(spec, "#")
 	if !found {
