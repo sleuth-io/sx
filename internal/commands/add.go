@@ -212,7 +212,7 @@ func configureExistingAsset(ctx context.Context, cmd *cobra.Command, out *output
 	if errors.Is(err, ErrAssetNotFound) {
 		// Not in lock file - check if it exists in vault
 		promptInstall := !opts.NoInstall && !opts.isNonInteractive()
-		return handleNewAssetFromVault(ctx, cmd, out, status, vault, assetName, promptInstall)
+		return handleNewAssetFromVault(ctx, cmd, out, status, vault, assetName, promptInstall, opts)
 	}
 	if err != nil {
 		return err
@@ -220,11 +220,11 @@ func configureExistingAsset(ctx context.Context, cmd *cobra.Command, out *output
 
 	// Configure existing asset
 	promptInstall := !opts.NoInstall && !opts.isNonInteractive()
-	return configureFoundAsset(ctx, cmd, out, vault, foundAsset, promptInstall)
+	return configureFoundAsset(ctx, cmd, out, vault, foundAsset, promptInstall, opts)
 }
 
 // configureFoundAsset handles configuring an asset that was found in the lock file
-func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHelper, vault vaultpkg.Vault, foundAsset *lockfile.Asset, promptInstall bool) error {
+func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHelper, vault vaultpkg.Vault, foundAsset *lockfile.Asset, promptInstall bool, opts addOptions) error {
 	out.printf("Configuring scope for %s@%s\n", foundAsset.Name, foundAsset.Version)
 
 	// Normalize nil to empty slice for global installations
@@ -233,10 +233,19 @@ func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHel
 		currentScopes = []lockfile.Scope{}
 	}
 
-	// Prompt for scope configurations
-	scopes, err := promptForRepositories(out, foundAsset.Name, foundAsset.Version, currentScopes)
-	if err != nil {
-		return fmt.Errorf("failed to configure repositories: %w", err)
+	// Get scopes (from flags if non-interactive, otherwise prompt)
+	var scopes []lockfile.Scope
+	var err error
+	if opts.isNonInteractive() {
+		scopes, err = opts.getScopes()
+		if err != nil {
+			return err
+		}
+	} else {
+		scopes, err = promptForRepositories(out, foundAsset.Name, foundAsset.Version, currentScopes)
+		if err != nil {
+			return fmt.Errorf("failed to configure repositories: %w", err)
+		}
 	}
 
 	// If nil, user chose to remove from installation

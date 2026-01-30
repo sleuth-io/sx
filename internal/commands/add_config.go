@@ -96,7 +96,7 @@ func selectAssetVersion(foundAssets []*lockfile.Asset, assetName string, out *ou
 }
 
 // handleNewAssetFromVault handles configuring an asset that exists in vault but not in lock file
-func handleNewAssetFromVault(ctx context.Context, cmd *cobra.Command, out *outputHelper, status *components.Status, vault vaultpkg.Vault, assetName string, promptInstall bool) error {
+func handleNewAssetFromVault(ctx context.Context, cmd *cobra.Command, out *outputHelper, status *components.Status, vault vaultpkg.Vault, assetName string, promptInstall bool, opts addOptions) error {
 	status.Start("Checking for asset versions")
 	versions, err := vault.GetVersionList(ctx, assetName)
 	status.Clear()
@@ -107,9 +107,18 @@ func handleNewAssetFromVault(ctx context.Context, cmd *cobra.Command, out *outpu
 	latestVersion := versions[len(versions)-1]
 	out.printf("Found asset: %s v%s in vault (not yet installed)\n", assetName, latestVersion)
 
-	repositories, err := promptForRepositories(out, assetName, latestVersion, nil)
-	if err != nil {
-		return fmt.Errorf("failed to configure repositories: %w", err)
+	// Get scopes (from flags if non-interactive, otherwise prompt)
+	var repositories []lockfile.Scope
+	if opts.isNonInteractive() {
+		repositories, err = opts.getScopes()
+		if err != nil {
+			return err
+		}
+	} else {
+		repositories, err = promptForRepositories(out, assetName, latestVersion, nil)
+		if err != nil {
+			return fmt.Errorf("failed to configure repositories: %w", err)
+		}
 	}
 
 	if repositories == nil {
