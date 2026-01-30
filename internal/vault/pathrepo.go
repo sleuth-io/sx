@@ -2,7 +2,6 @@ package vault
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
+	"github.com/sleuth-io/sx/internal/utils"
 )
 
 // PathVault implements Vault for local filesystem directories
@@ -157,9 +157,25 @@ func (p *PathVault) GetVersionList(ctx context.Context, name string) ([]string, 
 }
 
 // GetMetadata retrieves metadata for a specific asset version
-// Not applicable for path repositories (metadata is inside the asset)
 func (p *PathVault) GetMetadata(ctx context.Context, name, version string) (*metadata.Metadata, error) {
-	return nil, errors.New("GetMetadata not supported for path repositories")
+	metadataPath := filepath.Join(p.repoPath, "assets", name, version, "metadata.toml")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read metadata: %w", err)
+	}
+	return metadata.Parse(data)
+}
+
+// GetAssetByVersion retrieves an asset by name and version
+// Creates a zip from the exploded directory
+func (p *PathVault) GetAssetByVersion(ctx context.Context, name, version string) ([]byte, error) {
+	assetDir := filepath.Join(p.repoPath, "assets", name, version)
+	if _, err := os.Stat(assetDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("asset %s@%s not found", name, version)
+	}
+
+	// Create zip from directory
+	return utils.CreateZip(assetDir)
 }
 
 // VerifyIntegrity checks hashes and sizes for downloaded assets
