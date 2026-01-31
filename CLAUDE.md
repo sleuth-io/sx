@@ -19,8 +19,6 @@ After making code changes, build and test with:
 make build && ./dist/sx <command>
 ```
 
-Example: `make build && ./dist/sx vault list`
-
 ## Tech Stack
 
 - Go 1.25+

@@ -406,12 +406,30 @@ func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string
 	return nil
 }
 
+// assetTypeToGraphQL maps local asset type keys to GraphQL AssetType enum values.
+// Returns empty string for types not supported by the backend.
+func assetTypeToGraphQL(typeKey string) string {
+	mapping := map[string]string{
+		"skill":   "SKILL",
+		"mcp":     "MCP",
+		"agent":   "AGENT",
+		"command": "COMMAND",
+		"hook":    "HOOK",
+	}
+	return mapping[typeKey]
+}
+
 // ListAssets retrieves a list of all assets in the vault using GraphQL
 func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*ListAssetsResult, error) {
 	// If no type specified, query all asset types and combine results
 	if opts.Type == "" {
 		allAssets := make([]AssetSummary, 0)
+		var lastErr error
 		for _, t := range asset.AllTypes() {
+			// Skip types not supported by the backend
+			if assetTypeToGraphQL(t.Key) == "" {
+				continue
+			}
 			typeOpts := ListAssetsOptions{
 				Type:   t.Key,
 				Search: opts.Search,
@@ -419,10 +437,16 @@ func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*
 			}
 			result, err := s.listAssetsByType(ctx, typeOpts)
 			if err != nil {
-				// Continue on error - some types may not exist in the vault
+				// Track the error but continue - we want to return partial results
+				// if some types succeed
+				lastErr = err
 				continue
 			}
 			allAssets = append(allAssets, result.Assets...)
+		}
+		// If we got no assets and had errors, return the last error
+		if len(allAssets) == 0 && lastErr != nil {
+			return nil, lastErr
 		}
 		return &ListAssetsResult{Assets: allAssets}, nil
 	}
@@ -438,9 +462,15 @@ func (s *SleuthVault) listAssetsByType(ctx context.Context, opts ListAssetsOptio
 		limit = 50
 	}
 
+	gqlType := assetTypeToGraphQL(opts.Type)
+	if gqlType == "" {
+		// Type not supported by backend, return empty result
+		return &ListAssetsResult{Assets: []AssetSummary{}}, nil
+	}
+
 	variables := map[string]any{
 		"first": limit,
-		"type":  strings.ToUpper(strings.ReplaceAll(opts.Type, "-", "_")),
+		"type":  gqlType,
 	}
 
 	// Build query - type is always required
