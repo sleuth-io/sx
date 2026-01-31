@@ -406,12 +406,86 @@ func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string
 	return nil
 }
 
+// assetTypeToGraphQL maps local asset type keys to GraphQL AssetType enum values.
+// Returns empty string for types not supported by the backend.
+func assetTypeToGraphQL(typeKey string) string {
+	mapping := map[string]string{
+		"skill":   "SKILL",
+		"mcp":     "MCP",
+		"agent":   "AGENT",
+		"command": "COMMAND",
+		"hook":    "HOOK",
+	}
+	return mapping[typeKey]
+}
+
 // ListAssets retrieves a list of all assets in the vault using GraphQL
 func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*ListAssetsResult, error) {
-	// Build GraphQL query matching the actual schema (uses Relay pagination)
-	query := `query VaultAssets($first: Int, $type: String, $search: String) {
+	// If no type specified, query all asset types and combine results
+	if opts.Type == "" {
+		allAssets := make([]AssetSummary, 0)
+		var lastErr error
+		for _, t := range asset.AllTypes() {
+			// Skip types not supported by the backend
+			if assetTypeToGraphQL(t.Key) == "" {
+				continue
+			}
+			typeOpts := ListAssetsOptions{
+				Type:   t.Key,
+				Search: opts.Search,
+				Limit:  opts.Limit,
+			}
+			result, err := s.listAssetsByType(ctx, typeOpts)
+			if err != nil {
+				// Track the error but continue - we want to return partial results
+				// if some types succeed
+				lastErr = err
+				continue
+			}
+			allAssets = append(allAssets, result.Assets...)
+		}
+		// If we got no assets and had errors, return the last error
+		if len(allAssets) == 0 && lastErr != nil {
+			return nil, lastErr
+		}
+		return &ListAssetsResult{Assets: allAssets}, nil
+	}
+
+	return s.listAssetsByType(ctx, opts)
+}
+
+// listAssetsByType retrieves assets of a specific type from the vault
+func (s *SleuthVault) listAssetsByType(ctx context.Context, opts ListAssetsOptions) (*ListAssetsResult, error) {
+	// Set default limit if not specified (max 50 enforced by backend)
+	limit := opts.Limit
+	if limit == 0 || limit > 50 {
+		limit = 50
+	}
+
+	gqlType := assetTypeToGraphQL(opts.Type)
+	if gqlType == "" {
+		// Type not supported by backend, return empty result
+		return &ListAssetsResult{Assets: []AssetSummary{}}, nil
+	}
+
+	variables := map[string]any{
+		"first": limit,
+		"type":  gqlType,
+	}
+
+	// Build query - type is always required
+	queryParams := "$first: Int, $type: AssetType!"
+	assetArgs := "first: $first, type: $type"
+
+	if opts.Search != "" {
+		queryParams += ", $search: String"
+		assetArgs += ", search: $search"
+		variables["search"] = opts.Search
+	}
+
+	query := fmt.Sprintf(`query VaultAssets(%s) {
 		vault {
-			assets(first: $first, type: $type, search: $search) {
+			assets(%s) {
 				nodes {
 					name
 					type
@@ -423,23 +497,7 @@ func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*
 				}
 			}
 		}
-	}`
-
-	// Set default limit if not specified (max 50 enforced by backend)
-	limit := opts.Limit
-	if limit == 0 || limit > 50 {
-		limit = 50
-	}
-
-	variables := map[string]any{
-		"first": limit,
-	}
-	if opts.Type != "" {
-		variables["type"] = opts.Type
-	}
-	if opts.Search != "" {
-		variables["search"] = opts.Search
-	}
+	}`, queryParams, assetArgs)
 
 	// Make GraphQL request
 	var gqlResp struct {
