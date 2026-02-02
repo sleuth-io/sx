@@ -44,19 +44,26 @@ install: build ## Install binary to ~/.local/bin
 
 test: ## Run tests
 	@echo "Running tests..."
-	@OUTPUT=$$(go test -race -cover ./... 2>&1); \
-	if [ $$? -eq 0 ]; then \
-		PASSED=$$(echo "$$OUTPUT" | grep -c "^ok"); \
-		echo "✓ All $$PASSED packages passed"; \
-	else \
+	@OUTPUT=$$(go test -race -cover ./... 2>&1 | grep -v 'no such tool "covdata"'); \
+	RESULT=$$?; \
+	if echo "$$OUTPUT" | grep -q "^FAIL"; then \
 		echo "$$OUTPUT"; \
 		exit 1; \
+	else \
+		PASSED=$$(echo "$$OUTPUT" | grep -c "^ok"); \
+		echo "✓ All $$PASSED packages passed"; \
 	fi
 
 lint: ## Run linters (requires golangci-lint)
 	@echo "Running linters..."
-	@which golangci-lint > /dev/null || (echo "golangci-lint not found. Install from https://golangci-lint.run/usage/install/" && exit 1)
-	@golangci-lint run
+	@GOBIN=$$(go env GOPATH)/bin; \
+	if command -v golangci-lint > /dev/null 2>&1; then \
+		golangci-lint run; \
+	elif [ -x "$$GOBIN/golangci-lint" ]; then \
+		"$$GOBIN/golangci-lint" run; \
+	else \
+		echo "golangci-lint not found. Run 'make postpull' to install." && exit 1; \
+	fi
 
 format: ## Format code
 	@echo "Formatting code..."
@@ -102,23 +109,16 @@ update-deps: ## Update all dependencies to latest versions
 init: ## Initialize development environment (install tools, download deps)
 	@echo "Initializing development environment..."
 	@echo "Installing development tools..."
-	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	@echo "Building golangci-lint from source (to match Go version)..."
+	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$$(go env GOPATH)/bin" v2.8.0
 	@echo "Downloading dependencies..."
 	@go mod download
-	@if ! which golangci-lint > /dev/null 2>&1; then \
-		echo ""; \
-		echo "WARNING: golangci-lint was installed but is not in your PATH."; \
-		echo "Add this to your ~/.bashrc or ~/.zshrc:"; \
-		echo "  export PATH=\"\$$PATH:\$$(go env GOPATH)/bin\""; \
-		echo "Then run: source ~/.bashrc (or source ~/.zshrc)"; \
-		echo ""; \
-	fi
 	@echo ""
 	@echo "✓ Development environment initialized"
 
 prepush: format lint test build ## Run before pushing (format, lint, test, build)
 
-postpull: deps ## Run after pulling (download dependencies)
+postpull: init ## Run after pulling (install tools and download dependencies)
 
 demo: build ## Generate demo GIF (requires vhs)
 	@echo "Generating demo..."
