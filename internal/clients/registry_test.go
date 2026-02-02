@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
@@ -35,9 +36,12 @@ func (m *mockClient) ReadSkill(context.Context, string, *InstallScope) (*SkillCo
 	return &SkillContent{}, nil
 }
 func (m *mockClient) EnsureAssetSupport(context.Context, *InstallScope) error { return nil }
-func (m *mockClient) InstallBootstrap(context.Context) error                  { return nil }
-func (m *mockClient) UninstallBootstrap(context.Context) error                { return nil }
-func (m *mockClient) ShouldInstall(context.Context) (bool, error)             { return true, nil }
+func (m *mockClient) GetBootstrapOptions(context.Context) []bootstrap.Option  { return nil }
+func (m *mockClient) InstallBootstrap(context.Context, []bootstrap.Option) error {
+	return nil
+}
+func (m *mockClient) UninstallBootstrap(context.Context, []bootstrap.Option) error { return nil }
+func (m *mockClient) ShouldInstall(context.Context) (bool, error)                  { return true, nil }
 func (m *mockClient) VerifyAssets(context.Context, []*lockfile.Asset, *InstallScope) []VerifyResult {
 	return nil
 }

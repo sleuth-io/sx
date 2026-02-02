@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/constants"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/lockfile"
@@ -369,5 +370,10 @@ func (p *PathVault) GetAssetDetails(ctx context.Context, name string) (*AssetDet
 
 // GetMCPTools returns no additional MCP tools for PathVault
 func (p *PathVault) GetMCPTools() any {
+	return nil
+}
+
+// GetBootstrapOptions returns no bootstrap options for PathVault
+func (p *PathVault) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	return nil
 }

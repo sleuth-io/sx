@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/clients/claude_code/handlers"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
@@ -284,14 +285,20 @@ func (c *Client) EnsureAssetSupport(ctx context.Context, scope *clients.InstallS
 	return nil
 }
 
+// GetBootstrapOptions returns bootstrap options for Claude Code.
+// This includes session hook (auto-update) and analytics hook (usage tracking).
+func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
+	return []bootstrap.Option{bootstrap.SessionHook, bootstrap.AnalyticsHook}
+}
+
 // InstallBootstrap installs Claude Code infrastructure (hooks and MCP servers)
-func (c *Client) InstallBootstrap(ctx context.Context) error {
-	return installBootstrap()
+func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
+	return installBootstrap(opts)
 }
 
 // UninstallBootstrap removes Claude Code infrastructure (hooks and MCP servers)
-func (c *Client) UninstallBootstrap(ctx context.Context) error {
-	return uninstallBootstrap()
+func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
+	return uninstallBootstrap(opts)
 }
 
 // ShouldInstall always returns true for Claude Code.

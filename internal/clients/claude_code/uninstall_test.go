@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/sleuth-io/sx/internal/bootstrap"
 )
 
 // TestUninstallHooks tests that UninstallHooks removes skills-related hooks
@@ -64,7 +66,7 @@ func TestUninstallHooks(t *testing.T) {
 	}
 
 	// Run uninstallBootstrap
-	if err := uninstallBootstrap(); err != nil {
+	if err := uninstallBootstrap([]bootstrap.Option{bootstrap.SessionHook, bootstrap.AnalyticsHook}); err != nil {
 		t.Fatalf("uninstallBootstrap failed: %v", err)
 	}
 
@@ -154,7 +156,7 @@ func TestUninstallHooksPreservesOtherHooks(t *testing.T) {
 	}
 
 	// Run uninstallBootstrap
-	if err := uninstallBootstrap(); err != nil {
+	if err := uninstallBootstrap([]bootstrap.Option{bootstrap.SessionHook, bootstrap.AnalyticsHook}); err != nil {
 		t.Fatalf("uninstallBootstrap failed: %v", err)
 	}
 
@@ -256,7 +258,7 @@ func TestUninstallHooksNoSettingsFile(t *testing.T) {
 	// Don't create settings.json - it shouldn't exist
 
 	// Run uninstallBootstrap - should not error
-	if err := uninstallBootstrap(); err != nil {
+	if err := uninstallBootstrap([]bootstrap.Option{bootstrap.SessionHook, bootstrap.AnalyticsHook}); err != nil {
 		t.Fatalf("uninstallBootstrap should not fail when settings.json doesn't exist: %v", err)
 	}
 
@@ -287,7 +289,7 @@ func TestUninstallHooksNoHooksSection(t *testing.T) {
 	}
 
 	// Run uninstallBootstrap - should not error
-	if err := uninstallBootstrap(); err != nil {
+	if err := uninstallBootstrap([]bootstrap.Option{bootstrap.SessionHook, bootstrap.AnalyticsHook}); err != nil {
 		t.Fatalf("uninstallBootstrap should not fail when hooks section doesn't exist: %v", err)
 	}
 

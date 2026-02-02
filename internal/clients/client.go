@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
@@ -41,17 +42,23 @@ type Client interface {
 	// Clients that don't need post-install setup can return nil.
 	EnsureAssetSupport(ctx context.Context, scope *InstallScope) error
 
+	// GetBootstrapOptions returns bootstrap options provided by this client.
+	// These are options for hooks, MCP servers, or other infrastructure the client provides.
+	GetBootstrapOptions(ctx context.Context) []bootstrap.Option
+
 	// InstallBootstrap installs client infrastructure (hooks, MCP servers, etc.).
 	// This sets up hooks for auto-update/usage tracking and registers the sx MCP server.
 	// Called during installation to ensure all client infrastructure is in place.
+	// The opts parameter contains only the enabled bootstrap options to install.
 	// Clients that don't need bootstrap can return nil.
-	InstallBootstrap(ctx context.Context) error
+	InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error
 
 	// UninstallBootstrap removes client infrastructure installed by InstallBootstrap.
 	// This removes hooks and unregisters the sx MCP server.
 	// Called during full uninstall (--all flag) to clean up system infrastructure.
+	// The opts parameter contains only the bootstrap options to uninstall.
 	// Clients that don't need bootstrap can return nil.
-	UninstallBootstrap(ctx context.Context) error
+	UninstallBootstrap(ctx context.Context, opts []bootstrap.Option) error
 
 	// ShouldInstall checks if installation should proceed in hook mode.
 	// Returns true to proceed, false to skip.

@@ -12,6 +12,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/lockfile"
 )
@@ -62,11 +63,15 @@ func (m *mockClient) EnsureAssetSupport(ctx context.Context, scope *clients.Inst
 	return nil
 }
 
-func (m *mockClient) InstallBootstrap(ctx context.Context) error {
+func (m *mockClient) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	return nil
 }
 
-func (m *mockClient) UninstallBootstrap(ctx context.Context) error {
+func (m *mockClient) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
+	return nil
+}
+
+func (m *mockClient) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
 	return nil
 }
 
