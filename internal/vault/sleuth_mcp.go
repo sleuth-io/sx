@@ -8,6 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/gitutil"
 	"github.com/sleuth-io/sx/internal/logger"
 )
@@ -112,4 +113,10 @@ func (s *SleuthVault) handleQueryTool(ctx context.Context, req *mcp.CallToolRequ
 			&mcp.TextContent{Text: result},
 		},
 	}, nil, nil
+}
+
+// GetBootstrapOptions returns bootstrap options for the Sleuth vault.
+// This includes the Sleuth AI Query MCP server.
+func (s *SleuthVault) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
+	return []bootstrap.Option{bootstrap.SleuthAIQueryMCP()}
 }

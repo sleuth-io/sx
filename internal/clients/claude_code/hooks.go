@@ -7,13 +7,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients/claude_code/handlers"
 	"github.com/sleuth-io/sx/internal/logger"
 )
 
 // installBootstrap installs Claude Code infrastructure (hooks and MCP servers).
-// This sets up hooks for auto-update/usage tracking and registers the sx MCP server.
-func installBootstrap() error {
+// This sets up hooks for auto-update/usage tracking and registers MCP servers.
+// Only installs options that are present in the opts slice.
+func installBootstrap(opts []bootstrap.Option) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
@@ -22,24 +24,61 @@ func installBootstrap() error {
 
 	log := logger.Get()
 
-	// Install usage reporting hook
-	if err := installUsageReportingHook(claudeDir); err != nil {
-		log.Error("failed to install usage reporting hook", "error", err)
-		return fmt.Errorf("failed to install usage reporting hook: %w", err)
+	// Install session start hook for auto-update (if enabled)
+	if bootstrap.ContainsKey(opts, bootstrap.SessionHookKey) {
+		if err := installSessionStartHook(claudeDir); err != nil {
+			log.Error("failed to install session start hook", "error", err)
+			return fmt.Errorf("failed to install session start hook: %w", err)
+		}
 	}
 
-	// Install session start hook for auto-update
-	if err := installSessionStartHook(claudeDir); err != nil {
-		log.Error("failed to install session start hook", "error", err)
-		return fmt.Errorf("failed to install session start hook: %w", err)
+	// Install usage reporting hook (if enabled)
+	if bootstrap.ContainsKey(opts, bootstrap.AnalyticsHookKey) {
+		if err := installUsageReportingHook(claudeDir); err != nil {
+			log.Error("failed to install usage reporting hook", "error", err)
+			return fmt.Errorf("failed to install usage reporting hook: %w", err)
+		}
 	}
 
-	// Install sx MCP server globally (in ~/.claude.json)
-	if err := installSxMCPServer(home); err != nil {
-		log.Error("failed to install sx MCP server", "error", err)
-		return fmt.Errorf("failed to install sx MCP server: %w", err)
+	// Install MCP servers from options that have MCPConfig
+	for _, opt := range opts {
+		if opt.MCPConfig != nil {
+			if err := installMCPServerFromConfig(home, opt.MCPConfig); err != nil {
+				log.Error("failed to install MCP server", "server", opt.MCPConfig.Name, "error", err)
+				return fmt.Errorf("failed to install MCP server %s: %w", opt.MCPConfig.Name, err)
+			}
+		}
 	}
 
+	return nil
+}
+
+// installMCPServerFromConfig installs an MCP server from a bootstrap.MCPServerConfig
+func installMCPServerFromConfig(homeDir string, config *bootstrap.MCPServerConfig) error {
+	log := logger.Get()
+
+	serverConfig := map[string]any{
+		"type":    "stdio",
+		"command": config.Command,
+		"args":    config.Args,
+	}
+
+	// Add env if present
+	if len(config.Env) > 0 {
+		envMap := make(map[string]any)
+		for k, v := range config.Env {
+			envMap[k] = v
+		}
+		serverConfig["env"] = envMap
+	} else {
+		serverConfig["env"] = map[string]any{}
+	}
+
+	if err := handlers.AddMCPServer(homeDir, config.Name, serverConfig); err != nil {
+		return err
+	}
+
+	log.Info("MCP server installed", "server", config.Name, "command", config.Command)
 	return nil
 }
 
@@ -142,8 +181,8 @@ func installSessionStartHook(claudeDir string) error {
 }
 
 // uninstallBootstrap removes Claude Code infrastructure (hooks and MCP servers).
-// This removes the SessionStart hook (auto-install), PostToolUse hook (usage tracking), and sx MCP server.
-func uninstallBootstrap() error {
+// Only uninstalls options that are present in the opts slice.
+func uninstallBootstrap(opts []bootstrap.Option) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
@@ -153,80 +192,96 @@ func uninstallBootstrap() error {
 
 	log := logger.Get()
 
-	// Read existing settings
-	data, err := os.ReadFile(settingsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// No settings file, nothing to uninstall
-			return nil
+	// Build a set of options to uninstall
+	uninstallSession := false
+	uninstallAnalytics := false
+	var mcpToUninstall []string
+
+	for _, opt := range opts {
+		switch opt.Key {
+		case bootstrap.SessionHookKey:
+			uninstallSession = true
+		case bootstrap.AnalyticsHookKey:
+			uninstallAnalytics = true
+		default:
+			if opt.MCPConfig != nil {
+				mcpToUninstall = append(mcpToUninstall, opt.MCPConfig.Name)
+			}
 		}
+	}
+
+	// Read existing settings for hook removal
+	data, err := os.ReadFile(settingsPath)
+	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to read settings.json: %w", err)
 	}
 
-	var settings map[string]any
-	if err := json.Unmarshal(data, &settings); err != nil {
-		return fmt.Errorf("failed to parse settings.json: %w", err)
-	}
+	if len(data) > 0 && (uninstallSession || uninstallAnalytics) {
+		var settings map[string]any
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return fmt.Errorf("failed to parse settings.json: %w", err)
+		}
 
-	hooks, ok := settings["hooks"].(map[string]any)
-	if !ok {
-		// No hooks section, nothing to uninstall
-		return nil
-	}
+		hooks, ok := settings["hooks"].(map[string]any)
+		if ok {
+			modified := false
 
-	modified := false
-
-	// Remove our SessionStart hook (check both sx and legacy skills commands)
-	if sessionStart, ok := hooks["SessionStart"].([]any); ok {
-		filtered := removeSxHooks(sessionStart, "sx install", "skills install")
-		if len(filtered) != len(sessionStart) {
-			modified = true
-			if len(filtered) == 0 {
-				delete(hooks, "SessionStart")
-			} else {
-				hooks["SessionStart"] = filtered
+			// Remove SessionStart hook if requested
+			if uninstallSession {
+				if sessionStart, ok := hooks["SessionStart"].([]any); ok {
+					filtered := removeSxHooks(sessionStart, "sx install", "skills install")
+					if len(filtered) != len(sessionStart) {
+						modified = true
+						if len(filtered) == 0 {
+							delete(hooks, "SessionStart")
+						} else {
+							hooks["SessionStart"] = filtered
+						}
+						log.Info("hook removed", "hook", "SessionStart")
+					}
+				}
 			}
-			log.Info("hook removed", "hook", "SessionStart")
+
+			// Remove PostToolUse hook if requested
+			if uninstallAnalytics {
+				if postToolUse, ok := hooks["PostToolUse"].([]any); ok {
+					filtered := removeSxHooks(postToolUse, "sx report-usage", "skills report-usage")
+					if len(filtered) != len(postToolUse) {
+						modified = true
+						if len(filtered) == 0 {
+							delete(hooks, "PostToolUse")
+						} else {
+							hooks["PostToolUse"] = filtered
+						}
+						log.Info("hook removed", "hook", "PostToolUse")
+					}
+				}
+			}
+
+			// Remove empty hooks section
+			if len(hooks) == 0 {
+				delete(settings, "hooks")
+			}
+
+			if modified {
+				data, err = json.MarshalIndent(settings, "", "  ")
+				if err != nil {
+					return fmt.Errorf("failed to marshal settings: %w", err)
+				}
+
+				if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+					return fmt.Errorf("failed to write settings.json: %w", err)
+				}
+			}
 		}
 	}
 
-	// Remove our PostToolUse hook (check both sx and legacy skills commands)
-	if postToolUse, ok := hooks["PostToolUse"].([]any); ok {
-		filtered := removeSxHooks(postToolUse, "sx report-usage", "skills report-usage")
-		if len(filtered) != len(postToolUse) {
-			modified = true
-			if len(filtered) == 0 {
-				delete(hooks, "PostToolUse")
-			} else {
-				hooks["PostToolUse"] = filtered
-			}
-			log.Info("hook removed", "hook", "PostToolUse")
+	// Remove MCP servers
+	for _, name := range mcpToUninstall {
+		if err := uninstallMCPServerByName(home, name); err != nil {
+			log.Error("failed to uninstall MCP server", "server", name, "error", err)
+			return fmt.Errorf("failed to uninstall MCP server %s: %w", name, err)
 		}
-	}
-
-	// Remove empty hooks section
-	if len(hooks) == 0 {
-		delete(settings, "hooks")
-	}
-
-	if !modified {
-		return nil
-	}
-
-	// Write back to file
-	data, err = json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal settings: %w", err)
-	}
-
-	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write settings.json: %w", err)
-	}
-
-	// Remove sx MCP server from ~/.claude.json
-	if err := uninstallSxMCPServer(home); err != nil {
-		log.Error("failed to uninstall sx MCP server", "error", err)
-		return fmt.Errorf("failed to uninstall sx MCP server: %w", err)
 	}
 
 	return nil
@@ -373,40 +428,14 @@ func installUsageReportingHook(claudeDir string) error {
 	return nil
 }
 
-// installSxMCPServer installs the sx MCP server in ~/.claude.json
-func installSxMCPServer(homeDir string) error {
+// uninstallMCPServerByName removes an MCP server by name from ~/.claude.json
+func uninstallMCPServerByName(homeDir, name string) error {
 	log := logger.Get()
 
-	// Find sx binary path
-	sxPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get sx executable path: %w", err)
-	}
-
-	// Add sx MCP server configuration
-	serverConfig := map[string]any{
-		"type":    "stdio",
-		"command": sxPath,
-		"args":    []string{"serve"},
-		"env":     map[string]any{},
-	}
-
-	if err := handlers.AddMCPServer(homeDir, "sx", serverConfig); err != nil {
+	if err := handlers.RemoveMCPServer(homeDir, name); err != nil {
 		return err
 	}
 
-	log.Info("MCP server installed", "server", "sx", "command", sxPath+" serve")
-	return nil
-}
-
-// uninstallSxMCPServer removes the sx MCP server from ~/.claude.json
-func uninstallSxMCPServer(homeDir string) error {
-	log := logger.Get()
-
-	if err := handlers.RemoveMCPServer(homeDir, "sx"); err != nil {
-		return err
-	}
-
-	log.Info("MCP server uninstalled", "server", "sx")
+	log.Info("MCP server uninstalled", "server", name)
 	return nil
 }

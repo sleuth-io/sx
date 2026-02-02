@@ -13,6 +13,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/assets"
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/cache"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/config"
@@ -573,8 +574,30 @@ func uninstallSystemHooks(ctx context.Context, out *outputHelper) {
 	registry := clients.Global()
 	installedClients := registry.DetectInstalled()
 
+	// Load config to get enabled bootstrap options
+	mpc, _ := config.LoadMultiProfile()
+
+	// Get vault for its bootstrap options
+	cfg, _ := config.Load()
+	v, _ := vaultpkg.NewFromConfig(cfg)
+
 	for _, client := range installedClients {
-		if err := client.UninstallBootstrap(ctx); err != nil {
+		// Gather all options from vault and client
+		var allOpts []bootstrap.Option
+		if v != nil {
+			allOpts = append(allOpts, v.GetBootstrapOptions(ctx)...)
+		}
+		allOpts = append(allOpts, client.GetBootstrapOptions(ctx)...)
+
+		// Filter to enabled options (nil config = all enabled for backwards compat)
+		var enabledOpts []bootstrap.Option
+		if mpc == nil {
+			enabledOpts = allOpts
+		} else {
+			enabledOpts = bootstrap.Filter(allOpts, mpc.GetBootstrapOption)
+		}
+
+		if err := client.UninstallBootstrap(ctx, enabledOpts); err != nil {
 			out.printfErr("  ✗ Failed to remove hooks from %s: %v\n", client.DisplayName(), err)
 		} else {
 			out.printf("  ✓ Removed hooks from %s\n", client.DisplayName())

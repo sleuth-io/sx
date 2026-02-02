@@ -11,12 +11,14 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/registry"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	"github.com/sleuth-io/sx/internal/utils"
+	"github.com/sleuth-io/sx/internal/vault"
 )
 
 const (
@@ -65,7 +67,7 @@ func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL, cl
 	if config.Exists() {
 		// Check if we're adding a new profile (profile override is set) or reinitializing
 		isAddingProfile := config.GetActiveProfileOverride() != ""
-		if !isAddingProfile {
+		if !isAddingProfile && repoType == "" {
 			// Only prompt for confirmation when overwriting, not when adding a profile
 			styledOut.Warning("Configuration already exists.")
 			confirmed, err := components.Confirm("Overwrite existing configuration?", false)
@@ -98,6 +100,11 @@ func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL, cl
 		return err
 	}
 
+	// Prompt for bootstrap options (or apply defaults for -y flag)
+	if err := promptBootstrapOptions(cmd, ctx, enabledClients, !nonInteractive); err != nil {
+		return fmt.Errorf("failed to configure bootstrap options: %w", err)
+	}
+
 	// Post-init steps (hooks and featured skills)
 	runPostInit(cmd, ctx, enabledClients)
 
@@ -123,7 +130,7 @@ func runPostInit(cmd *cobra.Command, ctx context.Context, enabledClients []strin
 
 	// Final hint
 	styledOut.Newline()
-	styledOut.Muted("Run 'sx list' to see your assets or 'sx add' to add more.")
+	styledOut.Muted("Run 'sx vault list' to see your assets or 'sx add' to add more.")
 }
 
 // showInitSummary displays a summary of what was configured
@@ -630,4 +637,105 @@ func promptFeaturedSkills(cmd *cobra.Command, ctx context.Context) {
 		out := newOutputHelper(cmd)
 		promptRunInstall(cmd, ctx, out)
 	}
+}
+
+// promptBootstrapOptions prompts for or applies bootstrap options.
+// If interactive is true, prompts for each option. Otherwise applies defaults.
+func promptBootstrapOptions(cmd *cobra.Command, ctx context.Context, enabledClientIDs []string, interactive bool) error {
+	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
+
+	// Load multi-profile config
+	mpc, err := config.LoadMultiProfile()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// If bootstrap options are already configured, skip (grandfathered/existing users)
+	if len(mpc.BootstrapOptions) > 0 {
+		return nil
+	}
+
+	// Get the active vault
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	v, err := vault.NewFromConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create vault: %w", err)
+	}
+
+	// Gather all bootstrap options from clients and vault
+	var allOpts []bootstrap.Option
+
+	// Options from clients
+	clientRegistry := clients.Global()
+	installedClients := clientRegistry.DetectInstalled()
+
+	// Build enabled set (nil/empty means all enabled)
+	var enabledSet map[string]bool
+	if len(enabledClientIDs) > 0 {
+		enabledSet = make(map[string]bool)
+		for _, id := range enabledClientIDs {
+			enabledSet[id] = true
+		}
+	}
+
+	for _, client := range installedClients {
+		// Skip if not in enabled set (when set is defined)
+		if enabledSet != nil && !enabledSet[client.ID()] {
+			continue
+		}
+		if clientOpts := client.GetBootstrapOptions(ctx); clientOpts != nil {
+			allOpts = append(allOpts, clientOpts...)
+		}
+	}
+
+	// Options from vault
+	if vaultOpts := v.GetBootstrapOptions(ctx); vaultOpts != nil {
+		allOpts = append(allOpts, vaultOpts...)
+	}
+
+	// If no options to configure, nothing to do
+	if len(allOpts) == 0 {
+		return nil
+	}
+
+	// Initialize bootstrap options map
+	if mpc.BootstrapOptions == nil {
+		mpc.BootstrapOptions = make(map[string]*bool)
+	}
+
+	if interactive {
+		styledOut.Newline()
+		styledOut.Info("Configure bootstrap options:")
+		styledOut.Newline()
+
+		for _, opt := range allOpts {
+			styledOut.Println(opt.Description)
+			answer, err := components.Confirm(opt.Prompt, opt.Default)
+			if err != nil {
+				// On error, use default
+				answer = opt.Default
+			}
+			mpc.SetBootstrapOption(opt.Key, answer)
+
+			if !answer && opt.DeclineNote != "" {
+				styledOut.Muted("  " + opt.DeclineNote)
+			}
+		}
+	} else {
+		// Non-interactive: apply defaults
+		for _, opt := range allOpts {
+			mpc.SetBootstrapOption(opt.Key, opt.Default)
+		}
+	}
+
+	// Save the config
+	if err := config.SaveMultiProfile(mpc); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
 }

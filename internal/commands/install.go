@@ -10,6 +10,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/assets"
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/constants"
@@ -20,6 +21,7 @@ import (
 	"github.com/sleuth-io/sx/internal/scope"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
+	"github.com/sleuth-io/sx/internal/vault"
 )
 
 // NewInstallCommand creates the install command
@@ -468,11 +470,40 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, o
 	return installResult
 }
 
-// installClientHooks calls InstallHooks on all clients to install client-specific hooks
+// installClientHooks calls InstallHooks on all clients to install client-specific hooks.
+// Uses config's BootstrapOptions to determine which options to install.
 func installClientHooks(ctx context.Context, targetClients []clients.Client, out *outputHelper) {
 	log := logger.Get()
+
+	// Load config to get bootstrap options
+	mpc, err := config.LoadMultiProfile()
+	if err != nil {
+		log.Error("failed to load config for bootstrap options", "error", err)
+		// Continue with defaults (nil = yes)
+		mpc = &config.MultiProfileConfig{}
+	}
+
+	// Load vault to get its bootstrap options
+	cfg, _ := config.Load()
+	var vaultOpts []bootstrap.Option
+	if cfg != nil {
+		if v, err := vault.NewFromConfig(cfg); err == nil {
+			vaultOpts = v.GetBootstrapOptions(ctx)
+		}
+	}
+
 	for _, client := range targetClients {
-		if err := client.InstallBootstrap(ctx); err != nil {
+		// Gather all options (vault + this client)
+		var allOpts []bootstrap.Option
+		allOpts = append(allOpts, vaultOpts...)
+		if clientOpts := client.GetBootstrapOptions(ctx); clientOpts != nil {
+			allOpts = append(allOpts, clientOpts...)
+		}
+
+		// Filter to enabled options only
+		enabledOpts := bootstrap.Filter(allOpts, mpc.GetBootstrapOption)
+
+		if err := client.InstallBootstrap(ctx, enabledOpts); err != nil {
 			out.printfErr("Warning: failed to install hooks for %s: %v\n", client.DisplayName(), err)
 			log.Error("failed to install client hooks", "client", client.ID(), "error", err)
 			// Don't fail the install command if hook installation fails

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/cache"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/clients/cursor/handlers"
@@ -433,20 +434,80 @@ func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.Inst
 	}, nil
 }
 
+// GetBootstrapOptions returns bootstrap options for Cursor.
+// This includes the beforeSubmitPrompt hook for auto-update.
+func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
+	return []bootstrap.Option{bootstrap.CursorBeforeSubmitHook}
+}
+
 // InstallBootstrap installs Cursor infrastructure (hooks and MCP servers).
-func (c *Client) InstallBootstrap(ctx context.Context) error {
-	if err := c.installBeforeSubmitPromptHook(); err != nil {
+// Only installs options that are present in the opts slice.
+func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
+	// Install beforeSubmitPrompt hook (if enabled)
+	if bootstrap.ContainsKey(opts, bootstrap.CursorSessionHookKey) {
+		if err := c.installBeforeSubmitPromptHook(); err != nil {
+			return err
+		}
+	}
+
+	// Install MCP servers from options that have MCPConfig
+	for _, opt := range opts {
+		if opt.MCPConfig != nil {
+			if err := c.installMCPServerFromConfig(opt.MCPConfig); err != nil {
+				return fmt.Errorf("failed to install MCP server %s: %w", opt.MCPConfig.Name, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// installMCPServerFromConfig installs an MCP server from a bootstrap.MCPServerConfig
+func (c *Client) installMCPServerFromConfig(config *bootstrap.MCPServerConfig) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	cursorDir := filepath.Join(home, ".cursor")
+	log := logger.Get()
+
+	serverConfig := map[string]any{
+		"command": config.Command,
+		"args":    config.Args,
+	}
+
+	// Add env if present
+	if len(config.Env) > 0 {
+		serverConfig["env"] = config.Env
+	}
+
+	if err := handlers.AddMCPServer(cursorDir, config.Name, serverConfig); err != nil {
 		return err
 	}
-	return c.installSxMCPServer()
+
+	log.Info("MCP server installed", "server", config.Name, "command", config.Command)
+	return nil
 }
 
 // UninstallBootstrap removes Cursor infrastructure (hooks and MCP servers).
-func (c *Client) UninstallBootstrap(ctx context.Context) error {
-	if err := c.uninstallBeforeSubmitPromptHook(); err != nil {
-		return err
+// Only uninstalls options that are present in the opts slice.
+func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
+	for _, opt := range opts {
+		switch opt.Key {
+		case bootstrap.CursorSessionHookKey:
+			if err := c.uninstallBeforeSubmitPromptHook(); err != nil {
+				return err
+			}
+		default:
+			// Handle MCP options generically
+			if opt.MCPConfig != nil {
+				if err := c.uninstallMCPServerByName(opt.MCPConfig.Name); err != nil {
+					return err
+				}
+			}
+		}
 	}
-	return c.uninstallSxMCPServer()
+	return nil
 }
 
 // ShouldInstall checks if installation should proceed based on conversation tracking.
@@ -721,8 +782,8 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 	return "", errors.New("asset import not supported for Cursor")
 }
 
-// installSxMCPServer installs the sx MCP server in Cursor's mcp.json
-func (c *Client) installSxMCPServer() error {
+// uninstallMCPServerByName removes an MCP server by its name
+func (c *Client) uninstallMCPServerByName(name string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
@@ -730,40 +791,11 @@ func (c *Client) installSxMCPServer() error {
 	cursorDir := filepath.Join(home, ".cursor")
 	log := logger.Get()
 
-	// Find sx binary path
-	sxPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get sx executable path: %w", err)
-	}
-
-	// Add sx MCP server configuration
-	serverConfig := map[string]any{
-		"command": sxPath,
-		"args":    []string{"serve"},
-	}
-
-	if err := handlers.AddMCPServer(cursorDir, "sx", serverConfig); err != nil {
+	if err := handlers.RemoveMCPServer(cursorDir, name); err != nil {
 		return err
 	}
 
-	log.Info("MCP server installed", "server", "sx", "command", sxPath+" serve")
-	return nil
-}
-
-// uninstallSxMCPServer removes the sx MCP server from Cursor's mcp.json
-func (c *Client) uninstallSxMCPServer() error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
-	}
-	cursorDir := filepath.Join(home, ".cursor")
-	log := logger.Get()
-
-	if err := handlers.RemoveMCPServer(cursorDir, "sx"); err != nil {
-		return err
-	}
-
-	log.Info("MCP server uninstalled", "server", "sx")
+	log.Info("MCP server uninstalled", "server", name)
 	return nil
 }
 

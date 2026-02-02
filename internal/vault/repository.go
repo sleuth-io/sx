@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
@@ -81,6 +82,10 @@ type Vault interface {
 	// GetMCPTools returns additional MCP tools provided by this vault
 	// Returns nil if the vault doesn't provide any MCP tools
 	GetMCPTools() any
+
+	// GetBootstrapOptions returns bootstrap options provided by this vault
+	// These are options for MCP servers or other infrastructure the vault provides
+	GetBootstrapOptions(ctx context.Context) []bootstrap.Option
 }
 
 // SourceHandler handles fetching assets from specific source types

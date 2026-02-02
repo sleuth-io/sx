@@ -18,6 +18,7 @@ import (
 
 	"github.com/gofrs/flock"
 
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/cache"
 	"github.com/sleuth-io/sx/internal/constants"
 	"github.com/sleuth-io/sx/internal/git"
@@ -889,5 +890,10 @@ func (g *GitVault) GetAssetDetails(ctx context.Context, name string) (*AssetDeta
 
 // GetMCPTools returns no additional MCP tools for GitVault
 func (g *GitVault) GetMCPTools() any {
+	return nil
+}
+
+// GetBootstrapOptions returns no bootstrap options for GitVault
+func (g *GitVault) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	return nil
 }

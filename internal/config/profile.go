@@ -43,6 +43,30 @@ type MultiProfileConfig struct {
 	// An empty/nil slice means "all detected clients" (backwards compatible default).
 	// This is global across all profiles.
 	EnabledClients []string `json:"enabledClients,omitempty"`
+
+	// BootstrapOptions stores user consent for bootstrap items (hooks, MCP servers).
+	// Keyed by option key, nil/missing = yes (backwards compatible).
+	BootstrapOptions map[string]*bool `json:"bootstrapOptions,omitempty"`
+}
+
+// GetBootstrapOption returns whether a bootstrap option is enabled.
+// Returns true if the option is missing/nil (backwards compatible - existing users get everything).
+func (mpc *MultiProfileConfig) GetBootstrapOption(key string) bool {
+	if mpc.BootstrapOptions == nil {
+		return true // nil = yes
+	}
+	if val, ok := mpc.BootstrapOptions[key]; ok && val != nil {
+		return *val
+	}
+	return true // missing/nil = yes
+}
+
+// SetBootstrapOption sets a bootstrap option value.
+func (mpc *MultiProfileConfig) SetBootstrapOption(key string, enabled bool) {
+	if mpc.BootstrapOptions == nil {
+		mpc.BootstrapOptions = make(map[string]*bool)
+	}
+	mpc.BootstrapOptions[key] = &enabled
 }
 
 // activeProfileOverride is set via SetActiveProfile to override the default profile
@@ -150,6 +174,9 @@ type backwardsCompatibleConfig struct {
 	// New multi-profile fields
 	DefaultProfile string              `json:"defaultProfile"`
 	Profiles       map[string]*Profile `json:"profiles"`
+
+	// Bootstrap options (global across profiles)
+	BootstrapOptions map[string]*bool `json:"bootstrapOptions,omitempty"`
 }
 
 // SaveMultiProfile saves the full multi-profile configuration
@@ -167,9 +194,10 @@ func SaveMultiProfile(mpc *MultiProfileConfig) error {
 
 	// Build backwards-compatible config with active profile at top level
 	compat := backwardsCompatibleConfig{
-		DefaultProfile: mpc.DefaultProfile,
-		Profiles:       mpc.Profiles,
-		EnabledClients: mpc.EnabledClients,
+		DefaultProfile:   mpc.DefaultProfile,
+		Profiles:         mpc.Profiles,
+		EnabledClients:   mpc.EnabledClients,
+		BootstrapOptions: mpc.BootstrapOptions,
 	}
 
 	// Copy active profile fields to top level for old binaries
