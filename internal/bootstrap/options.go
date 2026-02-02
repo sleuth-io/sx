@@ -31,29 +31,33 @@ const (
 	CursorSessionHookKey = "cursor_session_hook"
 )
 
-// SessionHook is the session hook option for auto-update
+// SessionHook is the Claude Code SessionStart hook option for auto-update.
+// Integrates with Claude Code's native SessionStart hook in ~/.claude/settings.json.
 var SessionHook = Option{
 	Key:         SessionHookKey,
-	Description: "Session hook - Auto-update assets when sessions start",
-	Prompt:      "Install session hook? (recommended)",
+	Description: "Claude Code SessionStart hook - Auto-update assets when sessions start",
+	Prompt:      "Install hook? (recommended)",
 	Default:     true,
 	DeclineNote: "Without this hook, you'll need to run 'sx install' manually.",
 }
 
-// AnalyticsHook is the analytics hook option for usage tracking
+// AnalyticsHook is the Claude Code PostToolUse hook option for usage tracking.
+// Integrates with Claude Code's native PostToolUse hook in ~/.claude/settings.json.
 var AnalyticsHook = Option{
 	Key:         AnalyticsHookKey,
-	Description: "Analytics hook - Track skill usage for analytics",
-	Prompt:      "Install analytics hook?",
+	Description: "Claude Code PostToolUse hook - Track skill usage for analytics",
+	Prompt:      "Install hook?",
 	Default:     true,
 	DeclineNote: "Skill usage analytics will not be tracked.",
 }
 
-// CursorSessionHook is the session hook option for Cursor
-var CursorSessionHook = Option{
+// CursorBeforeSubmitHook is the Cursor hook option for auto-update.
+// Integrates with Cursor's beforeSubmitPrompt hook in ~/.cursor/hooks.json.
+// Runs once per conversation (tracked via conversation IDs).
+var CursorBeforeSubmitHook = Option{
 	Key:         CursorSessionHookKey,
-	Description: "Session hook - Auto-update assets when sessions start (Cursor)",
-	Prompt:      "Install session hook? (recommended)",
+	Description: "Cursor beforeSubmitPrompt hook - Auto-update assets once per conversation",
+	Prompt:      "Install hook? (recommended)",
 	Default:     true,
 	DeclineNote: "Without this hook, you'll need to run 'sx install' manually.",
 }

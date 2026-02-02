@@ -130,7 +130,7 @@ func runPostInit(cmd *cobra.Command, ctx context.Context, enabledClients []strin
 
 	// Final hint
 	styledOut.Newline()
-	styledOut.Muted("Run 'sx list' to see your assets or 'sx add' to add more.")
+	styledOut.Muted("Run 'sx vault list' to see your assets or 'sx add' to add more.")
 }
 
 // showInitSummary displays a summary of what was configured
@@ -666,13 +666,8 @@ func promptBootstrapOptions(cmd *cobra.Command, ctx context.Context, enabledClie
 		return fmt.Errorf("failed to create vault: %w", err)
 	}
 
-	// Gather all bootstrap options from vault and clients
+	// Gather all bootstrap options from clients and vault
 	var allOpts []bootstrap.Option
-
-	// Options from vault
-	if vaultOpts := v.GetBootstrapOptions(ctx); vaultOpts != nil {
-		allOpts = append(allOpts, vaultOpts...)
-	}
 
 	// Options from clients
 	clientRegistry := clients.Global()
@@ -695,6 +690,11 @@ func promptBootstrapOptions(cmd *cobra.Command, ctx context.Context, enabledClie
 		if clientOpts := client.GetBootstrapOptions(ctx); clientOpts != nil {
 			allOpts = append(allOpts, clientOpts...)
 		}
+	}
+
+	// Options from vault
+	if vaultOpts := v.GetBootstrapOptions(ctx); vaultOpts != nil {
+		allOpts = append(allOpts, vaultOpts...)
 	}
 
 	// If no options to configure, nothing to do

@@ -435,9 +435,9 @@ func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.Inst
 }
 
 // GetBootstrapOptions returns bootstrap options for Cursor.
-// This includes the session hook (beforeSubmitPrompt) for auto-update.
+// This includes the beforeSubmitPrompt hook for auto-update.
 func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
-	return []bootstrap.Option{bootstrap.CursorSessionHook}
+	return []bootstrap.Option{bootstrap.CursorBeforeSubmitHook}
 }
 
 // InstallBootstrap installs Cursor infrastructure (hooks and MCP servers).
