@@ -142,13 +142,14 @@ const (
 
 // ClientID constants for supported AI coding clients
 const (
-	ClientIDClaudeCode = "claude-code"
-	ClientIDCursor     = "cursor"
+	ClientIDClaudeCode    = "claude-code"
+	ClientIDCursor        = "cursor"
+	ClientIDGitHubCopilot = "github-copilot"
 )
 
 // AllClientIDs returns all known client IDs
 func AllClientIDs() []string {
-	return []string{ClientIDClaudeCode, ClientIDCursor}
+	return []string{ClientIDClaudeCode, ClientIDCursor, ClientIDGitHubCopilot}
 }
 
 // IsValidClientID checks if the given ID is a known client ID
