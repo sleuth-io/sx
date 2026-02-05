@@ -11,7 +11,6 @@ import (
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
 	"github.com/sleuth-io/sx/internal/metadata"
-	"github.com/sleuth-io/sx/internal/utils"
 )
 
 var mcpOps = dirasset.NewOperations("mcp-servers", &asset.TypeMCP)
@@ -86,11 +85,6 @@ func (h *MCPHandler) DetectUsageFromToolCall(toolName string, toolInput map[stri
 
 // Install extracts and installs the MCP server asset
 func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
-	// Validate zip structure
-	if err := h.Validate(zipData); err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-
 	// Extract to mcp-servers directory
 	if err := mcpOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name); err != nil {
 		return err
@@ -119,48 +113,6 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 // GetInstallPath returns the installation path relative to targetBase
 func (h *MCPHandler) GetInstallPath() string {
 	return filepath.Join("mcp-servers", h.metadata.Asset.Name)
-}
-
-// Validate checks if the zip structure is valid for an MCP asset
-func (h *MCPHandler) Validate(zipData []byte) error {
-	// List files in zip
-	files, err := utils.ListZipFiles(zipData)
-	if err != nil {
-		return fmt.Errorf("failed to list zip files: %w", err)
-	}
-
-	// Check that metadata.toml exists
-	if !containsFile(files, "metadata.toml") {
-		return errors.New("metadata.toml not found in zip")
-	}
-
-	// Extract and validate metadata
-	metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
-	if err != nil {
-		return fmt.Errorf("failed to read metadata.toml: %w", err)
-	}
-
-	meta, err := metadata.Parse(metadataBytes)
-	if err != nil {
-		return fmt.Errorf("failed to parse metadata: %w", err)
-	}
-
-	// Validate metadata with file list
-	if err := meta.ValidateWithFiles(files); err != nil {
-		return fmt.Errorf("metadata validation failed: %w", err)
-	}
-
-	// Verify asset type matches
-	if meta.Asset.Type != asset.TypeMCP {
-		return fmt.Errorf("asset type mismatch: expected mcp, got %s", meta.Asset.Type)
-	}
-
-	// Check that MCP config exists
-	if meta.MCP == nil {
-		return errors.New("[mcp] section missing in metadata")
-	}
-
-	return nil
 }
 
 // updateMCPConfig updates settings.json to register the MCP server

@@ -94,11 +94,6 @@ func (h *HookHandler) DetectUsageFromToolCall(toolName string, toolInput map[str
 
 // Install extracts and installs the hook asset
 func (h *HookHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
-	// Validate zip structure
-	if err := h.Validate(zipData); err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-
 	// Extract to hooks directory
 	if err := hookOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name); err != nil {
 		return err
@@ -126,52 +121,6 @@ func (h *HookHandler) Remove(ctx context.Context, targetBase string) error {
 // GetInstallPath returns the installation path relative to targetBase
 func (h *HookHandler) GetInstallPath() string {
 	return filepath.Join("hooks", h.metadata.Asset.Name)
-}
-
-// Validate checks if the zip structure is valid for a hook asset
-func (h *HookHandler) Validate(zipData []byte) error {
-	// List files in zip
-	files, err := utils.ListZipFiles(zipData)
-	if err != nil {
-		return fmt.Errorf("failed to list zip files: %w", err)
-	}
-
-	// Check that metadata.toml exists
-	if !containsFile(files, "metadata.toml") {
-		return errors.New("metadata.toml not found in zip")
-	}
-
-	// Extract and validate metadata
-	metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
-	if err != nil {
-		return fmt.Errorf("failed to read metadata.toml: %w", err)
-	}
-
-	meta, err := metadata.Parse(metadataBytes)
-	if err != nil {
-		return fmt.Errorf("failed to parse metadata: %w", err)
-	}
-
-	// Validate metadata with file list
-	if err := meta.ValidateWithFiles(files); err != nil {
-		return fmt.Errorf("metadata validation failed: %w", err)
-	}
-
-	// Verify asset type matches
-	if meta.Asset.Type != asset.TypeHook {
-		return fmt.Errorf("asset type mismatch: expected hook, got %s", meta.Asset.Type)
-	}
-
-	// Check that script file exists
-	if meta.Hook == nil {
-		return errors.New("[hook] section missing in metadata")
-	}
-
-	if !containsFile(files, meta.Hook.ScriptFile) {
-		return fmt.Errorf("script file not found in zip: %s", meta.Hook.ScriptFile)
-	}
-
-	return nil
 }
 
 // updateSettings updates settings.json to register the hook
