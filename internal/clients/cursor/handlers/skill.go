@@ -2,14 +2,10 @@ package handlers
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
 	"github.com/sleuth-io/sx/internal/metadata"
-	"github.com/sleuth-io/sx/internal/utils"
 )
 
 var skillOps = dirasset.NewOperations("skills", &asset.TypeSkill)
@@ -27,42 +23,12 @@ func NewSkillHandler(meta *metadata.Metadata) *SkillHandler {
 
 // Install extracts a skill to .cursor/skills/{name}/
 func (h *SkillHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
-	skillsDir := filepath.Join(targetBase, "skills", h.metadata.Asset.Name)
-
-	// Remove existing installation if present
-	if utils.IsDirectory(skillsDir) {
-		if err := os.RemoveAll(skillsDir); err != nil {
-			return fmt.Errorf("failed to remove existing installation: %w", err)
-		}
-	}
-
-	// Create installation directory
-	if err := utils.EnsureDir(skillsDir); err != nil {
-		return fmt.Errorf("failed to create installation directory: %w", err)
-	}
-
-	// Extract entire zip to skills directory
-	if err := utils.ExtractZip(zipData, skillsDir); err != nil {
-		return fmt.Errorf("failed to extract skill: %w", err)
-	}
-
-	return nil
+	return skillOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name)
 }
 
 // Remove removes a skill from .cursor/skills/
 func (h *SkillHandler) Remove(ctx context.Context, targetBase string) error {
-	skillsDir := filepath.Join(targetBase, "skills", h.metadata.Asset.Name)
-
-	if !utils.IsDirectory(skillsDir) {
-		// Already removed or never installed
-		return nil
-	}
-
-	if err := os.RemoveAll(skillsDir); err != nil {
-		return fmt.Errorf("failed to remove skill: %w", err)
-	}
-
-	return nil
+	return skillOps.Remove(ctx, targetBase, h.metadata.Asset.Name)
 }
 
 // VerifyInstalled checks if the skill is properly installed
