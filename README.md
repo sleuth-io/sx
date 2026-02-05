@@ -120,13 +120,13 @@ sx uses a lock file (like package-lock.json) for deterministic installations acr
 
 ## Supported Clients
 
-| Client | Status         | Notes |
-|--------|----------------|-------|
-| Claude Code | ✅ Supported    | Full support for all asset types |
-| Cursor | ✅ Experimental | Skills, MCP servers, commands, hooks |
-| GitHub Copilot | Coming soon    | |
-| Gemini | Coming soon    | |
-| Codex | Coming soon    | |
+| Client         | Status         | Notes                                |
+|----------------|----------------|--------------------------------------|
+| Claude Code    | ✅ Supported    | Full support for all asset types     |
+| Cursor         | ✅ Experimental | Skills, MCP servers, commands, hooks |
+| GitHub Copilot | Coming soon    |                                      |
+| Gemini         | Coming soon    |                                      |
+| Codex          | Coming soon    |                                      |
 
 ## Roadmap
 - ✅ Local, Git, and Skills.new vaults
