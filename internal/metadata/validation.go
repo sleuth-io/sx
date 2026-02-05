@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 
 	"github.com/Masterminds/semver/v3"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/utils"
 )
 
 var (
@@ -207,8 +209,83 @@ func (m *Metadata) ValidateWithFiles(fileList []string) error {
 		return err
 	}
 
-	// Note: File existence validation is handled by the handlers package
-	// This method only validates the metadata structure itself
+	// Check that files referenced in metadata actually exist in the file list
+	switch m.Asset.Type {
+	case asset.TypeSkill:
+		if !slices.Contains(fileList, m.Skill.PromptFile) {
+			return fmt.Errorf("prompt file not found: %s", m.Skill.PromptFile)
+		}
+
+	case asset.TypeCommand:
+		if !slices.Contains(fileList, m.Command.PromptFile) {
+			return fmt.Errorf("prompt file not found: %s", m.Command.PromptFile)
+		}
+
+	case asset.TypeAgent:
+		if !slices.Contains(fileList, m.Agent.PromptFile) {
+			return fmt.Errorf("prompt file not found: %s", m.Agent.PromptFile)
+		}
+
+	case asset.TypeHook:
+		if !slices.Contains(fileList, m.Hook.ScriptFile) {
+			return fmt.Errorf("script file not found: %s", m.Hook.ScriptFile)
+		}
+
+	case asset.TypeRule:
+		promptFile := "RULE.md"
+		if m.Rule != nil && m.Rule.PromptFile != "" {
+			promptFile = m.Rule.PromptFile
+		}
+		if !slices.Contains(fileList, promptFile) {
+			return fmt.Errorf("prompt file not found: %s", promptFile)
+		}
+
+	case asset.TypeClaudeCodePlugin:
+		manifestFile := ".claude-plugin/plugin.json"
+		if m.ClaudeCodePlugin != nil && m.ClaudeCodePlugin.ManifestFile != "" {
+			manifestFile = m.ClaudeCodePlugin.ManifestFile
+		}
+		if !slices.Contains(fileList, manifestFile) {
+			return fmt.Errorf("manifest file not found: %s", manifestFile)
+		}
+
+	case asset.TypeMCP, asset.TypeMCPRemote:
+		// MCP assets use command + args, not files in the zip
+	}
+
+	return nil
+}
+
+// ValidateZip validates that a zip contains valid asset contents.
+// It checks metadata.toml exists and is parseable, referenced files exist, and the asset type matches.
+func ValidateZip(zipData []byte, expectedType *asset.Type) error {
+	files, err := utils.ListZipFiles(zipData)
+	if err != nil {
+		return fmt.Errorf("failed to list zip files: %w", err)
+	}
+
+	if !slices.Contains(files, "metadata.toml") {
+		return errors.New("metadata.toml not found in zip")
+	}
+
+	metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
+	if err != nil {
+		return fmt.Errorf("failed to read metadata.toml: %w", err)
+	}
+
+	meta, err := Parse(metadataBytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse metadata: %w", err)
+	}
+
+	if err := meta.ValidateWithFiles(files); err != nil {
+		return fmt.Errorf("metadata validation failed: %w", err)
+	}
+
+	if expectedType != nil && meta.Asset.Type != *expectedType {
+		return fmt.Errorf("asset type mismatch: expected %s, got %s", expectedType.Key, meta.Asset.Type.Key)
+	}
+
 	return nil
 }
 
