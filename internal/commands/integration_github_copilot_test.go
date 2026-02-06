@@ -243,8 +243,8 @@ repo = "https://github.com/testorg/testrepo"
 	env.AssertFileNotExists(globalSkillDir)
 }
 
-// TestGitHubCopilotPathScope tests that path-scoped skills are installed
-// to {repoRoot}/{path}/.github/skills/ instead of ~/.copilot/skills/.
+// TestGitHubCopilotPathScope tests that path-scoped skills are remapped to
+// repo root (.github/skills/) since Copilot only discovers assets there.
 func TestGitHubCopilotPathScope(t *testing.T) {
 	env := NewTestEnv(t)
 
@@ -277,28 +277,29 @@ paths = ["src/backend"]
 		t.Fatalf("Failed to install: %v", err)
 	}
 
-	// Verify skill was installed to {repoRoot}/src/backend/.github/skills/
+	// Copilot remaps path scopes to repo root since it only discovers
+	// assets from {repoRoot}/.github/, not subdirectory .github/ folders
+	repoSkillDir := filepath.Join(projectDir, ".github", "skills", "path-skill")
+	env.AssertFileExists(repoSkillDir)
+	env.AssertFileExists(filepath.Join(repoSkillDir, "SKILL.md"))
+
+	// Verify skill was NOT installed to the subdirectory path
 	pathSkillDir := filepath.Join(projectDir, "src", "backend", ".github", "skills", "path-skill")
-	env.AssertFileExists(pathSkillDir)
-	env.AssertFileExists(filepath.Join(pathSkillDir, "SKILL.md"))
+	env.AssertFileNotExists(pathSkillDir)
 
 	// Verify skill was NOT installed globally
 	globalSkillDir := filepath.Join(env.HomeDir, ".copilot", "skills", "path-skill")
 	env.AssertFileNotExists(globalSkillDir)
-
-	// Verify skill was NOT installed at repo root
-	repoSkillDir := filepath.Join(projectDir, ".github", "skills", "path-skill")
-	env.AssertFileNotExists(repoSkillDir)
 }
 
 // TestGitHubCopilotUnsupportedAssetType tests that Copilot gracefully skips
-// non-skill assets while still installing skills correctly.
+// unsupported asset types while still installing supported ones correctly.
 func TestGitHubCopilotUnsupportedAssetType(t *testing.T) {
 	env := NewTestEnv(t)
 
 	vaultDir := env.SetupPathVault()
 	env.AddSkillToVault(vaultDir, "good-skill", "1.0.0")
-	env.AddRuleToVault(vaultDir, "some-rule", "1.0.0", "Always be helpful")
+	env.AddPluginToVault(vaultDir, "some-plugin", "1.0.0")
 
 	lockFile := `lock-version = "1"
 version = "1.0.0"
@@ -313,19 +314,19 @@ type = "skill"
 path = "assets/good-skill/1.0.0"
 
 [[assets]]
-name = "some-rule"
+name = "some-plugin"
 version = "1.0.0"
-type = "rule"
+type = "claude-code-plugin"
 
 [assets.source-path]
-path = "assets/some-rule/1.0.0"
+path = "assets/some-plugin/1.0.0"
 `
 	env.WriteLockFile(vaultDir, lockFile)
 
 	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
 	env.Chdir(projectDir)
 
-	// Install should succeed — rule is skipped by Copilot, skill installs fine
+	// Install should succeed — plugin is skipped by Copilot, skill installs fine
 	installCmd := NewInstallCommand()
 	if err := installCmd.Execute(); err != nil {
 		t.Fatalf("Failed to install: %v", err)
@@ -335,9 +336,8 @@ path = "assets/some-rule/1.0.0"
 	copilotDir := filepath.Join(env.HomeDir, ".copilot")
 	env.AssertFileExists(filepath.Join(copilotDir, "skills", "good-skill"))
 
-	// Verify rule was NOT installed to Copilot (not a supported type)
-	env.AssertFileNotExists(filepath.Join(copilotDir, "rules"))
-	env.AssertFileNotExists(filepath.Join(copilotDir, "some-rule"))
+	// Verify plugin was NOT installed to Copilot (not a supported type)
+	env.AssertFileNotExists(filepath.Join(copilotDir, "some-plugin"))
 }
 
 // TestGitHubCopilotMissingPromptFile tests that install fails when a skill's
@@ -384,6 +384,195 @@ path = "assets/broken-skill/1.0.0"
 	if err == nil {
 		t.Fatal("Expected install to fail due to missing prompt file, but it succeeded")
 	}
+}
+
+// TestGitHubCopilotRuleInstall tests that rules are installed as .instructions.md files
+// in the instructions/ directory with YAML frontmatter.
+func TestGitHubCopilotRuleInstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddRuleToVault(vaultDir, "coding-standards", "1.0.0", "Follow these coding standards:\n\n1. Use meaningful variable names\n2. Write unit tests")
+
+	lockFile := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "coding-standards"
+version = "1.0.0"
+type = "rule"
+
+[assets.source-path]
+path = "assets/coding-standards/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFile)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	// Verify rule was installed to ~/.copilot/instructions/ (global scope)
+	copilotDir := filepath.Join(env.HomeDir, ".copilot")
+	ruleFile := filepath.Join(copilotDir, "instructions", "coding-standards.instructions.md")
+	env.AssertFileExists(ruleFile)
+
+	content, err := os.ReadFile(ruleFile)
+	if err != nil {
+		t.Fatalf("Failed to read rule file: %v", err)
+	}
+
+	// Verify YAML frontmatter
+	if !strings.HasPrefix(string(content), "---\n") {
+		t.Errorf("Rule file should have YAML frontmatter")
+	}
+
+	// Verify title heading
+	if !strings.Contains(string(content), "# coding-standards") {
+		t.Errorf("Rule file should contain title heading")
+	}
+
+	// Verify rule content
+	if !strings.Contains(string(content), "Use meaningful variable names") {
+		t.Errorf("Rule file should contain rule content")
+	}
+}
+
+// TestGitHubCopilotRuleWithGlobs tests that rules with globs get applyTo frontmatter.
+func TestGitHubCopilotRuleWithGlobs(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddRuleToVaultWithGlobs(vaultDir, "go-standards", "1.0.0", "Follow Go coding standards.", []string{"**/*.go", "go.mod"})
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+
+	lockFile := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "go-standards"
+version = "1.0.0"
+type = "rule"
+
+[assets.source-path]
+path = "assets/go-standards/1.0.0"
+
+[[assets.scopes]]
+repo = "https://github.com/testorg/testrepo"
+`
+	env.WriteLockFile(vaultDir, lockFile)
+	env.Chdir(projectDir)
+
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	// Verify rule was installed to {repoRoot}/.github/instructions/ (repo scope)
+	ruleFile := filepath.Join(projectDir, ".github", "instructions", "go-standards.instructions.md")
+	env.AssertFileExists(ruleFile)
+
+	content, err := os.ReadFile(ruleFile)
+	if err != nil {
+		t.Fatalf("Failed to read rule file: %v", err)
+	}
+
+	// Verify YAML frontmatter with applyTo
+	if !strings.HasPrefix(string(content), "---\n") {
+		t.Errorf("Rule with globs should have YAML frontmatter")
+	}
+	if !strings.Contains(string(content), "applyTo:") {
+		t.Errorf("Rule should have applyTo in frontmatter")
+	}
+	if !strings.Contains(string(content), "**/*.go") {
+		t.Errorf("Rule should contain the go glob pattern")
+	}
+	if !strings.Contains(string(content), "go.mod") {
+		t.Errorf("Rule should contain the go.mod glob pattern")
+	}
+
+	// Verify rule content
+	if !strings.Contains(string(content), "Follow Go coding standards") {
+		t.Errorf("Rule file should contain rule content")
+	}
+}
+
+// TestGitHubCopilotRuleUninstall tests that rules are properly removed when
+// they are removed from the lock file and install is re-run.
+func TestGitHubCopilotRuleUninstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddRuleToVault(vaultDir, "temp-rule", "1.0.0", "Temporary rule content")
+	env.AddSkillToVault(vaultDir, "keeper-skill", "1.0.0")
+
+	lockFileWithBoth := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "temp-rule"
+version = "1.0.0"
+type = "rule"
+
+[assets.source-path]
+path = "assets/temp-rule/1.0.0"
+
+[[assets]]
+name = "keeper-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/keeper-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFileWithBoth)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	// Step 1: Install both assets
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	copilotDir := filepath.Join(env.HomeDir, ".copilot")
+	ruleFile := filepath.Join(copilotDir, "instructions", "temp-rule.instructions.md")
+	skillDir := filepath.Join(copilotDir, "skills", "keeper-skill")
+	env.AssertFileExists(ruleFile)
+	env.AssertFileExists(skillDir)
+
+	// Step 2: Remove rule from lock file
+	lockFileWithout := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "keeper-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/keeper-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFileWithout)
+
+	// Step 3: Re-install to trigger cleanup
+	installCmd2 := NewInstallCommand()
+	if err := installCmd2.Execute(); err != nil {
+		t.Fatalf("Second install failed: %v", err)
+	}
+
+	// Step 4: Verify rule was removed, skill remains
+	env.AssertFileNotExists(ruleFile)
+	env.AssertFileExists(skillDir)
 }
 
 // TestGitHubCopilotMissingMetadata tests that install fails when a skill
