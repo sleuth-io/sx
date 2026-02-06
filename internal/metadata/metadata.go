@@ -64,9 +64,10 @@ type CommandConfig struct {
 
 // AgentConfig represents the [agent] section
 type AgentConfig struct {
-	PromptFile string   `toml:"prompt-file"`
-	Triggers   []string `toml:"triggers,omitempty"`
-	Requires   []string `toml:"requires,omitempty"`
+	PromptFile string         `toml:"prompt-file"`
+	Triggers   []string       `toml:"triggers,omitempty"`
+	Requires   []string       `toml:"requires,omitempty"`
+	Copilot    map[string]any `toml:"copilot,omitempty"` // Copilot-specific settings (tools, model, handoffs)
 }
 
 // HookConfig represents the [hook] section

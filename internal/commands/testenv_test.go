@@ -304,3 +304,26 @@ prompt-file = "COMMAND.md"
 
 	return commandDir
 }
+
+// AddAgentToVault adds an agent asset to the vault directory.
+// Returns the agent source directory path.
+func (e *TestEnv) AddAgentToVault(vaultDir, name, version, content string) string {
+	e.t.Helper()
+
+	agentDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "agent"
+version = "%s"
+description = "Test agent %s"
+
+[agent]
+prompt-file = "AGENT.md"
+`, name, version, name)
+
+	e.WriteFile(filepath.Join(agentDir, "metadata.toml"), metadata)
+	e.WriteFile(filepath.Join(agentDir, "AGENT.md"), content)
+
+	return agentDir
+}

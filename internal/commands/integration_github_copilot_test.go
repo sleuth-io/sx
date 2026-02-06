@@ -736,3 +736,129 @@ path = "assets/keeper-skill/1.0.0"
 	env.AssertFileNotExists(promptFile)
 	env.AssertFileExists(skillDir)
 }
+
+// TestGitHubCopilotAgentInstall tests that agents are installed as .agent.md files
+// in the agents/ directory with description frontmatter.
+func TestGitHubCopilotAgentInstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddAgentToVault(vaultDir, "test-specialist", "1.0.0", "You are a testing expert.\n\nWhen asked to write tests:\n1. Analyze the code\n2. Identify edge cases\n3. Write comprehensive tests")
+
+	lockFile := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "test-specialist"
+version = "1.0.0"
+type = "agent"
+
+[assets.source-path]
+path = "assets/test-specialist/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFile)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	// Verify agent was installed to ~/.copilot/agents/ (global scope)
+	copilotDir := filepath.Join(env.HomeDir, ".copilot")
+	agentFile := filepath.Join(copilotDir, "agents", "test-specialist.agent.md")
+	env.AssertFileExists(agentFile)
+
+	content, err := os.ReadFile(agentFile)
+	if err != nil {
+		t.Fatalf("Failed to read agent file: %v", err)
+	}
+
+	// Verify YAML frontmatter with description
+	if !strings.HasPrefix(string(content), "---\n") {
+		t.Errorf("Agent file should have YAML frontmatter")
+	}
+	if !strings.Contains(string(content), "description:") {
+		t.Errorf("Agent file should contain description in frontmatter")
+	}
+
+	// Verify agent content
+	if !strings.Contains(string(content), "You are a testing expert") {
+		t.Errorf("Agent file should contain agent content")
+	}
+}
+
+// TestGitHubCopilotAgentUninstall tests that agents are properly removed when
+// they are removed from the lock file and install is re-run.
+func TestGitHubCopilotAgentUninstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddAgentToVault(vaultDir, "temp-agent", "1.0.0", "Temporary agent content")
+	env.AddSkillToVault(vaultDir, "keeper-skill", "1.0.0")
+
+	lockFileWithBoth := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "temp-agent"
+version = "1.0.0"
+type = "agent"
+
+[assets.source-path]
+path = "assets/temp-agent/1.0.0"
+
+[[assets]]
+name = "keeper-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/keeper-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFileWithBoth)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	// Step 1: Install both assets
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	copilotDir := filepath.Join(env.HomeDir, ".copilot")
+	agentFile := filepath.Join(copilotDir, "agents", "temp-agent.agent.md")
+	skillDir := filepath.Join(copilotDir, "skills", "keeper-skill")
+	env.AssertFileExists(agentFile)
+	env.AssertFileExists(skillDir)
+
+	// Step 2: Remove agent from lock file
+	lockFileWithout := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "keeper-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/keeper-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFileWithout)
+
+	// Step 3: Re-install to trigger cleanup
+	installCmd2 := NewInstallCommand()
+	if err := installCmd2.Execute(); err != nil {
+		t.Fatalf("Second install failed: %v", err)
+	}
+
+	// Step 4: Verify agent was removed, skill remains
+	env.AssertFileNotExists(agentFile)
+	env.AssertFileExists(skillDir)
+}
