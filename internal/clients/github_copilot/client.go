@@ -31,6 +31,7 @@ func NewClient() *Client {
 			"GitHub Copilot",
 			[]asset.Type{
 				asset.TypeSkill,
+				asset.TypeRule,
 			},
 		),
 	}
@@ -73,6 +74,9 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		switch bundle.Metadata.Asset.Type {
 		case asset.TypeSkill:
 			handler := handlers.NewSkillHandler(bundle.Metadata)
+			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeRule:
+			handler := handlers.NewRuleHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
@@ -124,6 +128,9 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 		case asset.TypeSkill:
 			handler := handlers.NewSkillHandler(meta)
 			uninstallErr = handler.Remove(ctx, targetBase)
+		case asset.TypeRule:
+			handler := handlers.NewRuleHandler(meta)
+			uninstallErr = handler.Remove(ctx, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + a.Type.Key
@@ -168,6 +175,11 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 	default:
 		return filepath.Join(home, ".copilot"), nil
 	}
+}
+
+// RuleCapabilities returns Copilot's rule capabilities
+func (c *Client) RuleCapabilities() *clients.RuleCapabilities {
+	return RuleCapabilities()
 }
 
 // EnsureAssetSupport is a no-op for GitHub Copilot.
@@ -286,16 +298,21 @@ func (c *Client) ScanInstalledAssets(ctx context.Context, scope *clients.Install
 	return []clients.InstalledAsset{}, nil
 }
 
-// GetAssetPath returns the filesystem path for a skill asset
+// GetAssetPath returns the filesystem path for an asset
 func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.Type, scope *clients.InstallScope) (string, error) {
-	if assetType == asset.TypeSkill {
-		targetBase, err := c.determineTargetBase(scope)
-		if err != nil {
-			return "", err
-		}
-		return filepath.Join(targetBase, "skills", name), nil
+	targetBase, err := c.determineTargetBase(scope)
+	if err != nil {
+		return "", err
 	}
-	return "", errors.New("asset import not supported for GitHub Copilot")
+
+	switch assetType {
+	case asset.TypeSkill:
+		return filepath.Join(targetBase, "skills", name), nil
+	case asset.TypeRule:
+		return filepath.Join(targetBase, "instructions", name+".instructions.md"), nil
+	default:
+		return "", fmt.Errorf("asset type %s not supported for GitHub Copilot", assetType.Key)
+	}
 }
 
 func init() {
