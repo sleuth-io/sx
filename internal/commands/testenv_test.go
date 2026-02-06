@@ -328,6 +328,20 @@ prompt-file = "AGENT.md"
 	return agentDir
 }
 
+// formatArgsArray formats a slice of strings as a TOML array string.
+func formatArgsArray(args []string) string {
+	var sb strings.Builder
+	sb.WriteString("[")
+	for i, arg := range args {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(fmt.Sprintf("%q", arg))
+	}
+	sb.WriteString("]")
+	return sb.String()
+}
+
 // AddMCPToVault adds an MCP server asset to the vault directory.
 // Returns the MCP source directory path.
 func (e *TestEnv) AddMCPToVault(vaultDir, name, version, command string, args []string) string {
@@ -336,14 +350,7 @@ func (e *TestEnv) AddMCPToVault(vaultDir, name, version, command string, args []
 	mcpDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
 
 	// Build args array string
-	argsStr := "["
-	for i, arg := range args {
-		if i > 0 {
-			argsStr += ", "
-		}
-		argsStr += fmt.Sprintf("%q", arg)
-	}
-	argsStr += "]"
+	argsStr := formatArgsArray(args)
 
 	metadata := fmt.Sprintf(`[asset]
 name = "%s"
@@ -359,6 +366,34 @@ args = %s
 	e.WriteFile(filepath.Join(mcpDir, "metadata.toml"), metadata)
 	// MCP servers typically have a main script or binary
 	e.WriteFile(filepath.Join(mcpDir, "server.js"), "// MCP server placeholder")
+
+	return mcpDir
+}
+
+// AddMCPRemoteToVault adds an MCP-Remote asset to the vault directory.
+// MCP-Remote has no server files, just configuration for a remote server.
+// Returns the MCP-Remote source directory path.
+func (e *TestEnv) AddMCPRemoteToVault(vaultDir, name, version, command string, args []string) string {
+	e.t.Helper()
+
+	mcpDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	// Build args array string
+	argsStr := formatArgsArray(args)
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "mcp-remote"
+version = "%s"
+description = "Test MCP-Remote server %s"
+
+[mcp]
+command = "%s"
+args = %s
+`, name, version, name, command, argsStr)
+
+	e.WriteFile(filepath.Join(mcpDir, "metadata.toml"), metadata)
+	// MCP-Remote has no server files, just metadata
 
 	return mcpDir
 }

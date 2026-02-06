@@ -35,6 +35,7 @@ func NewClient() *Client {
 				asset.TypeCommand,
 				asset.TypeAgent,
 				asset.TypeMCP,
+				asset.TypeMCPRemote,
 			},
 		),
 	}
@@ -94,6 +95,15 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 				installErr = mcpErr
 			} else {
 				handler := handlers.NewMCPHandler(bundle.Metadata)
+				installErr = handler.Install(ctx, bundle.ZipData, mcpTargetBase)
+			}
+		case asset.TypeMCPRemote:
+			// MCP-Remote uses .vscode/ instead of .github/
+			mcpTargetBase, mcpErr := c.determineMCPTargetBase(req.Scope)
+			if mcpErr != nil {
+				installErr = mcpErr
+			} else {
+				handler := handlers.NewMCPRemoteHandler(bundle.Metadata)
 				installErr = handler.Install(ctx, bundle.ZipData, mcpTargetBase)
 			}
 		default:
@@ -162,6 +172,15 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 				uninstallErr = mcpErr
 			} else {
 				handler := handlers.NewMCPHandler(meta)
+				uninstallErr = handler.Remove(ctx, mcpTargetBase)
+			}
+		case asset.TypeMCPRemote:
+			// MCP-Remote uses .vscode/ instead of .github/
+			mcpTargetBase, mcpErr := c.determineMCPTargetBase(req.Scope)
+			if mcpErr != nil {
+				uninstallErr = mcpErr
+			} else {
+				handler := handlers.NewMCPRemoteHandler(meta)
 				uninstallErr = handler.Remove(ctx, mcpTargetBase)
 			}
 		default:
@@ -317,7 +336,7 @@ func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, sco
 		// Determine target base based on asset type
 		var targetBase string
 		var err error
-		if a.Type == asset.TypeMCP {
+		if a.Type == asset.TypeMCP || a.Type == asset.TypeMCPRemote {
 			targetBase, err = c.determineMCPTargetBase(scope)
 		} else {
 			targetBase, err = c.determineTargetBase(scope)
@@ -355,13 +374,21 @@ func (c *Client) ScanInstalledAssets(ctx context.Context, scope *clients.Install
 
 // GetAssetPath returns the filesystem path for an asset
 func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.Type, scope *clients.InstallScope) (string, error) {
-	// MCP uses a different target base
+	// MCP and MCP-Remote use a different target base
 	if assetType == asset.TypeMCP {
 		mcpBase, err := c.determineMCPTargetBase(scope)
 		if err != nil {
 			return "", err
 		}
 		return filepath.Join(mcpBase, "mcp-servers", name), nil
+	}
+	if assetType == asset.TypeMCPRemote {
+		// MCP-Remote has no extracted files, return config path
+		mcpBase, err := c.determineMCPTargetBase(scope)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(mcpBase, "mcp.json"), nil
 	}
 
 	targetBase, err := c.determineTargetBase(scope)

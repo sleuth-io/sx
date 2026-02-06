@@ -1000,3 +1000,146 @@ path = "assets/keeper-skill/1.0.0"
 		t.Errorf("mcp.json should not contain 'temp-mcp' after uninstall, got: %s", mcpContent)
 	}
 }
+
+func TestGitHubCopilotMCPRemoteInstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	// MCP-Remote uses external commands like npx, no local server files
+	env.AddMCPRemoteToVault(vaultDir, "remote-github", "1.0.0", "npx", []string{"-y", "@modelcontextprotocol/server-github"})
+
+	lockFile := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "remote-github"
+version = "1.0.0"
+type = "mcp-remote"
+
+[assets.source-path]
+path = "assets/remote-github/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFile)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	// MCP-Remote goes to ~/.vscode/ in global scope
+	vscodeDir := filepath.Join(env.HomeDir, ".vscode")
+	mcpConfigFile := filepath.Join(vscodeDir, "mcp.json")
+
+	// Verify mcp.json was created with the entry
+	env.AssertFileExists(mcpConfigFile)
+
+	// MCP-Remote doesn't extract files, just adds config
+	mcpServerDir := filepath.Join(vscodeDir, "mcp-servers", "remote-github")
+	env.AssertFileNotExists(mcpServerDir) // No server directory for remote
+
+	// Verify mcp.json contains the server entry
+	mcpContent, err := os.ReadFile(mcpConfigFile)
+	if err != nil {
+		t.Fatalf("Failed to read mcp.json: %v", err)
+	}
+	if !strings.Contains(string(mcpContent), "remote-github") {
+		t.Errorf("mcp.json should contain 'remote-github' entry, got: %s", mcpContent)
+	}
+	if !strings.Contains(string(mcpContent), "npx") {
+		t.Errorf("mcp.json should contain 'npx' command, got: %s", mcpContent)
+	}
+}
+
+func TestGitHubCopilotMCPRemoteUninstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddMCPRemoteToVault(vaultDir, "temp-remote", "1.0.0", "npx", []string{"-y", "some-server"})
+	env.AddSkillToVault(vaultDir, "keeper-skill", "1.0.0")
+
+	lockFileWithBoth := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "temp-remote"
+version = "1.0.0"
+type = "mcp-remote"
+
+[assets.source-path]
+path = "assets/temp-remote/1.0.0"
+
+[[assets]]
+name = "keeper-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/keeper-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFileWithBoth)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	// Step 1: Install both
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	vscodeDir := filepath.Join(env.HomeDir, ".vscode")
+	mcpConfigFile := filepath.Join(vscodeDir, "mcp.json")
+	copilotDir := filepath.Join(env.HomeDir, ".copilot")
+	skillDir := filepath.Join(copilotDir, "skills", "keeper-skill")
+
+	// Verify both were installed
+	env.AssertFileExists(mcpConfigFile)
+	env.AssertFileExists(skillDir)
+
+	// Verify mcp.json contains temp-remote
+	mcpContent, err := os.ReadFile(mcpConfigFile)
+	if err != nil {
+		t.Fatalf("Failed to read mcp.json: %v", err)
+	}
+	if !strings.Contains(string(mcpContent), "temp-remote") {
+		t.Errorf("mcp.json should contain 'temp-remote', got: %s", mcpContent)
+	}
+
+	// Step 2: Remove MCP-Remote from lock file
+	lockFileWithout := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "keeper-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/keeper-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFileWithout)
+
+	// Step 3: Re-install to trigger cleanup
+	installCmd2 := NewInstallCommand()
+	if err := installCmd2.Execute(); err != nil {
+		t.Fatalf("Second install failed: %v", err)
+	}
+
+	// Step 4: Verify MCP-Remote was removed, skill remains
+	env.AssertFileExists(skillDir)
+
+	// Verify mcp.json no longer contains temp-remote
+	mcpContent, err = os.ReadFile(mcpConfigFile)
+	if err != nil {
+		t.Fatalf("Failed to read mcp.json: %v", err)
+	}
+	if strings.Contains(string(mcpContent), "temp-remote") {
+		t.Errorf("mcp.json should not contain 'temp-remote' after uninstall, got: %s", mcpContent)
+	}
+}
