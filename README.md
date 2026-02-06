@@ -114,7 +114,7 @@ sx uses a lock file (like package-lock.json) for deterministic installations acr
 
 1. **Create** assets with metadata (name, version, dependencies)
 2. **Share** to your vault
-3. **Install** globally, per repository, or even per path (monorepo support!)
+3. **Install** [globally, per project, or even per path](docs/scoping.md) (monorepo support!)
 4. **Auto-install** on new Claude Code sessions
 5. **Stay synchronized** - everyone gets the same tools automatically
 
@@ -153,6 +153,7 @@ See LICENSE file for details.
 - [Metadata Spec](docs/metadata-spec.md) - Skill metadata format
 - [Lock Spec](docs/lock-spec.md) - Lock file format
 - [MCP Spec](docs/mcp-spec.md) - MCP server and query tool
+- [Scoping](docs/scoping.md) - Controlling where assets are installed
 - [Profiles](docs/profiles.md) - Multiple configuration profiles
 
 

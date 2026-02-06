@@ -29,20 +29,26 @@ func NewInstallCommand() *cobra.Command {
 	var hookMode bool
 	var clientID string
 	var fixMode bool
+	var targetDir string
 
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Read lock file, fetch assets, and install locally",
 		Long: fmt.Sprintf(`Read the %s file, fetch assets from the configured vault,
-and install them to ~/.claude/ directory.`, constants.SkillLockFile),
+and install them to ~/.claude/ directory.
+
+Use --target to install as if running from a different directory. This is useful
+when you want to install assets for a project without being in that directory
+(e.g., Docker sandboxes, CI pipelines).`, constants.SkillLockFile),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInstall(cmd, args, hookMode, clientID, fixMode)
+			return runInstall(cmd, args, hookMode, clientID, fixMode, targetDir)
 		},
 	}
 
 	cmd.Flags().BoolVar(&hookMode, "hook-mode", false, "Run in hook mode (outputs JSON for Claude Code)")
 	cmd.Flags().StringVar(&clientID, "client", "", "Client ID that triggered the hook (used with --hook-mode)")
 	cmd.Flags().BoolVar(&fixMode, "repair", false, "Verify assets are actually installed and fix any discrepancies")
+	cmd.Flags().StringVar(&targetDir, "target", "", "Install as if running from this directory")
 	_ = cmd.Flags().MarkHidden("hook-mode") // Hide from help output since it's internal
 	_ = cmd.Flags().MarkHidden("client")    // Hide from help output since it's internal
 
@@ -50,7 +56,7 @@ and install them to ~/.claude/ directory.`, constants.SkillLockFile),
 }
 
 // runInstall executes the install command
-func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID string, repairMode bool) error {
+func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID string, repairMode bool, targetDir string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
@@ -80,7 +86,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	}
 
 	// Detect environment (git context, scope, clients)
-	env, err := detectInstallEnvironment(ctx, cfg, status)
+	env, err := detectInstallEnvironment(ctx, cfg, status, targetDir)
 	if err != nil {
 		return err
 	}

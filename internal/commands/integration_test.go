@@ -257,3 +257,68 @@ path = "assets/global-skill/1.0.0"
 		t.Log("✓ Asset correctly cleaned up from repo directory")
 	}
 }
+
+// TestInstallTargetFlag verifies that --target installs repo-scoped assets
+// to the target directory's .claude/ instead of requiring cwd to be in the repo.
+// Global assets should still go to ~/.claude/ regardless of --target.
+func TestInstallTargetFlag(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddSkillToVault(vaultDir, "repo-skill", "1.0.0")
+	env.AddSkillToVault(vaultDir, "global-skill", "1.0.0")
+
+	// Lock file with one repo-scoped and one global asset
+	lockContent := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "repo-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/repo-skill/1.0.0"
+
+[[assets.scopes]]
+repo = "https://github.com/testorg/targetrepo"
+
+[[assets]]
+name = "global-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/global-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockContent)
+
+	// Create a git repo that matches the scope
+	projectDir := env.SetupGitRepo("targetproject", "https://github.com/testorg/targetrepo")
+
+	// Change to a directory that is NOT the project — e.g., home dir
+	env.Chdir(env.HomeDir)
+
+	// Run install with --target pointing at the project
+	installCmd := NewInstallCommand()
+	installCmd.SetArgs([]string{"--target", projectDir})
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Install with --target failed: %v", err)
+	}
+
+	// Repo-scoped asset should be in the target project's .claude/
+	repoSkillDir := filepath.Join(projectDir, ".claude", "skills", "repo-skill")
+	env.AssertFileExists(repoSkillDir)
+	t.Log("✓ Repo-scoped asset installed to target project directory")
+
+	// Global asset should still be in ~/.claude/
+	globalSkillDir := filepath.Join(env.GlobalClaudeDir(), "skills", "global-skill")
+	env.AssertFileExists(globalSkillDir)
+	t.Log("✓ Global asset installed to ~/.claude/")
+
+	// Repo-scoped asset should NOT be in ~/.claude/
+	globalRepoSkillDir := filepath.Join(env.GlobalClaudeDir(), "skills", "repo-skill")
+	env.AssertFileNotExists(globalRepoSkillDir)
+	t.Log("✓ Repo-scoped asset not in ~/.claude/")
+}

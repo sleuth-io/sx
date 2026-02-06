@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/clients"
@@ -27,11 +28,23 @@ type installEnvironment struct {
 	Clients      []clients.Client
 }
 
-// detectInstallEnvironment detects git context, builds scope, and finds target clients
-func detectInstallEnvironment(ctx context.Context, cfg *config.Config, status *components.Status) (*installEnvironment, error) {
+// detectInstallEnvironment detects git context, builds scope, and finds target clients.
+// If targetDir is non-empty, it is used instead of the current working directory.
+func detectInstallEnvironment(ctx context.Context, cfg *config.Config, status *components.Status, targetDir string) (*installEnvironment, error) {
 	status.Start("Detecting context")
 
-	gitCtx, err := gitutil.DetectContext(ctx)
+	var gitCtx *gitutil.GitContext
+	var err error
+	if targetDir != "" {
+		absTarget, absErr := filepath.Abs(targetDir)
+		if absErr != nil {
+			status.Fail("Failed to resolve target directory")
+			return nil, fmt.Errorf("failed to resolve target directory: %w", absErr)
+		}
+		gitCtx, err = gitutil.DetectContextForPath(ctx, absTarget)
+	} else {
+		gitCtx, err = gitutil.DetectContext(ctx)
+	}
 	if err != nil {
 		status.Fail("Failed to detect git context")
 		return nil, fmt.Errorf("failed to detect git context: %w", err)
