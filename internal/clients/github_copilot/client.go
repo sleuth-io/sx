@@ -159,10 +159,12 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 		}
 		return filepath.Join(scope.RepoRoot, ".github"), nil
 	case clients.ScopePath:
+		// Copilot only discovers assets from {repoRoot}/.github/,
+		// not from subdirectory .github/ folders. Remap to repo root.
 		if scope.RepoRoot == "" {
 			return "", errors.New("path-scoped install requires RepoRoot but none provided (not in a git repository?)")
 		}
-		return filepath.Join(scope.RepoRoot, scope.Path, ".github"), nil
+		return filepath.Join(scope.RepoRoot, ".github"), nil
 	default:
 		return filepath.Join(home, ".copilot"), nil
 	}
