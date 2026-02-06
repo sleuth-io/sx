@@ -34,6 +34,7 @@ func NewClient() *Client {
 				asset.TypeRule,
 				asset.TypeCommand,
 				asset.TypeAgent,
+				asset.TypeMCP,
 			},
 		),
 	}
@@ -86,6 +87,15 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeAgent:
 			handler := handlers.NewAgentHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeMCP:
+			// MCP uses .vscode/ instead of .github/
+			mcpTargetBase, mcpErr := c.determineMCPTargetBase(req.Scope)
+			if mcpErr != nil {
+				installErr = mcpErr
+			} else {
+				handler := handlers.NewMCPHandler(bundle.Metadata)
+				installErr = handler.Install(ctx, bundle.ZipData, mcpTargetBase)
+			}
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + bundle.Metadata.Asset.Type.Key
@@ -145,6 +155,15 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 		case asset.TypeAgent:
 			handler := handlers.NewAgentHandler(meta)
 			uninstallErr = handler.Remove(ctx, targetBase)
+		case asset.TypeMCP:
+			// MCP uses .vscode/ instead of .github/
+			mcpTargetBase, mcpErr := c.determineMCPTargetBase(req.Scope)
+			if mcpErr != nil {
+				uninstallErr = mcpErr
+			} else {
+				handler := handlers.NewMCPHandler(meta)
+				uninstallErr = handler.Remove(ctx, mcpTargetBase)
+			}
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + a.Type.Key
@@ -188,6 +207,25 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 		return filepath.Join(scope.RepoRoot, ".github"), nil
 	default:
 		return filepath.Join(home, ".copilot"), nil
+	}
+}
+
+// determineMCPTargetBase returns the installation directory for MCP servers.
+// MCP servers use .vscode/ for VS Code integration, not .github/.
+func (c *Client) determineMCPTargetBase(scope *clients.InstallScope) (string, error) {
+	home, _ := os.UserHomeDir()
+
+	switch scope.Type {
+	case clients.ScopeGlobal:
+		// Global MCP config goes to VS Code user settings directory
+		return filepath.Join(home, ".vscode"), nil
+	case clients.ScopeRepository, clients.ScopePath:
+		if scope.RepoRoot == "" {
+			return "", errors.New("repo/path-scoped MCP install requires RepoRoot but none provided (not in a git repository?)")
+		}
+		return filepath.Join(scope.RepoRoot, ".vscode"), nil
+	default:
+		return filepath.Join(home, ".vscode"), nil
 	}
 }
 
@@ -271,21 +309,24 @@ func (c *Client) ShouldInstall(ctx context.Context) (bool, error) {
 func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, scope *clients.InstallScope) []clients.VerifyResult {
 	results := make([]clients.VerifyResult, 0, len(assets))
 
-	targetBase, err := c.determineTargetBase(scope)
-	if err != nil {
-		for _, a := range assets {
-			results = append(results, clients.VerifyResult{
-				Asset:     a,
-				Installed: false,
-				Message:   fmt.Sprintf("cannot determine target directory: %v", err),
-			})
-		}
-		return results
-	}
-
 	for _, a := range assets {
 		result := clients.VerifyResult{
 			Asset: a,
+		}
+
+		// Determine target base based on asset type
+		var targetBase string
+		var err error
+		if a.Type == asset.TypeMCP {
+			targetBase, err = c.determineMCPTargetBase(scope)
+		} else {
+			targetBase, err = c.determineTargetBase(scope)
+		}
+		if err != nil {
+			result.Installed = false
+			result.Message = fmt.Sprintf("cannot determine target directory: %v", err)
+			results = append(results, result)
+			continue
 		}
 
 		handler, err := handlers.NewHandler(a.Type, &metadata.Metadata{
@@ -314,6 +355,15 @@ func (c *Client) ScanInstalledAssets(ctx context.Context, scope *clients.Install
 
 // GetAssetPath returns the filesystem path for an asset
 func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.Type, scope *clients.InstallScope) (string, error) {
+	// MCP uses a different target base
+	if assetType == asset.TypeMCP {
+		mcpBase, err := c.determineMCPTargetBase(scope)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(mcpBase, "mcp-servers", name), nil
+	}
+
 	targetBase, err := c.determineTargetBase(scope)
 	if err != nil {
 		return "", err

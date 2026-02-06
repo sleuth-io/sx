@@ -327,3 +327,38 @@ prompt-file = "AGENT.md"
 
 	return agentDir
 }
+
+// AddMCPToVault adds an MCP server asset to the vault directory.
+// Returns the MCP source directory path.
+func (e *TestEnv) AddMCPToVault(vaultDir, name, version, command string, args []string) string {
+	e.t.Helper()
+
+	mcpDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	// Build args array string
+	argsStr := "["
+	for i, arg := range args {
+		if i > 0 {
+			argsStr += ", "
+		}
+		argsStr += fmt.Sprintf("%q", arg)
+	}
+	argsStr += "]"
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "mcp"
+version = "%s"
+description = "Test MCP server %s"
+
+[mcp]
+command = "%s"
+args = %s
+`, name, version, name, command, argsStr)
+
+	e.WriteFile(filepath.Join(mcpDir, "metadata.toml"), metadata)
+	// MCP servers typically have a main script or binary
+	e.WriteFile(filepath.Join(mcpDir, "server.js"), "// MCP server placeholder")
+
+	return mcpDir
+}

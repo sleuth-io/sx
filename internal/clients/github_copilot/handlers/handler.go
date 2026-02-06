@@ -32,6 +32,8 @@ func NewHandler(assetType asset.Type, meta *metadata.Metadata) (Handler, error) 
 		return NewCommandHandler(meta), nil
 	case asset.TypeAgent:
 		return NewAgentHandler(meta), nil
+	case asset.TypeMCP:
+		return NewMCPHandler(meta), nil
 	default:
 		return nil, fmt.Errorf("unsupported asset type: %s", assetType.Key)
 	}

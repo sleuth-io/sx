@@ -862,3 +862,141 @@ path = "assets/keeper-skill/1.0.0"
 	env.AssertFileNotExists(agentFile)
 	env.AssertFileExists(skillDir)
 }
+
+func TestGitHubCopilotMCPInstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddMCPToVault(vaultDir, "test-mcp", "1.0.0", "node", []string{"server.js"})
+
+	lockFile := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "test-mcp"
+version = "1.0.0"
+type = "mcp"
+
+[assets.source-path]
+path = "assets/test-mcp/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFile)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	// MCP servers go to ~/.vscode/ in global scope (not .github/ or ~/.copilot/)
+	vscodeDir := filepath.Join(env.HomeDir, ".vscode")
+	mcpConfigFile := filepath.Join(vscodeDir, "mcp.json")
+	mcpServerDir := filepath.Join(vscodeDir, "mcp-servers", "test-mcp")
+
+	// Verify mcp.json was created
+	env.AssertFileExists(mcpConfigFile)
+
+	// Verify server files were extracted
+	env.AssertFileExists(mcpServerDir)
+	env.AssertFileExists(filepath.Join(mcpServerDir, "server.js"))
+
+	// Verify mcp.json contains the server entry
+	mcpContent, err := os.ReadFile(mcpConfigFile)
+	if err != nil {
+		t.Fatalf("Failed to read mcp.json: %v", err)
+	}
+	if !strings.Contains(string(mcpContent), "test-mcp") {
+		t.Errorf("mcp.json should contain 'test-mcp' entry, got: %s", mcpContent)
+	}
+	if !strings.Contains(string(mcpContent), "node") {
+		t.Errorf("mcp.json should contain 'node' command, got: %s", mcpContent)
+	}
+}
+
+func TestGitHubCopilotMCPUninstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddMCPToVault(vaultDir, "temp-mcp", "1.0.0", "npx", []string{"-y", "server"})
+	env.AddSkillToVault(vaultDir, "keeper-skill", "1.0.0")
+
+	lockFileWithBoth := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "temp-mcp"
+version = "1.0.0"
+type = "mcp"
+
+[assets.source-path]
+path = "assets/temp-mcp/1.0.0"
+
+[[assets]]
+name = "keeper-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/keeper-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFileWithBoth)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	// Step 1: Install both
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	// MCP servers go to ~/.vscode/ in global scope
+	vscodeDir := filepath.Join(env.HomeDir, ".vscode")
+	mcpConfigFile := filepath.Join(vscodeDir, "mcp.json")
+	mcpServerDir := filepath.Join(vscodeDir, "mcp-servers", "temp-mcp")
+	copilotDir := filepath.Join(env.HomeDir, ".copilot")
+	skillDir := filepath.Join(copilotDir, "skills", "keeper-skill")
+
+	// Verify MCP and skill were installed
+	env.AssertFileExists(mcpConfigFile)
+	env.AssertFileExists(mcpServerDir)
+	env.AssertFileExists(skillDir)
+
+	// Step 2: Remove MCP from lock file
+	lockFileWithout := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "keeper-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/keeper-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFileWithout)
+
+	// Step 3: Re-install to trigger cleanup
+	installCmd2 := NewInstallCommand()
+	if err := installCmd2.Execute(); err != nil {
+		t.Fatalf("Second install failed: %v", err)
+	}
+
+	// Step 4: Verify MCP was removed, skill remains
+	env.AssertFileNotExists(mcpServerDir)
+	env.AssertFileExists(skillDir)
+
+	// Verify mcp.json no longer contains temp-mcp
+	mcpContent, err := os.ReadFile(mcpConfigFile)
+	if err != nil {
+		t.Fatalf("Failed to read mcp.json: %v", err)
+	}
+	if strings.Contains(string(mcpContent), "temp-mcp") {
+		t.Errorf("mcp.json should not contain 'temp-mcp' after uninstall, got: %s", mcpContent)
+	}
+}
