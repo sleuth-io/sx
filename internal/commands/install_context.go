@@ -39,7 +39,14 @@ func detectInstallEnvironment(ctx context.Context, cfg *config.Config, status *c
 		absTarget, absErr := filepath.Abs(targetDir)
 		if absErr != nil {
 			status.Fail("Failed to resolve target directory")
-			return nil, fmt.Errorf("failed to resolve target directory: %w", absErr)
+			return nil, fmt.Errorf("failed to resolve target directory %q: %w", targetDir, absErr)
+		}
+		if info, statErr := os.Stat(absTarget); statErr != nil {
+			status.Fail("Target directory does not exist")
+			return nil, fmt.Errorf("target directory does not exist: %s", absTarget)
+		} else if !info.IsDir() {
+			status.Fail("Target is not a directory")
+			return nil, fmt.Errorf("target is not a directory: %s", absTarget)
 		}
 		gitCtx, err = gitutil.DetectContextForPath(ctx, absTarget)
 	} else {

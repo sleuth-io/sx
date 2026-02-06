@@ -322,3 +322,35 @@ path = "assets/global-skill/1.0.0"
 	env.AssertFileNotExists(globalRepoSkillDir)
 	t.Log("✓ Repo-scoped asset not in ~/.claude/")
 }
+
+// TestInstallTargetFlagInvalidDir verifies that --target with a non-existent
+// directory returns an error rather than silently doing nothing.
+func TestInstallTargetFlagInvalidDir(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddSkillToVault(vaultDir, "test-skill", "1.0.0")
+	env.WriteLockFile(vaultDir, `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "test-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/test-skill/1.0.0"
+`)
+
+	env.Chdir(env.HomeDir)
+
+	invalidTarget := filepath.Join(env.TempDir, "nonexistent")
+	installCmd := NewInstallCommand()
+	installCmd.SetArgs([]string{"--target", invalidTarget})
+	err := installCmd.Execute()
+	if err == nil {
+		t.Fatal("Expected error for non-existent target directory")
+	}
+	t.Logf("✓ Got expected error: %v", err)
+}
