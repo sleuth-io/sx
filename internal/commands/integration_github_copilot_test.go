@@ -610,3 +610,129 @@ path = "assets/no-meta-skill/1.0.0"
 		t.Fatal("Expected install to fail due to missing metadata.toml, but it succeeded")
 	}
 }
+
+// TestGitHubCopilotCommandInstall tests that commands are installed as .prompt.md files
+// in the prompts/ directory with description frontmatter.
+func TestGitHubCopilotCommandInstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddCommandToVault(vaultDir, "my-prompt", "1.0.0", "Generate a unit test for the selected code.\n\nInclude edge cases and error handling.")
+
+	lockFile := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "my-prompt"
+version = "1.0.0"
+type = "command"
+
+[assets.source-path]
+path = "assets/my-prompt/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFile)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	// Verify command was installed to ~/.copilot/prompts/ (global scope)
+	copilotDir := filepath.Join(env.HomeDir, ".copilot")
+	promptFile := filepath.Join(copilotDir, "prompts", "my-prompt.prompt.md")
+	env.AssertFileExists(promptFile)
+
+	content, err := os.ReadFile(promptFile)
+	if err != nil {
+		t.Fatalf("Failed to read prompt file: %v", err)
+	}
+
+	// Verify YAML frontmatter with description
+	if !strings.HasPrefix(string(content), "---\n") {
+		t.Errorf("Prompt file should have YAML frontmatter")
+	}
+	if !strings.Contains(string(content), "description:") {
+		t.Errorf("Prompt file should contain description in frontmatter")
+	}
+
+	// Verify prompt content
+	if !strings.Contains(string(content), "Generate a unit test") {
+		t.Errorf("Prompt file should contain prompt content")
+	}
+}
+
+// TestGitHubCopilotCommandUninstall tests that commands are properly removed when
+// they are removed from the lock file and install is re-run.
+func TestGitHubCopilotCommandUninstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddCommandToVault(vaultDir, "temp-prompt", "1.0.0", "Temporary prompt content")
+	env.AddSkillToVault(vaultDir, "keeper-skill", "1.0.0")
+
+	lockFileWithBoth := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "temp-prompt"
+version = "1.0.0"
+type = "command"
+
+[assets.source-path]
+path = "assets/temp-prompt/1.0.0"
+
+[[assets]]
+name = "keeper-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/keeper-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFileWithBoth)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	// Step 1: Install both assets
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	copilotDir := filepath.Join(env.HomeDir, ".copilot")
+	promptFile := filepath.Join(copilotDir, "prompts", "temp-prompt.prompt.md")
+	skillDir := filepath.Join(copilotDir, "skills", "keeper-skill")
+	env.AssertFileExists(promptFile)
+	env.AssertFileExists(skillDir)
+
+	// Step 2: Remove command from lock file
+	lockFileWithout := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "keeper-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/keeper-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFileWithout)
+
+	// Step 3: Re-install to trigger cleanup
+	installCmd2 := NewInstallCommand()
+	if err := installCmd2.Execute(); err != nil {
+		t.Fatalf("Second install failed: %v", err)
+	}
+
+	// Step 4: Verify command was removed, skill remains
+	env.AssertFileNotExists(promptFile)
+	env.AssertFileExists(skillDir)
+}

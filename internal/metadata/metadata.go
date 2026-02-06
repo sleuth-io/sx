@@ -55,10 +55,11 @@ type SkillConfig struct {
 
 // CommandConfig represents the [command] section
 type CommandConfig struct {
-	PromptFile   string   `toml:"prompt-file"`
-	Aliases      []string `toml:"aliases,omitempty"`
-	RequiresAuth bool     `toml:"requires-auth,omitempty"`
-	Dangerous    bool     `toml:"dangerous,omitempty"`
+	PromptFile   string         `toml:"prompt-file"`
+	Aliases      []string       `toml:"aliases,omitempty"`
+	RequiresAuth bool           `toml:"requires-auth,omitempty"`
+	Dangerous    bool           `toml:"dangerous,omitempty"`
+	Copilot      map[string]any `toml:"copilot,omitempty"` // Copilot-specific settings (agent, model, tools)
 }
 
 // AgentConfig represents the [agent] section

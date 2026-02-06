@@ -32,6 +32,7 @@ func NewClient() *Client {
 			[]asset.Type{
 				asset.TypeSkill,
 				asset.TypeRule,
+				asset.TypeCommand,
 			},
 		),
 	}
@@ -77,6 +78,9 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
 		case asset.TypeRule:
 			handler := handlers.NewRuleHandler(bundle.Metadata)
+			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeCommand:
+			handler := handlers.NewCommandHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
@@ -130,6 +134,9 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 			uninstallErr = handler.Remove(ctx, targetBase)
 		case asset.TypeRule:
 			handler := handlers.NewRuleHandler(meta)
+			uninstallErr = handler.Remove(ctx, targetBase)
+		case asset.TypeCommand:
+			handler := handlers.NewCommandHandler(meta)
 			uninstallErr = handler.Remove(ctx, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
@@ -310,6 +317,8 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 		return filepath.Join(targetBase, "skills", name), nil
 	case asset.TypeRule:
 		return filepath.Join(targetBase, "instructions", name+".instructions.md"), nil
+	case asset.TypeCommand:
+		return filepath.Join(targetBase, "prompts", name+".prompt.md"), nil
 	default:
 		return "", fmt.Errorf("asset type %s not supported for GitHub Copilot", assetType.Key)
 	}

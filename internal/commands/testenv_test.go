@@ -281,3 +281,26 @@ manifest-file = ".claude-plugin/plugin.json"
 
 	return pluginDir
 }
+
+// AddCommandToVault adds a command asset to the vault directory.
+// Returns the command source directory path.
+func (e *TestEnv) AddCommandToVault(vaultDir, name, version, content string) string {
+	e.t.Helper()
+
+	commandDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "command"
+version = "%s"
+description = "Test command %s"
+
+[command]
+prompt-file = "COMMAND.md"
+`, name, version, name)
+
+	e.WriteFile(filepath.Join(commandDir, "metadata.toml"), metadata)
+	e.WriteFile(filepath.Join(commandDir, "COMMAND.md"), content)
+
+	return commandDir
+}
