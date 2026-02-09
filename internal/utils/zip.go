@@ -12,6 +12,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 )
 
 // SkipDirectories contains directory names that should be excluded during zip operations.
@@ -437,29 +439,63 @@ func ReplaceFileInZip(zipData []byte, filename string, content []byte) ([]byte, 
 // CompareZipContents compares two zip files by computing and comparing their hashes
 // Excludes metadata.toml from comparison to focus on actual content
 func CompareZipContents(zipData1, zipData2 []byte) (bool, error) {
-	// Remove metadata.toml from both zips before comparison
-	// This ensures we only compare actual content, not generated metadata
-	zipData1WithoutMeta, err := RemoveFileFromZip(zipData1, "metadata.toml")
+	// Normalize both zips: strip the version from metadata.toml so that
+	// version differences don't affect comparison. This handles both:
+	// - Content zips: content files match, metadata version irrelevant
+	// - Metadata-only zips (config-only assets): everything except version is compared
+	norm1, err := normalizeZipForComparison(zipData1)
 	if err != nil {
-		// If removal fails, file might not exist, use original
-		zipData1WithoutMeta = zipData1
+		return false, fmt.Errorf("failed to normalize first zip: %w", err)
 	}
 
-	zipData2WithoutMeta, err := RemoveFileFromZip(zipData2, "metadata.toml")
+	norm2, err := normalizeZipForComparison(zipData2)
 	if err != nil {
-		// If removal fails, file might not exist, use original
-		zipData2WithoutMeta = zipData2
+		return false, fmt.Errorf("failed to normalize second zip: %w", err)
 	}
 
-	hash1, err := ComputeZipHash(zipData1WithoutMeta)
+	hash1, err := ComputeZipHash(norm1)
 	if err != nil {
 		return false, fmt.Errorf("failed to compute hash for first zip: %w", err)
 	}
 
-	hash2, err := ComputeZipHash(zipData2WithoutMeta)
+	hash2, err := ComputeZipHash(norm2)
 	if err != nil {
 		return false, fmt.Errorf("failed to compute hash for second zip: %w", err)
 	}
 
 	return bytes.Equal(hash1, hash2), nil
+}
+
+// normalizeZipForComparison strips the version field from metadata.toml
+// so version differences don't affect content comparison.
+func normalizeZipForComparison(zipData []byte) ([]byte, error) {
+	metaBytes, err := ReadZipFile(zipData, "metadata.toml")
+	if err != nil {
+		// No metadata.toml, return as-is
+		return zipData, nil
+	}
+
+	// Zero out the version line in the raw TOML
+	normalized := stripVersionFromTOML(metaBytes)
+
+	return ReplaceFileInZip(zipData, "metadata.toml", normalized)
+}
+
+// stripVersionFromTOML zeroes out the [asset].version field in TOML bytes
+// so version differences don't affect content hashing.
+func stripVersionFromTOML(data []byte) []byte {
+	var doc map[string]any
+	if err := toml.Unmarshal(data, &doc); err != nil {
+		return data // Can't parse, return as-is
+	}
+
+	if asset, ok := doc["asset"].(map[string]any); ok {
+		asset["version"] = ""
+	}
+
+	var buf bytes.Buffer
+	if err := toml.NewEncoder(&buf).Encode(doc); err != nil {
+		return data
+	}
+	return buf.Bytes()
 }
