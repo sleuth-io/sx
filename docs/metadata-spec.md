@@ -103,12 +103,6 @@ Each asset type requires a corresponding section with specific fields.
 
 - `prompt-file`: Path to the skill prompt markdown file
 
-**Optional Fields**:
-
-- `triggers`: Array of trigger phrases
-- `requires`: Array of required tools/commands
-- `supported-languages`: Array of programming languages
-
 ```toml
 [asset]
 name = "code-reviewer"
@@ -118,9 +112,6 @@ description = "AI code review skill"
 
 [skill]
 prompt-file = "SKILL.md"
-triggers = ["review", "code quality", "check code"]
-requires = ["git"]
-supported-languages = ["python", "javascript", "rust", "go"]
 ```
 
 **Package Structure**:
@@ -140,12 +131,6 @@ code-reviewer/
 
 - `prompt-file`: Path to the command prompt markdown file
 
-**Optional Fields**:
-
-- `aliases`: Array of alternative command names
-- `requires-auth`: Boolean indicating if authentication is required
-- `dangerous`: Boolean indicating if command performs destructive operations
-
 ```toml
 [asset]
 name = "deploy"
@@ -155,9 +140,6 @@ description = "Deploy application to environments"
 
 [command]
 prompt-file = "COMMAND.md"
-aliases = ["deployment", "ship"]
-requires-auth = true
-dangerous = true
 ```
 
 **Package Structure**:
@@ -177,11 +159,6 @@ deploy/
 
 - `prompt-file`: Path to the agent prompt markdown file
 
-**Optional Fields**:
-
-- `triggers`: Array of trigger phrases
-- `requires`: Array of required tools/commands
-
 ```toml
 [asset]
 name = "api-helper"
@@ -191,8 +168,6 @@ description = "Agent for API development and testing"
 
 [agent]
 prompt-file = "AGENT.md"
-triggers = ["api", "rest", "endpoint"]
-requires = ["curl", "jq"]
 ```
 
 **Package Structure**:
@@ -417,7 +392,6 @@ description = "Go standards - applies to Go files only"
 
 - `env`: Map of environment variables
 - `timeout`: Timeout in milliseconds
-- `capabilities`: Array of MCP capabilities
 
 **Important**: All MCP configuration is in metadata.toml. No separate JSON config file is needed.
 
@@ -448,7 +422,6 @@ env = {
   LOG_LEVEL = "info"
 }
 timeout = 30000
-capabilities = ["query", "schema", "migration"]
 ```
 
 **Package Structure** (packaged):
@@ -502,7 +475,6 @@ hosted-github/
 - `manifest-file`: Path to the plugin manifest (default: `.claude-plugin/plugin.json`)
 - `auto-enable`: Whether to automatically enable the plugin on install (default: true)
 - `marketplace`: Name of the marketplace where the plugin is published
-- `min-client-version`: Minimum required Claude Code version
 
 **Important**: Claude Code plugins are bundles that can contain multiple sub-assets (commands, skills, agents, hooks, MCP servers). The plugin must include a `.claude-plugin/plugin.json` manifest file.
 
@@ -516,7 +488,6 @@ description = "Development utilities plugin for Claude Code"
 [claude-code-plugin]
 manifest-file = ".claude-plugin/plugin.json"
 auto-enable = true
-min-client-version = "1.0.0"
 ```
 
 **Package Structure**:
@@ -741,7 +712,6 @@ env = {
   LOG_LEVEL = "info"
 }
 timeout = 30000
-capabilities = ["query", "schema", "migration", "backup"]
 
 [custom]
 internal-id = "mcp-001"
@@ -749,7 +719,7 @@ team = "platform"
 complexity = "intermediate"
 ```
 
-### Command with Aliases
+### Command with Custom Metadata
 
 ```toml
 [asset]
@@ -764,9 +734,6 @@ repository = "https://github.com/company/deploy-command"
 
 [command]
 prompt-file = "COMMAND.md"
-aliases = ["deployment", "ship"]
-requires-auth = true
-dangerous = true
 
 [custom]
 requires-vpn = true
@@ -853,8 +820,6 @@ dependencies = [
 
 [agent]
 prompt-file = "AGENT.md"
-triggers = ["api", "rest", "endpoint", "swagger"]
-requires = ["curl", "jq"]
 
 [custom]
 supported-protocols = ["rest", "graphql", "grpc"]
@@ -876,7 +841,6 @@ repository = "https://github.com/company/devops-toolkit"
 [claude-code-plugin]
 manifest-file = ".claude-plugin/plugin.json"
 auto-enable = true
-min-client-version = "1.0.0"
 
 [custom]
 internal-team = "platform"
