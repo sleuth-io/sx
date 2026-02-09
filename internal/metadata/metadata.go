@@ -47,22 +47,17 @@ type Asset struct {
 
 // SkillConfig represents the [skill] section
 type SkillConfig struct {
-	PromptFile         string   `toml:"prompt-file"`
-	Requires []string `toml:"requires,omitempty"`
+	PromptFile string `toml:"prompt-file"`
 }
 
 // CommandConfig represents the [command] section
 type CommandConfig struct {
-	PromptFile   string   `toml:"prompt-file"`
-	Aliases      []string `toml:"aliases,omitempty"`
-	RequiresAuth bool     `toml:"requires-auth,omitempty"`
-	Dangerous    bool     `toml:"dangerous,omitempty"`
+	PromptFile string `toml:"prompt-file"`
 }
 
 // AgentConfig represents the [agent] section
 type AgentConfig struct {
-	PromptFile string   `toml:"prompt-file"`
-	Requires   []string `toml:"requires,omitempty"`
+	PromptFile string `toml:"prompt-file"`
 }
 
 // HookConfig represents the [hook] section
@@ -76,19 +71,17 @@ type HookConfig struct {
 
 // MCPConfig represents the [mcp] section (for both mcp and mcp-remote)
 type MCPConfig struct {
-	Command      string            `toml:"command"`
-	Args         []string          `toml:"args"`
-	Env          map[string]string `toml:"env,omitempty"`
-	Timeout      int               `toml:"timeout,omitempty"`
-	Capabilities []string          `toml:"capabilities,omitempty"`
+	Command string            `toml:"command"`
+	Args    []string          `toml:"args"`
+	Env     map[string]string `toml:"env,omitempty"`
+	Timeout int               `toml:"timeout,omitempty"`
 }
 
 // ClaudeCodePluginConfig represents the [claude-code-plugin] section
 type ClaudeCodePluginConfig struct {
-	ManifestFile     string `toml:"manifest-file,omitempty"`      // Default: .claude-plugin/plugin.json
-	AutoEnable       *bool  `toml:"auto-enable,omitempty"`        // Default: true
-	Marketplace      string `toml:"marketplace,omitempty"`        // Optional marketplace name
-	MinClientVersion string `toml:"min-client-version,omitempty"` // Optional minimum Claude Code version
+	ManifestFile string `toml:"manifest-file,omitempty"` // Default: .claude-plugin/plugin.json
+	AutoEnable   *bool  `toml:"auto-enable,omitempty"`   // Default: true
+	Marketplace  string `toml:"marketplace,omitempty"`   // Optional marketplace name
 }
 
 // RuleConfig represents the [rule] section
