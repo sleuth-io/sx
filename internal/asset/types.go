@@ -13,12 +13,10 @@ var (
 		Label:       "MCP Server",
 		Description: "Model Context Protocol server",
 	}
-	TypeMCPRemote = Type{
-		Key:         "mcp-remote",
-		Label:       "Remote MCP",
-		Description: "Remote Model Context Protocol server configuration",
-	}
-	TypeSkill = Type{
+	// TypeMCPRemote is a deprecated alias for TypeMCP.
+	// Kept for backwards compatibility with existing lock files and vaults.
+	TypeMCPRemote = TypeMCP
+	TypeSkill     = Type{
 		Key:         "skill",
 		Label:       "Skill",
 		Description: "Reusable AI skill",
@@ -53,7 +51,6 @@ var (
 // IsValid checks if the asset type is valid
 func (t Type) IsValid() bool {
 	return t.Key == TypeMCP.Key ||
-		t.Key == TypeMCPRemote.Key ||
 		t.Key == TypeSkill.Key ||
 		t.Key == TypeAgent.Key ||
 		t.Key == TypeCommand.Key ||
@@ -70,10 +67,8 @@ func (t Type) String() string {
 // FromString creates a Type from a string key
 func FromString(key string) Type {
 	switch key {
-	case "mcp":
+	case "mcp", "mcp-remote":
 		return TypeMCP
-	case "mcp-remote":
-		return TypeMCPRemote
 	case "skill":
 		return TypeSkill
 	case "agent":
@@ -106,7 +101,6 @@ func (t *Type) UnmarshalText(text []byte) error {
 func AllTypes() []Type {
 	return []Type{
 		TypeMCP,
-		TypeMCPRemote,
 		TypeSkill,
 		TypeAgent,
 		TypeCommand,

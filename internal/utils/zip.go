@@ -47,6 +47,21 @@ func IsZipFile(data []byte) bool {
 	return bytes.Equal(data[:4], ZipMagicBytes)
 }
 
+// HasContentFiles returns true if the zip contains files beyond metadata.toml.
+// This is used to distinguish packaged assets (with server code) from config-only assets.
+func HasContentFiles(zipData []byte) (bool, error) {
+	files, err := ListZipFiles(zipData)
+	if err != nil {
+		return false, err
+	}
+	for _, f := range files {
+		if f != "metadata.toml" && !strings.HasSuffix(f, "/") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // ExtractZip extracts a zip file to a target directory
 func ExtractZip(zipData []byte, targetDir string) error {
 	if !IsZipFile(zipData) {

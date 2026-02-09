@@ -55,8 +55,8 @@ dependencies = [ ... ]                  # Array of dependency references
 
 ### Asset Types
 
-- `mcp`: Packaged MCP server (zip contains server code + mcp-config.yml)
-- `mcp-remote`: Remote MCP configuration (zip contains only mcp-config.yml pointing to external server)
+- `mcp`: MCP server (zip contains server code for packaged mode, or only metadata.toml for config-only mode)
+  - Legacy alias: `mcp-remote` is accepted and treated as `mcp`
 - `skill`: Packaged skill (zip contains skill code)
 - `agent`: Packaged agent (zip contains agent code)
 - `command`: Slash command (zip contains command markdown file)

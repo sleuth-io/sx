@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -16,7 +18,7 @@ import (
 
 var mcpOps = dirasset.NewOperations("mcp-servers", &asset.TypeMCP)
 
-// MCPHandler handles MCP server asset installation
+// MCPHandler handles MCP server asset installation (both packaged and config-only)
 type MCPHandler struct {
 	metadata *metadata.Metadata
 }
@@ -84,22 +86,36 @@ func (h *MCPHandler) DetectUsageFromToolCall(toolName string, toolInput map[stri
 	return serverName, true
 }
 
-// Install extracts and installs the MCP server asset
+// Install installs the MCP asset. For packaged assets (zip has content files),
+// extracts to mcp-servers/ and registers with absolute paths. For config-only
+// assets (zip has only metadata.toml), registers commands as-is.
 func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// Validate zip structure
 	if err := h.Validate(zipData); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	// Extract to mcp-servers directory
-	if err := mcpOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name); err != nil {
-		return err
+	hasContent, err := utils.HasContentFiles(zipData)
+	if err != nil {
+		return fmt.Errorf("failed to inspect zip contents: %w", err)
 	}
 
-	// Update settings.json to register the MCP server
-	installPath := filepath.Join(targetBase, h.GetInstallPath())
-	if err := h.updateMCPConfig(targetBase, installPath); err != nil {
-		return fmt.Errorf("failed to update MCP config: %w", err)
+	if hasContent {
+		// Packaged mode: extract files and register with absolute paths
+		if err := mcpOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name); err != nil {
+			return err
+		}
+		installPath := filepath.Join(targetBase, h.GetInstallPath())
+		serverConfig := h.buildPackagedMCPServerConfig(installPath)
+		if err := AddMCPServer(targetBase, h.metadata.Asset.Name, serverConfig); err != nil {
+			return fmt.Errorf("failed to update MCP config: %w", err)
+		}
+	} else {
+		// Config-only mode: no extraction, register commands as-is
+		serverConfig := h.buildConfigOnlyMCPServerConfig()
+		if err := AddMCPServer(targetBase, h.metadata.Asset.Name, serverConfig); err != nil {
+			return fmt.Errorf("failed to update MCP config: %w", err)
+		}
 	}
 
 	return nil
@@ -107,16 +123,25 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 
 // Remove uninstalls the MCP server asset
 func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
-	// Remove from settings.json first
-	if err := h.removeFromMCPConfig(targetBase); err != nil {
+	// Remove from .claude.json
+	if err := RemoveMCPServer(targetBase, h.metadata.Asset.Name); err != nil {
 		return fmt.Errorf("failed to remove from MCP config: %w", err)
 	}
 
-	// Remove installation directory
-	return mcpOps.Remove(ctx, targetBase, h.metadata.Asset.Name)
+	// Also remove from legacy .mcp.json if present (transition from old mcp-remote)
+	h.removeFromLegacyMCPConfig(targetBase)
+
+	// Remove installation directory if it exists (packaged mode)
+	installDir := filepath.Join(targetBase, "mcp-servers", h.metadata.Asset.Name)
+	if utils.IsDirectory(installDir) {
+		return mcpOps.Remove(ctx, targetBase, h.metadata.Asset.Name)
+	}
+
+	return nil
 }
 
-// GetInstallPath returns the installation path relative to targetBase
+// GetInstallPath returns the installation path relative to targetBase.
+// For config-only assets, checks if the directory exists on disk.
 func (h *MCPHandler) GetInstallPath() string {
 	return filepath.Join("mcp-servers", h.metadata.Asset.Name)
 }
@@ -163,23 +188,8 @@ func (h *MCPHandler) Validate(zipData []byte) error {
 	return nil
 }
 
-// updateMCPConfig updates settings.json to register the MCP server
-func (h *MCPHandler) updateMCPConfig(targetBase, installPath string) error {
-	// Build MCP server configuration
-	serverConfig := h.buildMCPServerConfig(installPath)
-
-	// Use shared utility to add/update the server
-	return AddMCPServer(targetBase, h.metadata.Asset.Name, serverConfig)
-}
-
-// removeFromMCPConfig removes the MCP server from settings.json
-func (h *MCPHandler) removeFromMCPConfig(targetBase string) error {
-	// Use shared utility to remove the server
-	return RemoveMCPServer(targetBase, h.metadata.Asset.Name)
-}
-
-// buildMCPServerConfig builds the MCP server configuration for settings.json
-func (h *MCPHandler) buildMCPServerConfig(installPath string) map[string]any {
+// buildPackagedMCPServerConfig builds config for packaged MCP servers (with extracted files)
+func (h *MCPHandler) buildPackagedMCPServerConfig(installPath string) map[string]any {
 	mcpConfig := h.metadata.MCP
 
 	// Convert relative command paths to absolute (relative to install path)
@@ -217,12 +227,110 @@ func (h *MCPHandler) buildMCPServerConfig(installPath string) map[string]any {
 	return config
 }
 
-// CanDetectInstalledState returns true since MCP servers preserve metadata.toml
+// buildConfigOnlyMCPServerConfig builds config for config-only MCP assets (no extraction)
+func (h *MCPHandler) buildConfigOnlyMCPServerConfig() map[string]any {
+	mcpConfig := h.metadata.MCP
+
+	// For config-only MCPs, commands are external (npx, docker, etc.)
+	// No path conversion needed
+	args := make([]any, len(mcpConfig.Args))
+	for i, arg := range mcpConfig.Args {
+		args[i] = arg
+	}
+
+	config := map[string]any{
+		"type":      "stdio",
+		"command":   mcpConfig.Command,
+		"args":      args,
+		"_artifact": h.metadata.Asset.Name,
+	}
+
+	// Add optional fields
+	if len(mcpConfig.Env) > 0 {
+		config["env"] = mcpConfig.Env
+	}
+	if mcpConfig.Timeout > 0 {
+		config["timeout"] = mcpConfig.Timeout
+	}
+
+	return config
+}
+
+// removeFromLegacyMCPConfig removes from .mcp.json (legacy mcp-remote location)
+func (h *MCPHandler) removeFromLegacyMCPConfig(targetBase string) {
+	mcpConfigPath := filepath.Join(targetBase, ".mcp.json")
+
+	if !utils.FileExists(mcpConfigPath) {
+		return
+	}
+
+	data, err := os.ReadFile(mcpConfigPath)
+	if err != nil {
+		return
+	}
+
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		return
+	}
+
+	mcpServers, ok := config["mcpServers"].(map[string]any)
+	if !ok {
+		return
+	}
+
+	if _, exists := mcpServers[h.metadata.Asset.Name]; !exists {
+		return
+	}
+
+	delete(mcpServers, h.metadata.Asset.Name)
+
+	data, err = json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return
+	}
+
+	os.WriteFile(mcpConfigPath, data, 0644)
+}
+
+// CanDetectInstalledState returns true since we can verify installation state
 func (h *MCPHandler) CanDetectInstalledState() bool {
 	return true
 }
 
-// VerifyInstalled checks if the MCP server is properly installed
+// VerifyInstalled checks if the MCP server is properly installed.
+// For packaged assets, checks the install directory. For config-only, checks .claude.json.
 func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
-	return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
+	// Check if install directory exists (packaged mode)
+	installDir := filepath.Join(targetBase, "mcp-servers", h.metadata.Asset.Name)
+	if utils.IsDirectory(installDir) {
+		return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
+	}
+
+	// Config-only mode: check .claude.json for server entry
+	mcpConfigPath := filepath.Join(targetBase, ".claude.json")
+	if !utils.FileExists(mcpConfigPath) {
+		return false, ".claude.json not found"
+	}
+
+	data, err := os.ReadFile(mcpConfigPath)
+	if err != nil {
+		return false, "failed to read .claude.json: " + err.Error()
+	}
+
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		return false, "failed to parse .claude.json: " + err.Error()
+	}
+
+	mcpServers, ok := config["mcpServers"].(map[string]any)
+	if !ok {
+		return false, "mcpServers section not found"
+	}
+
+	if _, exists := mcpServers[h.metadata.Asset.Name]; !exists {
+		return false, "MCP server not registered"
+	}
+
+	return true, "installed"
 }
