@@ -9,32 +9,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 )
-
-// SkipDirectories contains directory names that should be excluded during zip operations.
-// These are typically cache/build artifacts that shouldn't be distributed.
-var SkipDirectories = []string{
-	"__pycache__",
-	".git",
-	"node_modules",
-	".pytest_cache",
-	".mypy_cache",
-	".ruff_cache",
-}
-
-// ShouldSkipPath checks if a path contains any directory that should be skipped
-func ShouldSkipPath(path string) bool {
-	parts := strings.SplitSeq(filepath.ToSlash(path), "/")
-	for part := range parts {
-		if slices.Contains(SkipDirectories, part) {
-			return true
-		}
-	}
-	return false
-}
 
 // ZipMagicBytes are the first 4 bytes of a ZIP file
 var ZipMagicBytes = []byte{0x50, 0x4B, 0x03, 0x04}
@@ -74,9 +53,6 @@ func ExtractZip(zipData []byte, targetDir string) error {
 	}
 
 	for _, file := range reader.File {
-		if ShouldSkipPath(file.Name) {
-			continue
-		}
 		if err := extractZipFile(file, targetDir); err != nil {
 			return fmt.Errorf("failed to extract %s: %w", file.Name, err)
 		}
@@ -187,14 +163,6 @@ func CreateZip(sourceDir string) ([]byte, error) {
 		relPath, err := filepath.Rel(sourceDir, path)
 		if err != nil {
 			return err
-		}
-
-		// Skip directories that shouldn't be included
-		if ShouldSkipPath(relPath) {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
 		}
 
 		// Create zip header
@@ -437,29 +405,63 @@ func ReplaceFileInZip(zipData []byte, filename string, content []byte) ([]byte, 
 // CompareZipContents compares two zip files by computing and comparing their hashes
 // Excludes metadata.toml from comparison to focus on actual content
 func CompareZipContents(zipData1, zipData2 []byte) (bool, error) {
-	// Remove metadata.toml from both zips before comparison
-	// This ensures we only compare actual content, not generated metadata
-	zipData1WithoutMeta, err := RemoveFileFromZip(zipData1, "metadata.toml")
+	// Normalize both zips: strip the version from metadata.toml so that
+	// version differences don't affect comparison. This handles both:
+	// - Content zips: content files match, metadata version irrelevant
+	// - Metadata-only zips (config-only assets): everything except version is compared
+	norm1, err := normalizeZipForComparison(zipData1)
 	if err != nil {
-		// If removal fails, file might not exist, use original
-		zipData1WithoutMeta = zipData1
+		return false, fmt.Errorf("failed to normalize first zip: %w", err)
 	}
 
-	zipData2WithoutMeta, err := RemoveFileFromZip(zipData2, "metadata.toml")
+	norm2, err := normalizeZipForComparison(zipData2)
 	if err != nil {
-		// If removal fails, file might not exist, use original
-		zipData2WithoutMeta = zipData2
+		return false, fmt.Errorf("failed to normalize second zip: %w", err)
 	}
 
-	hash1, err := ComputeZipHash(zipData1WithoutMeta)
+	hash1, err := ComputeZipHash(norm1)
 	if err != nil {
 		return false, fmt.Errorf("failed to compute hash for first zip: %w", err)
 	}
 
-	hash2, err := ComputeZipHash(zipData2WithoutMeta)
+	hash2, err := ComputeZipHash(norm2)
 	if err != nil {
 		return false, fmt.Errorf("failed to compute hash for second zip: %w", err)
 	}
 
 	return bytes.Equal(hash1, hash2), nil
+}
+
+// normalizeZipForComparison strips the version field from metadata.toml
+// so version differences don't affect content comparison.
+func normalizeZipForComparison(zipData []byte) ([]byte, error) {
+	metaBytes, err := ReadZipFile(zipData, "metadata.toml")
+	if err != nil {
+		// No metadata.toml, return as-is
+		return zipData, nil
+	}
+
+	// Zero out the version line in the raw TOML
+	normalized := stripVersionFromTOML(metaBytes)
+
+	return ReplaceFileInZip(zipData, "metadata.toml", normalized)
+}
+
+// stripVersionFromTOML zeroes out the [asset].version field in TOML bytes
+// so version differences don't affect content hashing.
+func stripVersionFromTOML(data []byte) []byte {
+	var doc map[string]any
+	if err := toml.Unmarshal(data, &doc); err != nil {
+		return data // Can't parse, return as-is
+	}
+
+	if asset, ok := doc["asset"].(map[string]any); ok {
+		asset["version"] = ""
+	}
+
+	var buf bytes.Buffer
+	if err := toml.NewEncoder(&buf).Encode(doc); err != nil {
+		return data
+	}
+	return buf.Bytes()
 }

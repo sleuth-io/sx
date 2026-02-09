@@ -23,14 +23,14 @@ func addRemoteMCP(ctx context.Context, cmd *cobra.Command, out *outputHelper, st
 		name = opts.Name
 	}
 
-	// Determine transport
-	transport := "http"
+	// Determine transport — must match what the server supports
+	transport := "sse"
 	if !opts.Yes {
 		selected, err := components.SelectWithIO(
-			"Which transport protocol?",
+			"Which transport protocol? (must match your server)",
 			[]components.Option{
-				{Label: "http (recommended)", Value: "http", Description: "Streamable HTTP transport"},
-				{Label: "sse", Value: "sse", Description: "Server-Sent Events transport"},
+				{Label: "sse (most common)", Value: "sse", Description: "Server-Sent Events — choose if unsure"},
+				{Label: "http", Value: "http", Description: "Streamable HTTP transport"},
 			},
 			cmd.InOrStdin(), cmd.OutOrStdout(),
 		)
@@ -96,11 +96,28 @@ func addRemoteMCP(ctx context.Context, cmd *cobra.Command, out *outputHelper, st
 		contentsIdentical = false
 	}
 
+	var addErr error
 	if contentsIdentical {
-		return handleIdenticalAsset(ctx, out, status, vault, name, version, asset.TypeMCP, opts)
+		addErr = handleIdenticalAsset(ctx, out, status, vault, name, version, asset.TypeMCP, opts)
+	} else {
+		addErr = addNewAsset(ctx, out, status, vault, name, asset.TypeMCP, version, rawURL, zipData, true, opts)
 	}
 
-	return addNewAsset(ctx, out, status, vault, name, asset.TypeMCP, version, rawURL, zipData, true, opts)
+	if addErr != nil {
+		return addErr
+	}
+
+	// Handle install: auto-run if --yes, prompt if interactive, skip if --no-install
+	if opts.Yes && !opts.NoInstall {
+		out.println()
+		if err := runInstall(cmd, nil, false, "", false, ""); err != nil {
+			out.printfErr("Install failed: %v\n", err)
+		}
+	} else if !opts.NoInstall && !opts.isNonInteractive() {
+		promptRunInstall(cmd, ctx, out)
+	}
+
+	return nil
 }
 
 // nameFromMCPURL generates a suggested asset name from a remote MCP URL
