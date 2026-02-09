@@ -5,10 +5,100 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/sleuth-io/sx/internal/utils"
 )
+
+// sshGitURLPattern matches SSH git URLs like git@gitlab.com:org/repo.git
+var sshGitURLPattern = regexp.MustCompile(`^git@[^:]+:(.+?)(?:\.git)?(?:#.*)?$`)
+
+// httpsGitURLPattern matches HTTPS git URLs like https://gitlab.com/org/repo.git
+var httpsGitURLPattern = regexp.MustCompile(`^https?://[^/]+/(.+?)(?:\.git)?(?:#.*)?$`)
+
+// extractRepoIdentifier extracts org/repo from various marketplace identifier formats.
+// Returns the org/repo string, or empty if the identifier is already a plain name.
+func extractRepoIdentifier(identifier string) string {
+	// SSH git URL: git@host:org/repo.git
+	if matches := sshGitURLPattern.FindStringSubmatch(identifier); matches != nil {
+		return matches[1]
+	}
+
+	// HTTPS git URL: https://host/org/repo.git
+	if matches := httpsGitURLPattern.FindStringSubmatch(identifier); matches != nil {
+		return matches[1]
+	}
+
+	// org/repo format (contains /)
+	if strings.Contains(identifier, "/") {
+		return identifier
+	}
+
+	// Already a plain name
+	return ""
+}
+
+// knownMarketplaceEntry represents an entry in known_marketplaces.json
+type knownMarketplaceEntry struct {
+	Source struct {
+		Source string `json:"source"`
+		Repo   string `json:"repo"`
+	} `json:"source"`
+	InstallLocation string `json:"installLocation"`
+}
+
+// ResolveMarketplaceName resolves a marketplace identifier to its registered name
+// in ~/.claude/plugins/known_marketplaces.json. Supports:
+//   - Plain names: direct key match (e.g., "claude-code-plugins")
+//   - org/repo: matched against source.repo field (e.g., "anthropics/claude-code" → "claude-code-plugins")
+//   - Git URLs: org/repo extracted and matched (e.g., "https://github.com/anthropics/claude-code.git")
+func ResolveMarketplaceName(marketplaceIdentifier string) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	knownMarketsPath := filepath.Join(homeDir, ".claude", "plugins", "known_marketplaces.json")
+	return ResolveMarketplaceNameFromFile(knownMarketsPath, marketplaceIdentifier)
+}
+
+// ResolveMarketplaceNameFromFile resolves a marketplace identifier using a specific
+// known_marketplaces.json file path.
+func ResolveMarketplaceNameFromFile(knownMarketsPath, identifier string) (string, error) {
+	data, err := os.ReadFile(knownMarketsPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read known_marketplaces.json: %w", err)
+	}
+
+	var marketplaces map[string]knownMarketplaceEntry
+	if err := json.Unmarshal(data, &marketplaces); err != nil {
+		return "", fmt.Errorf("failed to parse known_marketplaces.json: %w", err)
+	}
+
+	// Direct key match
+	if _, ok := marketplaces[identifier]; ok {
+		return identifier, nil
+	}
+
+	// Extract org/repo from git URLs or use as-is for org/repo format
+	repo := extractRepoIdentifier(identifier)
+	if repo != "" {
+		// Search by source.repo
+		for name, m := range marketplaces {
+			if m.Source.Repo == repo {
+				return name, nil
+			}
+		}
+	}
+
+	var available []string
+	for name := range marketplaces {
+		available = append(available, name)
+	}
+	return "", fmt.Errorf("marketplace %q not found. Available: %s", identifier, strings.Join(available, ", "))
+}
 
 // installedPluginsFile is the filename for the installed plugins registry
 const installedPluginsFile = "plugins/installed_plugins.json"
@@ -232,4 +322,102 @@ func DisablePlugin(targetBase, pluginName, marketplace string) error {
 	}
 
 	return nil
+}
+
+// ResolveMarketplacePluginPath looks up a plugin in a Claude Code marketplace.
+// It reads ~/.claude/plugins/known_marketplaces.json and resolves the plugin path.
+// The marketplace name is normalized (e.g., "org/repo" → "org-repo") before lookup.
+func ResolveMarketplacePluginPath(marketplaceName, pluginName string) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	knownMarketsPath := filepath.Join(homeDir, ".claude", "plugins", "known_marketplaces.json")
+	return ResolveMarketplacePluginPathFromFile(knownMarketsPath, marketplaceName, pluginName)
+}
+
+// ResolveMarketplacePluginPathFromFile looks up a plugin using a specific known_marketplaces.json path.
+// The marketplaceName must be the resolved name (as registered in known_marketplaces.json).
+func ResolveMarketplacePluginPathFromFile(knownMarketsPath, marketplaceName, pluginName string) (string, error) {
+	data, err := os.ReadFile(knownMarketsPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read known_marketplaces.json: %w", err)
+	}
+
+	var marketplaces map[string]struct {
+		InstallLocation string `json:"installLocation"`
+	}
+	if err := json.Unmarshal(data, &marketplaces); err != nil {
+		return "", fmt.Errorf("failed to parse known_marketplaces.json: %w", err)
+	}
+
+	marketplace, ok := marketplaces[marketplaceName]
+	if !ok {
+		var available []string
+		for name := range marketplaces {
+			available = append(available, name)
+		}
+		return "", fmt.Errorf("marketplace %q not found. Available: %s", marketplaceName, strings.Join(available, ", "))
+	}
+
+	if !utils.IsDirectory(marketplace.InstallLocation) {
+		return "", fmt.Errorf("marketplace %q installation directory not found: %s", marketplaceName, marketplace.InstallLocation)
+	}
+
+	pluginPaths := []string{
+		filepath.Join(marketplace.InstallLocation, "plugins", pluginName),
+		filepath.Join(marketplace.InstallLocation, pluginName),
+	}
+
+	for _, path := range pluginPaths {
+		manifestPath := filepath.Join(path, ".claude-plugin", "plugin.json")
+		if utils.FileExists(manifestPath) {
+			return path, nil
+		}
+	}
+
+	pluginsDir := filepath.Join(marketplace.InstallLocation, "plugins")
+	if utils.IsDirectory(pluginsDir) {
+		entries, _ := os.ReadDir(pluginsDir)
+		var available []string
+		for _, entry := range entries {
+			if entry.IsDir() && entry.Name() != "." && entry.Name() != ".." {
+				if utils.FileExists(filepath.Join(pluginsDir, entry.Name(), ".claude-plugin", "plugin.json")) {
+					available = append(available, entry.Name())
+				}
+			}
+		}
+		if len(available) > 0 {
+			return "", fmt.Errorf("plugin %q not found in marketplace %q. Available plugins: %s", pluginName, marketplaceName, strings.Join(available, ", "))
+		}
+	}
+
+	return "", fmt.Errorf("plugin %q not found in marketplace %q", pluginName, marketplaceName)
+}
+
+// IsPluginRegistered checks if a plugin is registered in installed_plugins.json
+func IsPluginRegistered(targetBase, pluginName, marketplace string) bool {
+	registryPath := filepath.Join(targetBase, installedPluginsFile)
+	if !utils.FileExists(registryPath) {
+		return false
+	}
+
+	data, err := os.ReadFile(registryPath)
+	if err != nil {
+		return false
+	}
+
+	var registry InstalledPluginsRegistry
+	if err := json.Unmarshal(data, &registry); err != nil {
+		return false
+	}
+
+	if registry.Plugins == nil {
+		return false
+	}
+
+	pluginKey := BuildPluginKey(pluginName, marketplace)
+	_, exists := registry.Plugins[pluginKey]
+	return exists
 }

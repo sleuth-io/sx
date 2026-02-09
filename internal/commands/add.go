@@ -117,7 +117,7 @@ func runAddWithOptions(cmd *cobra.Command, input string, opts addOptions) error 
 	// Check if input is plugin@marketplace syntax
 	if input != "" && IsMarketplaceReference(input) {
 		promptInstall := !opts.NoInstall && !opts.Yes
-		return addFromMarketplace(ctx, cmd, out, status, input, promptInstall)
+		return addFromMarketplace(ctx, cmd, out, status, input, promptInstall, opts)
 	}
 
 	// Check if input is an existing asset name (not a file, directory, or URL)

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -271,4 +272,158 @@ path = "assets/manual-plugin/1.0.0"
 	}
 
 	t.Log("Auto-enable=false test passed!")
+}
+
+// TestClaudeCodePluginMarketplaceSource tests install/uninstall for source = "marketplace"
+func TestClaudeCodePluginMarketplaceSource(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+
+	// Create a fake marketplace directory with the plugin
+	marketplaceDir := env.MkdirAll(filepath.Join(env.GlobalClaudeDir(), "marketplace-test"))
+	pluginsDir := env.MkdirAll(filepath.Join(marketplaceDir, "plugins", "mkt-plugin"))
+	claudePluginDir := env.MkdirAll(filepath.Join(pluginsDir, ".claude-plugin"))
+	env.WriteFile(filepath.Join(claudePluginDir, "plugin.json"), `{
+  "name": "mkt-plugin",
+  "description": "Marketplace test plugin",
+  "version": "1.0.0",
+  "author": { "name": "Test Author" }
+}`)
+	env.WriteFile(filepath.Join(pluginsDir, "README.md"), "# Marketplace Plugin")
+
+	// Create known_marketplaces.json pointing to our fake marketplace
+	knownMarketsDir := env.MkdirAll(filepath.Join(env.GlobalClaudeDir(), "plugins"))
+	knownMarkets := fmt.Sprintf(`{
+  "test-market": {
+    "installLocation": %q
+  }
+}`, marketplaceDir)
+	env.WriteFile(filepath.Join(knownMarketsDir, "known_marketplaces.json"), knownMarkets)
+
+	// Create a config-only plugin asset in the vault (source = "marketplace")
+	assetDir := env.MkdirAll(filepath.Join(vaultDir, "assets", "mkt-plugin", "1.0.0"))
+	metadata := `[asset]
+name = "mkt-plugin"
+type = "claude-code-plugin"
+version = "1.0.0"
+description = "Marketplace test plugin"
+
+[claude-code-plugin]
+marketplace = "test-market"
+source = "marketplace"
+`
+	env.WriteFile(filepath.Join(assetDir, "metadata.toml"), metadata)
+
+	// Create lock file
+	lockFile := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "mkt-plugin"
+version = "1.0.0"
+type = "claude-code-plugin"
+
+[assets.source-path]
+path = "assets/mkt-plugin/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFile)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	// Step 1: Install
+	t.Log("Step 1: Install marketplace plugin")
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	// Step 2: Verify plugin was NOT extracted (no plugins/mkt-plugin directory)
+	t.Log("Step 2: Verify no extraction for marketplace source")
+	extractedDir := filepath.Join(env.GlobalClaudeDir(), "plugins", "mkt-plugin")
+	if _, err := os.Stat(extractedDir); err == nil {
+		t.Errorf("marketplace source plugin should not be extracted to %s", extractedDir)
+	}
+
+	// Step 3: Verify plugin was enabled in settings.json
+	t.Log("Step 3: Verify plugin enablement in settings.json")
+	settingsPath := filepath.Join(env.GlobalClaudeDir(), "settings.json")
+	settingsData, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("Failed to read settings.json: %v", err)
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(settingsData, &settings); err != nil {
+		t.Fatalf("Failed to parse settings.json: %v", err)
+	}
+
+	enabledPlugins, ok := settings["enabledPlugins"].(map[string]any)
+	if !ok {
+		t.Fatalf("enabledPlugins not found or invalid in settings.json")
+	}
+
+	pluginKey := "mkt-plugin@test-market"
+	if enabled, exists := enabledPlugins[pluginKey]; !exists || enabled != true {
+		t.Errorf("Plugin not enabled in settings.json. enabledPlugins: %v", enabledPlugins)
+	}
+
+	// Step 4: Verify plugin was registered in installed_plugins.json with marketplace path
+	t.Log("Step 4: Verify plugin registration in installed_plugins.json")
+	registryPath := filepath.Join(env.GlobalClaudeDir(), "plugins", "installed_plugins.json")
+	registryData, err := os.ReadFile(registryPath)
+	if err != nil {
+		t.Fatalf("Failed to read installed_plugins.json: %v", err)
+	}
+
+	var registry map[string]any
+	if err := json.Unmarshal(registryData, &registry); err != nil {
+		t.Fatalf("Failed to parse installed_plugins.json: %v", err)
+	}
+
+	plugins, ok := registry["plugins"].(map[string]any)
+	if !ok {
+		t.Fatalf("plugins not found or invalid in installed_plugins.json")
+	}
+
+	if _, exists := plugins[pluginKey]; !exists {
+		t.Errorf("Plugin not registered in installed_plugins.json. plugins: %v", plugins)
+	}
+
+	// Step 5: Remove plugin from lock file and verify marketplace files are untouched
+	t.Log("Step 5: Remove plugin and verify marketplace files untouched")
+	lockFileWithout := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+`
+	env.WriteLockFile(vaultDir, lockFileWithout)
+
+	installCmd2 := NewInstallCommand()
+	if err := installCmd2.Execute(); err != nil {
+		t.Fatalf("Second install failed: %v", err)
+	}
+
+	// Verify marketplace plugin files are still there
+	manifestPath := filepath.Join(pluginsDir, ".claude-plugin", "plugin.json")
+	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+		t.Error("Marketplace plugin files should not have been deleted")
+	}
+
+	// Verify plugin was disabled in settings.json
+	settingsData, err = os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("Failed to read settings.json: %v", err)
+	}
+	if err := json.Unmarshal(settingsData, &settings); err != nil {
+		t.Fatalf("Failed to parse settings.json: %v", err)
+	}
+	if enabledPlugins, ok := settings["enabledPlugins"].(map[string]any); ok {
+		if _, exists := enabledPlugins[pluginKey]; exists {
+			t.Errorf("Plugin should have been removed from enabledPlugins")
+		}
+	}
+
+	t.Log("Marketplace source plugin test passed!")
 }

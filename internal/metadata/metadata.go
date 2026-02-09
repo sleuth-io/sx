@@ -93,6 +93,7 @@ type ClaudeCodePluginConfig struct {
 	ManifestFile string `toml:"manifest-file,omitempty"` // Default: .claude-plugin/plugin.json
 	AutoEnable   *bool  `toml:"auto-enable,omitempty"`   // Default: true
 	Marketplace  string `toml:"marketplace,omitempty"`   // Optional marketplace name
+	Source       string `toml:"source,omitempty"`        // "marketplace" or "local" (default)
 }
 
 // RuleConfig represents the [rule] section
