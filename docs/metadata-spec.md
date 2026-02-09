@@ -106,9 +106,7 @@ Each asset type requires a corresponding section with specific fields.
 
 **Optional Fields**:
 
-- `triggers`: Array of trigger phrases
 - `requires`: Array of required tools/commands
-- `supported-languages`: Array of programming languages
 
 ```toml
 [asset]
@@ -119,9 +117,7 @@ description = "AI code review skill"
 
 [skill]
 prompt-file = "SKILL.md"
-triggers = ["review", "code quality", "check code"]
 requires = ["git"]
-supported-languages = ["python", "javascript", "rust", "go"]
 ```
 
 **Package Structure**:
@@ -180,7 +176,6 @@ deploy/
 
 **Optional Fields**:
 
-- `triggers`: Array of trigger phrases
 - `requires`: Array of required tools/commands
 
 ```toml
@@ -192,7 +187,6 @@ description = "Agent for API development and testing"
 
 [agent]
 prompt-file = "AGENT.md"
-triggers = ["api", "rest", "endpoint"]
 requires = ["curl", "jq"]
 ```
 
@@ -798,7 +792,6 @@ dependencies = [
 
 [agent]
 prompt-file = "AGENT.md"
-triggers = ["api", "rest", "endpoint", "swagger"]
 requires = ["curl", "jq"]
 
 [custom]

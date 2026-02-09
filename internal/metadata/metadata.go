@@ -48,9 +48,7 @@ type Asset struct {
 // SkillConfig represents the [skill] section
 type SkillConfig struct {
 	PromptFile         string   `toml:"prompt-file"`
-	Triggers           []string `toml:"triggers,omitempty"`
-	Requires           []string `toml:"requires,omitempty"`
-	SupportedLanguages []string `toml:"supported-languages,omitempty"`
+	Requires []string `toml:"requires,omitempty"`
 }
 
 // CommandConfig represents the [command] section
@@ -64,7 +62,6 @@ type CommandConfig struct {
 // AgentConfig represents the [agent] section
 type AgentConfig struct {
 	PromptFile string   `toml:"prompt-file"`
-	Triggers   []string `toml:"triggers,omitempty"`
 	Requires   []string `toml:"requires,omitempty"`
 }
 
