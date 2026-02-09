@@ -69,7 +69,6 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 		&detectors.AgentDetector{},
 		&detectors.CommandDetector{},
 		&detectors.MCPDetector{},
-		&detectors.MCPRemoteDetector{},
 		&detectors.HookDetector{},
 		&detectors.ClaudeCodePluginDetector{},
 	}

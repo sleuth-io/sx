@@ -70,11 +70,15 @@ type AgentConfig struct {
 
 // HookConfig represents the [hook] section
 type HookConfig struct {
-	Event       string `toml:"event"`
-	ScriptFile  string `toml:"script-file"`
-	Async       bool   `toml:"async,omitempty"`
-	FailOnError bool   `toml:"fail-on-error,omitempty"`
-	Timeout     int    `toml:"timeout,omitempty"`
+	Event      string         `toml:"event"`
+	ScriptFile string         `toml:"script-file,omitempty"`
+	Command    string         `toml:"command,omitempty"`
+	Args       []string       `toml:"args,omitempty"`
+	Timeout    int            `toml:"timeout,omitempty"`
+	Matcher    string         `toml:"matcher,omitempty"`
+	Cursor     map[string]any `toml:"cursor,omitempty"`
+	ClaudeCode map[string]any `toml:"claude-code,omitempty"`
+	Copilot    map[string]any `toml:"copilot,omitempty"`
 }
 
 // MCPConfig represents the [mcp] section (for both mcp and mcp-remote)
@@ -178,7 +182,7 @@ func (m *Metadata) GetTypeConfig() any {
 		return m.Agent
 	case asset.TypeHook:
 		return m.Hook
-	case asset.TypeMCP, asset.TypeMCPRemote:
+	case asset.TypeMCP:
 		return m.MCP
 	case asset.TypeClaudeCodePlugin:
 		return m.ClaudeCodePlugin

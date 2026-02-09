@@ -86,10 +86,9 @@ readme = "README.md"         # Path to readme file in package
 - `skill`: AI skill with prompt file
 - `command`: Slash command with prompt file
 - `agent`: AI agent with prompt file
-- `hook`: Event hook with script or prompt file
+- `hook`: Event hook with script file or command
 - `rule`: Shared AI coding rule/instruction (installed to client-specific rules directories)
-- `mcp`: Packaged MCP server (includes server code)
-- `mcp-remote`: Remote MCP configuration (no server code, just connection config)
+- `mcp`: MCP server (packaged with server code, or config-only with just connection config)
 - `claude-code-plugin`: Claude Code plugin bundle (contains commands, skills, agents, etc.)
 
 ## Type-Specific Configuration
@@ -211,43 +210,93 @@ api-helper/
 
 **Required Fields**:
 
-- `event`: Hook event name (e.g., "pre-commit", "post-commit", "pre-push")
-- `script-file`: Path to the hook script or prompt file
+- `event`: Canonical hook event name (see below)
+- Either `script-file` or `command` (mutually exclusive):
+  - `script-file`: Path to the hook script (packaged in zip)
+  - `command`: External command to run (config-only, no files needed)
 
 **Optional Fields**:
 
-- `async`: Boolean indicating if hook runs asynchronously (default: false)
-- `fail-on-error`: Boolean indicating if hook failure should block the event (default: true)
+- `args`: Array of arguments (used with `command`)
 - `timeout`: Timeout in seconds
+- `matcher`: Tool name matcher pattern (e.g., "Edit|Write")
 
-**Hook Types**:
+**Client-Specific Configuration**:
 
-- **AI-based hooks**: Use `.md` file with prompt for AI to execute
-- **Script-based hooks**: Use `.sh`, `.py`, `.js`, or other executable scripts
+Hooks can have client-specific settings in `[hook.<client>]` sections:
+
+- `[hook.claude-code]`: Claude Code-specific fields (e.g., `async = true`)
+- `[hook.cursor]`: Cursor-specific fields (e.g., `loop_limit`)
+- `[hook.copilot]`: Copilot-specific fields
+
+**Canonical Events**:
+
+| Canonical Event | Claude Code | Cursor | Description |
+|---|---|---|---|
+| `session-start` | SessionStart | sessionStart | Session begins |
+| `session-end` | SessionEnd | sessionEnd | Session ends |
+| `pre-tool-use` | PreToolUse | preToolUse | Before a tool is used |
+| `post-tool-use` | PostToolUse | postToolUse | After a tool is used |
+| `post-tool-use-failure` | PostToolUseFailure | postToolUseFailure | After a tool fails |
+| `user-prompt-submit` | UserPromptSubmit | beforeSubmitPrompt | User submits prompt |
+| `stop` | Stop | stop | Agent stops |
+| `subagent-start` | SubagentStart | subagentStart | Subagent starts |
+| `subagent-stop` | SubagentStop | subagentStop | Subagent stops |
+| `pre-compact` | PreCompact | preCompact | Before context compaction |
+
+**Example - Script-based hook** (packaged):
 
 ```toml
 [asset]
-name = "pre-commit-linter"
+name = "lint-check"
 version = "2.0.0"
 type = "hook"
-description = "Pre-commit hook for linting"
+description = "Pre-tool-use lint check"
 
 [hook]
-event = "pre-commit"
-script-file = "pre-commit.sh"
-fail-on-error = true
+event = "pre-tool-use"
+script-file = "lint-check.sh"
 timeout = 60
+matcher = "Edit|Write"
+
+[hook.claude-code]
+async = true
 ```
 
-**Package Structure**:
+**Example - Command-based hook** (config-only):
+
+```toml
+[asset]
+name = "format-check"
+version = "1.0.0"
+type = "hook"
+description = "Run formatter check before edits"
+
+[hook]
+event = "pre-tool-use"
+command = "npx"
+args = ["prettier", "--check", "."]
+timeout = 30
+matcher = "Edit|Write"
+```
+
+**Package Structure** (script-based):
 
 ```
-pre-commit-linter/
+lint-check/
   metadata.toml
-  pre-commit.sh
+  lint-check.sh
   lib/
     helpers.sh
   (other optional files)
+```
+
+**Package Structure** (command-based):
+
+```
+format-check/
+  metadata.toml
+  (that's it!)
 ```
 
 ### Rules (`type = "rule"`)
@@ -372,6 +421,13 @@ description = "Go standards - applies to Go files only"
 
 **Important**: All MCP configuration is in metadata.toml. No separate JSON config file is needed.
 
+MCP assets operate in two modes, determined automatically by zip contents:
+
+- **Packaged mode**: Zip contains server code files beyond `metadata.toml`. Files are extracted and command paths are resolved relative to the install directory.
+- **Config-only mode**: Zip contains only `metadata.toml`. No extraction needed - commands are used as-is (e.g., `npx`, `docker`).
+
+**Example - Packaged MCP** (includes server code):
+
 ```toml
 [asset]
 name = "database-mcp"
@@ -395,7 +451,7 @@ timeout = 30000
 capabilities = ["query", "schema", "migration"]
 ```
 
-**Package Structure**:
+**Package Structure** (packaged):
 
 ```
 database-mcp/
@@ -410,27 +466,13 @@ database-mcp/
   (other server files)
 ```
 
-### MCP Remote (`type = "mcp-remote"`)
-
-**Required Section**: `[mcp]`
-
-**Required Fields**:
-
-- `command`: Command to connect to the remote MCP server
-- `args`: Array of command arguments
-
-**Optional Fields**:
-
-- `env`: Map of environment variables
-- `timeout`: Timeout in milliseconds
-
-**Important**: MCP Remote assets contain ONLY metadata.toml. No server code is included - the configuration points to an external server (hosted service, npm package, etc.).
+**Example - Config-only MCP** (no server code):
 
 ```toml
 [asset]
 name = "hosted-github"
 version = "1.0.0"
-type = "mcp-remote"
+type = "mcp"
 description = "GitHub MCP hosted service"
 
 [mcp]
@@ -441,13 +483,15 @@ env = {
 }
 ```
 
-**Package Structure**:
+**Package Structure** (config-only):
 
 ```
 hosted-github/
   metadata.toml
   (that's it!)
 ```
+
+> **Migration note**: The legacy type `mcp-remote` is accepted as an alias for `mcp`. Existing lock files and vaults using `type = "mcp-remote"` continue to work without changes.
 
 ### Claude Code Plugin (`type = "claude-code-plugin"`)
 
@@ -593,7 +637,7 @@ This section is ignored by the core SX tooling but available for custom tools an
 - `[asset]` section required
 - `name`, `version`, `type` fields required
 - `version` must be valid semantic version (X.Y.Z)
-- `type` must be one of: skill, command, agent, hook, rule, mcp, mcp-remote, claude-code-plugin
+- `type` must be one of: skill, command, agent, hook, rule, mcp, claude-code-plugin
 
 ### Type-Specific Validation
 
@@ -606,8 +650,9 @@ This section is ignored by the core SX tooling but available for custom tools an
 **hook**:
 
 - Must have `[hook]` section
-- Must have `event` and `script-file` fields
-- File specified in `script-file` must exist in package
+- Must have `event` field (canonical event name)
+- Must have either `script-file` or `command` (mutually exclusive)
+- If `script-file` is specified, file must exist in package
 
 **rule**:
 
@@ -619,13 +664,7 @@ This section is ignored by the core SX tooling but available for custom tools an
 
 - Must have `[mcp]` section
 - Must have `command` and `args` fields
-- Package must include server code files
-
-**mcp-remote**:
-
-- Must have `[mcp]` section
-- Must have `command` and `args` fields
-- Package may contain only metadata.toml
+- Package may include server code files (packaged mode) or only metadata.toml (config-only mode)
 
 **claude-code-plugin**:
 
@@ -734,35 +773,51 @@ requires-vpn = true
 approved-by = "security-team"
 ```
 
-### AI-Based Hook
+### Script-Based Hook
 
 ```toml
 [asset]
-name = "pre-commit-ai"
+name = "pre-tool-lint"
 version = "1.0.0"
 type = "hook"
-description = "AI-powered pre-commit validation"
+description = "Lint check before tool use"
 license = "MIT"
 authors = ["AI Team <ai@company.com>"]
 
 [hook]
-event = "pre-commit"
-script-file = "HOOK.md"
-fail-on-error = true
+event = "pre-tool-use"
+script-file = "lint-check.sh"
 timeout = 120
+matcher = "Edit|Write"
 
-dependencies = [
-    "linter-mcp>=1.0.0",
-]
+[hook.claude-code]
+async = true
 ```
 
-### MCP Remote
+### Command-Based Hook
+
+```toml
+[asset]
+name = "format-check"
+version = "1.0.0"
+type = "hook"
+description = "Run formatter before edits"
+
+[hook]
+event = "pre-tool-use"
+command = "npx"
+args = ["prettier", "--check", "."]
+timeout = 30
+matcher = "Edit|Write"
+```
+
+### Config-Only MCP
 
 ```toml
 [asset]
 name = "github-remote"
 version = "1.0.0"
-type = "mcp-remote"
+type = "mcp"
 description = "Connect to GitHub MCP via npx"
 license = "MIT"
 authors = ["GitHub Team <github@company.com>"]

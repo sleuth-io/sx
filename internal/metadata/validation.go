@@ -14,14 +14,18 @@ var (
 	// nameRegex matches valid asset names (alphanumeric, dashes, underscores)
 	nameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
-	// Valid hook events
+	// Valid hook events (canonical AI client events)
 	validHookEvents = map[string]bool{
-		"pre-commit":  true,
-		"post-commit": true,
-		"pre-push":    true,
-		"post-push":   true,
-		"pre-merge":   true,
-		"post-merge":  true,
+		"session-start":         true,
+		"session-end":           true,
+		"pre-tool-use":          true,
+		"post-tool-use":         true,
+		"post-tool-use-failure": true,
+		"user-prompt-submit":    true,
+		"stop":                  true,
+		"subagent-start":        true,
+		"subagent-stop":         true,
+		"pre-compact":           true,
 	}
 )
 
@@ -66,7 +70,7 @@ func (m *Metadata) Validate() error {
 			return fmt.Errorf("hook: %w", err)
 		}
 
-	case asset.TypeMCP, asset.TypeMCPRemote:
+	case asset.TypeMCP:
 		if m.MCP == nil {
 			return fmt.Errorf("[mcp] section is required for %s assets", m.Asset.Type)
 		}
@@ -116,7 +120,7 @@ func (a *Asset) Validate() error {
 	}
 
 	if !a.Type.IsValid() {
-		return fmt.Errorf("invalid asset type: %s (must be one of: skill, command, agent, hook, rule, mcp, mcp-remote, claude-code-plugin)", a.Type)
+		return fmt.Errorf("invalid asset type: %s (must be one of: skill, command, agent, hook, rule, mcp, claude-code-plugin)", a.Type)
 	}
 
 	return nil
@@ -153,11 +157,15 @@ func (h *HookConfig) Validate() error {
 	}
 
 	if !validHookEvents[h.Event] {
-		return fmt.Errorf("invalid hook event: %s (must be one of: pre-commit, post-commit, pre-push, post-push, pre-merge, post-merge)", h.Event)
+		return fmt.Errorf("invalid hook event: %s (must be one of: session-start, session-end, pre-tool-use, post-tool-use, post-tool-use-failure, user-prompt-submit, stop, subagent-start, subagent-stop, pre-compact)", h.Event)
 	}
 
-	if h.ScriptFile == "" {
-		return errors.New("script-file is required")
+	// Either script-file or command must be present, but not both
+	if h.ScriptFile == "" && h.Command == "" {
+		return errors.New("either script-file or command is required")
+	}
+	if h.ScriptFile != "" && h.Command != "" {
+		return errors.New("script-file and command are mutually exclusive")
 	}
 
 	if h.Timeout < 0 {

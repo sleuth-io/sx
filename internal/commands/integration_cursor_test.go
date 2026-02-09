@@ -367,10 +367,8 @@ type = "hook"
 description = "A test hook"
 
 [hook]
-event = "pre-commit"
+event = "pre-tool-use"
 script-file = "hook.sh"
-async = false
-fail-on-error = true
 timeout = 60
 `
 	if err := os.WriteFile(filepath.Join(hookDir, "metadata.toml"), []byte(hookMetadata), 0644); err != nil {
@@ -378,7 +376,7 @@ timeout = 60
 	}
 
 	hookScript := `#!/bin/bash
-echo "Running pre-commit hook"
+echo "Running pre-tool-use hook"
 exit 0
 `
 	if err := os.WriteFile(filepath.Join(hookDir, "hook.sh"), []byte(hookScript), 0755); err != nil {
@@ -448,15 +446,15 @@ exit 0
 		t.Fatalf("hooks.json does not have hooks section")
 	}
 
-	// pre-commit should map to beforeShellExecution
-	beforeShellExec, exists := hooks["beforeShellExecution"]
+	// pre-tool-use should map to preToolUse
+	preToolUse, exists := hooks["preToolUse"]
 	if !exists {
-		t.Fatalf("beforeShellExecution entry not found in hooks.json")
+		t.Fatalf("preToolUse entry not found in hooks.json")
 	}
 
-	hooksList, ok := beforeShellExec.([]any)
+	hooksList, ok := preToolUse.([]any)
 	if !ok || len(hooksList) == 0 {
-		t.Fatalf("beforeShellExecution is not a non-empty array")
+		t.Fatalf("preToolUse is not a non-empty array")
 	}
 
 	// Verify our hook is in the list
