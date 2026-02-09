@@ -75,10 +75,17 @@ type HookConfig struct {
 
 // MCPConfig represents the [mcp] section (for both mcp and mcp-remote)
 type MCPConfig struct {
-	Command string            `toml:"command"`
-	Args    []string          `toml:"args"`
-	Env     map[string]string `toml:"env,omitempty"`
-	Timeout int               `toml:"timeout,omitempty"`
+	Transport string            `toml:"transport,omitempty"`
+	Command   string            `toml:"command,omitempty"`
+	Args      []string          `toml:"args,omitempty"`
+	URL       string            `toml:"url,omitempty"`
+	Env       map[string]string `toml:"env,omitempty"`
+	Timeout   int               `toml:"timeout,omitempty"`
+}
+
+// IsRemote returns true if the MCP config uses a remote transport (sse or http)
+func (m *MCPConfig) IsRemote() bool {
+	return m.Transport == "sse" || m.Transport == "http"
 }
 
 // ClaudeCodePluginConfig represents the [claude-code-plugin] section
@@ -120,6 +127,11 @@ func Parse(data []byte) (*Metadata, error) {
 		if err := toml.Unmarshal(data, &compat); err == nil && compat.Artifact.Name != "" {
 			metadata.Asset = compat.Artifact
 		}
+	}
+
+	// Normalize MCP transport: default to "stdio" if not set
+	if metadata.MCP != nil && metadata.MCP.Transport == "" {
+		metadata.MCP.Transport = "stdio"
 	}
 
 	return &metadata, nil

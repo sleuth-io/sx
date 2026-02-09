@@ -192,20 +192,22 @@ func (h *MCPHandler) Validate(zipData []byte) error {
 func (h *MCPHandler) buildPackagedMCPServerConfig(installPath string) map[string]any {
 	mcpConfig := h.metadata.MCP
 
-	// Convert relative command paths to absolute (relative to install path)
+	// Convert relative command paths to absolute (relative to install path).
+	// Bare command names like "node" or "python" are left as-is (resolved via PATH).
 	command := mcpConfig.Command
-	if !filepath.IsAbs(command) {
+	if !filepath.IsAbs(command) && filepath.Base(command) != command {
 		command = filepath.Join(installPath, command)
 	}
 
-	// Convert relative args paths to absolute
+	// Convert relative args to absolute paths (relative to install path).
+	// For packaged MCPs, args are file references within the package.
+	// Only skip args that are clearly not paths (flags starting with -).
 	args := make([]any, len(mcpConfig.Args))
 	for i, arg := range mcpConfig.Args {
-		// If arg looks like a relative path (contains / or \), make it absolute
-		if !filepath.IsAbs(arg) && (filepath.Base(arg) != arg) {
-			args[i] = filepath.Join(installPath, arg)
-		} else {
+		if filepath.IsAbs(arg) || strings.HasPrefix(arg, "-") {
 			args[i] = arg
+		} else {
+			args[i] = filepath.Join(installPath, arg)
 		}
 	}
 
@@ -230,6 +232,21 @@ func (h *MCPHandler) buildPackagedMCPServerConfig(installPath string) map[string
 // buildConfigOnlyMCPServerConfig builds config for config-only MCP assets (no extraction)
 func (h *MCPHandler) buildConfigOnlyMCPServerConfig() map[string]any {
 	mcpConfig := h.metadata.MCP
+
+	if mcpConfig.IsRemote() {
+		config := map[string]any{
+			"type":      mcpConfig.Transport,
+			"url":       mcpConfig.URL,
+			"_artifact": h.metadata.Asset.Name,
+		}
+		if len(mcpConfig.Env) > 0 {
+			config["env"] = mcpConfig.Env
+		}
+		if mcpConfig.Timeout > 0 {
+			config["timeout"] = mcpConfig.Timeout
+		}
+		return config
+	}
 
 	// For config-only MCPs, commands are external (npx, docker, etc.)
 	// No path conversion needed
@@ -299,7 +316,7 @@ func (h *MCPHandler) CanDetectInstalledState() bool {
 }
 
 // VerifyInstalled checks if the MCP server is properly installed.
-// For packaged assets, checks the install directory. For config-only, checks .claude.json.
+// For packaged assets, checks the install directory. For config-only, checks the config file.
 func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
 	// Check if install directory exists (packaged mode)
 	installDir := filepath.Join(targetBase, "mcp-servers", h.metadata.Asset.Name)
@@ -307,30 +324,6 @@ func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
 		return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
 	}
 
-	// Config-only mode: check .claude.json for server entry
-	mcpConfigPath := filepath.Join(targetBase, ".claude.json")
-	if !utils.FileExists(mcpConfigPath) {
-		return false, ".claude.json not found"
-	}
-
-	data, err := os.ReadFile(mcpConfigPath)
-	if err != nil {
-		return false, "failed to read .claude.json: " + err.Error()
-	}
-
-	var config map[string]any
-	if err := json.Unmarshal(data, &config); err != nil {
-		return false, "failed to parse .claude.json: " + err.Error()
-	}
-
-	mcpServers, ok := config["mcpServers"].(map[string]any)
-	if !ok {
-		return false, "mcpServers section not found"
-	}
-
-	if _, exists := mcpServers[h.metadata.Asset.Name]; !exists {
-		return false, "MCP server not registered"
-	}
-
-	return true, "installed"
+	// Config-only mode: check the appropriate config file
+	return VerifyMCPServerInstalled(targetBase, h.metadata.Asset.Name)
 }

@@ -21,6 +21,17 @@ func isURL(input string) bool {
 	return strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://")
 }
 
+// isRemoteMCPURL returns true if the input is a URL that looks like a remote MCP endpoint
+// (not a GitHub tree URL and not a .zip download URL)
+func isRemoteMCPURL(input string) bool {
+	return isURL(input) && !github.IsTreeURL(input) && !looksLikeZipURL(input)
+}
+
+// looksLikeZipURL checks if a URL path ends in .zip
+func looksLikeZipURL(input string) bool {
+	return strings.HasSuffix(strings.ToLower(input), ".zip")
+}
+
 // loadZipFile prompts for, loads, and validates the zip file, directory, or URL
 func loadZipFile(out *outputHelper, status *components.Status, zipFile string) (string, []byte, error) {
 	// Prompt for zip file, directory, or URL if not provided

@@ -45,8 +45,21 @@ func readJSON(t *testing.T, path string) map[string]any {
 	return result
 }
 
+// setupTestProject creates a {tmpdir}/.claude/ directory structure that mimics
+// a real repo install. Returns (targetBase, projectRoot) where targetBase is
+// the .claude/ dir passed to handlers, and projectRoot is where .mcp.json gets written.
+func setupTestProject(t *testing.T) (targetBase string, projectRoot string) {
+	t.Helper()
+	projectRoot = t.TempDir()
+	targetBase = filepath.Join(projectRoot, ".claude")
+	if err := os.MkdirAll(targetBase, 0755); err != nil {
+		t.Fatalf("Failed to create .claude dir: %v", err)
+	}
+	return targetBase, projectRoot
+}
+
 func TestMCPHandler_ConfigOnly_Install(t *testing.T) {
-	targetBase := t.TempDir()
+	targetBase, projectRoot := setupTestProject(t)
 
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
@@ -79,11 +92,11 @@ args = ["-y", "@example/mcp-server"]
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Verify .claude.json was created with the server entry
-	config := readJSON(t, filepath.Join(targetBase, ".claude.json"))
+	// Verify .mcp.json was created with the server entry
+	config := readJSON(t, filepath.Join(projectRoot, ".mcp.json"))
 	mcpServers, ok := config["mcpServers"].(map[string]any)
 	if !ok {
-		t.Fatal("mcpServers section not found in .claude.json")
+		t.Fatal("mcpServers section not found in .mcp.json")
 	}
 
 	server, ok := mcpServers["remote-server"].(map[string]any)
@@ -106,7 +119,7 @@ args = ["-y", "@example/mcp-server"]
 }
 
 func TestMCPHandler_Packaged_Install(t *testing.T) {
-	targetBase := t.TempDir()
+	targetBase, projectRoot := setupTestProject(t)
 
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
@@ -141,18 +154,18 @@ args = ["src/index.js"]
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Verify .claude.json was created
-	config := readJSON(t, filepath.Join(targetBase, ".claude.json"))
+	// Verify .mcp.json was created
+	config := readJSON(t, filepath.Join(projectRoot, ".mcp.json"))
 	mcpServers := config["mcpServers"].(map[string]any)
 	server := mcpServers["local-server"].(map[string]any)
 
-	// Command should be made absolute
+	// Bare command names (like "node") should stay as-is, resolved via PATH
 	command, ok := server["command"].(string)
 	if !ok {
 		t.Fatal("command should be a string")
 	}
-	if !filepath.IsAbs(command) {
-		t.Errorf("Packaged MCP command should be absolute, got: %s", command)
+	if command != "node" {
+		t.Errorf("Bare command should stay as-is, got: %s", command)
 	}
 
 	// Install directory should exist
@@ -163,7 +176,7 @@ args = ["src/index.js"]
 }
 
 func TestMCPHandler_ConfigOnly_Remove(t *testing.T) {
-	targetBase := t.TempDir()
+	targetBase, projectRoot := setupTestProject(t)
 
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
@@ -177,7 +190,7 @@ func TestMCPHandler_ConfigOnly_Remove(t *testing.T) {
 		},
 	}
 
-	// Pre-populate .claude.json
+	// Pre-populate .mcp.json
 	config := map[string]any{
 		"mcpServers": map[string]any{
 			"remote-server": map[string]any{
@@ -191,7 +204,7 @@ func TestMCPHandler_ConfigOnly_Remove(t *testing.T) {
 		},
 	}
 	data, _ := json.MarshalIndent(config, "", "  ")
-	os.WriteFile(filepath.Join(targetBase, ".claude.json"), data, 0644)
+	os.WriteFile(filepath.Join(projectRoot, ".mcp.json"), data, 0644)
 
 	handler := NewMCPHandler(meta)
 	if err := handler.Remove(context.Background(), targetBase); err != nil {
@@ -199,7 +212,7 @@ func TestMCPHandler_ConfigOnly_Remove(t *testing.T) {
 	}
 
 	// Verify remote-server was removed but other-server preserved
-	updated := readJSON(t, filepath.Join(targetBase, ".claude.json"))
+	updated := readJSON(t, filepath.Join(projectRoot, ".mcp.json"))
 	servers := updated["mcpServers"].(map[string]any)
 	if _, exists := servers["remote-server"]; exists {
 		t.Error("remote-server should have been removed")
@@ -210,7 +223,7 @@ func TestMCPHandler_ConfigOnly_Remove(t *testing.T) {
 }
 
 func TestMCPHandler_Remove_LegacyMCPJson(t *testing.T) {
-	targetBase := t.TempDir()
+	targetBase, projectRoot := setupTestProject(t)
 
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
@@ -224,45 +237,46 @@ func TestMCPHandler_Remove_LegacyMCPJson(t *testing.T) {
 		},
 	}
 
-	// Pre-populate both .claude.json and .mcp.json (legacy)
-	claudeConfig := map[string]any{
-		"mcpServers": map[string]any{
-			"old-remote": map[string]any{"command": "npx"},
-		},
-	}
+	// Pre-populate both .mcp.json and legacy .mcp.json in .claude/
 	mcpConfig := map[string]any{
 		"mcpServers": map[string]any{
 			"old-remote": map[string]any{"command": "npx"},
 		},
 	}
-	claudeData, _ := json.MarshalIndent(claudeConfig, "", "  ")
+	legacyConfig := map[string]any{
+		"mcpServers": map[string]any{
+			"old-remote": map[string]any{"command": "npx"},
+		},
+	}
 	mcpData, _ := json.MarshalIndent(mcpConfig, "", "  ")
-	os.WriteFile(filepath.Join(targetBase, ".claude.json"), claudeData, 0644)
-	os.WriteFile(filepath.Join(targetBase, ".mcp.json"), mcpData, 0644)
+	legacyData, _ := json.MarshalIndent(legacyConfig, "", "  ")
+	os.WriteFile(filepath.Join(projectRoot, ".mcp.json"), mcpData, 0644)
+	os.WriteFile(filepath.Join(targetBase, ".mcp.json"), legacyData, 0644)
 
 	handler := NewMCPHandler(meta)
 	if err := handler.Remove(context.Background(), targetBase); err != nil {
 		t.Fatalf("Remove failed: %v", err)
 	}
 
-	// Both files should have the server removed
-	updatedClaude := readJSON(t, filepath.Join(targetBase, ".claude.json"))
-	if servers, ok := updatedClaude["mcpServers"].(map[string]any); ok {
-		if _, exists := servers["old-remote"]; exists {
-			t.Error("old-remote should be removed from .claude.json")
-		}
-	}
-
-	updatedMCP := readJSON(t, filepath.Join(targetBase, ".mcp.json"))
+	// .mcp.json in project root should have the server removed
+	updatedMCP := readJSON(t, filepath.Join(projectRoot, ".mcp.json"))
 	if servers, ok := updatedMCP["mcpServers"].(map[string]any); ok {
 		if _, exists := servers["old-remote"]; exists {
 			t.Error("old-remote should be removed from .mcp.json")
 		}
 	}
+
+	// Legacy .mcp.json in .claude/ should also have the server removed
+	updatedLegacy := readJSON(t, filepath.Join(targetBase, ".mcp.json"))
+	if servers, ok := updatedLegacy["mcpServers"].(map[string]any); ok {
+		if _, exists := servers["old-remote"]; exists {
+			t.Error("old-remote should be removed from legacy .mcp.json")
+		}
+	}
 }
 
 func TestMCPHandler_ConfigOnly_VerifyInstalled(t *testing.T) {
-	targetBase := t.TempDir()
+	targetBase, projectRoot := setupTestProject(t)
 
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
@@ -284,7 +298,7 @@ func TestMCPHandler_ConfigOnly_VerifyInstalled(t *testing.T) {
 		t.Error("Should not be installed before installation")
 	}
 
-	// Write .claude.json with server entry
+	// Write .mcp.json with server entry
 	config := map[string]any{
 		"mcpServers": map[string]any{
 			"remote-server": map[string]any{
@@ -293,7 +307,7 @@ func TestMCPHandler_ConfigOnly_VerifyInstalled(t *testing.T) {
 		},
 	}
 	data, _ := json.MarshalIndent(config, "", "  ")
-	os.WriteFile(filepath.Join(targetBase, ".claude.json"), data, 0644)
+	os.WriteFile(filepath.Join(projectRoot, ".mcp.json"), data, 0644)
 
 	// After install, should be installed
 	installed, msg := handler.VerifyInstalled(targetBase)
@@ -345,12 +359,13 @@ func TestMCPHandler_Packaged_BuildConfig(t *testing.T) {
 	handler := NewMCPHandler(meta)
 	config := handler.buildPackagedMCPServerConfig("/opt/install/mcp-servers/test")
 
+	// Bare command names like "node" should stay as-is (resolved via PATH)
 	command, ok := config["command"].(string)
 	if !ok {
 		t.Fatal("command should be string")
 	}
-	if command != "/opt/install/mcp-servers/test/node" {
-		t.Errorf("command = %q, want absolute path", command)
+	if command != "node" {
+		t.Errorf("command = %q, want bare command \"node\"", command)
 	}
 
 	args, ok := config["args"].([]any)
@@ -361,6 +376,122 @@ func TestMCPHandler_Packaged_BuildConfig(t *testing.T) {
 	argStr, ok := args[0].(string)
 	if !ok || argStr != "/opt/install/mcp-servers/test/src/index.js" {
 		t.Errorf("arg = %v, want absolute path", args[0])
+	}
+}
+
+func TestMCPHandler_ConfigOnly_RemoteMCP_Install(t *testing.T) {
+	targetBase, projectRoot := setupTestProject(t)
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{
+			Name:    "remote-sse",
+			Version: "1.0.0",
+			Type:    asset.TypeMCP,
+		},
+		MCP: &metadata.MCPConfig{
+			Transport: "sse",
+			URL:       "https://example.com/mcp/sse",
+		},
+	}
+
+	zipData := createTestZip(t, map[string]string{
+		"metadata.toml": `[asset]
+name = "remote-sse"
+version = "1.0.0"
+type = "mcp"
+
+[mcp]
+transport = "sse"
+url = "https://example.com/mcp/sse"
+`,
+	})
+
+	handler := NewMCPHandler(meta)
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	config := readJSON(t, filepath.Join(projectRoot, ".mcp.json"))
+	mcpServers, ok := config["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatal("mcpServers section not found in .mcp.json")
+	}
+
+	server, ok := mcpServers["remote-sse"].(map[string]any)
+	if !ok {
+		t.Fatal("remote-sse not found in mcpServers")
+	}
+
+	if server["type"] != "sse" {
+		t.Errorf("type = %v, want \"sse\"", server["type"])
+	}
+	if server["url"] != "https://example.com/mcp/sse" {
+		t.Errorf("url = %v, want \"https://example.com/mcp/sse\"", server["url"])
+	}
+	if server["_artifact"] != "remote-sse" {
+		t.Errorf("_artifact = %v, want \"remote-sse\"", server["_artifact"])
+	}
+
+	// Should NOT have command or args
+	if _, hasCommand := server["command"]; hasCommand {
+		t.Error("Remote MCP should not have command field")
+	}
+
+	// Config-only should NOT extract files
+	installDir := filepath.Join(targetBase, "mcp-servers", "remote-sse")
+	if _, err := os.Stat(installDir); !os.IsNotExist(err) {
+		t.Error("Config-only remote MCP should not create install directory")
+	}
+}
+
+func TestMCPHandler_ConfigOnly_RemoteMCP_BuildConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		transport string
+		url       string
+	}{
+		{"sse", "sse", "https://example.com/mcp/sse"},
+		{"http", "http", "https://example.com/mcp"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			meta := &metadata.Metadata{
+				Asset: metadata.Asset{Name: "test-" + tc.name, Version: "1.0.0", Type: asset.TypeMCP},
+				MCP: &metadata.MCPConfig{
+					Transport: tc.transport,
+					URL:       tc.url,
+					Env:       map[string]string{"API_KEY": "xxx"},
+					Timeout:   30,
+				},
+			}
+
+			handler := NewMCPHandler(meta)
+			config := handler.buildConfigOnlyMCPServerConfig()
+
+			if config["type"] != tc.transport {
+				t.Errorf("type = %v, want %v", config["type"], tc.transport)
+			}
+			if config["url"] != tc.url {
+				t.Errorf("url = %v, want %v", config["url"], tc.url)
+			}
+			if config["_artifact"] != "test-"+tc.name {
+				t.Errorf("_artifact = %v, want test-%s", config["_artifact"], tc.name)
+			}
+			if config["timeout"] != 30 {
+				t.Errorf("timeout = %v, want 30", config["timeout"])
+			}
+			if env, ok := config["env"].(map[string]string); !ok || env["API_KEY"] != "xxx" {
+				t.Errorf("env not set correctly: %v", config["env"])
+			}
+			// Should NOT have command or args
+			if _, has := config["command"]; has {
+				t.Error("Remote config should not have command")
+			}
+			if _, has := config["args"]; has {
+				t.Error("Remote config should not have args")
+			}
+		})
 	}
 }
 

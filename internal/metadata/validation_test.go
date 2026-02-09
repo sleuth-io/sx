@@ -129,7 +129,7 @@ func TestMetadata_Validate_MCPRemoteTypeResolves(t *testing.T) {
 	// Parsing "mcp-remote" should resolve to TypeMCP and validate with MCP section
 	m := &Metadata{
 		Asset: Asset{Name: "test", Version: "1.0.0", Type: asset.FromString("mcp-remote")},
-		MCP:   &MCPConfig{Command: "npx", Args: []string{"server"}},
+		MCP:   &MCPConfig{Transport: "stdio", Command: "npx", Args: []string{"server"}},
 	}
 	if err := m.Validate(); err != nil {
 		t.Errorf("mcp-remote type with MCP config should validate: %v", err)
@@ -147,6 +147,92 @@ func TestAsset_Validate_TypeMCPRemote_Invalid_In_ErrorMsg(t *testing.T) {
 	// Error message should NOT mention mcp-remote as a valid type
 	if strings.Contains(err.Error(), "mcp-remote") {
 		t.Errorf("Error message should not mention mcp-remote: %v", err)
+	}
+}
+
+func TestMCPConfig_Validate_SSE_Valid(t *testing.T) {
+	m := &MCPConfig{Transport: "sse", URL: "https://example.com/mcp"}
+	if err := m.Validate(); err != nil {
+		t.Errorf("SSE with URL should be valid: %v", err)
+	}
+}
+
+func TestMCPConfig_Validate_HTTP_Valid(t *testing.T) {
+	m := &MCPConfig{Transport: "http", URL: "https://example.com/mcp"}
+	if err := m.Validate(); err != nil {
+		t.Errorf("HTTP with URL should be valid: %v", err)
+	}
+}
+
+func TestMCPConfig_Validate_SSE_MissingURL(t *testing.T) {
+	m := &MCPConfig{Transport: "sse"}
+	err := m.Validate()
+	if err == nil {
+		t.Fatal("SSE without URL should fail")
+	}
+	if !strings.Contains(err.Error(), "url is required") {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func TestMCPConfig_Validate_SSE_WithCommand(t *testing.T) {
+	m := &MCPConfig{Transport: "sse", URL: "https://example.com/mcp", Command: "npx"}
+	err := m.Validate()
+	if err == nil {
+		t.Fatal("SSE with command should fail")
+	}
+	if !strings.Contains(err.Error(), "command is not allowed") {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func TestMCPConfig_Validate_SSE_WithArgs(t *testing.T) {
+	m := &MCPConfig{Transport: "sse", URL: "https://example.com/mcp", Args: []string{"arg1"}}
+	err := m.Validate()
+	if err == nil {
+		t.Fatal("SSE with args should fail")
+	}
+	if !strings.Contains(err.Error(), "args is not allowed") {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func TestMCPConfig_Validate_Stdio_WithURL(t *testing.T) {
+	m := &MCPConfig{Transport: "stdio", Command: "npx", Args: []string{"server"}, URL: "https://example.com"}
+	err := m.Validate()
+	if err == nil {
+		t.Fatal("stdio with URL should fail")
+	}
+	if !strings.Contains(err.Error(), "url is not allowed") {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func TestMCPConfig_Validate_UnknownTransport(t *testing.T) {
+	m := &MCPConfig{Transport: "websocket", URL: "wss://example.com"}
+	err := m.Validate()
+	if err == nil {
+		t.Fatal("Unknown transport should fail")
+	}
+	if !strings.Contains(err.Error(), "invalid transport") {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func TestMCPConfig_IsRemote(t *testing.T) {
+	tests := []struct {
+		transport string
+		want      bool
+	}{
+		{"stdio", false},
+		{"sse", true},
+		{"http", true},
+	}
+	for _, tc := range tests {
+		m := &MCPConfig{Transport: tc.transport}
+		if got := m.IsRemote(); got != tc.want {
+			t.Errorf("IsRemote() for transport %q = %v, want %v", tc.transport, got, tc.want)
+		}
 	}
 }
 

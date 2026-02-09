@@ -216,6 +216,65 @@ func TestCursorMCPHandler_VerifyInstalled_ConfigOnly(t *testing.T) {
 	}
 }
 
+func TestCursorMCPHandler_ConfigOnly_RemoteMCP_Install(t *testing.T) {
+	targetBase := t.TempDir()
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{
+			Name:    "remote-sse",
+			Version: "1.0.0",
+			Type:    asset.TypeMCP,
+		},
+		MCP: &metadata.MCPConfig{
+			Transport: "sse",
+			URL:       "https://example.com/mcp/sse",
+		},
+	}
+
+	zipData := createTestZip(t, map[string]string{
+		"metadata.toml": `[asset]
+name = "remote-sse"
+version = "1.0.0"
+type = "mcp"
+
+[mcp]
+transport = "sse"
+url = "https://example.com/mcp/sse"
+`,
+	})
+
+	handler := NewMCPHandler(meta)
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	config := readJSON(t, filepath.Join(targetBase, "mcp.json"))
+	servers, ok := config["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatal("mcpServers not found in mcp.json")
+	}
+
+	server, ok := servers["remote-sse"].(map[string]any)
+	if !ok {
+		t.Fatal("remote-sse not found")
+	}
+
+	if server["url"] != "https://example.com/mcp/sse" {
+		t.Errorf("url = %v, want \"https://example.com/mcp/sse\"", server["url"])
+	}
+
+	// Should NOT have command
+	if _, hasCommand := server["command"]; hasCommand {
+		t.Error("Remote MCP should not have command field")
+	}
+
+	// Config-only should NOT extract files
+	installDir := filepath.Join(targetBase, "mcp-servers", "remote-sse")
+	if _, err := os.Stat(installDir); !os.IsNotExist(err) {
+		t.Error("Config-only remote MCP should not create install directory")
+	}
+}
+
 func TestCursorMCPHandler_ConfigOnly_WithEnv(t *testing.T) {
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{Name: "test", Version: "1.0.0", Type: asset.TypeMCP},
