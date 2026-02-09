@@ -231,6 +231,21 @@ func (h *MCPHandler) buildPackagedMCPServerConfig(installPath string) map[string
 func (h *MCPHandler) buildConfigOnlyMCPServerConfig() map[string]any {
 	mcpConfig := h.metadata.MCP
 
+	if mcpConfig.IsRemote() {
+		config := map[string]any{
+			"type":      mcpConfig.Transport,
+			"url":       mcpConfig.URL,
+			"_artifact": h.metadata.Asset.Name,
+		}
+		if len(mcpConfig.Env) > 0 {
+			config["env"] = mcpConfig.Env
+		}
+		if mcpConfig.Timeout > 0 {
+			config["timeout"] = mcpConfig.Timeout
+		}
+		return config
+	}
+
 	// For config-only MCPs, commands are external (npx, docker, etc.)
 	// No path conversion needed
 	args := make([]any, len(mcpConfig.Args))

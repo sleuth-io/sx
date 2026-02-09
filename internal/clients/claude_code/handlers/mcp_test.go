@@ -364,6 +364,122 @@ func TestMCPHandler_Packaged_BuildConfig(t *testing.T) {
 	}
 }
 
+func TestMCPHandler_ConfigOnly_RemoteMCP_Install(t *testing.T) {
+	targetBase := t.TempDir()
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{
+			Name:    "remote-sse",
+			Version: "1.0.0",
+			Type:    asset.TypeMCP,
+		},
+		MCP: &metadata.MCPConfig{
+			Transport: "sse",
+			URL:       "https://example.com/mcp/sse",
+		},
+	}
+
+	zipData := createTestZip(t, map[string]string{
+		"metadata.toml": `[asset]
+name = "remote-sse"
+version = "1.0.0"
+type = "mcp"
+
+[mcp]
+transport = "sse"
+url = "https://example.com/mcp/sse"
+`,
+	})
+
+	handler := NewMCPHandler(meta)
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	config := readJSON(t, filepath.Join(targetBase, ".claude.json"))
+	mcpServers, ok := config["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatal("mcpServers section not found in .claude.json")
+	}
+
+	server, ok := mcpServers["remote-sse"].(map[string]any)
+	if !ok {
+		t.Fatal("remote-sse not found in mcpServers")
+	}
+
+	if server["type"] != "sse" {
+		t.Errorf("type = %v, want \"sse\"", server["type"])
+	}
+	if server["url"] != "https://example.com/mcp/sse" {
+		t.Errorf("url = %v, want \"https://example.com/mcp/sse\"", server["url"])
+	}
+	if server["_artifact"] != "remote-sse" {
+		t.Errorf("_artifact = %v, want \"remote-sse\"", server["_artifact"])
+	}
+
+	// Should NOT have command or args
+	if _, hasCommand := server["command"]; hasCommand {
+		t.Error("Remote MCP should not have command field")
+	}
+
+	// Config-only should NOT extract files
+	installDir := filepath.Join(targetBase, "mcp-servers", "remote-sse")
+	if _, err := os.Stat(installDir); !os.IsNotExist(err) {
+		t.Error("Config-only remote MCP should not create install directory")
+	}
+}
+
+func TestMCPHandler_ConfigOnly_RemoteMCP_BuildConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		transport string
+		url       string
+	}{
+		{"sse", "sse", "https://example.com/mcp/sse"},
+		{"http", "http", "https://example.com/mcp"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			meta := &metadata.Metadata{
+				Asset: metadata.Asset{Name: "test-" + tc.name, Version: "1.0.0", Type: asset.TypeMCP},
+				MCP: &metadata.MCPConfig{
+					Transport: tc.transport,
+					URL:       tc.url,
+					Env:       map[string]string{"API_KEY": "xxx"},
+					Timeout:   30,
+				},
+			}
+
+			handler := NewMCPHandler(meta)
+			config := handler.buildConfigOnlyMCPServerConfig()
+
+			if config["type"] != tc.transport {
+				t.Errorf("type = %v, want %v", config["type"], tc.transport)
+			}
+			if config["url"] != tc.url {
+				t.Errorf("url = %v, want %v", config["url"], tc.url)
+			}
+			if config["_artifact"] != "test-"+tc.name {
+				t.Errorf("_artifact = %v, want test-%s", config["_artifact"], tc.name)
+			}
+			if config["timeout"] != 30 {
+				t.Errorf("timeout = %v, want 30", config["timeout"])
+			}
+			if env, ok := config["env"].(map[string]string); !ok || env["API_KEY"] != "xxx" {
+				t.Errorf("env not set correctly: %v", config["env"])
+			}
+			// Should NOT have command or args
+			if _, has := config["command"]; has {
+				t.Error("Remote config should not have command")
+			}
+			if _, has := config["args"]; has {
+				t.Error("Remote config should not have args")
+			}
+		})
+	}
+}
+
 func TestMCPHandler_Validate_MCPRemoteType(t *testing.T) {
 	// A zip with type "mcp-remote" should validate correctly since it maps to TypeMCP
 	zipData := createTestZip(t, map[string]string{

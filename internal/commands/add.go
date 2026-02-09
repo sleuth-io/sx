@@ -128,6 +128,11 @@ func runAddWithOptions(cmd *cobra.Command, input string, opts addOptions) error 
 		}
 	}
 
+	// Check if input is a remote MCP URL (not a zip download, not GitHub tree)
+	if input != "" && isRemoteMCPURL(input) {
+		return addRemoteMCP(ctx, cmd, out, status, input, opts)
+	}
+
 	// Check if input is an instruction file (CLAUDE.md, AGENTS.md) that can be parsed for sections
 	if input != "" && isInstructionFile(input) {
 		if opts.isNonInteractive() {

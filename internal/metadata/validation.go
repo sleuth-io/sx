@@ -177,12 +177,30 @@ func (h *HookConfig) Validate() error {
 
 // Validate validates the [mcp] section
 func (m *MCPConfig) Validate() error {
-	if m.Command == "" {
-		return errors.New("command is required")
-	}
-
-	if len(m.Args) == 0 {
-		return errors.New("args is required (must be a non-empty array)")
+	// Validate transport (Parse normalizes empty to "stdio")
+	switch m.Transport {
+	case "stdio":
+		if m.Command == "" {
+			return errors.New("command is required for stdio transport")
+		}
+		if len(m.Args) == 0 {
+			return errors.New("args is required for stdio transport (must be a non-empty array)")
+		}
+		if m.URL != "" {
+			return errors.New("url is not allowed for stdio transport")
+		}
+	case "sse", "http":
+		if m.URL == "" {
+			return fmt.Errorf("url is required for %s transport", m.Transport)
+		}
+		if m.Command != "" {
+			return fmt.Errorf("command is not allowed for %s transport", m.Transport)
+		}
+		if len(m.Args) > 0 {
+			return fmt.Errorf("args is not allowed for %s transport", m.Transport)
+		}
+	default:
+		return fmt.Errorf("invalid transport %q (must be one of: stdio, sse, http)", m.Transport)
 	}
 
 	if m.Timeout < 0 {

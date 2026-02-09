@@ -129,6 +129,16 @@ func (h *MCPHandler) generatePackagedMCPEntry(serverDir string) map[string]any {
 func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
 	mcpConfig := h.metadata.MCP
 
+	if mcpConfig.IsRemote() {
+		entry := map[string]any{
+			"url": mcpConfig.URL,
+		}
+		if len(mcpConfig.Env) > 0 {
+			entry["env"] = mcpConfig.Env
+		}
+		return entry
+	}
+
 	// For config-only MCPs, commands are external (npx, docker, etc.)
 	// No path conversion needed
 	args := make([]any, len(mcpConfig.Args))
