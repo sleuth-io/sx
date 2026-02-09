@@ -188,7 +188,7 @@ func runAddWithOptions(cmd *cobra.Command, input string, opts addOptions) error 
 	// Handle install: auto-run if --yes, prompt if interactive, skip if --no-install
 	if opts.Yes && !opts.NoInstall {
 		out.println()
-		if err := runInstall(cmd, nil, false, "", false); err != nil {
+		if err := runInstall(cmd, nil, false, "", false, ""); err != nil {
 			out.printfErr("Install failed: %v\n", err)
 		}
 	} else if !opts.NoInstall && !opts.isNonInteractive() {
@@ -283,7 +283,7 @@ func promptRunInstall(cmd *cobra.Command, ctx context.Context, out *outputHelper
 	}
 
 	out.println()
-	if err := runInstall(cmd, nil, false, "", false); err != nil {
+	if err := runInstall(cmd, nil, false, "", false, ""); err != nil {
 		out.printfErr("Install failed: %v\n", err)
 	}
 }
