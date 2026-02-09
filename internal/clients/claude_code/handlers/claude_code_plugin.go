@@ -94,9 +94,6 @@ func (h *ClaudeCodePluginHandler) Install(ctx context.Context, zipData []byte, t
 	var installPath string
 	if h.isMarketplaceSource() {
 		// Marketplace source: resolve path from marketplace, no extraction
-		if marketplace == "" {
-			return errors.New("marketplace source requires marketplace field")
-		}
 		resolvedPath, err := ResolveMarketplacePluginPath(marketplace, h.metadata.Asset.Name)
 		if err != nil {
 			return fmt.Errorf("failed to resolve marketplace plugin path: %w", err)

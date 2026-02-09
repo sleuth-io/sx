@@ -361,6 +361,10 @@ func ResolveMarketplacePluginPathFromFile(knownMarketsPath, marketplaceName, plu
 		return "", fmt.Errorf("marketplace %q not found. Available: %s", marketplaceName, strings.Join(available, ", "))
 	}
 
+	if !utils.IsDirectory(marketplace.InstallLocation) {
+		return "", fmt.Errorf("marketplace %q installation directory not found: %s", marketplaceName, marketplace.InstallLocation)
+	}
+
 	pluginPaths := []string{
 		filepath.Join(marketplace.InstallLocation, "plugins", pluginName),
 		filepath.Join(marketplace.InstallLocation, pluginName),
