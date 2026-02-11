@@ -458,7 +458,9 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, o
 				installResult.Failed = append(installResult.Failed, result.AssetName)
 				installResult.Errors = append(installResult.Errors, result.Error)
 			case clients.StatusSkipped:
-				// Don't print skipped assets
+				if result.AssetName != "" && result.Message != "" {
+					out.printf("  ⊘ %s → %s: %s\n", result.AssetName, client.DisplayName(), result.Message)
+				}
 			}
 		}
 	}

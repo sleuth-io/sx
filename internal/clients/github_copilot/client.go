@@ -35,7 +35,6 @@ func NewClient() *Client {
 				asset.TypeCommand,
 				asset.TypeAgent,
 				asset.TypeMCP,
-				asset.TypeMCPRemote,
 			},
 		),
 	}
@@ -89,6 +88,13 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 			handler := handlers.NewAgentHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
 		case asset.TypeMCP:
+			// Remote MCP (sse/http) not supported for GitHub Copilot
+			if bundle.Metadata.MCP != nil && bundle.Metadata.MCP.IsRemote() {
+				result.Status = clients.StatusSkipped
+				result.Message = "Remote MCP (sse/http) not supported"
+				resp.Results = append(resp.Results, result)
+				continue
+			}
 			// MCP uses .vscode/ instead of .github/
 			mcpTargetBase, mcpErr := c.determineMCPTargetBase(req.Scope)
 			if mcpErr != nil {
@@ -318,7 +324,7 @@ func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, sco
 		// Determine target base based on asset type
 		var targetBase string
 		var err error
-		if a.Type == asset.TypeMCP || a.Type == asset.TypeMCPRemote {
+		if a.Type == asset.TypeMCP {
 			targetBase, err = c.determineMCPTargetBase(scope)
 		} else {
 			targetBase, err = c.determineTargetBase(scope)
@@ -364,14 +370,7 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 		}
 		return filepath.Join(mcpBase, "mcp-servers", name), nil
 	}
-	if assetType == asset.TypeMCPRemote {
-		// MCP-Remote has no extracted files, return config path
-		mcpBase, err := c.determineMCPTargetBase(scope)
-		if err != nil {
-			return "", err
-		}
-		return filepath.Join(mcpBase, "mcp.json"), nil
-	}
+
 
 	targetBase, err := c.determineTargetBase(scope)
 	if err != nil {
