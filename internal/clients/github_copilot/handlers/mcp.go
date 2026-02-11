@@ -36,14 +36,23 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 		return fmt.Errorf("failed to read mcp.json: %w", err)
 	}
 
-	// Extract MCP server files to .vscode/mcp-servers/{name}/
-	serverDir := filepath.Join(targetBase, "mcp-servers", h.metadata.Asset.Name)
-	if err := utils.ExtractZip(zipData, serverDir); err != nil {
-		return fmt.Errorf("failed to extract MCP server: %w", err)
+	hasContent, err := utils.HasContentFiles(zipData)
+	if err != nil {
+		return fmt.Errorf("failed to inspect zip contents: %w", err)
 	}
 
-	// Generate MCP entry from metadata (with paths relative to extraction)
-	entry := h.generateMCPEntry(serverDir)
+	var entry map[string]any
+	if hasContent {
+		// Packaged mode: extract MCP server files to .vscode/mcp-servers/{name}/
+		serverDir := filepath.Join(targetBase, "mcp-servers", h.metadata.Asset.Name)
+		if err := utils.ExtractZip(zipData, serverDir); err != nil {
+			return fmt.Errorf("failed to extract MCP server: %w", err)
+		}
+		entry = h.generateMCPEntry(serverDir)
+	} else {
+		// Config-only mode: no extraction, register commands as-is
+		entry = h.generateConfigOnlyMCPEntry()
+	}
 
 	// Add to config
 	if config.Servers == nil {
@@ -106,6 +115,29 @@ func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]any {
 
 	entry := map[string]any{
 		"command": command,
+		"args":    args,
+	}
+
+	// Add env if present
+	if len(mcpConfig.Env) > 0 {
+		entry["env"] = mcpConfig.Env
+	}
+
+	return entry
+}
+
+func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
+	mcpConfig := h.metadata.MCP
+
+	// For config-only MCPs, commands are external (npx, docker, etc.)
+	// No path conversion needed
+	args := make([]any, len(mcpConfig.Args))
+	for i, arg := range mcpConfig.Args {
+		args[i] = arg
+	}
+
+	entry := map[string]any{
+		"command": mcpConfig.Command,
 		"args":    args,
 	}
 

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
 	"github.com/sleuth-io/sx/internal/metadata"
+	"github.com/sleuth-io/sx/internal/utils"
 )
 
 var claudeCodePluginOps = dirasset.NewOperations("plugins", &asset.TypeClaudeCodePlugin)
@@ -72,15 +74,38 @@ func (h *ClaudeCodePluginHandler) DetectUsageFromToolCall(toolName string, toolI
 	return "", false
 }
 
+// isMarketplaceSource returns true if this plugin uses marketplace source mode
+func (h *ClaudeCodePluginHandler) isMarketplaceSource() bool {
+	if h.metadata.ClaudeCodePlugin == nil {
+		return false
+	}
+	return h.metadata.ClaudeCodePlugin.Source == "marketplace"
+}
+
 // Install extracts and installs the plugin asset
 func (h *ClaudeCodePluginHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
-	// Extract to plugins directory
-	if err := claudeCodePluginOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name); err != nil {
-		return err
+	// Validate zip structure
+	if err := h.Validate(zipData); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	installPath := filepath.Join(targetBase, h.GetInstallPath())
 	marketplace := h.getMarketplace()
+
+	var installPath string
+	if h.isMarketplaceSource() {
+		// Marketplace source: resolve path from marketplace, no extraction
+		resolvedPath, err := ResolveMarketplacePluginPath(marketplace, h.metadata.Asset.Name)
+		if err != nil {
+			return fmt.Errorf("failed to resolve marketplace plugin path: %w", err)
+		}
+		installPath = resolvedPath
+	} else {
+		// Local source: extract to plugins directory
+		if err := claudeCodePluginOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name); err != nil {
+			return err
+		}
+		installPath = filepath.Join(targetBase, h.GetInstallPath())
+	}
 
 	// Register plugin in installed_plugins.json
 	if err := RegisterPlugin(targetBase, h.metadata.Asset.Name, marketplace, h.metadata.Asset.Version, installPath); err != nil {
@@ -130,6 +155,11 @@ func (h *ClaudeCodePluginHandler) Remove(ctx context.Context, targetBase string)
 		return fmt.Errorf("failed to disable plugin: %w", err)
 	}
 
+	// For marketplace source, don't delete files — marketplace owns them
+	if h.isMarketplaceSource() {
+		return nil
+	}
+
 	// Remove installation directory
 	return claudeCodePluginOps.Remove(ctx, targetBase, h.metadata.Asset.Name)
 }
@@ -139,6 +169,61 @@ func (h *ClaudeCodePluginHandler) GetInstallPath() string {
 	return filepath.Join("plugins", h.metadata.Asset.Name)
 }
 
+// Validate checks if the zip structure is valid for a plugin asset
+func (h *ClaudeCodePluginHandler) Validate(zipData []byte) error {
+	// List files in zip
+	files, err := utils.ListZipFiles(zipData)
+	if err != nil {
+		return fmt.Errorf("failed to list zip files: %w", err)
+	}
+
+	// Check that metadata.toml exists
+	if !slices.Contains(files, "metadata.toml") {
+		return errors.New("metadata.toml not found in zip")
+	}
+
+	// Extract and validate metadata
+	metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
+	if err != nil {
+		return fmt.Errorf("failed to read metadata.toml: %w", err)
+	}
+
+	meta, err := metadata.Parse(metadataBytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse metadata: %w", err)
+	}
+
+	// Validate metadata with file list
+	if err := meta.ValidateWithFiles(files); err != nil {
+		return fmt.Errorf("metadata validation failed: %w", err)
+	}
+
+	// Verify asset type matches
+	if meta.Asset.Type != asset.TypeClaudeCodePlugin {
+		return fmt.Errorf("asset type mismatch: expected claude-code-plugin, got %s", meta.Asset.Type)
+	}
+
+	// For marketplace source, plugin manifest is not required in zip
+	if meta.ClaudeCodePlugin != nil && meta.ClaudeCodePlugin.Source == "marketplace" {
+		// Marketplace source: require marketplace field, don't require plugin.json in zip
+		if meta.ClaudeCodePlugin.Marketplace == "" {
+			return errors.New("marketplace source requires marketplace field")
+		}
+		return nil
+	}
+
+	// Local source: check that plugin manifest exists in zip
+	manifestFile := ".claude-plugin/plugin.json"
+	if meta.ClaudeCodePlugin != nil && meta.ClaudeCodePlugin.ManifestFile != "" {
+		manifestFile = meta.ClaudeCodePlugin.ManifestFile
+	}
+	if !slices.Contains(files, manifestFile) {
+		return fmt.Errorf("plugin manifest not found in zip: %s", manifestFile)
+	}
+
+	return nil
+}
+
 // CanDetectInstalledState returns true since plugins preserve metadata.toml
 func (h *ClaudeCodePluginHandler) CanDetectInstalledState() bool {
 	return true
@@ -146,5 +231,20 @@ func (h *ClaudeCodePluginHandler) CanDetectInstalledState() bool {
 
 // VerifyInstalled checks if the plugin is properly installed
 func (h *ClaudeCodePluginHandler) VerifyInstalled(targetBase string) (bool, string) {
+	if h.isMarketplaceSource() {
+		// For marketplace source: check that marketplace path resolves and plugin is registered
+		marketplace := h.getMarketplace()
+		if marketplace == "" {
+			return false, "marketplace source requires marketplace field"
+		}
+		_, err := ResolveMarketplacePluginPath(marketplace, h.metadata.Asset.Name)
+		if err != nil {
+			return false, fmt.Sprintf("marketplace plugin path not found: %v", err)
+		}
+		if !IsPluginRegistered(targetBase, h.metadata.Asset.Name, marketplace) {
+			return false, "plugin not registered in installed_plugins.json"
+		}
+		return true, ""
+	}
 	return claudeCodePluginOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
 }

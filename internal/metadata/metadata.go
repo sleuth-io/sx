@@ -47,53 +47,53 @@ type Asset struct {
 
 // SkillConfig represents the [skill] section
 type SkillConfig struct {
-	PromptFile         string   `toml:"prompt-file"`
-	Triggers           []string `toml:"triggers,omitempty"`
-	Requires           []string `toml:"requires,omitempty"`
-	SupportedLanguages []string `toml:"supported-languages,omitempty"`
+	PromptFile string `toml:"prompt-file"`
 }
 
 // CommandConfig represents the [command] section
 type CommandConfig struct {
-	PromptFile   string         `toml:"prompt-file"`
-	Aliases      []string       `toml:"aliases,omitempty"`
-	RequiresAuth bool           `toml:"requires-auth,omitempty"`
-	Dangerous    bool           `toml:"dangerous,omitempty"`
-	Copilot      map[string]any `toml:"copilot,omitempty"` // Copilot-specific settings (agent, model, tools)
+	PromptFile string `toml:"prompt-file"`
 }
 
 // AgentConfig represents the [agent] section
 type AgentConfig struct {
-	PromptFile string         `toml:"prompt-file"`
-	Triggers   []string       `toml:"triggers,omitempty"`
-	Requires   []string       `toml:"requires,omitempty"`
-	Copilot    map[string]any `toml:"copilot,omitempty"` // Copilot-specific settings (tools, model, handoffs)
+	PromptFile string `toml:"prompt-file"`
 }
 
 // HookConfig represents the [hook] section
 type HookConfig struct {
-	Event       string `toml:"event"`
-	ScriptFile  string `toml:"script-file"`
-	Async       bool   `toml:"async,omitempty"`
-	FailOnError bool   `toml:"fail-on-error,omitempty"`
-	Timeout     int    `toml:"timeout,omitempty"`
+	Event      string         `toml:"event"`
+	ScriptFile string         `toml:"script-file,omitempty"`
+	Command    string         `toml:"command,omitempty"`
+	Args       []string       `toml:"args,omitempty"`
+	Timeout    int            `toml:"timeout,omitempty"`
+	Matcher    string         `toml:"matcher,omitempty"`
+	Cursor     map[string]any `toml:"cursor,omitempty"`
+	ClaudeCode map[string]any `toml:"claude-code,omitempty"`
+	Copilot    map[string]any `toml:"copilot,omitempty"`
 }
 
 // MCPConfig represents the [mcp] section (for both mcp and mcp-remote)
 type MCPConfig struct {
-	Command      string            `toml:"command"`
-	Args         []string          `toml:"args"`
-	Env          map[string]string `toml:"env,omitempty"`
-	Timeout      int               `toml:"timeout,omitempty"`
-	Capabilities []string          `toml:"capabilities,omitempty"`
+	Transport string            `toml:"transport,omitempty"`
+	Command   string            `toml:"command,omitempty"`
+	Args      []string          `toml:"args,omitempty"`
+	URL       string            `toml:"url,omitempty"`
+	Env       map[string]string `toml:"env,omitempty"`
+	Timeout   int               `toml:"timeout,omitempty"`
+}
+
+// IsRemote returns true if the MCP config uses a remote transport (sse or http)
+func (m *MCPConfig) IsRemote() bool {
+	return m.Transport == "sse" || m.Transport == "http"
 }
 
 // ClaudeCodePluginConfig represents the [claude-code-plugin] section
 type ClaudeCodePluginConfig struct {
-	ManifestFile     string `toml:"manifest-file,omitempty"`      // Default: .claude-plugin/plugin.json
-	AutoEnable       *bool  `toml:"auto-enable,omitempty"`        // Default: true
-	Marketplace      string `toml:"marketplace,omitempty"`        // Optional marketplace name
-	MinClientVersion string `toml:"min-client-version,omitempty"` // Optional minimum Claude Code version
+	ManifestFile string `toml:"manifest-file,omitempty"` // Default: .claude-plugin/plugin.json
+	AutoEnable   *bool  `toml:"auto-enable,omitempty"`   // Default: true
+	Marketplace  string `toml:"marketplace,omitempty"`   // Optional marketplace name
+	Source       string `toml:"source,omitempty"`        // "marketplace" or "local" (default)
 }
 
 // RuleConfig represents the [rule] section
@@ -129,6 +129,11 @@ func Parse(data []byte) (*Metadata, error) {
 		if err := toml.Unmarshal(data, &compat); err == nil && compat.Artifact.Name != "" {
 			metadata.Asset = compat.Artifact
 		}
+	}
+
+	// Normalize MCP transport: default to "stdio" if not set
+	if metadata.MCP != nil && metadata.MCP.Transport == "" {
+		metadata.MCP.Transport = "stdio"
 	}
 
 	return &metadata, nil
@@ -181,7 +186,7 @@ func (m *Metadata) GetTypeConfig() any {
 		return m.Agent
 	case asset.TypeHook:
 		return m.Hook
-	case asset.TypeMCP, asset.TypeMCPRemote:
+	case asset.TypeMCP:
 		return m.MCP
 	case asset.TypeClaudeCodePlugin:
 		return m.ClaudeCodePlugin

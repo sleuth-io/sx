@@ -40,8 +40,6 @@ func NewHandler(assetType asset.Type, meta *metadata.Metadata) (Handler, error) 
 		return NewHookHandler(meta), nil
 	case asset.TypeMCP:
 		return NewMCPHandler(meta), nil
-	case asset.TypeMCPRemote:
-		return NewMCPRemoteHandler(meta), nil
 	case asset.TypeClaudeCodePlugin:
 		return NewClaudeCodePluginHandler(meta), nil
 	case asset.TypeRule:

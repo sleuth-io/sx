@@ -39,7 +39,7 @@ func (h *HookDetector) CreateDefaultMetadata(name, version string) *metadata.Met
 			Type:    asset.TypeHook,
 		},
 		Hook: &metadata.HookConfig{
-			Event:      "pre-commit",
+			Event:      "pre-tool-use",
 			ScriptFile: "hook.sh",
 		},
 	}

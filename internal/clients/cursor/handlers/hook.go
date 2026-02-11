@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
@@ -16,6 +17,20 @@ import (
 )
 
 var hookOps = dirasset.NewOperations("hooks", &asset.TypeHook)
+
+// cursorEventMap maps canonical hook events to Cursor native event names
+var cursorEventMap = map[string]string{
+	"session-start":         "sessionStart",
+	"session-end":           "sessionEnd",
+	"pre-tool-use":          "preToolUse",
+	"post-tool-use":         "postToolUse",
+	"post-tool-use-failure": "postToolUseFailure",
+	"user-prompt-submit":    "beforeSubmitPrompt",
+	"stop":                  "stop",
+	"subagent-start":        "subagentStart",
+	"subagent-stop":         "subagentStop",
+	"pre-compact":           "preCompact",
+}
 
 // HookHandler handles hook asset installation for Cursor
 type HookHandler struct {
@@ -34,17 +49,20 @@ func (h *HookHandler) Install(ctx context.Context, zipData []byte, targetBase st
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	// Extract to .cursor/hooks/{name}/
-	installPath := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name)
-	if err := os.RemoveAll(installPath); err != nil {
-		return fmt.Errorf("failed to remove existing hook: %w", err)
+	if h.metadata.Hook.ScriptFile != "" {
+		// Script mode: extract to .cursor/hooks/{name}/
+		installPath := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name)
+		if err := os.RemoveAll(installPath); err != nil {
+			return fmt.Errorf("failed to remove existing hook: %w", err)
+		}
+		if err := utils.EnsureDir(installPath); err != nil {
+			return fmt.Errorf("failed to create hook directory: %w", err)
+		}
+		if err := utils.ExtractZip(zipData, installPath); err != nil {
+			return fmt.Errorf("failed to extract hook: %w", err)
+		}
 	}
-	if err := utils.EnsureDir(installPath); err != nil {
-		return fmt.Errorf("failed to create hook directory: %w", err)
-	}
-	if err := utils.ExtractZip(zipData, installPath); err != nil {
-		return fmt.Errorf("failed to extract hook: %w", err)
-	}
+	// Command mode: no extraction needed
 
 	// Update hooks.json
 	if err := h.updateHooksJSON(targetBase); err != nil {
@@ -61,10 +79,12 @@ func (h *HookHandler) Remove(ctx context.Context, targetBase string) error {
 		return fmt.Errorf("failed to remove from hooks.json: %w", err)
 	}
 
-	// Remove directory
+	// Remove directory if it exists (script mode)
 	installPath := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name)
-	if err := os.RemoveAll(installPath); err != nil {
-		return fmt.Errorf("failed to remove hook directory: %w", err)
+	if utils.IsDirectory(installPath) {
+		if err := os.RemoveAll(installPath); err != nil {
+			return fmt.Errorf("failed to remove hook directory: %w", err)
+		}
 	}
 
 	return nil
@@ -85,8 +105,11 @@ func (h *HookHandler) Validate(zipData []byte) error {
 		return errors.New("[hook] section missing in metadata")
 	}
 
-	if !containsFile(files, h.metadata.Hook.ScriptFile) {
-		return fmt.Errorf("script file not found in zip: %s", h.metadata.Hook.ScriptFile)
+	// Only check script file when in script mode
+	if h.metadata.Hook.ScriptFile != "" {
+		if !containsFile(files, h.metadata.Hook.ScriptFile) {
+			return fmt.Errorf("script file not found in zip: %s", h.metadata.Hook.ScriptFile)
+		}
 	}
 
 	return nil
@@ -98,6 +121,24 @@ type HooksConfig struct {
 	Hooks   map[string][]map[string]any `json:"hooks"`
 }
 
+// mapEventToCursor maps a canonical event name to Cursor native event.
+// If the hook has a [hook.cursor] event override, that is returned instead.
+func (h *HookHandler) mapEventToCursor() (string, bool) {
+	// Check for client-specific event override
+	if h.metadata.Hook.Cursor != nil {
+		if eventOverride, ok := h.metadata.Hook.Cursor["event"].(string); ok && eventOverride != "" {
+			return eventOverride, true
+		}
+	}
+
+	// Map canonical event to Cursor native
+	if nativeEvent, ok := cursorEventMap[h.metadata.Hook.Event]; ok {
+		return nativeEvent, true
+	}
+
+	return "", false
+}
+
 func (h *HookHandler) updateHooksJSON(targetBase string) error {
 	hooksJSONPath := filepath.Join(targetBase, "hooks.json")
 
@@ -107,17 +148,13 @@ func (h *HookHandler) updateHooksJSON(targetBase string) error {
 	}
 
 	// Map event to Cursor lifecycle hook
-	cursorEvent := mapEventToCursorHook(h.metadata.Hook.Event)
-	if cursorEvent == "" {
-		return fmt.Errorf("unsupported hook event for Cursor: %s (supported: pre-commit, post-commit, pre-push, on-save, on-file-read)", h.metadata.Hook.Event)
+	cursorEvent, supported := h.mapEventToCursor()
+	if !supported {
+		return fmt.Errorf("hook event %q not supported for Cursor", h.metadata.Hook.Event)
 	}
 
-	// Build entry with absolute path to script
-	scriptPath := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name, h.metadata.Hook.ScriptFile)
-	entry := map[string]any{
-		"command":   scriptPath,
-		"_artifact": h.metadata.Asset.Name,
-	}
+	// Build entry
+	entry := h.buildHookEntry(targetBase)
 
 	// Add to hooks array
 	if config.Hooks[cursorEvent] == nil {
@@ -164,6 +201,43 @@ func (h *HookHandler) removeFromHooksJSON(targetBase string) error {
 	return WriteHooksJSON(hooksJSONPath, config)
 }
 
+// buildHookEntry builds the hook entry for hooks.json
+func (h *HookHandler) buildHookEntry(targetBase string) map[string]any {
+	entry := map[string]any{
+		"_artifact": h.metadata.Asset.Name,
+	}
+
+	if h.metadata.Hook.ScriptFile != "" {
+		// Script mode: use absolute path to script
+		scriptPath := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name, h.metadata.Hook.ScriptFile)
+		entry["command"] = scriptPath
+	} else if h.metadata.Hook.Command != "" {
+		// Command mode: join command and args
+		cmd := h.metadata.Hook.Command
+		if len(h.metadata.Hook.Args) > 0 {
+			cmd = cmd + " " + strings.Join(h.metadata.Hook.Args, " ")
+		}
+		entry["command"] = cmd
+	}
+
+	// Add timeout if present
+	if h.metadata.Hook.Timeout > 0 {
+		entry["timeout"] = h.metadata.Hook.Timeout
+	}
+
+	// Merge Cursor-specific overrides
+	if h.metadata.Hook.Cursor != nil {
+		for k, v := range h.metadata.Hook.Cursor {
+			if k == "event" {
+				continue // event override handled in mapEventToCursor
+			}
+			entry[k] = v
+		}
+	}
+
+	return entry
+}
+
 // ReadHooksJSON reads and parses the hooks.json file
 func ReadHooksJSON(path string) (*HooksConfig, error) {
 	config := &HooksConfig{
@@ -204,29 +278,34 @@ func WriteHooksJSON(path string, config *HooksConfig) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// mapEventToCursorHook maps Skills hook events to Cursor lifecycle hooks
-func mapEventToCursorHook(event string) string {
-	mapping := map[string]string{
-		"pre-commit":   "beforeShellExecution",
-		"post-commit":  "afterShellExecution",
-		"pre-push":     "beforeShellExecution",
-		"on-save":      "afterFileEdit",
-		"on-file-read": "beforeReadFile",
-		"after-edit":   "afterFileEdit",
-	}
-
-	if cursorEvent, ok := mapping[event]; ok {
-		return cursorEvent
-	}
-
-	return "" // Unsupported
-}
-
 func containsFile(files []string, name string) bool {
 	return slices.Contains(files, name)
 }
 
 // VerifyInstalled checks if the hook is properly installed
 func (h *HookHandler) VerifyInstalled(targetBase string) (bool, string) {
-	return hookOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
+	// For script-file hooks, check install directory
+	if h.metadata.Hook != nil && h.metadata.Hook.ScriptFile != "" {
+		installDir := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name)
+		if utils.IsDirectory(installDir) {
+			return hookOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
+		}
+	}
+
+	// For command-only hooks, check hooks.json
+	hooksJSONPath := filepath.Join(targetBase, "hooks.json")
+	config, err := ReadHooksJSON(hooksJSONPath)
+	if err != nil {
+		return false, "failed to read hooks.json"
+	}
+
+	for _, hooks := range config.Hooks {
+		for _, hook := range hooks {
+			if assetName, ok := hook["_artifact"].(string); ok && assetName == h.metadata.Asset.Name {
+				return true, "installed"
+			}
+		}
+	}
+
+	return false, "hook not registered"
 }

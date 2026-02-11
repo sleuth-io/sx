@@ -117,7 +117,7 @@ func runAddWithOptions(cmd *cobra.Command, input string, opts addOptions) error 
 	// Check if input is plugin@marketplace syntax
 	if input != "" && IsMarketplaceReference(input) {
 		promptInstall := !opts.NoInstall && !opts.Yes
-		return addFromMarketplace(ctx, cmd, out, status, input, promptInstall)
+		return addFromMarketplace(ctx, cmd, out, status, input, promptInstall, opts)
 	}
 
 	// Check if input is an existing asset name (not a file, directory, or URL)
@@ -126,6 +126,11 @@ func runAddWithOptions(cmd *cobra.Command, input string, opts addOptions) error 
 			// Not a file/directory - check if it's an existing asset
 			return configureExistingAsset(ctx, cmd, out, status, input, opts)
 		}
+	}
+
+	// Check if input is a remote MCP URL (not a zip download, not GitHub tree)
+	if input != "" && isRemoteMCPURL(input) {
+		return addRemoteMCP(ctx, cmd, out, status, input, opts)
 	}
 
 	// Check if input is an instruction file (CLAUDE.md, AGENTS.md) that can be parsed for sections
@@ -188,7 +193,7 @@ func runAddWithOptions(cmd *cobra.Command, input string, opts addOptions) error 
 	// Handle install: auto-run if --yes, prompt if interactive, skip if --no-install
 	if opts.Yes && !opts.NoInstall {
 		out.println()
-		if err := runInstall(cmd, nil, false, "", false); err != nil {
+		if err := runInstall(cmd, nil, false, "", false, ""); err != nil {
 			out.printfErr("Install failed: %v\n", err)
 		}
 	} else if !opts.NoInstall && !opts.isNonInteractive() {
@@ -283,7 +288,7 @@ func promptRunInstall(cmd *cobra.Command, ctx context.Context, out *outputHelper
 	}
 
 	out.println()
-	if err := runInstall(cmd, nil, false, "", false); err != nil {
+	if err := runInstall(cmd, nil, false, "", false, ""); err != nil {
 		out.printfErr("Install failed: %v\n", err)
 	}
 }

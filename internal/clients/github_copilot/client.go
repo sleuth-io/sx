@@ -97,15 +97,6 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 				handler := handlers.NewMCPHandler(bundle.Metadata)
 				installErr = handler.Install(ctx, bundle.ZipData, mcpTargetBase)
 			}
-		case asset.TypeMCPRemote:
-			// MCP-Remote uses .vscode/ instead of .github/
-			mcpTargetBase, mcpErr := c.determineMCPTargetBase(req.Scope)
-			if mcpErr != nil {
-				installErr = mcpErr
-			} else {
-				handler := handlers.NewMCPRemoteHandler(bundle.Metadata)
-				installErr = handler.Install(ctx, bundle.ZipData, mcpTargetBase)
-			}
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + bundle.Metadata.Asset.Type.Key
@@ -172,15 +163,6 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 				uninstallErr = mcpErr
 			} else {
 				handler := handlers.NewMCPHandler(meta)
-				uninstallErr = handler.Remove(ctx, mcpTargetBase)
-			}
-		case asset.TypeMCPRemote:
-			// MCP-Remote uses .vscode/ instead of .github/
-			mcpTargetBase, mcpErr := c.determineMCPTargetBase(req.Scope)
-			if mcpErr != nil {
-				uninstallErr = mcpErr
-			} else {
-				handler := handlers.NewMCPRemoteHandler(meta)
 				uninstallErr = handler.Remove(ctx, mcpTargetBase)
 			}
 		default:

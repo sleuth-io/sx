@@ -570,11 +570,6 @@ func extractZipToDir(zipData []byte, targetDir string) error {
 	}
 
 	for _, file := range reader.File {
-		// Skip directories that shouldn't be extracted (cache, build artifacts, etc.)
-		if utils.ShouldSkipPath(file.Name) {
-			continue
-		}
-
 		// Build target path
 		targetPath := filepath.Join(targetDir, file.Name)
 

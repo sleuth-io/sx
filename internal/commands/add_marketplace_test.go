@@ -1,7 +1,12 @@
 package commands
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/sleuth-io/sx/internal/utils"
 )
 
 func TestIsMarketplaceReference(t *testing.T) {
@@ -100,9 +105,9 @@ func TestValidateMarketplaceReference(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:        "marketplace with forward slash",
-			ref:         MarketplaceReference{PluginName: "plugin", Marketplace: "path/to/marketplace"},
-			expectError: true,
+			name:        "marketplace with forward slash (org/repo format)",
+			ref:         MarketplaceReference{PluginName: "plugin", Marketplace: "org/repo"},
+			expectError: false,
 		},
 		{
 			name:        "marketplace with backslash",
@@ -131,5 +136,105 @@ func TestValidateMarketplaceReference(t *testing.T) {
 				t.Errorf("ValidateMarketplaceReference(%+v) unexpected error: %v", tc.ref, err)
 			}
 		})
+	}
+}
+
+func TestCreateConfigOnlyPluginZip(t *testing.T) {
+	// Set up a fake marketplace plugin directory
+	pluginDir := t.TempDir()
+	claudePluginDir := filepath.Join(pluginDir, ".claude-plugin")
+	if err := os.MkdirAll(claudePluginDir, 0755); err != nil {
+		t.Fatalf("failed to create .claude-plugin dir: %v", err)
+	}
+
+	pluginJSON := `{
+  "name": "test-plugin",
+  "description": "A test plugin",
+  "version": "2.0.0"
+}`
+	if err := os.WriteFile(filepath.Join(claudePluginDir, "plugin.json"), []byte(pluginJSON), 0644); err != nil {
+		t.Fatalf("failed to write plugin.json: %v", err)
+	}
+
+	ref := MarketplaceReference{
+		PluginName:  "test-plugin",
+		Marketplace: "my-market",
+	}
+
+	zipData, err := createConfigOnlyPluginZip(pluginDir, ref)
+	if err != nil {
+		t.Fatalf("createConfigOnlyPluginZip() error: %v", err)
+	}
+
+	// Verify zip only contains metadata.toml
+	files, err := utils.ListZipFiles(zipData)
+	if err != nil {
+		t.Fatalf("failed to list zip files: %v", err)
+	}
+	if len(files) != 1 {
+		t.Errorf("expected 1 file in zip, got %d: %v", len(files), files)
+	}
+	if files[0] != "metadata.toml" {
+		t.Errorf("expected metadata.toml, got %s", files[0])
+	}
+
+	// Read and verify metadata.toml content
+	metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
+	if err != nil {
+		t.Fatalf("failed to read metadata.toml: %v", err)
+	}
+
+	content := string(metadataBytes)
+	if !strings.Contains(content, `source = "marketplace"`) {
+		t.Errorf("metadata should contain source = marketplace, got:\n%s", content)
+	}
+	if !strings.Contains(content, `marketplace = "my-market"`) {
+		t.Errorf("metadata should contain marketplace = my-market, got:\n%s", content)
+	}
+	if !strings.Contains(content, `name = "test-plugin"`) {
+		t.Errorf("metadata should contain name = test-plugin, got:\n%s", content)
+	}
+	if !strings.Contains(content, `version = "2.0.0"`) {
+		t.Errorf("metadata should contain version = 2.0.0, got:\n%s", content)
+	}
+	if !strings.Contains(content, `type = "claude-code-plugin"`) {
+		t.Errorf("metadata should contain type = claude-code-plugin, got:\n%s", content)
+	}
+}
+
+func TestCreateConfigOnlyPluginZip_DefaultVersion(t *testing.T) {
+	// Set up a fake marketplace plugin directory with no version
+	pluginDir := t.TempDir()
+	claudePluginDir := filepath.Join(pluginDir, ".claude-plugin")
+	if err := os.MkdirAll(claudePluginDir, 0755); err != nil {
+		t.Fatalf("failed to create .claude-plugin dir: %v", err)
+	}
+
+	pluginJSON := `{
+  "name": "test-plugin",
+  "description": "A test plugin"
+}`
+	if err := os.WriteFile(filepath.Join(claudePluginDir, "plugin.json"), []byte(pluginJSON), 0644); err != nil {
+		t.Fatalf("failed to write plugin.json: %v", err)
+	}
+
+	ref := MarketplaceReference{
+		PluginName:  "test-plugin",
+		Marketplace: "my-market",
+	}
+
+	zipData, err := createConfigOnlyPluginZip(pluginDir, ref)
+	if err != nil {
+		t.Fatalf("createConfigOnlyPluginZip() error: %v", err)
+	}
+
+	metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
+	if err != nil {
+		t.Fatalf("failed to read metadata.toml: %v", err)
+	}
+
+	content := string(metadataBytes)
+	if !strings.Contains(content, `version = "1.0.0"`) {
+		t.Errorf("metadata should default to version 1.0.0, got:\n%s", content)
 	}
 }

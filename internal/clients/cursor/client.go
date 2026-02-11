@@ -36,7 +36,6 @@ func NewClient() *Client {
 			"Cursor",
 			[]asset.Type{
 				asset.TypeMCP,
-				asset.TypeMCPRemote,
 				asset.TypeSkill, // Transform to commands
 				asset.TypeCommand,
 				asset.TypeHook, // Supported via hooks.json
@@ -102,9 +101,6 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeMCP:
 			handler := handlers.NewMCPHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
-		case asset.TypeMCPRemote:
-			handler := handlers.NewMCPRemoteHandler(bundle.Metadata)
-			err = handler.Install(ctx, bundle.ZipData, targetBase)
 		case asset.TypeSkill:
 			// Install skill to .cursor/skills/ (not transformed to command)
 			handler := handlers.NewSkillHandler(bundle.Metadata)
@@ -169,7 +165,7 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 
 		var err error
 		switch a.Type {
-		case asset.TypeMCP, asset.TypeMCPRemote:
+		case asset.TypeMCP:
 			handler := handlers.NewMCPHandler(meta)
 			err = handler.Remove(ctx, targetBase)
 		case asset.TypeSkill:
