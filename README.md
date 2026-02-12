@@ -3,6 +3,25 @@
 sx is your team's private npm for AI assets - skills, MCP configs, commands, and more. Capture
 what your best AI users have learned and spread it to everyone automatically.
 
+<img src="docs/img/sx_logo.png" alt="sx" width="400">
+
+[![Stars](https://img.shields.io/github/stars/sleuth-io/sx?style=flat&color=F59E0B)](https://github.com/sleuth-io/sx/stargazers)
+[![Star History](https://img.shields.io/badge/Star_History-chart-8B5CF6)](https://star-history.com/#sleuth-io/sx&Date)
+[![Downloads](https://img.shields.io/github/downloads/sleuth-io/sx/total?color=3B82F6)](https://github.com/sleuth-io/sx/releases)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-10B981.svg)](https://github.com/sleuth-io/sx/pulls)
+
+⭐ [Star this repo](https://github.com/sleuth-io/sx) · 🌐 [Website](https://skills.new) · 📋 [Changelog](https://github.com/sleuth-io/sx/releases) · 📄 [License](LICENSE)
+
+<br>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sleuth-io/sx/main/install.sh | bash
+```
+
+**Works on macOS, Linux, and Windows.**
+
+<br>
+
 ![Demo](docs/demo.gif)
 
 ## Why sx?
