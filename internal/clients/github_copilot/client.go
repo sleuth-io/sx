@@ -16,7 +16,7 @@ import (
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
-var skillOps = dirasset.NewOperations("skills", &asset.TypeSkill)
+var skillOps = dirasset.NewOperations(handlers.DirSkills, &asset.TypeSkill)
 
 // Client implements the clients.Client interface for GitHub Copilot
 type Client struct {
@@ -368,7 +368,7 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(mcpBase, "mcp-servers", name), nil
+		return filepath.Join(mcpBase, handlers.DirMCPServers, name), nil
 	}
 
 
@@ -379,13 +379,13 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 
 	switch assetType {
 	case asset.TypeSkill:
-		return filepath.Join(targetBase, "skills", name), nil
+		return filepath.Join(targetBase, handlers.DirSkills, name), nil
 	case asset.TypeRule:
-		return filepath.Join(targetBase, "instructions", name+".instructions.md"), nil
+		return filepath.Join(targetBase, handlers.DirInstructions, name+".instructions.md"), nil
 	case asset.TypeCommand:
-		return filepath.Join(targetBase, "prompts", name+".prompt.md"), nil
+		return filepath.Join(targetBase, handlers.DirPrompts, name+".prompt.md"), nil
 	case asset.TypeAgent:
-		return filepath.Join(targetBase, "agents", name+".agent.md"), nil
+		return filepath.Join(targetBase, handlers.DirAgents, name+".agent.md"), nil
 	default:
 		return "", fmt.Errorf("asset type %s not supported for GitHub Copilot", assetType.Key)
 	}

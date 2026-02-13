@@ -10,7 +10,7 @@ import (
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
-var commandOps = fileasset.NewOperations("commands", &asset.TypeCommand)
+var commandOps = fileasset.NewOperations(DirCommands, &asset.TypeCommand)
 
 // CommandHandler handles command asset installation
 type CommandHandler struct {

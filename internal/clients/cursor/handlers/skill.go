@@ -8,7 +8,7 @@ import (
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
-var skillOps = dirasset.NewOperations("skills", &asset.TypeSkill)
+var skillOps = dirasset.NewOperations(DirSkills, &asset.TypeSkill)
 
 // SkillHandler handles skill asset installation for Cursor
 // Skills are extracted to .cursor/skills/{name}/ (not transformed to commands)

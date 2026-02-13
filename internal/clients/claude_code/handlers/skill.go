@@ -11,7 +11,7 @@ import (
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
-var skillOps = dirasset.NewOperations("skills", &asset.TypeSkill)
+var skillOps = dirasset.NewOperations(DirSkills, &asset.TypeSkill)
 
 // SkillHandler handles skill asset installation
 type SkillHandler struct {
@@ -100,7 +100,7 @@ func (h *SkillHandler) Remove(ctx context.Context, targetBase string) error {
 
 // GetInstallPath returns the installation path relative to targetBase
 func (h *SkillHandler) GetInstallPath() string {
-	return filepath.Join("skills", h.metadata.Asset.Name)
+	return filepath.Join(DirSkills, h.metadata.Asset.Name)
 }
 
 // CanDetectInstalledState returns true since skills preserve metadata.toml

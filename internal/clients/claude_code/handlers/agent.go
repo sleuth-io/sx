@@ -9,7 +9,7 @@ import (
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
-var agentOps = fileasset.NewOperations("agents", &asset.TypeAgent)
+var agentOps = fileasset.NewOperations(DirAgents, &asset.TypeAgent)
 
 // AgentHandler handles agent asset installation
 type AgentHandler struct {

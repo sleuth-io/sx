@@ -31,7 +31,7 @@ func (h *CommandHandler) Install(ctx context.Context, zipData []byte, targetBase
 	}
 
 	// Ensure prompts directory exists
-	promptsDir := filepath.Join(targetBase, "prompts")
+	promptsDir := filepath.Join(targetBase, DirPrompts)
 	if err := utils.EnsureDir(promptsDir); err != nil {
 		return fmt.Errorf("failed to create prompts directory: %w", err)
 	}
@@ -50,7 +50,7 @@ func (h *CommandHandler) Install(ctx context.Context, zipData []byte, targetBase
 
 // Remove removes the prompt file
 func (h *CommandHandler) Remove(ctx context.Context, targetBase string) error {
-	filePath := filepath.Join(targetBase, "prompts", h.metadata.Asset.Name+".prompt.md")
+	filePath := filepath.Join(targetBase, DirPrompts, h.metadata.Asset.Name+".prompt.md")
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return nil // Already removed
@@ -65,7 +65,7 @@ func (h *CommandHandler) Remove(ctx context.Context, targetBase string) error {
 
 // VerifyInstalled checks if the prompt file exists
 func (h *CommandHandler) VerifyInstalled(targetBase string) (bool, string) {
-	filePath := filepath.Join(targetBase, "prompts", h.metadata.Asset.Name+".prompt.md")
+	filePath := filepath.Join(targetBase, DirPrompts, h.metadata.Asset.Name+".prompt.md")
 
 	if _, err := os.Stat(filePath); err == nil {
 		return true, "Found at " + filePath

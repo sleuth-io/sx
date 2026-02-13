@@ -31,7 +31,7 @@ func (h *AgentHandler) Install(ctx context.Context, zipData []byte, targetBase s
 	}
 
 	// Ensure agents directory exists
-	agentsDir := filepath.Join(targetBase, "agents")
+	agentsDir := filepath.Join(targetBase, DirAgents)
 	if err := utils.EnsureDir(agentsDir); err != nil {
 		return fmt.Errorf("failed to create agents directory: %w", err)
 	}
@@ -50,7 +50,7 @@ func (h *AgentHandler) Install(ctx context.Context, zipData []byte, targetBase s
 
 // Remove removes the agent file
 func (h *AgentHandler) Remove(ctx context.Context, targetBase string) error {
-	filePath := filepath.Join(targetBase, "agents", h.metadata.Asset.Name+".agent.md")
+	filePath := filepath.Join(targetBase, DirAgents, h.metadata.Asset.Name+".agent.md")
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return nil // Already removed
@@ -65,7 +65,7 @@ func (h *AgentHandler) Remove(ctx context.Context, targetBase string) error {
 
 // VerifyInstalled checks if the agent file exists
 func (h *AgentHandler) VerifyInstalled(targetBase string) (bool, string) {
-	filePath := filepath.Join(targetBase, "agents", h.metadata.Asset.Name+".agent.md")
+	filePath := filepath.Join(targetBase, DirAgents, h.metadata.Asset.Name+".agent.md")
 
 	if _, err := os.Stat(filePath); err == nil {
 		return true, "Found at " + filePath

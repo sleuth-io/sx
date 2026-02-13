@@ -33,7 +33,7 @@ func (h *RuleHandler) Install(ctx context.Context, zipData []byte, targetBase st
 	}
 
 	// Ensure instructions directory exists
-	instructionsDir := filepath.Join(targetBase, "instructions")
+	instructionsDir := filepath.Join(targetBase, DirInstructions)
 	if err := utils.EnsureDir(instructionsDir); err != nil {
 		return fmt.Errorf("failed to create instructions directory: %w", err)
 	}
@@ -52,7 +52,7 @@ func (h *RuleHandler) Install(ctx context.Context, zipData []byte, targetBase st
 
 // Remove removes the instruction file
 func (h *RuleHandler) Remove(ctx context.Context, targetBase string) error {
-	filePath := filepath.Join(targetBase, "instructions", h.metadata.Asset.Name+".instructions.md")
+	filePath := filepath.Join(targetBase, DirInstructions, h.metadata.Asset.Name+".instructions.md")
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return nil // Already removed
@@ -67,7 +67,7 @@ func (h *RuleHandler) Remove(ctx context.Context, targetBase string) error {
 
 // VerifyInstalled checks if the instruction file exists
 func (h *RuleHandler) VerifyInstalled(targetBase string) (bool, string) {
-	filePath := filepath.Join(targetBase, "instructions", h.metadata.Asset.Name+".instructions.md")
+	filePath := filepath.Join(targetBase, DirInstructions, h.metadata.Asset.Name+".instructions.md")
 
 	if _, err := os.Stat(filePath); err == nil {
 		return true, "Found at " + filePath

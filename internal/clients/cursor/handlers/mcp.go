@@ -13,7 +13,7 @@ import (
 	"github.com/sleuth-io/sx/internal/utils"
 )
 
-var mcpOps = dirasset.NewOperations("mcp-servers", &asset.TypeMCP)
+var mcpOps = dirasset.NewOperations(DirMCPServers, &asset.TypeMCP)
 
 // MCPHandler handles MCP asset installation for Cursor (both packaged and config-only)
 type MCPHandler struct {
@@ -44,7 +44,7 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 	var entry map[string]any
 	if hasContent {
 		// Packaged mode: extract MCP server files
-		serverDir := filepath.Join(targetBase, "mcp-servers", h.metadata.Asset.Name)
+		serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 		if err := utils.ExtractZip(zipData, serverDir); err != nil {
 			return fmt.Errorf("failed to extract MCP server: %w", err)
 		}
@@ -87,7 +87,7 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 	}
 
 	// Remove server directory if it exists (packaged mode)
-	serverDir := filepath.Join(targetBase, "mcp-servers", h.metadata.Asset.Name)
+	serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 	os.RemoveAll(serverDir) // Ignore errors if doesn't exist
 
 	return nil
@@ -199,7 +199,7 @@ func WriteMCPConfig(path string, config *MCPConfig) error {
 // For packaged assets, checks the install directory. For config-only, checks mcp.json.
 func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
 	// Check if install directory exists (packaged mode)
-	installDir := filepath.Join(targetBase, "mcp-servers", h.metadata.Asset.Name)
+	installDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 	if utils.IsDirectory(installDir) {
 		return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
 	}

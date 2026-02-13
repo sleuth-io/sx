@@ -13,7 +13,7 @@ import (
 	"github.com/sleuth-io/sx/internal/utils"
 )
 
-var mcpOps = dirasset.NewOperations("mcp-servers", &asset.TypeMCP)
+var mcpOps = dirasset.NewOperations(DirMCPServers, &asset.TypeMCP)
 
 // MCPHandler handles MCP asset installation for GitHub Copilot (VS Code)
 type MCPHandler struct {
@@ -44,7 +44,7 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 	var entry map[string]any
 	if hasContent {
 		// Packaged mode: extract MCP server files to .vscode/mcp-servers/{name}/
-		serverDir := filepath.Join(targetBase, "mcp-servers", h.metadata.Asset.Name)
+		serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 		if err := utils.ExtractZip(zipData, serverDir); err != nil {
 			return fmt.Errorf("failed to extract MCP server: %w", err)
 		}
@@ -87,7 +87,7 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 	}
 
 	// Remove server directory (if exists)
-	serverDir := filepath.Join(targetBase, "mcp-servers", h.metadata.Asset.Name)
+	serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 	os.RemoveAll(serverDir) // Ignore errors if doesn't exist
 
 	return nil
