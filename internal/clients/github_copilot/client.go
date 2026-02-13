@@ -371,7 +371,6 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 		return filepath.Join(mcpBase, handlers.DirMCPServers, name), nil
 	}
 
-
 	targetBase, err := c.determineTargetBase(scope)
 	if err != nil {
 		return "", err
