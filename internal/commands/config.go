@@ -547,99 +547,98 @@ func printJSON(output ConfigOutput) error {
 }
 
 func printText(output ConfigOutput, showAll bool) error {
-	fmt.Println("sx Configuration")
-	fmt.Println("================")
-	fmt.Println()
+	out := ui.NewOutput(os.Stdout, os.Stderr)
+
+	out.Header("sx Configuration")
+	out.Newline()
 
 	// Version
-	fmt.Printf("Version: %s (commit: %s, built: %s)\n", output.Version.Version, output.Version.Commit, output.Version.Date)
-	fmt.Printf("Platform: %s/%s\n", output.Platform.OS, output.Platform.Arch)
-	fmt.Printf("Working Directory: %s\n", output.Platform.WorkingDir)
-	fmt.Println()
+	out.Printf("Version: %s\n", out.EmphasisText(fmt.Sprintf("%s (commit: %s, built: %s)", output.Version.Version, output.Version.Commit, output.Version.Date)))
+	out.Printf("Platform: %s\n", out.MutedText(fmt.Sprintf("%s/%s", output.Platform.OS, output.Platform.Arch)))
+	out.Printf("Working Directory: %s\n", out.MutedText(output.Platform.WorkingDir))
+	out.Newline()
 
 	// Configuration
-	fmt.Println("Configuration")
-	fmt.Println("-------------")
-	existsStr := "exists"
-	if !output.Config.Exists {
-		existsStr = "not found"
+	out.Section("Configuration")
+	if output.Config.Exists {
+		out.Printf("Config File: %s %s\n", out.MutedText(output.Config.Path), out.SuccessText("(exists)"))
+	} else {
+		out.Printf("Config File: %s %s\n", out.MutedText(output.Config.Path), out.ErrorText("(not found)"))
 	}
-	fmt.Printf("Config File: %s (%s)\n", output.Config.Path, existsStr)
 	if output.Config.Profile != "" {
-		fmt.Printf("Profile: %s\n", output.Config.Profile)
+		out.KeyValue("Profile", output.Config.Profile)
 	}
 	if output.Config.Type != "" {
-		fmt.Printf("Type: %s\n", output.Config.Type)
+		out.KeyValue("Type", output.Config.Type)
 	}
 	if output.Config.RepositoryURL != "" {
-		fmt.Printf("Repository URL: %s\n", output.Config.RepositoryURL)
+		out.KeyValue("Repository URL", output.Config.RepositoryURL)
 	}
 	if output.Config.ServerURL != "" {
-		fmt.Printf("Server URL: %s\n", output.Config.ServerURL)
+		out.KeyValue("Server URL", output.Config.ServerURL)
 	}
-	fmt.Println()
+	out.Newline()
 
 	// Directories
-	fmt.Println("Directories")
-	fmt.Println("-----------")
-	fmt.Printf("Config: %s\n", output.Directories.Config)
-	fmt.Printf("Cache: %s\n", output.Directories.Cache)
-	fmt.Printf("  └─ assets/\n")
-	fmt.Printf("  └─ git-repos/\n")
-	fmt.Printf("  └─ lockfiles/\n")
-	fmt.Printf("  └─ installed-state/\n")
-	fmt.Printf("Log File: %s\n", output.Directories.LogFile)
-	fmt.Println()
+	out.Section("Directories")
+	out.KeyValue("Config", output.Directories.Config)
+	out.Printf("Cache: %s\n", out.MutedText(output.Directories.Cache))
+	out.Muted("  └─ assets/")
+	out.Muted("  └─ git-repos/")
+	out.Muted("  └─ lockfiles/")
+	out.Muted("  └─ installed-state/")
+	out.KeyValue("Log File", output.Directories.LogFile)
+	out.Newline()
 
 	// Clients (using shared styled output)
-	out := ui.NewOutput(os.Stdout, os.Stderr)
 	out.Section("Detected Clients")
 	PrintClientsSection(out, output.Clients)
 
 	// Recent logs
 	if len(output.RecentLogs) > 0 {
-		fmt.Println("Recent Logs (last 5 lines)")
-		fmt.Println("--------------------------")
+		out.Section("Recent Logs (last 5 lines)")
 		for _, line := range output.RecentLogs {
-			fmt.Println(line)
+			out.Muted(line)
 		}
-		fmt.Println()
+		out.Newline()
 	}
 
 	// Assets with status
+	out.Section("Assets")
 	if len(output.Assets) > 0 {
-		fmt.Println("Assets")
-		fmt.Println("------")
 		for _, s := range output.Assets {
-			fmt.Printf("%s:\n", s.Scope)
+			out.Bold(s.Scope + ":")
 			for _, asset := range s.Assets {
 				clientsStr := ""
 				if len(asset.Clients) > 0 {
-					clientsStr = " → " + strings.Join(asset.Clients, ", ")
+					clientsStr = " → " + out.MutedText(strings.Join(asset.Clients, ", "))
 				}
 
-				// Format status indicator
-				statusStr := ""
+				// Format status indicator with color
+				var statusStr string
 				switch asset.Status {
 				case StatusInstalled:
-					statusStr = " (installed)"
+					statusStr = out.SuccessText(" (installed)")
 				case StatusOutdated:
-					statusStr = fmt.Sprintf(" (outdated: %s)", asset.InstalledVersion)
+					statusStr = out.ErrorText(fmt.Sprintf(" (outdated: %s)", asset.InstalledVersion))
 				case StatusNotInstalled:
-					statusStr = " (not installed)"
+					statusStr = out.MutedText(" (not installed)")
 				case StatusOrphaned:
-					statusStr = " (removed from lock file)"
+					statusStr = out.ErrorText(" (removed from lock file)")
 				}
 
-				fmt.Printf("  - %s (%s) [%s]%s%s\n", asset.Name, asset.Version, asset.Type, statusStr, clientsStr)
+				out.Printf("  - %s %s [%s]%s%s\n",
+					out.BoldText(asset.Name),
+					out.MutedText("("+asset.Version+")"),
+					out.EmphasisText(asset.Type),
+					statusStr,
+					clientsStr)
 			}
-			fmt.Println()
+			out.Newline()
 		}
 	} else {
-		fmt.Println("Assets")
-		fmt.Println("------")
-		fmt.Println("No assets found.")
-		fmt.Println()
+		out.Muted("No assets found.")
+		out.Newline()
 	}
 
 	return nil
