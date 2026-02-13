@@ -94,7 +94,9 @@ func (h *RuleHandler) buildInstructionContent(content string) string {
 	// Description
 	description := h.getDescription()
 	if description != "" {
-		sb.WriteString(fmt.Sprintf("description: %s\n", description))
+		// Quote and escape description to handle YAML special characters
+		escapedDesc := strings.ReplaceAll(description, `"`, `\"`)
+		sb.WriteString(fmt.Sprintf("description: \"%s\"\n", escapedDesc))
 	}
 
 	sb.WriteString("---\n\n")

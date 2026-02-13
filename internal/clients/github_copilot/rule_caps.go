@@ -119,7 +119,9 @@ func generateRuleFile(cfg *metadata.RuleConfig, body string) []byte {
 		description = cfg.Description
 	}
 	if description != "" {
-		buf.WriteString(fmt.Sprintf("description: %s\n", description))
+		// Quote and escape description to handle YAML special characters
+		escapedDesc := strings.ReplaceAll(description, `"`, `\"`)
+		buf.WriteString(fmt.Sprintf("description: \"%s\"\n", escapedDesc))
 	}
 
 	buf.WriteString("---\n\n")
