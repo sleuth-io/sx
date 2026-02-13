@@ -15,12 +15,6 @@
 
 <br>
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/sleuth-io/sx/main/install.sh | bash
-```
-
-<br>
-
 </div>
 
 ![Demo](docs/demo.gif)
