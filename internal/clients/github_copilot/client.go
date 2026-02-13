@@ -40,12 +40,22 @@ func NewClient() *Client {
 	}
 }
 
-// TODO: IsInstalled always returns true for GitHub Copilot.
-// Copilot spans many editors (VS Code, JetBrains, Neovim, CLI), so there is no
-// single reliable way to detect it. Users control whether Copilot is targeted
-// via the enabledClients configuration.
+// IsInstalled checks if GitHub Copilot is installed by looking for ~/.copilot directory.
+// This prevents sx from creating .copilot directories for users who don't use Copilot.
+// The ~/.copilot directory is created when Copilot CLI is installed or configured.
+// Note: Copilot spans many editors (VS Code, JetBrains, Neovim, CLI), so this is a
+// best-effort check. Users can also control targeting via enabledClients configuration.
 func (c *Client) IsInstalled() bool {
-	return true
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+
+	configDir := filepath.Join(home, ".copilot")
+	if stat, err := os.Stat(configDir); err == nil {
+		return stat.IsDir()
+	}
+	return false
 }
 
 // GetVersion returns the GitHub Copilot version (not available)
