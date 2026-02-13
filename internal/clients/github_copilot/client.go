@@ -194,6 +194,12 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 
 // determineTargetBase returns the installation directory based on scope.
 // Global scope uses ~/.copilot/ while repo/path scopes use .github/ under the repo.
+//
+// Path-scoped skills are installed to {repoRoot}/{path}/.github/ to match Claude Code's
+// behavior. Note that by default, VS Code's Copilot only discovers skills from
+// {repoRoot}/.github/skills/. For path-scoped skills to be discovered, users must
+// configure the chat.agentSkillsLocations setting in VS Code to include the subdirectory
+// path (e.g., "src/backend/.github/skills").
 func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error) {
 	home, _ := os.UserHomeDir()
 
@@ -206,12 +212,12 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 		}
 		return filepath.Join(scope.RepoRoot, ".github"), nil
 	case clients.ScopePath:
-		// Copilot only discovers assets from {repoRoot}/.github/,
-		// not from subdirectory .github/ folders. Remap to repo root.
+		// Install to {repoRoot}/{path}/.github/ to match Claude Code behavior.
+		// Users may need to configure chat.agentSkillsLocations in VS Code for discovery.
 		if scope.RepoRoot == "" {
 			return "", errors.New("path-scoped install requires RepoRoot but none provided (not in a git repository?)")
 		}
-		return filepath.Join(scope.RepoRoot, ".github"), nil
+		return filepath.Join(scope.RepoRoot, scope.Path, ".github"), nil
 	default:
 		return filepath.Join(home, ".copilot"), nil
 	}

@@ -277,15 +277,15 @@ paths = ["src/backend"]
 		t.Fatalf("Failed to install: %v", err)
 	}
 
-	// Copilot remaps path scopes to repo root since it only discovers
-	// assets from {repoRoot}/.github/, not subdirectory .github/ folders
-	repoSkillDir := filepath.Join(projectDir, ".github", "skills", "path-skill")
-	env.AssertFileExists(repoSkillDir)
-	env.AssertFileExists(filepath.Join(repoSkillDir, "SKILL.md"))
-
-	// Verify skill was NOT installed to the subdirectory path
+	// Path-scoped skills go to {repoRoot}/{path}/.github/skills/
+	// (same behavior as Claude Code)
 	pathSkillDir := filepath.Join(projectDir, "src", "backend", ".github", "skills", "path-skill")
-	env.AssertFileNotExists(pathSkillDir)
+	env.AssertFileExists(pathSkillDir)
+	env.AssertFileExists(filepath.Join(pathSkillDir, "SKILL.md"))
+
+	// Verify skill was NOT installed to repo root
+	repoSkillDir := filepath.Join(projectDir, ".github", "skills", "path-skill")
+	env.AssertFileNotExists(repoSkillDir)
 
 	// Verify skill was NOT installed globally
 	globalSkillDir := filepath.Join(env.HomeDir, ".copilot", "skills", "path-skill")
