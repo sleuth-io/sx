@@ -1,4 +1,4 @@
-.PHONY: help build build-darwin build-darwin-amd64 install test lint format clean release demo
+.PHONY: help build build-darwin build-darwin-amd64 install test lint format clean release demo sx
 
 # Default target
 help: ## Show this help message
@@ -81,6 +81,13 @@ release: ## Create release with goreleaser (requires goreleaser)
 	@goreleaser release --clean
 
 # Development targets
+sx: build ## Build and run sx (usage: make sx install)
+	@$(BUILD_DIR)/$(BINARY_NAME) $(filter-out $@,$(MAKECMDGOALS))
+
+# Catch-all target to allow passing args to sx (eg: make sx install)
+%:
+	@:
+
 run: build ## Build and run the binary
 	@$(BUILD_DIR)/$(BINARY_NAME)
 
