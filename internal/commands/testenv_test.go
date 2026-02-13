@@ -18,22 +18,23 @@ type TestEnv struct {
 }
 
 // NewTestEnv creates a new isolated test environment.
-// It sets HOME and XDG environment variables and creates ~/.claude/settings.json
-// so that the Claude Code client is detected.
+// It sets HOME and XDG environment variables and creates the necessary
+// directories so that Claude Code and GitHub Copilot clients are detected.
 func NewTestEnv(t *testing.T) *TestEnv {
 	t.Helper()
 
 	tempDir := t.TempDir()
 	homeDir := filepath.Join(tempDir, "home")
 	claudeDir := filepath.Join(homeDir, ".claude")
+	copilotDir := filepath.Join(homeDir, ".copilot")
 
 	// Set environment for sandboxing
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 
-	// Create directories
-	for _, dir := range []string{homeDir, claudeDir} {
+	// Create directories for both Claude Code and GitHub Copilot
+	for _, dir := range []string{homeDir, claudeDir, copilotDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatalf("Failed to create directory %s: %v", dir, err)
 		}

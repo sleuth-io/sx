@@ -21,6 +21,7 @@ import (
 	"github.com/sleuth-io/sx/internal/gitutil"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/scope"
+	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/utils"
 )
 
@@ -261,6 +262,8 @@ func getClientDirectory(clientID string) string {
 		return filepath.Join(home, ".claude")
 	case "cursor":
 		return filepath.Join(home, ".cursor")
+	case "github-copilot":
+		return filepath.Join(home, ".copilot")
 	default:
 		return ""
 	}
@@ -588,28 +591,10 @@ func printText(output ConfigOutput, showAll bool) error {
 	fmt.Printf("Log File: %s\n", output.Directories.LogFile)
 	fmt.Println()
 
-	// Clients
-	fmt.Println("Detected Clients")
-	fmt.Println("----------------")
-	for _, client := range output.Clients {
-		fmt.Printf("%s:\n", client.Name)
-		installedStr := "no"
-		if client.Installed {
-			installedStr = "yes"
-		}
-		fmt.Printf("  Installed: %s\n", installedStr)
-		if client.Version != "" {
-			fmt.Printf("  Version: %s\n", client.Version)
-		}
-		fmt.Printf("  Directory: %s\n", client.Directory)
-		hooksStr := "no"
-		if client.HooksInstalled {
-			hooksStr = "yes"
-		}
-		fmt.Printf("  Hooks: %s\n", hooksStr)
-		fmt.Printf("  Supports: %s\n", strings.Join(client.Supports, ", "))
-		fmt.Println()
-	}
+	// Clients (using shared styled output)
+	out := ui.NewOutput(os.Stdout, os.Stderr)
+	out.Section("Detected Clients")
+	PrintClientsSection(out, output.Clients)
 
 	// Recent logs
 	if len(output.RecentLogs) > 0 {

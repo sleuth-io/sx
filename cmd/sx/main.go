@@ -91,6 +91,7 @@ Capture what your best AI users have learned and spread it to everyone automatic
 	rootCmd.AddCommand(commands.NewReportUsageCommand())
 	rootCmd.AddCommand(commands.NewServeCommand())
 	rootCmd.AddCommand(commands.NewConfigCommand())
+	rootCmd.AddCommand(commands.NewClientsCommand())
 	rootCmd.AddCommand(commands.NewVaultCommand())
 
 	if err := rootCmd.Execute(); err != nil {

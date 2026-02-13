@@ -31,8 +31,9 @@ func TestGitHubCopilotIntegration(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 
 	// Create home and working directories
-	// Note: no .copilot directory needed — IsInstalled() always returns true
-	for _, dir := range []string{homeDir, workingDir, skillDir} {
+	// Create .copilot directory so IsInstalled() returns true for GitHub Copilot
+	copilotDir := filepath.Join(homeDir, ".copilot")
+	for _, dir := range []string{homeDir, copilotDir, workingDir, skillDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatalf("Failed to create directory %s: %v", dir, err)
 		}
@@ -104,7 +105,6 @@ prompt-file = "SKILL.md"
 	// Step 4: Verify installation to GitHub Copilot (global scope → ~/.copilot/)
 	t.Log("Step 4: Verify installation to GitHub Copilot")
 
-	copilotDir := filepath.Join(homeDir, ".copilot")
 	installedSkillDir := filepath.Join(copilotDir, "skills", "test-skill")
 	if _, err := os.Stat(installedSkillDir); os.IsNotExist(err) {
 		t.Fatalf("Skill was not installed to: %s", installedSkillDir)
