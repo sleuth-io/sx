@@ -71,8 +71,8 @@ func (c *Client) GetVersion() string {
 	lines := strings.Split(string(output), "\n")
 	if len(lines) > 0 {
 		line := strings.TrimSpace(lines[0])
-		if strings.HasPrefix(line, "GitHub Copilot CLI ") {
-			return strings.TrimPrefix(line, "GitHub Copilot CLI ")
+		if version, found := strings.CutPrefix(line, "GitHub Copilot CLI "); found {
+			return version
 		}
 		return line
 	}
