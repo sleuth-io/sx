@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/bootstrap"
@@ -58,8 +60,22 @@ func (c *Client) IsInstalled() bool {
 	return false
 }
 
-// GetVersion returns the GitHub Copilot version (not available)
+// GetVersion returns the GitHub Copilot version by running `copilot version`
 func (c *Client) GetVersion() string {
+	cmd := exec.Command("copilot", "version")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	// Output format: "GitHub Copilot CLI X.Y.Z\n..."
+	lines := strings.Split(string(output), "\n")
+	if len(lines) > 0 {
+		line := strings.TrimSpace(lines[0])
+		if strings.HasPrefix(line, "GitHub Copilot CLI ") {
+			return strings.TrimPrefix(line, "GitHub Copilot CLI ")
+		}
+		return line
+	}
 	return ""
 }
 
