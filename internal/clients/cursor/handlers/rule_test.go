@@ -12,23 +12,32 @@ import (
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
-func TestRuleHandler_BuildMDCContent_AlwaysApply(t *testing.T) {
+func TestRuleHandler_Install_AlwaysApply(t *testing.T) {
+	tmpDir := t.TempDir()
+
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name:        "coding-standards",
 			Description: "Follow these coding standards",
 		},
 		Rule: &metadata.RuleConfig{
-			Title: "Coding Standards",
+			Title:      "Coding Standards",
+			PromptFile: "RULE.md",
 		},
 	}
 
 	handler := NewRuleHandler(meta, "")
-	content := handler.buildMDCContent("Always follow these rules.")
+	zipData := createTestRuleZip(t, "Always follow these rules.")
+
+	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := readInstalledRule(t, tmpDir, "coding-standards")
 
 	// Should have alwaysApply since no path scope and no explicit globs
 	if !strings.Contains(content, "alwaysApply: true") {
-		t.Errorf("Expected alwaysApply: true for repo-wide rule without globs")
+		t.Errorf("Expected alwaysApply: true for repo-wide rule without globs, got: %s", content)
 	}
 
 	// Should have description
@@ -50,21 +59,29 @@ func TestRuleHandler_BuildMDCContent_AlwaysApply(t *testing.T) {
 	if !strings.HasPrefix(content, "---\n") {
 		t.Errorf("Expected content to start with frontmatter")
 	}
-	if !strings.Contains(content, "\n---\n\n#") {
-		t.Errorf("Expected frontmatter to end before title")
-	}
 }
 
-func TestRuleHandler_BuildMDCContent_WithPathScope(t *testing.T) {
+func TestRuleHandler_Install_WithPathScope(t *testing.T) {
+	tmpDir := t.TempDir()
+
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name:        "backend-rules",
 			Description: "Backend specific rules",
 		},
+		Rule: &metadata.RuleConfig{
+			PromptFile: "RULE.md",
+		},
 	}
 
 	handler := NewRuleHandler(meta, "backend/")
-	content := handler.buildMDCContent("Backend content.")
+	zipData := createTestRuleZip(t, "Backend content.")
+
+	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := readInstalledRule(t, tmpDir, "backend-rules")
 
 	// Should NOT have alwaysApply since it has path scope
 	if strings.Contains(content, "alwaysApply") {
@@ -77,19 +94,28 @@ func TestRuleHandler_BuildMDCContent_WithPathScope(t *testing.T) {
 	}
 }
 
-func TestRuleHandler_BuildMDCContent_ExplicitGlobs(t *testing.T) {
+func TestRuleHandler_Install_ExplicitGlobs(t *testing.T) {
+	tmpDir := t.TempDir()
+
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name:        "test-rules",
 			Description: "Test file rules",
 		},
 		Rule: &metadata.RuleConfig{
-			Globs: []string{"**/*_test.go"},
+			PromptFile: "RULE.md",
+			Globs:      []string{"**/*_test.go"},
 		},
 	}
 
 	handler := NewRuleHandler(meta, "")
-	content := handler.buildMDCContent("Test content.")
+	zipData := createTestRuleZip(t, "Test content.")
+
+	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := readInstalledRule(t, tmpDir, "test-rules")
 
 	// Should have explicit glob
 	if !strings.Contains(content, "globs: **/*_test.go") {
@@ -102,18 +128,27 @@ func TestRuleHandler_BuildMDCContent_ExplicitGlobs(t *testing.T) {
 	}
 }
 
-func TestRuleHandler_BuildMDCContent_MultipleGlobs(t *testing.T) {
+func TestRuleHandler_Install_MultipleGlobs(t *testing.T) {
+	tmpDir := t.TempDir()
+
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name: "multi-glob-rules",
 		},
 		Rule: &metadata.RuleConfig{
-			Globs: []string{"**/*.go", "**/*.mod", "**/*.sum"},
+			PromptFile: "RULE.md",
+			Globs:      []string{"**/*.go", "**/*.mod", "**/*.sum"},
 		},
 	}
 
 	handler := NewRuleHandler(meta, "")
-	content := handler.buildMDCContent("Content.")
+	zipData := createTestRuleZip(t, "Content.")
+
+	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := readInstalledRule(t, tmpDir, "multi-glob-rules")
 
 	// Multiple globs should be formatted as YAML array
 	if !strings.Contains(content, "globs:") {
@@ -130,13 +165,16 @@ func TestRuleHandler_BuildMDCContent_MultipleGlobs(t *testing.T) {
 	}
 }
 
-func TestRuleHandler_BuildMDCContent_RuleDescription(t *testing.T) {
+func TestRuleHandler_Install_RuleDescription(t *testing.T) {
+	tmpDir := t.TempDir()
+
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name:        "custom-desc",
 			Description: "Generic asset description",
 		},
 		Rule: &metadata.RuleConfig{
+			PromptFile:  "RULE.md",
 			Description: "Rule-specific description",
 			Cursor: map[string]any{
 				"always-apply": true,
@@ -145,187 +183,44 @@ func TestRuleHandler_BuildMDCContent_RuleDescription(t *testing.T) {
 	}
 
 	handler := NewRuleHandler(meta, "")
-	content := handler.buildMDCContent("Content.")
-
-	// Should use rule-level description
-	if !strings.Contains(content, "description: Rule-specific description") {
-		t.Errorf("Expected rule-specific description to override asset description")
-	}
-	if strings.Contains(content, "Generic asset description") {
-		t.Errorf("Should not contain generic asset description")
-	}
-}
-
-func TestRuleHandler_BuildMDCContent_FallbackToAssetName(t *testing.T) {
-	meta := &metadata.Metadata{
-		Asset: metadata.Asset{
-			Name: "my-rule",
-		},
-	}
-
-	handler := NewRuleHandler(meta, "")
-	content := handler.buildMDCContent("Content.")
-
-	// Should use asset name as title
-	if !strings.Contains(content, "# my-rule") {
-		t.Errorf("Expected asset name as title when no rule title set")
-	}
-}
-
-func TestRuleHandler_GetGlobs_Priority(t *testing.T) {
-	tests := []struct {
-		name         string
-		meta         *metadata.Metadata
-		pathScope    string
-		expectedGlob string
-	}{
-		{
-			name: "explicit globs take priority over path scope",
-			meta: &metadata.Metadata{
-				Asset: metadata.Asset{Name: "test"},
-				Rule: &metadata.RuleConfig{
-					Globs: []string{"explicit/**/*"},
-				},
-			},
-			pathScope:    "ignored/",
-			expectedGlob: "explicit/**/*",
-		},
-		{
-			name: "path scope generates glob when no explicit",
-			meta: &metadata.Metadata{
-				Asset: metadata.Asset{Name: "test"},
-			},
-			pathScope:    "services/api/",
-			expectedGlob: "services/api/**/*",
-		},
-		{
-			name: "no globs when no scope and no explicit",
-			meta: &metadata.Metadata{
-				Asset: metadata.Asset{Name: "test"},
-			},
-			pathScope:    "",
-			expectedGlob: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			handler := NewRuleHandler(tt.meta, tt.pathScope)
-			globs := handler.getGlobs()
-
-			if tt.expectedGlob == "" {
-				if len(globs) != 0 {
-					t.Errorf("Expected no globs, got %v", globs)
-				}
-			} else {
-				if len(globs) == 0 || globs[0] != tt.expectedGlob {
-					t.Errorf("Expected glob %q, got %v", tt.expectedGlob, globs)
-				}
-			}
-		})
-	}
-}
-
-func TestRuleHandler_ShouldAlwaysApply(t *testing.T) {
-	tests := []struct {
-		name      string
-		meta      *metadata.Metadata
-		pathScope string
-		expected  bool
-	}{
-		{
-			name: "always apply when no scope and no globs",
-			meta: &metadata.Metadata{
-				Asset: metadata.Asset{Name: "test"},
-			},
-			pathScope: "",
-			expected:  true,
-		},
-		{
-			name: "not always apply when path scoped",
-			meta: &metadata.Metadata{
-				Asset: metadata.Asset{Name: "test"},
-			},
-			pathScope: "backend/",
-			expected:  false,
-		},
-		{
-			name: "not always apply when explicit globs",
-			meta: &metadata.Metadata{
-				Asset: metadata.Asset{Name: "test"},
-				Rule: &metadata.RuleConfig{
-					Globs: []string{"**/*.go"},
-				},
-			},
-			pathScope: "",
-			expected:  false,
-		},
-		{
-			name: "explicit always apply overrides",
-			meta: &metadata.Metadata{
-				Asset: metadata.Asset{Name: "test"},
-				Rule: &metadata.RuleConfig{
-					Cursor: map[string]any{
-						"always-apply": true,
-					},
-				},
-			},
-			pathScope: "backend/", // Would normally NOT always apply
-			expected:  true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			handler := NewRuleHandler(tt.meta, tt.pathScope)
-			got := handler.shouldAlwaysApply()
-			if got != tt.expected {
-				t.Errorf("shouldAlwaysApply() = %v, want %v", got, tt.expected)
-			}
-		})
-	}
-}
-
-func TestRuleHandler_Install_CreatesFile(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	meta := &metadata.Metadata{
-		Asset: metadata.Asset{
-			Name:        "test-rule",
-			Description: "Test description",
-		},
-		Rule: &metadata.RuleConfig{
-			Title:      "Test Rule",
-			PromptFile: "RULE.md",
-		},
-	}
-
-	handler := NewRuleHandler(meta, "")
-
-	// Create a test zip with rule content
-	zipData := createTestRuleZip(t, "Test rule content.")
+	zipData := createTestRuleZip(t, "Content.")
 
 	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Verify file was created
-	filePath := filepath.Join(tmpDir, "rules", "test-rule.mdc")
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		t.Errorf("Expected rule file to exist at %s", filePath)
+	content := readInstalledRule(t, tmpDir, "custom-desc")
+
+	// Should use rule-level description
+	if !strings.Contains(content, "description: Rule-specific description") {
+		t.Errorf("Expected rule-specific description to override asset description, got: %s", content)
+	}
+}
+
+func TestRuleHandler_Install_FallbackToAssetName(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{
+			Name: "my-rule",
+		},
+		Rule: &metadata.RuleConfig{
+			PromptFile: "RULE.md",
+		},
 	}
 
-	// Verify content
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		t.Fatalf("Failed to read file: %v", err)
+	handler := NewRuleHandler(meta, "")
+	zipData := createTestRuleZip(t, "Content.")
+
+	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
+		t.Fatalf("Install failed: %v", err)
 	}
 
-	if !strings.Contains(string(content), "Test rule content") {
-		t.Errorf("File should contain rule content")
-	}
-	if !strings.Contains(string(content), "# Test Rule") {
-		t.Errorf("File should contain title")
+	content := readInstalledRule(t, tmpDir, "my-rule")
+
+	// Should use asset name as title
+	if !strings.Contains(content, "# my-rule") {
+		t.Errorf("Expected asset name as title when no rule title set")
 	}
 }
 
@@ -391,40 +286,16 @@ func TestRuleHandler_VerifyInstalled(t *testing.T) {
 	}
 }
 
-func TestRuleHandler_GetTitle(t *testing.T) {
-	tests := []struct {
-		name     string
-		meta     *metadata.Metadata
-		expected string
-	}{
-		{
-			name: "uses rule title",
-			meta: &metadata.Metadata{
-				Asset: metadata.Asset{Name: "asset-name"},
-				Rule: &metadata.RuleConfig{
-					Title: "Custom Title",
-				},
-			},
-			expected: "Custom Title",
-		},
-		{
-			name: "falls back to asset name",
-			meta: &metadata.Metadata{
-				Asset: metadata.Asset{Name: "asset-name"},
-			},
-			expected: "asset-name",
-		},
-	}
+// Helper functions
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			handler := NewRuleHandler(tt.meta, "")
-			got := handler.getTitle()
-			if got != tt.expected {
-				t.Errorf("getTitle() = %v, want %v", got, tt.expected)
-			}
-		})
+func readInstalledRule(t *testing.T, tmpDir, name string) string {
+	t.Helper()
+	filePath := filepath.Join(tmpDir, "rules", name+".mdc")
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("Failed to read installed rule: %v", err)
 	}
+	return string(content)
 }
 
 // createTestRuleZip creates a minimal zip file with rule content

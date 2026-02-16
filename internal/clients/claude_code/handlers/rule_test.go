@@ -12,15 +12,26 @@ import (
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
-func TestRuleHandler_BuildRuleContent_NoGlobs(t *testing.T) {
+func TestRuleHandler_Install_NoGlobs(t *testing.T) {
+	tmpDir := t.TempDir()
+
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name: "test-rule",
 		},
+		Rule: &metadata.RuleConfig{
+			PromptFile: "RULE.md",
+		},
 	}
 
 	handler := NewRuleHandler(meta, nil)
-	content := handler.buildRuleContent("Follow these rules.")
+	zipData := createTestRuleZip(t, "Follow these rules.")
+
+	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := readInstalledRule(t, tmpDir, "test-rule")
 
 	// Should not have frontmatter since no globs or description
 	if strings.HasPrefix(content, "---\n") {
@@ -29,7 +40,7 @@ func TestRuleHandler_BuildRuleContent_NoGlobs(t *testing.T) {
 
 	// Should have title as heading
 	if !strings.Contains(content, "# test-rule") {
-		t.Errorf("Expected title as heading")
+		t.Errorf("Expected title as heading, got: %s", content)
 	}
 
 	// Should have content
@@ -38,20 +49,29 @@ func TestRuleHandler_BuildRuleContent_NoGlobs(t *testing.T) {
 	}
 }
 
-func TestRuleHandler_BuildRuleContent_WithGlobs(t *testing.T) {
+func TestRuleHandler_Install_WithGlobs(t *testing.T) {
+	tmpDir := t.TempDir()
+
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name:        "go-rules",
 			Description: "Go coding standards",
 		},
 		Rule: &metadata.RuleConfig{
-			Title: "Go Rules",
-			Globs: []string{"**/*.go"},
+			Title:      "Go Rules",
+			PromptFile: "RULE.md",
+			Globs:      []string{"**/*.go"},
 		},
 	}
 
 	handler := NewRuleHandler(meta, nil)
-	content := handler.buildRuleContent("Write clean Go code.")
+	zipData := createTestRuleZip(t, "Write clean Go code.")
+
+	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := readInstalledRule(t, tmpDir, "go-rules")
 
 	// Should have frontmatter
 	if !strings.HasPrefix(content, "---\n") {
@@ -82,18 +102,27 @@ func TestRuleHandler_BuildRuleContent_WithGlobs(t *testing.T) {
 	}
 }
 
-func TestRuleHandler_BuildRuleContent_MultipleGlobs(t *testing.T) {
+func TestRuleHandler_Install_MultipleGlobs(t *testing.T) {
+	tmpDir := t.TempDir()
+
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name: "multi-glob-rules",
 		},
 		Rule: &metadata.RuleConfig{
-			Globs: []string{"**/*.go", "**/*.mod", "**/*.sum"},
+			PromptFile: "RULE.md",
+			Globs:      []string{"**/*.go", "**/*.mod", "**/*.sum"},
 		},
 	}
 
 	handler := NewRuleHandler(meta, nil)
-	content := handler.buildRuleContent("Content.")
+	zipData := createTestRuleZip(t, "Content.")
+
+	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := readInstalledRule(t, tmpDir, "multi-glob-rules")
 
 	// Multiple globs should be formatted as YAML array
 	if !strings.Contains(content, "paths:") {
@@ -110,16 +139,27 @@ func TestRuleHandler_BuildRuleContent_MultipleGlobs(t *testing.T) {
 	}
 }
 
-func TestRuleHandler_BuildRuleContent_DescriptionOnly(t *testing.T) {
+func TestRuleHandler_Install_DescriptionOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name:        "desc-only",
 			Description: "Just a description",
 		},
+		Rule: &metadata.RuleConfig{
+			PromptFile: "RULE.md",
+		},
 	}
 
 	handler := NewRuleHandler(meta, nil)
-	content := handler.buildRuleContent("Content.")
+	zipData := createTestRuleZip(t, "Content.")
+
+	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := readInstalledRule(t, tmpDir, "desc-only")
 
 	// Should have frontmatter with just description
 	if !strings.HasPrefix(content, "---\n") {
@@ -134,18 +174,27 @@ func TestRuleHandler_BuildRuleContent_DescriptionOnly(t *testing.T) {
 	}
 }
 
-func TestRuleHandler_BuildRuleContent_ContentAlreadyHasHeading(t *testing.T) {
+func TestRuleHandler_Install_ContentAlreadyHasHeading(t *testing.T) {
+	tmpDir := t.TempDir()
+
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{
 			Name: "has-heading",
 		},
 		Rule: &metadata.RuleConfig{
-			Title: "Custom Title",
+			Title:      "Custom Title",
+			PromptFile: "RULE.md",
 		},
 	}
 
 	handler := NewRuleHandler(meta, nil)
-	content := handler.buildRuleContent("# Existing Heading\n\nContent here.")
+	zipData := createTestRuleZip(t, "# Existing Heading\n\nContent here.")
+
+	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := readInstalledRule(t, tmpDir, "has-heading")
 
 	// Should NOT add a duplicate heading since content already has one
 	if strings.Contains(content, "# Custom Title") {
@@ -153,90 +202,6 @@ func TestRuleHandler_BuildRuleContent_ContentAlreadyHasHeading(t *testing.T) {
 	}
 	if !strings.Contains(content, "# Existing Heading") {
 		t.Errorf("Should preserve existing heading")
-	}
-}
-
-func TestRuleHandler_Install_CreatesFile(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	meta := &metadata.Metadata{
-		Asset: metadata.Asset{
-			Name:        "test-rule",
-			Description: "Test description",
-		},
-		Rule: &metadata.RuleConfig{
-			Title:      "Test Rule",
-			PromptFile: "RULE.md",
-		},
-	}
-
-	handler := NewRuleHandler(meta, nil)
-
-	// Create a test zip with rule content
-	zipData := createTestRuleZip(t, "Test rule content.")
-
-	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
-		t.Fatalf("Install failed: %v", err)
-	}
-
-	// Verify file was created in rules/ directory
-	filePath := filepath.Join(tmpDir, "rules", "test-rule.md")
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		t.Errorf("Expected rule file to exist at %s", filePath)
-	}
-
-	// Verify content
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		t.Fatalf("Failed to read file: %v", err)
-	}
-
-	if !strings.Contains(string(content), "Test rule content") {
-		t.Errorf("File should contain rule content")
-	}
-	if !strings.Contains(string(content), "# Test Rule") {
-		t.Errorf("File should contain title")
-	}
-}
-
-func TestRuleHandler_Install_WithGlobs(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	meta := &metadata.Metadata{
-		Asset: metadata.Asset{
-			Name:        "go-rules",
-			Description: "Go coding standards",
-		},
-		Rule: &metadata.RuleConfig{
-			Title:      "Go Rules",
-			PromptFile: "RULE.md",
-			Globs:      []string{"**/*.go"},
-		},
-	}
-
-	handler := NewRuleHandler(meta, nil)
-	zipData := createTestRuleZip(t, "Write clean Go code.")
-
-	if err := handler.Install(context.TODO(), zipData, tmpDir); err != nil {
-		t.Fatalf("Install failed: %v", err)
-	}
-
-	// Verify file was created
-	filePath := filepath.Join(tmpDir, "rules", "go-rules.md")
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		t.Fatalf("Failed to read file: %v", err)
-	}
-
-	// Should have frontmatter with paths
-	if !strings.HasPrefix(string(content), "---\n") {
-		t.Errorf("Expected frontmatter")
-	}
-	if !strings.Contains(string(content), "paths:") {
-		t.Errorf("Expected paths in frontmatter")
-	}
-	if !strings.Contains(string(content), "**/*.go") {
-		t.Errorf("Expected glob pattern")
 	}
 }
 
@@ -317,52 +282,6 @@ func TestRuleHandler_VerifyInstalled(t *testing.T) {
 	}
 }
 
-func TestRuleHandler_GetTitle(t *testing.T) {
-	tests := []struct {
-		name     string
-		meta     *metadata.Metadata
-		expected string
-	}{
-		{
-			name: "uses rule title when set",
-			meta: &metadata.Metadata{
-				Asset: metadata.Asset{Name: "asset-name"},
-				Rule: &metadata.RuleConfig{
-					Title: "Custom Title",
-				},
-			},
-			expected: "Custom Title",
-		},
-		{
-			name: "falls back to asset name",
-			meta: &metadata.Metadata{
-				Asset: metadata.Asset{Name: "asset-name"},
-			},
-			expected: "asset-name",
-		},
-		{
-			name: "falls back when title is empty",
-			meta: &metadata.Metadata{
-				Asset: metadata.Asset{Name: "asset-name"},
-				Rule: &metadata.RuleConfig{
-					Title: "",
-				},
-			},
-			expected: "asset-name",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			handler := NewRuleHandler(tt.meta, nil)
-			got := handler.getTitle()
-			if got != tt.expected {
-				t.Errorf("getTitle() = %v, want %v", got, tt.expected)
-			}
-		})
-	}
-}
-
 func TestRuleHandler_GetInstallPath(t *testing.T) {
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{Name: "test"},
@@ -373,6 +292,18 @@ func TestRuleHandler_GetInstallPath(t *testing.T) {
 	if handler.GetInstallPath() != ".claude/rules/" {
 		t.Errorf("GetInstallPath() = %q, want %q", handler.GetInstallPath(), ".claude/rules/")
 	}
+}
+
+// Helper functions
+
+func readInstalledRule(t *testing.T, tmpDir, name string) string {
+	t.Helper()
+	filePath := filepath.Join(tmpDir, "rules", name+".md")
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("Failed to read installed rule: %v", err)
+	}
+	return string(content)
 }
 
 // createTestRuleZip creates a minimal zip file with rule content

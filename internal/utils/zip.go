@@ -447,6 +447,59 @@ func normalizeZipForComparison(zipData []byte) ([]byte, error) {
 	return ReplaceFileInZip(zipData, "metadata.toml", normalized)
 }
 
+// ReadZipFileWithFallback tries to read files from zip in order, returning the first one found.
+func ReadZipFileWithFallback(zipData []byte, files ...string) ([]byte, error) {
+	for _, file := range files {
+		content, err := ReadZipFile(zipData, file)
+		if err == nil {
+			return content, nil
+		}
+	}
+	return nil, fmt.Errorf("none of the files found in zip: %v", files)
+}
+
+// ExtractFileFromZip reads a file from zip data, applies an optional transform, and writes it to destPath.
+// This is a convenience function that combines ReadZipFile + transform + write.
+// The caller is responsible for any validation before calling this function.
+func ExtractFileFromZip(zipData []byte, srcFile string, destPath string, transform func([]byte) []byte) error {
+	content, err := ReadZipFile(zipData, srcFile)
+	if err != nil {
+		return err
+	}
+	return WriteWithTransform(destPath, content, transform)
+}
+
+// ExtractFileFromZipWithFallback is like ExtractFileFromZip but tries multiple source files.
+func ExtractFileFromZipWithFallback(zipData []byte, srcFiles []string, destPath string, transform func([]byte) []byte) error {
+	content, err := ReadZipFileWithFallback(zipData, srcFiles...)
+	if err != nil {
+		return err
+	}
+	return WriteWithTransform(destPath, content, transform)
+}
+
+// WriteWithTransform writes content to destPath, applying an optional transform first.
+// Creates parent directories if needed.
+func WriteWithTransform(destPath string, content []byte, transform func([]byte) []byte) error {
+	if transform != nil {
+		content = transform(content)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	return os.WriteFile(destPath, content, 0644)
+}
+
+// RemoveFileIfExists removes a file if it exists, returning nil if already removed.
+func RemoveFileIfExists(filePath string) error {
+	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // stripVersionFromTOML zeroes out the [asset].version field in TOML bytes
 // so version differences don't affect content hashing.
 func stripVersionFromTOML(data []byte) []byte {
