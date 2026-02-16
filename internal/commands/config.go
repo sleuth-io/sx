@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -262,6 +263,17 @@ func gatherClientInfo() []ClientInfo {
 		info.HooksInstalled = checkHooksInstalled(client.ID(), info.Directory)
 		clientInfos = append(clientInfos, info)
 	}
+
+	// Sort by installed (true first), then by name
+	slices.SortFunc(clientInfos, func(a, b ClientInfo) int {
+		if a.Installed != b.Installed {
+			if a.Installed {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
 
 	return clientInfos
 }
