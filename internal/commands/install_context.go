@@ -92,11 +92,17 @@ func buildScopeFromGitContext(gitCtx *gitutil.GitContext) *scope.Scope {
 	}
 }
 
-// detectTargetClients finds and filters clients based on config
+// detectTargetClients finds and filters clients based on config.
+// It includes both detected clients and force-enabled clients (even if not detected).
 func detectTargetClients(cfg *config.Config, status *components.Status) ([]clients.Client, error) {
 	registry := clients.Global()
 	detectedClients := registry.DetectInstalled()
 	targetClients := filterClientsByConfig(cfg, detectedClients)
+
+	// Also include force-enabled clients that weren't detected.
+	// This allows users to explicitly enable clients like GitHub Copilot
+	// even if we can't detect them (e.g., VS Code extension only).
+	targetClients = addForceEnabledClients(cfg, registry, targetClients)
 
 	if len(targetClients) == 0 {
 		if len(detectedClients) > 0 {
@@ -109,6 +115,28 @@ func detectTargetClients(cfg *config.Config, status *components.Status) ([]clien
 	}
 
 	return targetClients, nil
+}
+
+// addForceEnabledClients adds force-enabled clients that weren't already in the list.
+// This allows users to target clients that aren't detected automatically.
+func addForceEnabledClients(cfg *config.Config, registry *clients.Registry, existing []clients.Client) []clients.Client {
+	// Build set of existing client IDs
+	existingIDs := make(map[string]bool)
+	for _, c := range existing {
+		existingIDs[c.ID()] = true
+	}
+
+	// Add any force-enabled clients not already present
+	for _, id := range cfg.ForceEnabledClients {
+		if existingIDs[id] {
+			continue // Already in the list
+		}
+		if client, err := registry.Get(id); err == nil {
+			existing = append(existing, client)
+		}
+	}
+
+	return existing
 }
 
 // filterAssetsByScope filters assets to those applicable to the current context
