@@ -69,14 +69,15 @@ type DirectoryInfo struct {
 }
 
 type ClientInfo struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Installed      bool     `json:"installed"`
-	Enabled        bool     `json:"enabled"`
-	Version        string   `json:"version,omitempty"`
-	Directory      string   `json:"directory"`
-	HooksInstalled bool     `json:"hooksInstalled"`
-	Supports       []string `json:"supports"`
+	ID                   string   `json:"id"`
+	Name                 string   `json:"name"`
+	Installed            bool     `json:"installed"`
+	Enabled              bool     `json:"enabled"`
+	ExplicitlyConfigured bool     `json:"explicitlyConfigured"` // true if enabledClients is set in config
+	Version              string   `json:"version,omitempty"`
+	Directory            string   `json:"directory"`
+	HooksInstalled       bool     `json:"hooksInstalled"`
+	Supports             []string `json:"supports"`
 }
 
 type ScopeAssets struct {
@@ -237,17 +238,26 @@ func gatherClientInfo() []ClientInfo {
 
 	// Load config to check enabled clients
 	cfg, _ := config.Load()
+	explicitlyConfigured := cfg != nil && len(cfg.EnabledClients) > 0
 
 	allClients := clients.Global().GetAll()
 	for _, client := range allClients {
+		installed := client.IsInstalled()
+		// Only call GetVersion() if installed. Some CLIs (e.g., `copilot version`)
+		// create config directories as a side effect, which we want to avoid.
+		var version string
+		if installed {
+			version = strings.TrimSpace(client.GetVersion())
+		}
 		info := ClientInfo{
-			ID:        client.ID(),
-			Name:      client.DisplayName(),
-			Installed: client.IsInstalled(),
-			Enabled:   cfg == nil || cfg.IsClientEnabled(client.ID()),
-			Version:   strings.TrimSpace(client.GetVersion()),
-			Directory: getClientDirectory(client.ID()),
-			Supports:  getClientSupportedTypes(client),
+			ID:                   client.ID(),
+			Name:                 client.DisplayName(),
+			Installed:            installed,
+			Enabled:              cfg == nil || cfg.IsClientEnabled(client.ID()),
+			ExplicitlyConfigured: explicitlyConfigured,
+			Version:              version,
+			Directory:            getClientDirectory(client.ID()),
+			Supports:             getClientSupportedTypes(client),
 		}
 		info.HooksInstalled = checkHooksInstalled(client.ID(), info.Directory)
 		clientInfos = append(clientInfos, info)

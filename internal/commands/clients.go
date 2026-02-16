@@ -199,9 +199,9 @@ func PrintClientsSection(out *ui.Output, clientInfos []ClientInfo) {
 			out.Muted("  Status: not detected")
 		}
 
-		if !info.Enabled {
+		if info.ExplicitlyConfigured && !info.Enabled {
 			out.Muted("  ⚠ Disabled in config")
-		} else if !info.Installed {
+		} else if info.ExplicitlyConfigured && info.Enabled && !info.Installed {
 			out.Muted("  ⚠ Enabled in config but not detected")
 		}
 
