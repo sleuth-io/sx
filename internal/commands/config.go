@@ -72,6 +72,7 @@ type ClientInfo struct {
 	ID             string   `json:"id"`
 	Name           string   `json:"name"`
 	Installed      bool     `json:"installed"`
+	Enabled        bool     `json:"enabled"`
 	Version        string   `json:"version,omitempty"`
 	Directory      string   `json:"directory"`
 	HooksInstalled bool     `json:"hooksInstalled"`
@@ -234,12 +235,16 @@ func gatherDirectoryInfo() DirectoryInfo {
 func gatherClientInfo() []ClientInfo {
 	var clientInfos []ClientInfo
 
+	// Load config to check enabled clients
+	cfg, _ := config.Load()
+
 	allClients := clients.Global().GetAll()
 	for _, client := range allClients {
 		info := ClientInfo{
 			ID:        client.ID(),
 			Name:      client.DisplayName(),
 			Installed: client.IsInstalled(),
+			Enabled:   cfg == nil || cfg.IsClientEnabled(client.ID()),
 			Version:   strings.TrimSpace(client.GetVersion()),
 			Directory: getClientDirectory(client.ID()),
 			Supports:  getClientSupportedTypes(client),

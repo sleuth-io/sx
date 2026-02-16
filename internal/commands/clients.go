@@ -66,6 +66,12 @@ func PrintClientsSection(out *ui.Output, clientInfos []ClientInfo) {
 			out.Muted("  Status: not detected")
 		}
 
+		if !info.Enabled {
+			out.Muted("  ⚠ Disabled in config")
+		} else if !info.Installed {
+			out.Muted("  ⚠ Enabled in config but not detected")
+		}
+
 		if info.Version != "" {
 			out.Printf("  Version: %s\n", out.EmphasisText(info.Version))
 		}
