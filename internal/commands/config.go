@@ -70,15 +70,16 @@ type DirectoryInfo struct {
 }
 
 type ClientInfo struct {
-	ID                   string   `json:"id"`
-	Name                 string   `json:"name"`
-	Installed            bool     `json:"installed"`
-	Enabled              bool     `json:"enabled"`
-	ExplicitlyConfigured bool     `json:"explicitlyConfigured"` // true if enabledClients is set in config
-	Version              string   `json:"version,omitempty"`
-	Directory            string   `json:"directory"`
-	HooksInstalled       bool     `json:"hooksInstalled"`
-	Supports             []string `json:"supports"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Installed      bool     `json:"installed"`
+	Enabled        bool     `json:"enabled"`
+	ForceEnabled   bool     `json:"forceEnabled,omitempty"`  // explicitly force-enabled in config
+	ForceDisabled  bool     `json:"forceDisabled,omitempty"` // explicitly force-disabled in config
+	Version        string   `json:"version,omitempty"`
+	Directory      string   `json:"directory"`
+	HooksInstalled bool     `json:"hooksInstalled"`
+	Supports       []string `json:"supports"`
 }
 
 type ScopeAssets struct {
@@ -239,7 +240,6 @@ func gatherClientInfo() []ClientInfo {
 
 	// Load config to check enabled clients
 	cfg, _ := config.Load()
-	explicitlyConfigured := cfg != nil && len(cfg.EnabledClients) > 0
 
 	allClients := clients.Global().GetAll()
 	for _, client := range allClients {
@@ -250,15 +250,20 @@ func gatherClientInfo() []ClientInfo {
 		if installed {
 			version = strings.TrimSpace(client.GetVersion())
 		}
+
+		forceEnabled := cfg != nil && cfg.IsClientForceEnabled(client.ID())
+		forceDisabled := cfg != nil && cfg.IsClientForceDisabled(client.ID())
+
 		info := ClientInfo{
-			ID:                   client.ID(),
-			Name:                 client.DisplayName(),
-			Installed:            installed,
-			Enabled:              cfg == nil || cfg.IsClientEnabled(client.ID()),
-			ExplicitlyConfigured: explicitlyConfigured,
-			Version:              version,
-			Directory:            getClientDirectory(client.ID()),
-			Supports:             getClientSupportedTypes(client),
+			ID:            client.ID(),
+			Name:          client.DisplayName(),
+			Installed:     installed,
+			Enabled:       cfg == nil || cfg.IsClientEnabled(client.ID()),
+			ForceEnabled:  forceEnabled,
+			ForceDisabled: forceDisabled,
+			Version:       version,
+			Directory:     getClientDirectory(client.ID()),
+			Supports:      getClientSupportedTypes(client),
 		}
 		info.HooksInstalled = checkHooksInstalled(client.ID(), info.Directory)
 		clientInfos = append(clientInfos, info)

@@ -101,8 +101,8 @@ func detectTargetClients(cfg *config.Config, status *components.Status) ([]clien
 	if len(targetClients) == 0 {
 		if len(detectedClients) > 0 {
 			status.Fail("No enabled AI coding clients available")
-			return nil, fmt.Errorf("no enabled AI coding clients available (detected: %d, enabled in config: %v)",
-				len(detectedClients), cfg.EnabledClients)
+			return nil, fmt.Errorf("no enabled AI coding clients available (detected: %d, disabled in config: %v)",
+				len(detectedClients), cfg.ForceDisabledClients)
 		}
 		status.Fail("No AI coding clients detected")
 		return nil, errors.New("no AI coding clients detected")

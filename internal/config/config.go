@@ -34,9 +34,13 @@ type Config struct {
 	// - For path: file:// URL pointing to local directory (file:///path/to/repo)
 	RepositoryURL string `json:"repositoryUrl,omitempty"`
 
-	// EnabledClients is the list of client IDs that assets should be installed to.
-	// An empty/nil slice means "all detected clients" (backwards compatible default).
-	EnabledClients []string `json:"enabledClients,omitempty"`
+	// ForceEnabledClients is the list of client IDs that should always be enabled,
+	// even if not detected.
+	ForceEnabledClients []string `json:"forceEnabledClients,omitempty"`
+
+	// ForceDisabledClients is the list of client IDs that should always be disabled,
+	// even if detected.
+	ForceDisabledClients []string `json:"forceDisabledClients,omitempty"`
 }
 
 // Load loads the configuration from the config file
@@ -59,7 +63,7 @@ func Load() (*Config, error) {
 		}
 	}
 
-	return profile.ToConfig(mpc.EnabledClients), nil
+	return profile.ToConfig(mpc.ForceEnabledClients, mpc.ForceDisabledClients), nil
 }
 
 // Save saves the configuration to the config file
@@ -89,8 +93,9 @@ func SaveToProfile(cfg *Config, profileName string) error {
 	// Update the profile
 	mpc.SetProfile(profileName, ProfileFromConfig(cfg))
 
-	// Update enabled clients (global setting)
-	mpc.EnabledClients = cfg.EnabledClients
+	// Update client settings (global setting)
+	mpc.ForceEnabledClients = cfg.ForceEnabledClients
+	mpc.ForceDisabledClients = cfg.ForceDisabledClients
 
 	// If this is the first profile, make it the default
 	if mpc.DefaultProfile == "" {
@@ -169,16 +174,27 @@ func IsSilent() bool {
 }
 
 // IsClientEnabled checks if a specific client ID is enabled.
-// If EnabledClients is empty/nil, all clients are considered enabled (backwards compatible).
+// ForceDisabled takes precedence over ForceEnabled.
+// If neither, the client is enabled by default (relies on detection).
 func (c *Config) IsClientEnabled(clientID string) bool {
-	if len(c.EnabledClients) == 0 {
-		return true
+	if slices.Contains(c.ForceDisabledClients, clientID) {
+		return false
 	}
-	return slices.Contains(c.EnabledClients, clientID)
+	// ForceEnabled or default (not in either list) = enabled
+	return true
 }
 
-// GetEnabledClients returns the list of enabled client IDs.
-// Returns nil if not explicitly configured (meaning use all detected).
-func (c *Config) GetEnabledClients() []string {
-	return c.EnabledClients
+// IsClientForceEnabled checks if a client is explicitly force-enabled.
+func (c *Config) IsClientForceEnabled(clientID string) bool {
+	return slices.Contains(c.ForceEnabledClients, clientID)
+}
+
+// IsClientForceDisabled checks if a client is explicitly force-disabled.
+func (c *Config) IsClientForceDisabled(clientID string) bool {
+	return slices.Contains(c.ForceDisabledClients, clientID)
+}
+
+// HasExplicitClientConfig returns true if any force enable/disable settings exist.
+func (c *Config) HasExplicitClientConfig() bool {
+	return len(c.ForceEnabledClients) > 0 || len(c.ForceDisabledClients) > 0
 }

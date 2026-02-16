@@ -581,25 +581,16 @@ func extractAssetConfig(assetType asset.Type, meta *metadata.Metadata) map[strin
 	return config
 }
 
-// filterClientsByConfig returns only the clients that are both detected as installed
-// and enabled in the config. If EnabledClients is empty/nil, all detected clients are returned.
+// filterClientsByConfig returns clients that should receive assets based on config.
+// It filters out force-disabled clients from the detected list.
 func filterClientsByConfig(cfg *config.Config, detectedClients []clients.Client) []clients.Client {
-	if len(cfg.EnabledClients) == 0 {
-		// No restrictions - use all detected clients (backwards compatible)
-		return detectedClients
-	}
-
-	enabledMap := make(map[string]bool)
-	for _, id := range cfg.EnabledClients {
-		enabledMap[id] = true
-	}
-
 	var filtered []clients.Client
 	for _, client := range detectedClients {
-		if enabledMap[client.ID()] {
-			filtered = append(filtered, client)
+		// Skip if force-disabled
+		if cfg.IsClientForceDisabled(client.ID()) {
+			continue
 		}
+		filtered = append(filtered, client)
 	}
-
 	return filtered
 }

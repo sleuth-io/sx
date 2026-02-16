@@ -69,7 +69,7 @@ func newClientsResetCommand() *cobra.Command {
 
 func runClientsEnable(cmd *cobra.Command, args []string) error {
 	clientID := args[0]
-	out := ui.NewOutput(os.Stdout, os.Stderr)
+	out := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
 	if !clients.IsValidClientID(clientID) {
 		return fmt.Errorf("unknown client ID: %s\nValid IDs: %s", clientID, strings.Join(clients.AllClientIDs(), ", "))
@@ -80,30 +80,38 @@ func runClientsEnable(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// If enabledClients is empty, all are enabled - need to explicitly set the list
-	if len(mpc.EnabledClients) == 0 {
-		// Start with all clients enabled, then the enable is a no-op but config is explicit
-		mpc.EnabledClients = clients.AllClientIDs()
+	// Migrate old config if needed
+	if mpc.NeedsMigration() {
+		if _, err := mpc.MigrateEnabledClients(clients.AllClientIDs()); err != nil {
+			return fmt.Errorf("failed to migrate config: %w", err)
+		}
 	}
 
-	if slices.Contains(mpc.EnabledClients, clientID) {
-		out.Success(fmt.Sprintf("%s is already enabled", clientID))
+	// Check if already force-enabled
+	if slices.Contains(mpc.ForceEnabledClients, clientID) {
+		out.Success(clientID + " is already enabled")
 		return nil
 	}
 
-	mpc.EnabledClients = append(mpc.EnabledClients, clientID)
+	// Remove from ForceDisabledClients if present
+	mpc.ForceDisabledClients = slices.DeleteFunc(mpc.ForceDisabledClients, func(id string) bool {
+		return id == clientID
+	})
+
+	// Add to ForceEnabledClients
+	mpc.ForceEnabledClients = append(mpc.ForceEnabledClients, clientID)
 
 	if err := config.SaveMultiProfile(mpc); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	out.Success(fmt.Sprintf("Enabled %s", clientID))
+	out.Success("Enabled " + clientID)
 	return nil
 }
 
 func runClientsDisable(cmd *cobra.Command, args []string) error {
 	clientID := args[0]
-	out := ui.NewOutput(os.Stdout, os.Stderr)
+	out := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
 	if !clients.IsValidClientID(clientID) {
 		return fmt.Errorf("unknown client ID: %s\nValid IDs: %s", clientID, strings.Join(clients.AllClientIDs(), ", "))
@@ -114,43 +122,53 @@ func runClientsDisable(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// If enabledClients is empty, all are enabled - need to populate first
-	if len(mpc.EnabledClients) == 0 {
-		mpc.EnabledClients = clients.AllClientIDs()
+	// Migrate old config if needed
+	if mpc.NeedsMigration() {
+		if _, err := mpc.MigrateEnabledClients(clients.AllClientIDs()); err != nil {
+			return fmt.Errorf("failed to migrate config: %w", err)
+		}
 	}
 
-	if !slices.Contains(mpc.EnabledClients, clientID) {
-		out.Success(fmt.Sprintf("%s is already disabled", clientID))
+	// Check if already force-disabled
+	if slices.Contains(mpc.ForceDisabledClients, clientID) {
+		out.Success(clientID + " is already disabled")
 		return nil
 	}
 
-	// Remove the client from enabled list
-	mpc.EnabledClients = slices.DeleteFunc(mpc.EnabledClients, func(id string) bool {
+	// Remove from ForceEnabledClients if present
+	mpc.ForceEnabledClients = slices.DeleteFunc(mpc.ForceEnabledClients, func(id string) bool {
 		return id == clientID
 	})
+
+	// Add to ForceDisabledClients
+	mpc.ForceDisabledClients = append(mpc.ForceDisabledClients, clientID)
 
 	if err := config.SaveMultiProfile(mpc); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	out.Success(fmt.Sprintf("Disabled %s", clientID))
+	out.Success("Disabled " + clientID)
 	return nil
 }
 
 func runClientsReset(cmd *cobra.Command, args []string) error {
-	out := ui.NewOutput(os.Stdout, os.Stderr)
+	out := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
 	mpc, err := config.LoadMultiProfile()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	if len(mpc.EnabledClients) == 0 {
+	// Check if already at default (no force settings and no old EnabledClients)
+	if len(mpc.ForceEnabledClients) == 0 && len(mpc.ForceDisabledClients) == 0 && len(mpc.EnabledClients) == 0 {
 		out.Success("Already using default (all detected clients enabled)")
 		return nil
 	}
 
-	mpc.EnabledClients = nil
+	// Clear all client settings
+	mpc.ForceEnabledClients = nil
+	mpc.ForceDisabledClients = nil
+	mpc.EnabledClients = nil // Clear deprecated field too
 
 	if err := config.SaveMultiProfile(mpc); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
@@ -196,13 +214,13 @@ func PrintClientsSection(out *ui.Output, clientInfos []ClientInfo) {
 		if info.Installed {
 			out.SuccessItem("Status: installed")
 		} else {
-			out.Muted("  Status: not detected")
+			out.ListItem("○", "Status: not detected")
 		}
 
-		if info.ExplicitlyConfigured && !info.Enabled {
-			out.Muted("  ⚠ Disabled in config")
-		} else if info.ExplicitlyConfigured && info.Enabled && !info.Installed {
-			out.Muted("  ⚠ Enabled in config but not detected")
+		if info.ForceDisabled {
+			out.ListItem("⚠", "Disabled in config")
+		} else if info.ForceEnabled && !info.Installed {
+			out.ListItem("⚠", "Enabled in config but not detected")
 		}
 
 		if info.Version != "" {

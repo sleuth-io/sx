@@ -39,10 +39,17 @@ type MultiProfileConfig struct {
 	// Profiles is a map of profile name to profile configuration
 	Profiles map[string]*Profile `json:"profiles"`
 
-	// EnabledClients is the list of client IDs that assets should be installed to.
-	// An empty/nil slice means "all detected clients" (backwards compatible default).
-	// This is global across all profiles.
+	// EnabledClients is DEPRECATED - use ForceEnabledClients/ForceDisabledClients instead.
+	// Kept for migration purposes only.
 	EnabledClients []string `json:"enabledClients,omitempty"`
+
+	// ForceEnabledClients is the list of client IDs that should always be enabled,
+	// even if not detected. This is global across all profiles.
+	ForceEnabledClients []string `json:"forceEnabledClients,omitempty"`
+
+	// ForceDisabledClients is the list of client IDs that should always be disabled,
+	// even if detected. This is global across all profiles.
+	ForceDisabledClients []string `json:"forceDisabledClients,omitempty"`
 
 	// BootstrapOptions stores user consent for bootstrap items (hooks, MCP servers).
 	// Keyed by option key, nil/missing = yes (backwards compatible).
@@ -169,11 +176,15 @@ type backwardsCompatibleConfig struct {
 	ServerURL      string         `json:"serverUrl,omitempty"`
 	AuthToken      string         `json:"authToken,omitempty"`
 	RepositoryURL  string         `json:"repositoryUrl,omitempty"`
-	EnabledClients []string       `json:"enabledClients,omitempty"`
+	EnabledClients []string       `json:"enabledClients,omitempty"` // DEPRECATED
 
 	// New multi-profile fields
 	DefaultProfile string              `json:"defaultProfile"`
 	Profiles       map[string]*Profile `json:"profiles"`
+
+	// Client enable/disable settings (global across profiles)
+	ForceEnabledClients  []string `json:"forceEnabledClients,omitempty"`
+	ForceDisabledClients []string `json:"forceDisabledClients,omitempty"`
 
 	// Bootstrap options (global across profiles)
 	BootstrapOptions map[string]*bool `json:"bootstrapOptions,omitempty"`
@@ -194,10 +205,12 @@ func SaveMultiProfile(mpc *MultiProfileConfig) error {
 
 	// Build backwards-compatible config with active profile at top level
 	compat := backwardsCompatibleConfig{
-		DefaultProfile:   mpc.DefaultProfile,
-		Profiles:         mpc.Profiles,
-		EnabledClients:   mpc.EnabledClients,
-		BootstrapOptions: mpc.BootstrapOptions,
+		DefaultProfile:       mpc.DefaultProfile,
+		Profiles:             mpc.Profiles,
+		ForceEnabledClients:  mpc.ForceEnabledClients,
+		ForceDisabledClients: mpc.ForceDisabledClients,
+		BootstrapOptions:     mpc.BootstrapOptions,
+		// Note: EnabledClients intentionally not saved (deprecated)
 	}
 
 	// Copy active profile fields to top level for old binaries
@@ -290,14 +303,15 @@ func (mpc *MultiProfileConfig) SetDefaultProfile(name string) error {
 	return nil
 }
 
-// ToConfig converts a Profile to a Config with the given enabled clients
-func (p *Profile) ToConfig(enabledClients []string) *Config {
+// ToConfig converts a Profile to a Config with the given client settings
+func (p *Profile) ToConfig(forceEnabled, forceDisabled []string) *Config {
 	return &Config{
-		Type:           p.Type,
-		ServerURL:      p.ServerURL,
-		AuthToken:      p.AuthToken,
-		RepositoryURL:  p.RepositoryURL,
-		EnabledClients: enabledClients,
+		Type:                 p.Type,
+		ServerURL:            p.ServerURL,
+		AuthToken:            p.AuthToken,
+		RepositoryURL:        p.RepositoryURL,
+		ForceEnabledClients:  forceEnabled,
+		ForceDisabledClients: forceDisabled,
 	}
 }
 
@@ -309,4 +323,40 @@ func ProfileFromConfig(cfg *Config) *Profile {
 		AuthToken:     cfg.AuthToken,
 		RepositoryURL: cfg.RepositoryURL,
 	}
+}
+
+// MigrateEnabledClients migrates the deprecated EnabledClients field to the new
+// ForceEnabledClients/ForceDisabledClients fields. Call this with all known client IDs.
+// Returns true if migration was performed and config was saved.
+func (mpc *MultiProfileConfig) MigrateEnabledClients(allClientIDs []string) (bool, error) {
+	if len(mpc.EnabledClients) == 0 {
+		return false, nil // Nothing to migrate
+	}
+
+	// Clients NOT in EnabledClients were disabled
+	enabledSet := make(map[string]bool)
+	for _, id := range mpc.EnabledClients {
+		enabledSet[id] = true
+	}
+
+	for _, id := range allClientIDs {
+		if !enabledSet[id] {
+			mpc.ForceDisabledClients = append(mpc.ForceDisabledClients, id)
+		}
+	}
+
+	// Clear deprecated field
+	mpc.EnabledClients = nil
+
+	// Save the migrated config
+	if err := SaveMultiProfile(mpc); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// NeedsMigration returns true if the config has deprecated EnabledClients field
+func (mpc *MultiProfileConfig) NeedsMigration() bool {
+	return len(mpc.EnabledClients) > 0
 }
