@@ -256,7 +256,7 @@ source = "local"
 marketplace = "my-market"
 `,
 			expectError: true,
-			errorSubstr: "plugin manifest not found",
+			errorSubstr: "manifest file not found",
 		},
 		{
 			name: "local source with plugin.json is valid",

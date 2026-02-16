@@ -104,6 +104,7 @@ type RuleConfig struct {
 	Globs       []string       `toml:"globs,omitempty"`       // File patterns this rule applies to
 	Cursor      map[string]any `toml:"cursor,omitempty"`      // Cursor-specific settings
 	ClaudeCode  map[string]any `toml:"claude-code,omitempty"` // Claude Code-specific settings
+	Copilot     map[string]any `toml:"copilot,omitempty"`     // GitHub Copilot-specific settings
 }
 
 // metadataCompat is used for parsing old-style metadata with [artifact] section

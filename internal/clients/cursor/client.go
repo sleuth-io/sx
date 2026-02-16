@@ -21,7 +21,7 @@ import (
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
-var skillOps = dirasset.NewOperations("skills", &asset.TypeSkill)
+var skillOps = dirasset.NewOperations(handlers.DirSkills, &asset.TypeSkill)
 
 // Client implements the clients.Client interface for Cursor
 type Client struct {

@@ -18,7 +18,7 @@ import (
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
-var skillOps = dirasset.NewOperations("skills", &asset.TypeSkill)
+var skillOps = dirasset.NewOperations(handlers.DirSkills, &asset.TypeSkill)
 
 // Client implements the clients.Client interface for Claude Code
 type Client struct {
@@ -362,7 +362,7 @@ func (c *Client) ScanInstalledAssets(ctx context.Context, scope *clients.Install
 	var assets []clients.InstalledAsset
 
 	// Scan for unmanaged skills (have SKILL.md but no metadata.toml)
-	skills, err := scanUnmanagedAssets(targetBase, "skills", "SKILL.md", asset.TypeSkill)
+	skills, err := scanUnmanagedAssets(targetBase, handlers.DirSkills, "SKILL.md", asset.TypeSkill)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan skills: %w", err)
 	}
@@ -432,7 +432,7 @@ func scanUnmanagedAssets(targetBase, subdir, promptFile string, assetType asset.
 func scanUnmanagedAgentFiles(targetBase string) ([]clients.InstalledAsset, error) {
 	var assets []clients.InstalledAsset
 
-	agentsPath := filepath.Join(targetBase, "agents")
+	agentsPath := filepath.Join(targetBase, handlers.DirAgents)
 	if _, err := os.Stat(agentsPath); os.IsNotExist(err) {
 		return assets, nil
 	}
@@ -489,13 +489,13 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 	switch assetType {
 	case asset.TypeSkill:
 		// Skills are directories
-		return filepath.Join(targetBase, "skills", name), nil
+		return filepath.Join(targetBase, handlers.DirSkills, name), nil
 	case asset.TypeAgent:
 		// Agents are single .md files
-		return filepath.Join(targetBase, "agents", name+".md"), nil
+		return filepath.Join(targetBase, handlers.DirAgents, name+".md"), nil
 	case asset.TypeCommand:
 		// Commands are single .md files
-		return filepath.Join(targetBase, "commands", name+".md"), nil
+		return filepath.Join(targetBase, handlers.DirCommands, name+".md"), nil
 	default:
 		return "", fmt.Errorf("import not supported for type: %s", assetType)
 	}

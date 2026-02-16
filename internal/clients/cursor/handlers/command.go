@@ -23,7 +23,7 @@ func NewCommandHandler(meta *metadata.Metadata) *CommandHandler {
 
 // Install installs a command/skill as a Cursor slash command
 func (h *CommandHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
-	commandsDir := filepath.Join(targetBase, "commands")
+	commandsDir := filepath.Join(targetBase, DirCommands)
 	if err := os.MkdirAll(commandsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create commands directory: %w", err)
 	}
@@ -51,7 +51,7 @@ func (h *CommandHandler) Install(ctx context.Context, zipData []byte, targetBase
 
 // Remove removes a slash command from Cursor
 func (h *CommandHandler) Remove(ctx context.Context, targetBase string) error {
-	commandFile := filepath.Join(targetBase, "commands", h.metadata.Asset.Name+".md")
+	commandFile := filepath.Join(targetBase, DirCommands, h.metadata.Asset.Name+".md")
 	if err := os.Remove(commandFile); err != nil {
 		if os.IsNotExist(err) {
 			return nil // Already removed
@@ -74,7 +74,7 @@ func (h *CommandHandler) getPromptFile() string {
 
 // VerifyInstalled checks if the command is properly installed
 func (h *CommandHandler) VerifyInstalled(targetBase string) (bool, string) {
-	commandFile := filepath.Join(targetBase, "commands", h.metadata.Asset.Name+".md")
+	commandFile := filepath.Join(targetBase, DirCommands, h.metadata.Asset.Name+".md")
 	if !utils.FileExists(commandFile) {
 		return false, "command file not found"
 	}

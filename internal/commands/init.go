@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,6 +21,34 @@ import (
 	"github.com/sleuth-io/sx/internal/utils"
 	"github.com/sleuth-io/sx/internal/vault"
 )
+
+// computeDisabledClients returns the list of client IDs that should be disabled.
+// It only considers DETECTED clients - if a client isn't detected, we don't
+// add it to the disabled list (it's just not present, not explicitly disabled).
+// Returns nil if selectedClients is nil/empty (meaning all detected clients enabled),
+// or if all detected clients are in the selected list.
+func computeDisabledClients(selectedClients []string) []string {
+	// nil/empty selection means "all detected clients enabled" - no disabled list needed
+	if len(selectedClients) == 0 {
+		return nil
+	}
+
+	// Detect currently installed clients
+	registry := clients.Global()
+	detectedClients := registry.DetectInstalled()
+
+	if len(detectedClients) == 0 {
+		return nil
+	}
+
+	var disabled []string
+	for _, client := range detectedClients {
+		if !slices.Contains(selectedClients, client.ID()) {
+			disabled = append(disabled, client.ID())
+		}
+	}
+	return disabled
+}
 
 const (
 	defaultSleuthServerURL = "https://app.skills.new"
@@ -196,11 +225,12 @@ func runInitInteractive(cmd *cobra.Command, ctx context.Context, existingCfg *co
 	}
 
 	// Prompt for client selection (with existing enabled clients pre-selected)
-	var existingEnabledClients []string
+	// Compute enabled clients by inverting the disabled list
+	var existingDisabledClients []string
 	if existingCfg != nil {
-		existingEnabledClients = existingCfg.EnabledClients
+		existingDisabledClients = existingCfg.ForceDisabledClients
 	}
-	enabledClients, err := promptClientSelection(styledOut, existingEnabledClients)
+	enabledClients, err := promptClientSelection(styledOut, existingDisabledClients)
 	if err != nil {
 		return nil, err
 	}
@@ -348,10 +378,10 @@ func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL strin
 
 	// Save configuration
 	cfg := &config.Config{
-		Type:           config.RepositoryTypeSleuth,
-		RepositoryURL:  serverURL,
-		AuthToken:      tokenResp.AccessToken,
-		EnabledClients: enabledClients,
+		Type:                 config.RepositoryTypeSleuth,
+		RepositoryURL:        serverURL,
+		AuthToken:            tokenResp.AccessToken,
+		ForceDisabledClients: computeDisabledClients(enabledClients),
 	}
 
 	if err := config.Save(cfg); err != nil {
@@ -392,9 +422,9 @@ func initGitRepository(cmd *cobra.Command, ctx context.Context, enabledClients [
 func configureGitRepo(cmd *cobra.Command, ctx context.Context, repoURL string, enabledClients []string) error {
 	// Save configuration
 	cfg := &config.Config{
-		Type:           config.RepositoryTypeGit,
-		RepositoryURL:  repoURL,
-		EnabledClients: enabledClients,
+		Type:                 config.RepositoryTypeGit,
+		RepositoryURL:        repoURL,
+		ForceDisabledClients: computeDisabledClients(enabledClients),
 	}
 
 	if err := config.Save(cfg); err != nil {
@@ -433,9 +463,9 @@ func configurePathRepo(cmd *cobra.Command, ctx context.Context, repoPath string,
 
 	// Save configuration
 	cfg := &config.Config{
-		Type:           config.RepositoryTypePath,
-		RepositoryURL:  "file://" + absPath,
-		EnabledClients: enabledClients,
+		Type:                 config.RepositoryTypePath,
+		RepositoryURL:        "file://" + absPath,
+		ForceDisabledClients: computeDisabledClients(enabledClients),
 	}
 
 	if err := config.Save(cfg); err != nil {
@@ -493,8 +523,8 @@ func parseClientsFlag(clientsFlag string) ([]string, error) {
 }
 
 // promptClientSelection detects installed clients and prompts user for selection
-// existingEnabledClients can be used to pre-select previously enabled clients
-func promptClientSelection(styledOut *ui.Output, existingEnabledClients []string) ([]string, error) {
+// existingDisabledClients is the list of previously disabled clients (to pre-deselect)
+func promptClientSelection(styledOut *ui.Output, existingDisabledClients []string) ([]string, error) {
 	registry := clients.Global()
 	installedClients := registry.DetectInstalled()
 
@@ -511,10 +541,10 @@ func promptClientSelection(styledOut *ui.Output, existingEnabledClients []string
 		return []string{client.ID()}, nil
 	}
 
-	// Build set of previously enabled clients for quick lookup
-	previouslyEnabled := make(map[string]bool)
-	for _, id := range existingEnabledClients {
-		previouslyEnabled[id] = true
+	// Build set of previously disabled clients for quick lookup
+	previouslyDisabled := make(map[string]bool)
+	for _, id := range existingDisabledClients {
+		previouslyDisabled[id] = true
 	}
 
 	// Build client names list for display
@@ -525,12 +555,12 @@ func promptClientSelection(styledOut *ui.Output, existingEnabledClients []string
 	clientList := strings.Join(clientNames, ", ")
 
 	// Step 1: Ask if user wants all clients
-	// Default to "yes" if no previous config, or if all detected clients were previously enabled
-	allPreviouslyEnabled := len(existingEnabledClients) == 0
+	// Default to "yes" if no previous config (disabled list is empty), or if no detected clients were disabled
+	allPreviouslyEnabled := len(existingDisabledClients) == 0
 	if !allPreviouslyEnabled {
 		allPreviouslyEnabled = true
 		for _, client := range installedClients {
-			if !previouslyEnabled[client.ID()] {
+			if previouslyDisabled[client.ID()] {
 				allPreviouslyEnabled = false
 				break
 			}
@@ -552,11 +582,11 @@ func promptClientSelection(styledOut *ui.Output, existingEnabledClients []string
 	}
 
 	// Step 2: Show multi-select for individual client selection
-	// Pre-select based on existing config, or all if no existing config
+	// Pre-select based on existing config (enabled = not in disabled list)
 	options := make([]components.MultiSelectOption, len(installedClients))
 	for i, client := range installedClients {
-		// If we have previous config, use it; otherwise default to all selected
-		selected := len(existingEnabledClients) == 0 || previouslyEnabled[client.ID()]
+		// Selected if not in disabled list
+		selected := !previouslyDisabled[client.ID()]
 		options[i] = components.MultiSelectOption{
 			Label:    client.DisplayName(),
 			Value:    client.ID(),

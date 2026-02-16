@@ -16,7 +16,7 @@ import (
 	"github.com/sleuth-io/sx/internal/utils"
 )
 
-var mcpOps = dirasset.NewOperations("mcp-servers", &asset.TypeMCP)
+var mcpOps = dirasset.NewOperations(DirMCPServers, &asset.TypeMCP)
 
 // MCPHandler handles MCP server asset installation (both packaged and config-only)
 type MCPHandler struct {
@@ -132,7 +132,7 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 	h.removeFromLegacyMCPConfig(targetBase)
 
 	// Remove installation directory if it exists (packaged mode)
-	installDir := filepath.Join(targetBase, "mcp-servers", h.metadata.Asset.Name)
+	installDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 	if utils.IsDirectory(installDir) {
 		return mcpOps.Remove(ctx, targetBase, h.metadata.Asset.Name)
 	}
@@ -143,7 +143,7 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 // GetInstallPath returns the installation path relative to targetBase.
 // For config-only assets, checks if the directory exists on disk.
 func (h *MCPHandler) GetInstallPath() string {
-	return filepath.Join("mcp-servers", h.metadata.Asset.Name)
+	return filepath.Join(DirMCPServers, h.metadata.Asset.Name)
 }
 
 // Validate checks if the zip structure is valid for an MCP asset
@@ -319,7 +319,7 @@ func (h *MCPHandler) CanDetectInstalledState() bool {
 // For packaged assets, checks the install directory. For config-only, checks the config file.
 func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
 	// Check if install directory exists (packaged mode)
-	installDir := filepath.Join(targetBase, "mcp-servers", h.metadata.Asset.Name)
+	installDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 	if utils.IsDirectory(installDir) {
 		return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
 	}

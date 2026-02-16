@@ -10,8 +10,8 @@ import (
 
 var skillOps = dirasset.NewOperations(DirSkills, &asset.TypeSkill)
 
-// SkillHandler handles skill asset installation for Cursor
-// Skills are extracted to .cursor/skills/{name}/ (not transformed to commands)
+// SkillHandler handles skill asset installation for GitHub Copilot.
+// Skills are extracted to {targetBase}/skills/{name}/
 type SkillHandler struct {
 	metadata *metadata.Metadata
 }
@@ -21,12 +21,12 @@ func NewSkillHandler(meta *metadata.Metadata) *SkillHandler {
 	return &SkillHandler{metadata: meta}
 }
 
-// Install extracts a skill to .cursor/skills/{name}/
+// Install extracts a skill to {targetBase}/skills/{name}/
 func (h *SkillHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	return skillOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name)
 }
 
-// Remove removes a skill from .cursor/skills/
+// Remove removes a skill from {targetBase}/skills/
 func (h *SkillHandler) Remove(ctx context.Context, targetBase string) error {
 	return skillOps.Remove(ctx, targetBase, h.metadata.Asset.Name)
 }

@@ -29,8 +29,13 @@ func NewOperations(subdir string, expectedType *asset.Type) *Operations {
 	}
 }
 
-// Install extracts an asset zip to {targetBase}/{subdir}/{name}/
+// Install validates and extracts an asset zip to {targetBase}/{subdir}/{name}/
 func (o *Operations) Install(ctx context.Context, zipData []byte, targetBase string, assetName string) error {
+	// Validate zip contents before extracting
+	if err := metadata.ValidateZip(zipData, o.expectedType); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
+	}
+
 	assetDir := filepath.Join(targetBase, o.subdir, assetName)
 
 	// Remove existing installation if present

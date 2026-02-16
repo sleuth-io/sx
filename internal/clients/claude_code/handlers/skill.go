@@ -3,17 +3,15 @@ package handlers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"slices"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
 	"github.com/sleuth-io/sx/internal/metadata"
-	"github.com/sleuth-io/sx/internal/utils"
 )
 
-var skillOps = dirasset.NewOperations("skills", &asset.TypeSkill)
+var skillOps = dirasset.NewOperations(DirSkills, &asset.TypeSkill)
 
 // SkillHandler handles skill asset installation
 type SkillHandler struct {
@@ -92,11 +90,6 @@ func (h *SkillHandler) DetectUsageFromToolCall(toolName string, toolInput map[st
 
 // Install extracts and installs the skill asset
 func (h *SkillHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
-	// Validate zip structure
-	if err := h.Validate(zipData); err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-
 	return skillOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name)
 }
 
@@ -107,53 +100,7 @@ func (h *SkillHandler) Remove(ctx context.Context, targetBase string) error {
 
 // GetInstallPath returns the installation path relative to targetBase
 func (h *SkillHandler) GetInstallPath() string {
-	return filepath.Join("skills", h.metadata.Asset.Name)
-}
-
-// Validate checks if the zip structure is valid for a skill asset
-func (h *SkillHandler) Validate(zipData []byte) error {
-	// List files in zip
-	files, err := utils.ListZipFiles(zipData)
-	if err != nil {
-		return fmt.Errorf("failed to list zip files: %w", err)
-	}
-
-	// Check that metadata.toml exists
-	if !containsFile(files, "metadata.toml") {
-		return errors.New("metadata.toml not found in zip")
-	}
-
-	// Extract and validate metadata
-	metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
-	if err != nil {
-		return fmt.Errorf("failed to read metadata.toml: %w", err)
-	}
-
-	meta, err := metadata.Parse(metadataBytes)
-	if err != nil {
-		return fmt.Errorf("failed to parse metadata: %w", err)
-	}
-
-	// Validate metadata with file list
-	if err := meta.ValidateWithFiles(files); err != nil {
-		return fmt.Errorf("metadata validation failed: %w", err)
-	}
-
-	// Verify asset type matches
-	if meta.Asset.Type != asset.TypeSkill {
-		return fmt.Errorf("asset type mismatch: expected skill, got %s", meta.Asset.Type)
-	}
-
-	// Check that prompt file exists
-	if meta.Skill == nil {
-		return errors.New("[skill] section missing in metadata")
-	}
-
-	if !containsFile(files, meta.Skill.PromptFile) {
-		return fmt.Errorf("prompt file not found in zip: %s", meta.Skill.PromptFile)
-	}
-
-	return nil
+	return filepath.Join(DirSkills, h.metadata.Asset.Name)
 }
 
 // CanDetectInstalledState returns true since skills preserve metadata.toml

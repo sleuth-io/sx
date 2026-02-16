@@ -15,7 +15,7 @@ import (
 
 var mcpOps = dirasset.NewOperations(DirMCPServers, &asset.TypeMCP)
 
-// MCPHandler handles MCP asset installation for Cursor (both packaged and config-only)
+// MCPHandler handles MCP asset installation for GitHub Copilot (VS Code)
 type MCPHandler struct {
 	metadata *metadata.Metadata
 }
@@ -25,13 +25,13 @@ func NewMCPHandler(meta *metadata.Metadata) *MCPHandler {
 	return &MCPHandler{metadata: meta}
 }
 
-// Install installs an MCP asset to Cursor by updating mcp.json.
-// For packaged assets, extracts files first. For config-only, registers as-is.
+// Install installs an MCP asset to VS Code by updating .vscode/mcp.json
 func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
+	// For MCP, targetBase should be .vscode/ (not .github/)
 	mcpConfigPath := filepath.Join(targetBase, "mcp.json")
 
 	// Read existing mcp.json
-	config, err := ReadMCPConfig(mcpConfigPath)
+	config, err := readMCPConfig(mcpConfigPath)
 	if err != nil {
 		return fmt.Errorf("failed to read mcp.json: %w", err)
 	}
@@ -43,57 +43,57 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 
 	var entry map[string]any
 	if hasContent {
-		// Packaged mode: extract MCP server files
+		// Packaged mode: extract MCP server files to .vscode/mcp-servers/{name}/
 		serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 		if err := utils.ExtractZip(zipData, serverDir); err != nil {
 			return fmt.Errorf("failed to extract MCP server: %w", err)
 		}
-		entry = h.generatePackagedMCPEntry(serverDir)
+		entry = h.generateMCPEntry(serverDir)
 	} else {
-		// Config-only mode: no extraction needed
+		// Config-only mode: no extraction, register commands as-is
 		entry = h.generateConfigOnlyMCPEntry()
 	}
 
 	// Add to config
-	if config.MCPServers == nil {
-		config.MCPServers = make(map[string]any)
+	if config.Servers == nil {
+		config.Servers = make(map[string]any)
 	}
-	config.MCPServers[h.metadata.Asset.Name] = entry
+	config.Servers[h.metadata.Asset.Name] = entry
 
 	// Write updated mcp.json
-	if err := WriteMCPConfig(mcpConfigPath, config); err != nil {
+	if err := writeMCPConfig(mcpConfigPath, config); err != nil {
 		return fmt.Errorf("failed to write mcp.json: %w", err)
 	}
 
 	return nil
 }
 
-// Remove removes an MCP entry from Cursor
+// Remove removes an MCP entry from VS Code
 func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 	mcpConfigPath := filepath.Join(targetBase, "mcp.json")
 
 	// Read existing mcp.json
-	config, err := ReadMCPConfig(mcpConfigPath)
+	config, err := readMCPConfig(mcpConfigPath)
 	if err != nil {
 		return fmt.Errorf("failed to read mcp.json: %w", err)
 	}
 
 	// Remove entry
-	delete(config.MCPServers, h.metadata.Asset.Name)
+	delete(config.Servers, h.metadata.Asset.Name)
 
 	// Write updated mcp.json
-	if err := WriteMCPConfig(mcpConfigPath, config); err != nil {
+	if err := writeMCPConfig(mcpConfigPath, config); err != nil {
 		return fmt.Errorf("failed to write mcp.json: %w", err)
 	}
 
-	// Remove server directory if it exists (packaged mode)
+	// Remove server directory (if exists)
 	serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 	os.RemoveAll(serverDir) // Ignore errors if doesn't exist
 
 	return nil
 }
 
-func (h *MCPHandler) generatePackagedMCPEntry(serverDir string) map[string]any {
+func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]any {
 	mcpConfig := h.metadata.MCP
 
 	// Convert relative command paths to absolute (relative to server directory)
@@ -129,16 +129,6 @@ func (h *MCPHandler) generatePackagedMCPEntry(serverDir string) map[string]any {
 func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
 	mcpConfig := h.metadata.MCP
 
-	if mcpConfig.IsRemote() {
-		entry := map[string]any{
-			"url": mcpConfig.URL,
-		}
-		if len(mcpConfig.Env) > 0 {
-			entry["env"] = mcpConfig.Env
-		}
-		return entry
-	}
-
 	// For config-only MCPs, commands are external (npx, docker, etc.)
 	// No path conversion needed
 	args := make([]any, len(mcpConfig.Args))
@@ -159,15 +149,15 @@ func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
 	return entry
 }
 
-// MCPConfig represents Cursor's mcp.json structure
-type MCPConfig struct {
-	MCPServers map[string]any `json:"mcpServers"`
+// mcpConfig represents VS Code's .vscode/mcp.json structure
+type mcpConfig struct {
+	Servers map[string]any `json:"servers"`
 }
 
-// ReadMCPConfig reads Cursor's mcp.json file
-func ReadMCPConfig(path string) (*MCPConfig, error) {
-	config := &MCPConfig{
-		MCPServers: make(map[string]any),
+// readMCPConfig reads VS Code's mcp.json file
+func readMCPConfig(path string) (*mcpConfig, error) {
+	config := &mcpConfig{
+		Servers: make(map[string]any),
 	}
 
 	data, err := os.ReadFile(path)
@@ -185,8 +175,13 @@ func ReadMCPConfig(path string) (*MCPConfig, error) {
 	return config, nil
 }
 
-// WriteMCPConfig writes Cursor's mcp.json file
-func WriteMCPConfig(path string, config *MCPConfig) error {
+// writeMCPConfig writes VS Code's mcp.json file
+func writeMCPConfig(path string, config *mcpConfig) error {
+	// Ensure directory exists
+	if err := utils.EnsureDir(filepath.Dir(path)); err != nil {
+		return err
+	}
+
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err
@@ -195,25 +190,7 @@ func WriteMCPConfig(path string, config *MCPConfig) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// VerifyInstalled checks if the MCP server is properly installed.
-// For packaged assets, checks the install directory. For config-only, checks mcp.json.
+// VerifyInstalled checks if the MCP server is properly installed
 func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
-	// Check if install directory exists (packaged mode)
-	installDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
-	if utils.IsDirectory(installDir) {
-		return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
-	}
-
-	// Config-only mode: check mcp.json for server entry
-	mcpConfigPath := filepath.Join(targetBase, "mcp.json")
-	config, err := ReadMCPConfig(mcpConfigPath)
-	if err != nil {
-		return false, "failed to read mcp.json: " + err.Error()
-	}
-
-	if _, exists := config.MCPServers[h.metadata.Asset.Name]; !exists {
-		return false, "MCP server not registered"
-	}
-
-	return true, "installed"
+	return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
 }

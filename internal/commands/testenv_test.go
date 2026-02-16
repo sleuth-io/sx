@@ -18,22 +18,23 @@ type TestEnv struct {
 }
 
 // NewTestEnv creates a new isolated test environment.
-// It sets HOME and XDG environment variables and creates ~/.claude/settings.json
-// so that the Claude Code client is detected.
+// It sets HOME and XDG environment variables and creates the necessary
+// directories so that Claude Code and GitHub Copilot clients are detected.
 func NewTestEnv(t *testing.T) *TestEnv {
 	t.Helper()
 
 	tempDir := t.TempDir()
 	homeDir := filepath.Join(tempDir, "home")
 	claudeDir := filepath.Join(homeDir, ".claude")
+	copilotDir := filepath.Join(homeDir, ".copilot")
 
 	// Set environment for sandboxing
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 
-	// Create directories
-	for _, dir := range []string{homeDir, claudeDir} {
+	// Create directories for both Claude Code and GitHub Copilot
+	for _, dir := range []string{homeDir, claudeDir, copilotDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatalf("Failed to create directory %s: %v", dir, err)
 		}
@@ -280,4 +281,120 @@ manifest-file = ".claude-plugin/plugin.json"
 	e.WriteFile(filepath.Join(pluginDir, "README.md"), "# "+name)
 
 	return pluginDir
+}
+
+// AddCommandToVault adds a command asset to the vault directory.
+// Returns the command source directory path.
+func (e *TestEnv) AddCommandToVault(vaultDir, name, version, content string) string {
+	e.t.Helper()
+
+	commandDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "command"
+version = "%s"
+description = "Test command %s"
+
+[command]
+prompt-file = "COMMAND.md"
+`, name, version, name)
+
+	e.WriteFile(filepath.Join(commandDir, "metadata.toml"), metadata)
+	e.WriteFile(filepath.Join(commandDir, "COMMAND.md"), content)
+
+	return commandDir
+}
+
+// AddAgentToVault adds an agent asset to the vault directory.
+// Returns the agent source directory path.
+func (e *TestEnv) AddAgentToVault(vaultDir, name, version, content string) string {
+	e.t.Helper()
+
+	agentDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "agent"
+version = "%s"
+description = "Test agent %s"
+
+[agent]
+prompt-file = "AGENT.md"
+`, name, version, name)
+
+	e.WriteFile(filepath.Join(agentDir, "metadata.toml"), metadata)
+	e.WriteFile(filepath.Join(agentDir, "AGENT.md"), content)
+
+	return agentDir
+}
+
+// formatArgsArray formats a slice of strings as a TOML array string.
+func formatArgsArray(args []string) string {
+	var sb strings.Builder
+	sb.WriteString("[")
+	for i, arg := range args {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(fmt.Sprintf("%q", arg))
+	}
+	sb.WriteString("]")
+	return sb.String()
+}
+
+// AddMCPToVault adds an MCP server asset to the vault directory.
+// Returns the MCP source directory path.
+func (e *TestEnv) AddMCPToVault(vaultDir, name, version, command string, args []string) string {
+	e.t.Helper()
+
+	mcpDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	// Build args array string
+	argsStr := formatArgsArray(args)
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "mcp"
+version = "%s"
+description = "Test MCP server %s"
+
+[mcp]
+command = "%s"
+args = %s
+`, name, version, name, command, argsStr)
+
+	e.WriteFile(filepath.Join(mcpDir, "metadata.toml"), metadata)
+	// MCP servers typically have a main script or binary
+	e.WriteFile(filepath.Join(mcpDir, "server.js"), "// MCP server placeholder")
+
+	return mcpDir
+}
+
+// AddMCPRemoteToVault adds an MCP-Remote asset to the vault directory.
+// MCP-Remote has no server files, just configuration for a remote server.
+// Returns the MCP-Remote source directory path.
+func (e *TestEnv) AddMCPRemoteToVault(vaultDir, name, version, command string, args []string) string {
+	e.t.Helper()
+
+	mcpDir := e.MkdirAll(filepath.Join(vaultDir, "assets", name, version))
+
+	// Build args array string
+	argsStr := formatArgsArray(args)
+
+	metadata := fmt.Sprintf(`[asset]
+name = "%s"
+type = "mcp-remote"
+version = "%s"
+description = "Test MCP-Remote server %s"
+
+[mcp]
+command = "%s"
+args = %s
+`, name, version, name, command, argsStr)
+
+	e.WriteFile(filepath.Join(mcpDir, "metadata.toml"), metadata)
+	// MCP-Remote has no server files, just metadata
+
+	return mcpDir
 }

@@ -33,6 +33,11 @@ func NewOperations(subdir string, expectedType *asset.Type) *Operations {
 // Install extracts a prompt file from zip and installs it as {targetBase}/{subdir}/{name}.md
 // Also writes a companion metadata file as {name}-metadata.toml
 func (o *Operations) Install(ctx context.Context, zipData []byte, targetBase string, assetName string, promptFile string) error {
+	// Validate zip contents before extracting
+	if err := metadata.ValidateZip(zipData, o.expectedType); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
+	}
+
 	// Read the prompt file from zip
 	promptData, err := utils.ReadZipFile(zipData, promptFile)
 	if err != nil {
