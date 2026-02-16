@@ -42,12 +42,17 @@ func NewClient() *Client {
 	}
 }
 
-// IsInstalled checks if GitHub Copilot is installed by looking for ~/.copilot directory.
+// IsInstalled checks if GitHub Copilot is installed by looking for known Copilot directories.
 // This prevents sx from creating .copilot directories for users who don't use Copilot.
-// The ~/.copilot directory is created when Copilot CLI is installed or configured.
 // Note: Copilot spans many editors (VS Code, JetBrains, Neovim, CLI), so this is a
 // best-effort check. Users can also control targeting via enabledClients configuration.
 func (c *Client) IsInstalled() bool {
+	return c.hasCopilotCLIConfig() || c.getVSCodeCopilotExtensionVersion() != ""
+}
+
+// hasCopilotCLIConfig checks if the ~/.copilot directory exists.
+// This directory is created when Copilot CLI is installed or configured.
+func (c *Client) hasCopilotCLIConfig() bool {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return false
@@ -60,8 +65,56 @@ func (c *Client) IsInstalled() bool {
 	return false
 }
 
-// GetVersion returns the GitHub Copilot version by running `copilot version`
+// getVSCodeCopilotExtensionVersion returns the version of the GitHub Copilot VS Code extension.
+// It looks for extension directories matching ~/.vscode/extensions/github.copilot-* or
+// ~/.vscode/extensions/github.copilot-chat-* and extracts the version from the folder name.
+// Returns empty string if no extension is found.
+func (c *Client) getVSCodeCopilotExtensionVersion() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	extensionsDir := filepath.Join(home, ".vscode", "extensions")
+
+	// Check for github.copilot-<version> first (main extension)
+	pattern := filepath.Join(extensionsDir, "github.copilot-*")
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		return ""
+	}
+
+	// Extract version from the first match
+	// Folder names: github.copilot-1.234.0 or github.copilot-chat-0.37.5
+	for _, match := range matches {
+		base := filepath.Base(match)
+		// Try github.copilot-chat- first (longer prefix)
+		if version, found := strings.CutPrefix(base, "github.copilot-chat-"); found {
+			return version
+		}
+		// Then try github.copilot-
+		if version, found := strings.CutPrefix(base, "github.copilot-"); found {
+			return version
+		}
+	}
+
+	return ""
+}
+
+// GetVersion returns the GitHub Copilot version.
+// It first tries the CLI (`copilot version`), then falls back to VS Code extension version.
 func (c *Client) GetVersion() string {
+	if version := c.getCLIVersion(); version != "" {
+		return version
+	}
+	if version := c.getVSCodeCopilotExtensionVersion(); version != "" {
+		return "vscode-ext:" + version
+	}
+	return ""
+}
+
+// getCLIVersion returns the Copilot CLI version by running `copilot version`.
+func (c *Client) getCLIVersion() string {
 	cmd := exec.Command("copilot", "version")
 	output, err := cmd.Output()
 	if err != nil {
