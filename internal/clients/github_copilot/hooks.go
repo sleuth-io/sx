@@ -32,11 +32,10 @@ func installBootstrap(opts []bootstrap.Option) error {
 	if installHooks {
 		repoRoot := findGitRoot()
 		if repoRoot == "" {
-			log.Warn("skipping Copilot hooks: not in a git repository (Copilot CLI only supports workspace-level hooks in .github/hooks/)")
-		} else {
-			if err := installCopilotHooks(repoRoot, opts); err != nil {
-				return err
-			}
+			return fmt.Errorf("cannot install Copilot hooks: not in a git repository (Copilot CLI only supports workspace-level hooks in .github/hooks/)")
+		}
+		if err := installCopilotHooks(repoRoot, opts); err != nil {
+			return err
 		}
 	}
 
@@ -85,7 +84,7 @@ func installCopilotHooks(repoRoot string, opts []bootstrap.Option) error {
 	if bootstrap.ContainsKey(opts, bootstrap.SessionHookKey) {
 		installHook := "sx install --hook-mode --client=github-copilot"
 		if !hasHookWithCommand(config.Hooks["sessionStart"], installHook) {
-			// Remove old sx/skills install hooks first
+			// Remove old hooks: "sx install" (old format) and "skills install" (pre-rename, tool was called "skills")
 			config.Hooks["sessionStart"] = removeHooksWithPrefix(config.Hooks["sessionStart"], "sx install", "skills install")
 			config.Hooks["sessionStart"] = append(config.Hooks["sessionStart"], CopilotHookEntry{
 				Type:       "command",
@@ -100,7 +99,7 @@ func installCopilotHooks(repoRoot string, opts []bootstrap.Option) error {
 	if bootstrap.ContainsKey(opts, bootstrap.AnalyticsHookKey) {
 		reportHook := "sx report-usage --client=github-copilot"
 		if !hasHookWithCommand(config.Hooks["postToolUse"], reportHook) {
-			// Remove old sx/skills report-usage hooks first
+			// Remove old hooks: "sx report-usage" (old format) and "skills report-usage" (pre-rename, tool was called "skills")
 			config.Hooks["postToolUse"] = removeHooksWithPrefix(config.Hooks["postToolUse"], "sx report-usage", "skills report-usage")
 			config.Hooks["postToolUse"] = append(config.Hooks["postToolUse"], CopilotHookEntry{
 				Type:       "command",
@@ -176,10 +175,11 @@ func installMCPServerFromConfig(homeDir string, config *bootstrap.MCPServerConfi
 	log.Info("MCP server installed", "server", config.Name, "location", "~/.copilot/mcp-config.json")
 
 	// Also install to ~/.vscode/mcp.json if .vscode/ exists (VS Code Copilot)
+	// This is optional - VS Code users get MCP support, but failure here shouldn't block Copilot CLI
 	vscodeDir := filepath.Join(homeDir, ".vscode")
 	if stat, err := os.Stat(vscodeDir); err == nil && stat.IsDir() {
 		if err := handlers.AddMCPServer(vscodeDir, config.Name, serverConfig); err != nil {
-			log.Warn("failed to install MCP server to .vscode", "error", err)
+			log.Warn("failed to install MCP server to VS Code (MCP will only work in Copilot CLI)", "error", err)
 		} else {
 			log.Info("MCP server installed", "server", config.Name, "location", "~/.vscode/mcp.json")
 		}

@@ -110,7 +110,34 @@ func loadMultiProfileConfig(data []byte) (*MultiProfileConfig, error) {
 	if mpc.Profiles == nil {
 		mpc.Profiles = make(map[string]*Profile)
 	}
+	// Migrate old bootstrap option keys to new consolidated keys
+	migrateBootstrapKeys(&mpc)
 	return &mpc, nil
+}
+
+// migrateBootstrapKeys migrates old client-specific bootstrap keys to the new shared keys.
+// Old keys like "cursor_session_hook" and "copilot_session_hook" are migrated to "session_hook".
+func migrateBootstrapKeys(mpc *MultiProfileConfig) {
+	if mpc.BootstrapOptions == nil {
+		return
+	}
+
+	// Map of old keys to new keys
+	migrations := map[string]string{
+		"cursor_session_hook":   "session_hook",
+		"copilot_session_hook":  "session_hook",
+		"copilot_analytics_hook": "analytics_hook",
+	}
+
+	for oldKey, newKey := range migrations {
+		if val, ok := mpc.BootstrapOptions[oldKey]; ok {
+			// Only migrate if the new key isn't already set
+			if _, exists := mpc.BootstrapOptions[newKey]; !exists {
+				mpc.BootstrapOptions[newKey] = val
+			}
+			delete(mpc.BootstrapOptions, oldKey)
+		}
+	}
 }
 
 // migrateOldConfig converts an old single-profile config to multi-profile format
