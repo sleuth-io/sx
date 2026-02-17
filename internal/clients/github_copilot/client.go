@@ -378,11 +378,12 @@ func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.Inst
 }
 
 // GetBootstrapOptions returns bootstrap options for GitHub Copilot.
-// This includes the SessionStart hook for auto-update and PostToolUse hook for analytics.
+// This includes hooks for auto-update/analytics and MCP server for Sleuth AI tools.
 func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	return []bootstrap.Option{
 		bootstrap.CopilotSessionStartHook,
 		bootstrap.CopilotAnalyticsHook,
+		bootstrap.SleuthAIQueryMCP(),
 	}
 }
 

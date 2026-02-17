@@ -280,9 +280,13 @@ func (c *Client) EnsureAssetSupport(ctx context.Context, scope *clients.InstallS
 }
 
 // GetBootstrapOptions returns bootstrap options for Claude Code.
-// This includes session hook (auto-update) and analytics hook (usage tracking).
+// This includes hooks for auto-update/analytics and MCP server for Sleuth AI tools.
 func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
-	return []bootstrap.Option{bootstrap.SessionHook, bootstrap.AnalyticsHook}
+	return []bootstrap.Option{
+		bootstrap.SessionHook,
+		bootstrap.AnalyticsHook,
+		bootstrap.SleuthAIQueryMCP(),
+	}
 }
 
 // InstallBootstrap installs Claude Code infrastructure (hooks and MCP servers)
