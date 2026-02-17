@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients"
 	github_copilot "github.com/sleuth-io/sx/internal/clients/github_copilot"
 	"github.com/sleuth-io/sx/internal/clients/github_copilot/handlers"
@@ -1295,5 +1296,94 @@ func TestGitHubCopilotBootstrapIdempotent(t *testing.T) {
 	count := strings.Count(string(content), "sx install --hook-mode --client=github-copilot")
 	if count != 1 {
 		t.Errorf("Expected exactly 1 hook entry, found %d. Content: %s", count, content)
+	}
+}
+
+// TestGitHubCopilotBootstrapMCPInstall tests that InstallBootstrap creates
+// ~/.copilot/mcp-config.json when given an MCP option.
+func TestGitHubCopilotBootstrapMCPInstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	// Create a git repo in TempDir for findGitRoot() to work
+	repoDir := filepath.Join(env.TempDir, "repo")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0755); err != nil {
+		t.Fatalf("Failed to create git directory: %v", err)
+	}
+	if err := os.Chdir(repoDir); err != nil {
+		t.Fatalf("Failed to chdir to repo: %v", err)
+	}
+
+	client := github_copilot.NewClient()
+
+	// Install bootstrap with MCP option
+	opts := []bootstrap.Option{bootstrap.SleuthAIQueryMCP()}
+	err := client.InstallBootstrap(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Failed to install bootstrap: %v", err)
+	}
+
+	// Verify MCP config was created at ~/.copilot/mcp-config.json
+	copilotDir := filepath.Join(env.HomeDir, ".copilot")
+	mcpConfigPath := filepath.Join(copilotDir, "mcp-config.json")
+	env.AssertFileExists(mcpConfigPath)
+
+	// Read and verify content
+	content, err := os.ReadFile(mcpConfigPath)
+	if err != nil {
+		t.Fatalf("Failed to read mcp-config.json: %v", err)
+	}
+
+	// Verify it uses mcpServers key (Copilot CLI format, not "servers")
+	if !strings.Contains(string(content), `"mcpServers"`) {
+		t.Errorf("mcp-config.json should use mcpServers key, got: %s", content)
+	}
+
+	// Verify sx server is configured
+	if !strings.Contains(string(content), `"sx"`) {
+		t.Errorf("mcp-config.json should contain sx server entry, got: %s", content)
+	}
+
+	// Verify it has the serve command
+	if !strings.Contains(string(content), `"serve"`) {
+		t.Errorf("mcp-config.json should contain serve arg, got: %s", content)
+	}
+}
+
+// TestGitHubCopilotBootstrapMCPUninstall tests that UninstallBootstrap removes
+// the MCP server from ~/.copilot/mcp-config.json.
+func TestGitHubCopilotBootstrapMCPUninstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	// Create a git repo
+	repoDir := filepath.Join(env.TempDir, "repo")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0755); err != nil {
+		t.Fatalf("Failed to create git directory: %v", err)
+	}
+	if err := os.Chdir(repoDir); err != nil {
+		t.Fatalf("Failed to chdir to repo: %v", err)
+	}
+
+	client := github_copilot.NewClient()
+	opts := []bootstrap.Option{bootstrap.SleuthAIQueryMCP()}
+
+	// First install
+	if err := client.InstallBootstrap(context.Background(), opts); err != nil {
+		t.Fatalf("Failed to install bootstrap: %v", err)
+	}
+
+	// Verify MCP config exists
+	copilotDir := filepath.Join(env.HomeDir, ".copilot")
+	mcpConfigPath := filepath.Join(copilotDir, "mcp-config.json")
+	env.AssertFileExists(mcpConfigPath)
+
+	// Now uninstall
+	if err := client.UninstallBootstrap(context.Background(), opts); err != nil {
+		t.Fatalf("Failed to uninstall bootstrap: %v", err)
+	}
+
+	// Verify sx server was removed from config
+	content, err := os.ReadFile(mcpConfigPath)
+	if err == nil && strings.Contains(string(content), `"sx"`) {
+		t.Errorf("mcp-config.json should not contain sx server after uninstall, got: %s", content)
 	}
 }
