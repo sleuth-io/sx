@@ -124,8 +124,8 @@ func migrateBootstrapKeys(mpc *MultiProfileConfig) {
 
 	// Map of old keys to new keys
 	migrations := map[string]string{
-		"cursor_session_hook":   "session_hook",
-		"copilot_session_hook":  "session_hook",
+		"cursor_session_hook":    "session_hook",
+		"copilot_session_hook":   "session_hook",
 		"copilot_analytics_hook": "analytics_hook",
 	}
 

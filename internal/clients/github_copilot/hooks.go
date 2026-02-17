@@ -2,6 +2,7 @@ package github_copilot
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,7 +33,7 @@ func installBootstrap(opts []bootstrap.Option) error {
 	if installHooks {
 		repoRoot := findGitRoot()
 		if repoRoot == "" {
-			return fmt.Errorf("cannot install Copilot hooks: not in a git repository (Copilot CLI only supports workspace-level hooks in .github/hooks/)")
+			return errors.New("cannot install Copilot hooks: not in a git repository (Copilot CLI only supports workspace-level hooks in .github/hooks/)")
 		}
 		if err := installCopilotHooks(repoRoot, opts); err != nil {
 			return err

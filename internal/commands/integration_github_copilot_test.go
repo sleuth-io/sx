@@ -1349,6 +1349,67 @@ func TestGitHubCopilotBootstrapMCPInstall(t *testing.T) {
 	}
 }
 
+// TestGitHubCopilotBootstrapMCPDualTarget tests that InstallBootstrap creates
+// MCP config in both ~/.copilot/mcp-config.json AND ~/.vscode/mcp.json when
+// the .vscode directory exists.
+func TestGitHubCopilotBootstrapMCPDualTarget(t *testing.T) {
+	env := NewTestEnv(t)
+
+	// Create a git repo
+	repoDir := filepath.Join(env.TempDir, "repo")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0755); err != nil {
+		t.Fatalf("Failed to create git directory: %v", err)
+	}
+	if err := os.Chdir(repoDir); err != nil {
+		t.Fatalf("Failed to chdir to repo: %v", err)
+	}
+
+	// Create .vscode directory to trigger dual-target installation
+	vscodeDir := filepath.Join(env.HomeDir, ".vscode")
+	if err := os.MkdirAll(vscodeDir, 0755); err != nil {
+		t.Fatalf("Failed to create .vscode directory: %v", err)
+	}
+
+	client := github_copilot.NewClient()
+	opts := []bootstrap.Option{bootstrap.SleuthAIQueryMCP()}
+
+	// Install bootstrap
+	if err := client.InstallBootstrap(context.Background(), opts); err != nil {
+		t.Fatalf("Failed to install bootstrap: %v", err)
+	}
+
+	// Verify MCP config in ~/.copilot/mcp-config.json (Copilot CLI format)
+	copilotDir := filepath.Join(env.HomeDir, ".copilot")
+	copilotMCPPath := filepath.Join(copilotDir, "mcp-config.json")
+	env.AssertFileExists(copilotMCPPath)
+
+	copilotContent, err := os.ReadFile(copilotMCPPath)
+	if err != nil {
+		t.Fatalf("Failed to read copilot mcp-config.json: %v", err)
+	}
+	if !strings.Contains(string(copilotContent), `"mcpServers"`) {
+		t.Errorf("Copilot config should use mcpServers key, got: %s", copilotContent)
+	}
+	if !strings.Contains(string(copilotContent), `"sx"`) {
+		t.Errorf("Copilot config should contain sx server, got: %s", copilotContent)
+	}
+
+	// Verify MCP config in ~/.vscode/mcp.json (VS Code format)
+	vscodeMCPPath := filepath.Join(vscodeDir, "mcp.json")
+	env.AssertFileExists(vscodeMCPPath)
+
+	vscodeContent, err := os.ReadFile(vscodeMCPPath)
+	if err != nil {
+		t.Fatalf("Failed to read vscode mcp.json: %v", err)
+	}
+	if !strings.Contains(string(vscodeContent), `"servers"`) {
+		t.Errorf("VS Code config should use servers key, got: %s", vscodeContent)
+	}
+	if !strings.Contains(string(vscodeContent), `"sx"`) {
+		t.Errorf("VS Code config should contain sx server, got: %s", vscodeContent)
+	}
+}
+
 // TestGitHubCopilotBootstrapMCPUninstall tests that UninstallBootstrap removes
 // the MCP server from ~/.copilot/mcp-config.json.
 func TestGitHubCopilotBootstrapMCPUninstall(t *testing.T) {
