@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/clients"
 	github_copilot "github.com/sleuth-io/sx/internal/clients/github_copilot"
+	"github.com/sleuth-io/sx/internal/clients/github_copilot/handlers"
 )
 
 func init() {
@@ -1141,5 +1143,157 @@ path = "assets/keeper-skill/1.0.0"
 	}
 	if strings.Contains(string(mcpContent), "temp-remote") {
 		t.Errorf("mcp.json should not contain 'temp-remote' after uninstall, got: %s", mcpContent)
+	}
+}
+
+// TestGitHubCopilotBootstrapInstall tests that bootstrap hooks are installed
+// to .github/hooks/sx.json when enabled (Copilot CLI format).
+func TestGitHubCopilotBootstrapInstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	// Create a git repo in TempDir for the hooks to be installed
+	repoDir := filepath.Join(env.TempDir, "repo")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0755); err != nil {
+		t.Fatalf("Failed to create git directory: %v", err)
+	}
+	// Change to repo dir so findGitRoot() works
+	if err := os.Chdir(repoDir); err != nil {
+		t.Fatalf("Failed to chdir to repo: %v", err)
+	}
+
+	// Copilot CLI hooks go to workspace .github/hooks/sx.json
+	hooksDir := filepath.Join(repoDir, ".github", handlers.DirHooks)
+
+	// Get the GitHub Copilot client
+	client := github_copilot.NewClient()
+
+	// Install bootstrap with session hook enabled
+	opts := client.GetBootstrapOptions(context.Background())
+	if len(opts) == 0 {
+		t.Fatal("Expected at least one bootstrap option, got none")
+	}
+
+	// Verify the option is the session hook
+	if opts[0].Key != "copilot_session_hook" {
+		t.Errorf("Expected copilot_session_hook option, got %s", opts[0].Key)
+	}
+
+	// Install the bootstrap
+	err := client.InstallBootstrap(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Failed to install bootstrap: %v", err)
+	}
+
+	// Verify the hooks file was created
+	hookFile := filepath.Join(hooksDir, handlers.FileHooks)
+	env.AssertFileExists(hookFile)
+
+	// Read and verify content
+	content, err := os.ReadFile(hookFile)
+	if err != nil {
+		t.Fatalf("Failed to read hooks file: %v", err)
+	}
+
+	// Verify it contains sessionStart hook (camelCase for Copilot CLI)
+	if !strings.Contains(string(content), "sessionStart") {
+		t.Errorf("Hooks file should contain sessionStart hook, got: %s", content)
+	}
+	if !strings.Contains(string(content), "sx install --hook-mode --client=github-copilot") {
+		t.Errorf("Hooks file should contain sx install command, got: %s", content)
+	}
+	// Verify version field
+	if !strings.Contains(string(content), `"version": 1`) {
+		t.Errorf("Hooks file should contain version: 1, got: %s", content)
+	}
+}
+
+// TestGitHubCopilotBootstrapUninstall tests that bootstrap hooks are removed
+// from .github/hooks/sx.json when uninstalled.
+func TestGitHubCopilotBootstrapUninstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	// Create a git repo in TempDir for the hooks to be installed
+	repoDir := filepath.Join(env.TempDir, "repo")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0755); err != nil {
+		t.Fatalf("Failed to create git directory: %v", err)
+	}
+	// Change to repo dir so findGitRoot() works
+	if err := os.Chdir(repoDir); err != nil {
+		t.Fatalf("Failed to chdir to repo: %v", err)
+	}
+
+	// Copilot CLI hooks go to workspace .github/hooks/sx.json
+	hooksDir := filepath.Join(repoDir, ".github", handlers.DirHooks)
+
+	// Get the GitHub Copilot client
+	client := github_copilot.NewClient()
+	opts := client.GetBootstrapOptions(context.Background())
+
+	// First install the bootstrap
+	err := client.InstallBootstrap(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Failed to install bootstrap: %v", err)
+	}
+
+	hookFile := filepath.Join(hooksDir, handlers.FileHooks)
+	env.AssertFileExists(hookFile)
+
+	// Now uninstall
+	err = client.UninstallBootstrap(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Failed to uninstall bootstrap: %v", err)
+	}
+
+	// Verify the hooks were removed from the file
+	// (file may still exist with version field but no hooks)
+	content, err := os.ReadFile(hookFile)
+	if err == nil {
+		if strings.Contains(string(content), "sx install") {
+			t.Errorf("Hooks file should not contain sx install after uninstall, got: %s", content)
+		}
+	}
+}
+
+// TestGitHubCopilotBootstrapIdempotent tests that installing bootstrap
+// multiple times is idempotent (doesn't duplicate hooks).
+func TestGitHubCopilotBootstrapIdempotent(t *testing.T) {
+	env := NewTestEnv(t)
+
+	// Create a git repo in TempDir for the hooks to be installed
+	repoDir := filepath.Join(env.TempDir, "repo")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0755); err != nil {
+		t.Fatalf("Failed to create git directory: %v", err)
+	}
+	// Change to repo dir so findGitRoot() works
+	if err := os.Chdir(repoDir); err != nil {
+		t.Fatalf("Failed to chdir to repo: %v", err)
+	}
+
+	// Copilot CLI hooks go to workspace .github/hooks/sx.json
+	hooksDir := filepath.Join(repoDir, ".github", handlers.DirHooks)
+
+	// Get the GitHub Copilot client
+	client := github_copilot.NewClient()
+	opts := client.GetBootstrapOptions(context.Background())
+
+	// Install bootstrap multiple times
+	for i := range 3 {
+		err := client.InstallBootstrap(context.Background(), opts)
+		if err != nil {
+			t.Fatalf("Failed to install bootstrap (iteration %d): %v", i, err)
+		}
+	}
+
+	// Read the hooks file
+	hookFile := filepath.Join(hooksDir, handlers.FileHooks)
+	content, err := os.ReadFile(hookFile)
+	if err != nil {
+		t.Fatalf("Failed to read hooks file: %v", err)
+	}
+
+	// Count occurrences of the command - should only appear once
+	count := strings.Count(string(content), "sx install --hook-mode --client=github-copilot")
+	if count != 1 {
+		t.Errorf("Expected exactly 1 hook entry, found %d. Content: %s", count, content)
 	}
 }

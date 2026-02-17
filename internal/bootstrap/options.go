@@ -25,10 +25,12 @@ type MCPServerConfig struct {
 
 // Option keys as constants for comparison
 const (
-	SessionHookKey       = "session_hook"
-	AnalyticsHookKey     = "analytics_hook"
-	SleuthAIQueryMCPKey  = "sleuth_ai_query_mcp"
-	CursorSessionHookKey = "cursor_session_hook"
+	SessionHookKey          = "session_hook"
+	AnalyticsHookKey        = "analytics_hook"
+	SleuthAIQueryMCPKey     = "sleuth_ai_query_mcp"
+	CursorSessionHookKey    = "cursor_session_hook"
+	CopilotSessionHookKey   = "copilot_session_hook"
+	CopilotAnalyticsHookKey = "copilot_analytics_hook"
 )
 
 // SessionHook is the Claude Code SessionStart hook option for auto-update.
@@ -60,6 +62,26 @@ var CursorBeforeSubmitHook = Option{
 	Prompt:      "Install hook? (recommended)",
 	Default:     true,
 	DeclineNote: "Without this hook, you'll need to run 'sx install' manually.",
+}
+
+// CopilotSessionStartHook is the GitHub Copilot CLI hook option for auto-update.
+// Integrates with Copilot CLI's sessionStart hook in .github/hooks/sx.json (workspace level).
+var CopilotSessionStartHook = Option{
+	Key:         CopilotSessionHookKey,
+	Description: "Copilot CLI sessionStart hook - Auto-update assets when sessions start",
+	Prompt:      "Install hook? (recommended)",
+	Default:     true,
+	DeclineNote: "Without this hook, you'll need to run 'sx install' manually.",
+}
+
+// CopilotAnalyticsHook is the GitHub Copilot CLI hook option for usage tracking.
+// Integrates with Copilot CLI's postToolUse hook in .github/hooks/sx.json (workspace level).
+var CopilotAnalyticsHook = Option{
+	Key:         CopilotAnalyticsHookKey,
+	Description: "Copilot CLI postToolUse hook - Track skill usage for analytics",
+	Prompt:      "Install hook?",
+	Default:     true,
+	DeclineNote: "Skill usage analytics will not be tracked.",
 }
 
 // SleuthAIQueryMCP returns the Sleuth AI query MCP server option

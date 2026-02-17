@@ -194,3 +194,57 @@ func writeMCPConfig(path string, config *mcpConfig) error {
 func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
 	return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
 }
+
+// AddMCPServer adds an MCP server entry to .vscode/mcp.json
+// This is used by bootstrap to add servers like the sx query MCP.
+func AddMCPServer(vscodeDir, name string, serverConfig map[string]any) error {
+	mcpConfigPath := filepath.Join(vscodeDir, "mcp.json")
+
+	// Read existing mcp.json
+	config, err := readMCPConfig(mcpConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to read mcp.json: %w", err)
+	}
+
+	// Only add if missing (don't overwrite existing entry)
+	if config.Servers == nil {
+		config.Servers = make(map[string]any)
+	}
+	if _, exists := config.Servers[name]; exists {
+		// Already configured, don't overwrite
+		return nil
+	}
+
+	config.Servers[name] = serverConfig
+
+	// Write updated mcp.json
+	if err := writeMCPConfig(mcpConfigPath, config); err != nil {
+		return fmt.Errorf("failed to write mcp.json: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveMCPServer removes an MCP server entry from .vscode/mcp.json
+func RemoveMCPServer(vscodeDir, name string) error {
+	mcpConfigPath := filepath.Join(vscodeDir, "mcp.json")
+
+	// Read existing mcp.json
+	config, err := readMCPConfig(mcpConfigPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // Already removed
+		}
+		return fmt.Errorf("failed to read mcp.json: %w", err)
+	}
+
+	// Remove entry
+	delete(config.Servers, name)
+
+	// Write updated mcp.json
+	if err := writeMCPConfig(mcpConfigPath, config); err != nil {
+		return fmt.Errorf("failed to write mcp.json: %w", err)
+	}
+
+	return nil
+}

@@ -377,22 +377,31 @@ func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.Inst
 	}, nil
 }
 
-// GetBootstrapOptions returns an empty list — GitHub Copilot has no hook mechanism.
+// GetBootstrapOptions returns bootstrap options for GitHub Copilot.
+// This includes the SessionStart hook for auto-update and PostToolUse hook for analytics.
 func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
-	return []bootstrap.Option{}
+	return []bootstrap.Option{
+		bootstrap.CopilotSessionStartHook,
+		bootstrap.CopilotAnalyticsHook,
+	}
 }
 
-// InstallBootstrap is a no-op — GitHub Copilot has no hook mechanism.
+// InstallBootstrap installs GitHub Copilot infrastructure (hooks and MCP servers).
+// Only installs options that are present in the opts slice.
 func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
-	return nil
+	return installBootstrap(opts)
 }
 
-// UninstallBootstrap is a no-op — GitHub Copilot has no hook mechanism.
+// UninstallBootstrap removes GitHub Copilot infrastructure (hooks and MCP servers).
+// Only uninstalls options that are present in the opts slice.
 func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
-	return nil
+	return uninstallBootstrap(opts)
 }
 
-// ShouldInstall always returns true — no session tracking needed without hooks.
+// ShouldInstall always returns true for GitHub Copilot.
+// Copilot has a SessionStart hook that fires once per session, so no
+// deduplication is needed (unlike Cursor's beforeSubmitPrompt which fires
+// on every prompt).
 func (c *Client) ShouldInstall(ctx context.Context) (bool, error) {
 	return true, nil
 }
