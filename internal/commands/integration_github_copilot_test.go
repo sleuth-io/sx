@@ -1174,8 +1174,8 @@ func TestGitHubCopilotBootstrapInstall(t *testing.T) {
 	}
 
 	// Verify the option is the session hook
-	if opts[0].Key != "copilot_session_hook" {
-		t.Errorf("Expected copilot_session_hook option, got %s", opts[0].Key)
+	if opts[0].Key != "session_hook" {
+		t.Errorf("Expected session_hook option, got %s", opts[0].Key)
 	}
 
 	// Install the bootstrap

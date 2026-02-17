@@ -26,8 +26,8 @@ func installBootstrap(opts []bootstrap.Option) error {
 	log := logger.Get()
 
 	// Install hooks to workspace .github/hooks/ (Copilot CLI only supports workspace-level hooks)
-	installHooks := bootstrap.ContainsKey(opts, bootstrap.CopilotSessionHookKey) ||
-		bootstrap.ContainsKey(opts, bootstrap.CopilotAnalyticsHookKey)
+	installHooks := bootstrap.ContainsKey(opts, bootstrap.SessionHookKey) ||
+		bootstrap.ContainsKey(opts, bootstrap.AnalyticsHookKey)
 
 	if installHooks {
 		repoRoot := findGitRoot()
@@ -40,7 +40,7 @@ func installBootstrap(opts []bootstrap.Option) error {
 		}
 	}
 
-	// Install MCP servers from options that have MCPConfig (these go to ~/.vscode/)
+	// Install MCP servers from options that have MCPConfig
 	for _, opt := range opts {
 		if opt.MCPConfig != nil {
 			if err := installMCPServerFromConfig(home, opt.MCPConfig); err != nil {
@@ -82,7 +82,7 @@ func installCopilotHooks(repoRoot string, opts []bootstrap.Option) error {
 	}
 
 	// Install sessionStart hook (if enabled)
-	if bootstrap.ContainsKey(opts, bootstrap.CopilotSessionHookKey) {
+	if bootstrap.ContainsKey(opts, bootstrap.SessionHookKey) {
 		installHook := "sx install --hook-mode --client=github-copilot"
 		if !hasHookWithCommand(config.Hooks["sessionStart"], installHook) {
 			// Remove old sx/skills install hooks first
@@ -97,7 +97,7 @@ func installCopilotHooks(repoRoot string, opts []bootstrap.Option) error {
 	}
 
 	// Install postToolUse hook (if enabled)
-	if bootstrap.ContainsKey(opts, bootstrap.CopilotAnalyticsHookKey) {
+	if bootstrap.ContainsKey(opts, bootstrap.AnalyticsHookKey) {
 		reportHook := "sx report-usage --client=github-copilot"
 		if !hasHookWithCommand(config.Hooks["postToolUse"], reportHook) {
 			// Remove old sx/skills report-usage hooks first
@@ -149,10 +149,9 @@ func findGitRoot() string {
 }
 
 // installMCPServerFromConfig installs an MCP server from a bootstrap.MCPServerConfig
-// to ~/.vscode/mcp.json (shared with VS Code)
+// to ~/.copilot/mcp-config.json (Copilot CLI) and ~/.vscode/mcp.json (VS Code Copilot, if exists)
 func installMCPServerFromConfig(homeDir string, config *bootstrap.MCPServerConfig) error {
 	log := logger.Get()
-	vscodeDir := filepath.Join(homeDir, ".vscode")
 
 	serverConfig := map[string]any{
 		"type":    "stdio",
@@ -169,11 +168,23 @@ func installMCPServerFromConfig(homeDir string, config *bootstrap.MCPServerConfi
 		serverConfig["env"] = envMap
 	}
 
-	if err := handlers.AddMCPServer(vscodeDir, config.Name, serverConfig); err != nil {
+	// Always install to ~/.copilot/mcp-config.json (Copilot CLI)
+	copilotDir := filepath.Join(homeDir, ".copilot")
+	if err := handlers.AddCopilotCLIMCPServer(copilotDir, config.Name, serverConfig); err != nil {
 		return err
 	}
+	log.Info("MCP server installed", "server", config.Name, "location", "~/.copilot/mcp-config.json")
 
-	log.Info("MCP server installed", "server", config.Name, "command", config.Command)
+	// Also install to ~/.vscode/mcp.json if .vscode/ exists (VS Code Copilot)
+	vscodeDir := filepath.Join(homeDir, ".vscode")
+	if stat, err := os.Stat(vscodeDir); err == nil && stat.IsDir() {
+		if err := handlers.AddMCPServer(vscodeDir, config.Name, serverConfig); err != nil {
+			log.Warn("failed to install MCP server to .vscode", "error", err)
+		} else {
+			log.Info("MCP server installed", "server", config.Name, "location", "~/.vscode/mcp.json")
+		}
+	}
+
 	return nil
 }
 
@@ -194,9 +205,9 @@ func uninstallBootstrap(opts []bootstrap.Option) error {
 
 	for _, opt := range opts {
 		switch opt.Key {
-		case bootstrap.CopilotSessionHookKey:
+		case bootstrap.SessionHookKey:
 			uninstallSession = true
-		case bootstrap.CopilotAnalyticsHookKey:
+		case bootstrap.AnalyticsHookKey:
 			uninstallAnalytics = true
 		default:
 			if opt.MCPConfig != nil {
@@ -311,16 +322,28 @@ func removeHooksWithPrefix(hooks []CopilotHookEntry, prefixes ...string) []Copil
 	return filtered
 }
 
-// uninstallMCPServerByName removes an MCP server by name from ~/.vscode/mcp.json
+// uninstallMCPServerByName removes an MCP server by name from both
+// ~/.copilot/mcp-config.json and ~/.vscode/mcp.json (if exists)
 func uninstallMCPServerByName(homeDir, name string) error {
 	log := logger.Get()
-	vscodeDir := filepath.Join(homeDir, ".vscode")
 
-	if err := handlers.RemoveMCPServer(vscodeDir, name); err != nil {
+	// Remove from ~/.copilot/mcp-config.json (Copilot CLI)
+	copilotDir := filepath.Join(homeDir, ".copilot")
+	if err := handlers.RemoveCopilotCLIMCPServer(copilotDir, name); err != nil {
 		return err
 	}
+	log.Info("MCP server uninstalled", "server", name, "location", "~/.copilot/mcp-config.json")
 
-	log.Info("MCP server uninstalled", "server", name)
+	// Also remove from ~/.vscode/mcp.json if it exists (VS Code Copilot)
+	vscodeDir := filepath.Join(homeDir, ".vscode")
+	if stat, err := os.Stat(vscodeDir); err == nil && stat.IsDir() {
+		if err := handlers.RemoveMCPServer(vscodeDir, name); err != nil {
+			log.Warn("failed to remove MCP server from .vscode", "error", err)
+		} else {
+			log.Info("MCP server uninstalled", "server", name, "location", "~/.vscode/mcp.json")
+		}
+	}
+
 	return nil
 }
 

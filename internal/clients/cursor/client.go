@@ -431,10 +431,10 @@ func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.Inst
 }
 
 // GetBootstrapOptions returns bootstrap options for Cursor.
-// This includes hooks for auto-update and MCP server for Sleuth AI tools.
+// Uses shared options that apply to all clients.
 func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	return []bootstrap.Option{
-		bootstrap.CursorBeforeSubmitHook,
+		bootstrap.SessionHook,
 		bootstrap.SleuthAIQueryMCP(),
 	}
 }
@@ -443,7 +443,7 @@ func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 // Only installs options that are present in the opts slice.
 func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
 	// Install beforeSubmitPrompt hook (if enabled)
-	if bootstrap.ContainsKey(opts, bootstrap.CursorSessionHookKey) {
+	if bootstrap.ContainsKey(opts, bootstrap.SessionHookKey) {
 		if err := c.installBeforeSubmitPromptHook(); err != nil {
 			return err
 		}
@@ -493,7 +493,7 @@ func (c *Client) installMCPServerFromConfig(config *bootstrap.MCPServerConfig) e
 func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
 	for _, opt := range opts {
 		switch opt.Key {
-		case bootstrap.CursorSessionHookKey:
+		case bootstrap.SessionHookKey:
 			if err := c.uninstallBeforeSubmitPromptHook(); err != nil {
 				return err
 			}
