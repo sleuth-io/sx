@@ -74,7 +74,7 @@ release: ## Create release with goreleaser (requires goreleaser)
 	@goreleaser release --clean
 
 # Development targets
-sx: build ## Build and run sx (usage: make sx install)
+sx: build ## Build and run sx (usage: make sx install, make sx -- install --repair)
 	@$(BUILD_DIR)/$(BINARY_NAME) $(filter-out $@,$(MAKECMDGOALS))
 
 # Catch-all target to allow passing args to sx (eg: make sx install)
