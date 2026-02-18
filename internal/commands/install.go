@@ -121,7 +121,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	// Early exit if nothing to install
 	if len(assetsToInstall) == 0 {
-		return handleNothingToInstall(ctx, hookMode, tracker, sortedAssets, env, targetClientIDs, styledOut, out)
+		return handleNothingToInstall(ctx, hookMode, hookClientID, tracker, sortedAssets, env, targetClientIDs, styledOut, out)
 	}
 
 	// Download assets
@@ -145,7 +145,14 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	}
 
 	// Install client-specific hooks (e.g., auto-update, usage tracking)
-	installClientHooks(ctx, env.Clients, out)
+	// In hook mode, only install hooks for the triggering client to avoid
+	// creating files for other clients (e.g., Copilot's .github/hooks/sx.json
+	// when Claude Code triggers the install).
+	hookClients := env.Clients
+	if hookMode && hookClientID != "" {
+		hookClients = filterClientsByID(env.Clients, hookClientID)
+	}
+	installClientHooks(ctx, hookClients, out)
 
 	// Log summary
 	log.Info("install completed", "installed", len(installResult.Installed), "failed", len(installResult.Failed))
