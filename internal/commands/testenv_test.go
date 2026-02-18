@@ -228,7 +228,7 @@ func (e *TestEnv) AddRuleToVaultWithGlobs(vaultDir, name, version, content strin
 			if i > 0 {
 				sb.WriteString(", ")
 			}
-			sb.WriteString(fmt.Sprintf("%q", g))
+			fmt.Fprintf(&sb, "%q", g)
 		}
 		sb.WriteString("]\n")
 		globsStr = sb.String()
@@ -337,7 +337,7 @@ func formatArgsArray(args []string) string {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(fmt.Sprintf("%q", arg))
+		fmt.Fprintf(&sb, "%q", arg)
 	}
 	sb.WriteString("]")
 	return sb.String()

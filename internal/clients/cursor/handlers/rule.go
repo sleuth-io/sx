@@ -90,7 +90,7 @@ func (h *RuleHandler) buildMDCContent(content string) string {
 	// Description
 	description := h.getDescription()
 	if description != "" {
-		sb.WriteString(fmt.Sprintf("description: %s\n", description))
+		fmt.Fprintf(&sb, "description: %s\n", description)
 	}
 
 	// Globs or alwaysApply
@@ -101,11 +101,11 @@ func (h *RuleHandler) buildMDCContent(content string) string {
 		if len(globs) > 0 {
 			// Single glob as string, multiple as array
 			if len(globs) == 1 {
-				sb.WriteString(fmt.Sprintf("globs: %s\n", globs[0]))
+				fmt.Fprintf(&sb, "globs: %s\n", globs[0])
 			} else {
 				sb.WriteString("globs:\n")
 				for _, glob := range globs {
-					sb.WriteString(fmt.Sprintf("  - %s\n", glob))
+					fmt.Fprintf(&sb, "  - %s\n", glob)
 				}
 			}
 		}
