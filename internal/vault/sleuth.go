@@ -1003,7 +1003,7 @@ func (s *SleuthVault) SetActiveRole(ctx context.Context, slug *string) (*Role, e
 		if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil && errResp.Error != "" {
 			return nil, fmt.Errorf("%s", errResp.Error)
 		}
-		return nil, fmt.Errorf("role not found")
+		return nil, errors.New("role not found")
 	}
 
 	if resp.StatusCode != http.StatusOK {
