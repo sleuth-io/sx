@@ -12,7 +12,7 @@ BUILD_DIR=./dist
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.Date=$(DATE)"
+LDFLAGS=-ldflags "-X github.com/sleuth-io/sx/internal/buildinfo.Version=$(VERSION) -X github.com/sleuth-io/sx/internal/buildinfo.Commit=$(COMMIT) -X github.com/sleuth-io/sx/internal/buildinfo.Date=$(DATE)"
 
 build: ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
