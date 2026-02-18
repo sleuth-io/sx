@@ -127,3 +127,8 @@ demo: build ## Generate demo GIF (requires vhs)
 	HOME="$$DEMO_HOME" PATH="$(CURDIR)/$(BUILD_DIR):$$PATH" PS1="$$ " vhs docs/demo.tape && \
 	rm -rf "$$DEMO_HOME"
 	@echo "Generated: docs/demo.gif"
+
+logs:  ## Tail the sx log file, which is often ~/.cache/sx/sx.log, but not always
+	@LOG_FILE="$$(sx config 2>/dev/null | grep 'Log File:' | cut -d: -f2 | tr -d ' ')"; \
+	echo "Tailing $$LOG_FILE\n"; \
+	tail -f "$$LOG_FILE"
