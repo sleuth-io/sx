@@ -99,7 +99,7 @@ func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL, cl
 		if !isAddingProfile && repoType == "" {
 			// Only prompt for confirmation when overwriting, not when adding a profile
 			styledOut.Warning("Configuration already exists.")
-			confirmed, err := components.Confirm("Overwrite existing configuration?", false)
+			confirmed, err := components.Confirm("Overwrite existing configuration? (No will exit)", false)
 			if err != nil || !confirmed {
 				return errors.New("initialization cancelled")
 			}
