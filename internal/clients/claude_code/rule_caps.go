@@ -128,17 +128,17 @@ func generateRuleFile(cfg *metadata.RuleConfig, body string) []byte {
 
 		// Write description first if present
 		if desc, ok := fields["description"]; ok {
-			buf.WriteString(fmt.Sprintf("description: %s\n", desc))
+			fmt.Fprintf(&buf, "description: %s\n", desc)
 		}
 
 		// Write paths if present
 		if paths, ok := fields["paths"].([]string); ok {
 			if len(paths) == 1 {
-				buf.WriteString(fmt.Sprintf("paths:\n  - %s\n", paths[0]))
+				fmt.Fprintf(&buf, "paths:\n  - %s\n", paths[0])
 			} else {
 				buf.WriteString("paths:\n")
 				for _, p := range paths {
-					buf.WriteString(fmt.Sprintf("  - %s\n", p))
+					fmt.Fprintf(&buf, "  - %s\n", p)
 				}
 			}
 		}

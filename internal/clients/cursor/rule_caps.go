@@ -151,7 +151,7 @@ func generateRuleFile(cfg *metadata.RuleConfig, body string) []byte {
 
 	// Write description first if present
 	if desc, ok := fields["description"]; ok {
-		buf.WriteString(fmt.Sprintf("description: %s\n", desc))
+		fmt.Fprintf(&buf, "description: %s\n", desc)
 	}
 
 	// Write alwaysApply if present
@@ -162,11 +162,11 @@ func generateRuleFile(cfg *metadata.RuleConfig, body string) []byte {
 	// Write globs if present
 	if globs, ok := fields["globs"].([]string); ok {
 		if len(globs) == 1 {
-			buf.WriteString(fmt.Sprintf("globs: %s\n", globs[0]))
+			fmt.Fprintf(&buf, "globs: %s\n", globs[0])
 		} else {
 			buf.WriteString("globs:\n")
 			for _, g := range globs {
-				buf.WriteString(fmt.Sprintf("  - %s\n", g))
+				fmt.Fprintf(&buf, "  - %s\n", g)
 			}
 		}
 	}

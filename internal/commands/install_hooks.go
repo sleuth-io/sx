@@ -97,17 +97,17 @@ func formatInstalledAssetsMessage(installedAssets []hookAssetInfo) string {
 // formatMultipleAssetsMessage formats the message for multiple installed assets
 func formatMultipleAssetsMessage(installedAssets []hookAssetInfo, bold, blue, resetBold, reset string) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%ssx%s installed:\n", bold, resetBold))
+	fmt.Fprintf(&sb, "%ssx%s installed:\n", bold, resetBold)
 
 	// Show up to 3 assets
 	displayCount := min(len(installedAssets), 3)
 	for i := range displayCount {
-		sb.WriteString(fmt.Sprintf("- The %s%s %s%s\n", blue, installedAssets[i].name, installedAssets[i].typ, reset))
+		fmt.Fprintf(&sb, "- The %s%s %s%s\n", blue, installedAssets[i].name, installedAssets[i].typ, reset)
 	}
 
 	// Add "and N more" if there are more than 3
 	if len(installedAssets) > 3 {
-		sb.WriteString(fmt.Sprintf("and %d more", len(installedAssets)-3))
+		fmt.Fprintf(&sb, "and %d more", len(installedAssets)-3)
 	} else {
 		// Remove trailing newline for <= 3 items
 		result := sb.String()

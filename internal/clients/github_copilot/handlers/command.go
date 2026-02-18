@@ -83,7 +83,7 @@ func (h *CommandHandler) buildPromptContent(content string) string {
 	// Only add frontmatter if there's a description
 	if description != "" {
 		sb.WriteString("---\n")
-		sb.WriteString(fmt.Sprintf("description: %s\n", description))
+		fmt.Fprintf(&sb, "description: %s\n", description)
 		sb.WriteString("---\n\n")
 	}
 

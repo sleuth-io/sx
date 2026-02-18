@@ -110,7 +110,7 @@ func generateRuleFile(cfg *metadata.RuleConfig, body string) []byte {
 		globs = cfg.Globs
 	}
 	if len(globs) > 0 {
-		buf.WriteString(fmt.Sprintf("applyTo: \"%s\"\n", strings.Join(globs, ",")))
+		fmt.Fprintf(&buf, "applyTo: \"%s\"\n", strings.Join(globs, ","))
 	}
 
 	// Description
@@ -121,7 +121,7 @@ func generateRuleFile(cfg *metadata.RuleConfig, body string) []byte {
 	if description != "" {
 		// Quote and escape description to handle YAML special characters
 		escapedDesc := strings.ReplaceAll(description, `"`, `\"`)
-		buf.WriteString(fmt.Sprintf("description: \"%s\"\n", escapedDesc))
+		fmt.Fprintf(&buf, "description: \"%s\"\n", escapedDesc)
 	}
 
 	buf.WriteString("---\n\n")

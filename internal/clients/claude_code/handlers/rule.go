@@ -104,17 +104,17 @@ func (h *RuleHandler) buildRuleContent(content string) string {
 
 		// Description
 		if description != "" {
-			sb.WriteString(fmt.Sprintf("description: %s\n", description))
+			fmt.Fprintf(&sb, "description: %s\n", description)
 		}
 
 		// Globs (Claude Code uses "paths" field)
 		if len(globs) > 0 {
 			if len(globs) == 1 {
-				sb.WriteString(fmt.Sprintf("paths:\n  - %s\n", globs[0]))
+				fmt.Fprintf(&sb, "paths:\n  - %s\n", globs[0])
 			} else {
 				sb.WriteString("paths:\n")
 				for _, glob := range globs {
-					sb.WriteString(fmt.Sprintf("  - %s\n", glob))
+					fmt.Fprintf(&sb, "  - %s\n", glob)
 				}
 			}
 		}

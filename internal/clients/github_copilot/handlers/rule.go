@@ -88,7 +88,7 @@ func (h *RuleHandler) buildInstructionContent(content string) string {
 	globs := h.getGlobs()
 	if len(globs) > 0 {
 		// Copilot uses comma-separated globs in a single applyTo string
-		sb.WriteString(fmt.Sprintf("applyTo: \"%s\"\n", strings.Join(globs, ",")))
+		fmt.Fprintf(&sb, "applyTo: \"%s\"\n", strings.Join(globs, ","))
 	}
 
 	// Description
@@ -96,7 +96,7 @@ func (h *RuleHandler) buildInstructionContent(content string) string {
 	if description != "" {
 		// Quote and escape description to handle YAML special characters
 		escapedDesc := strings.ReplaceAll(description, `"`, `\"`)
-		sb.WriteString(fmt.Sprintf("description: \"%s\"\n", escapedDesc))
+		fmt.Fprintf(&sb, "description: \"%s\"\n", escapedDesc)
 	}
 
 	sb.WriteString("---\n\n")
