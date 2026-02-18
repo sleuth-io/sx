@@ -921,3 +921,102 @@ func (s *SleuthVault) SetInstallations(ctx context.Context, asset *lockfile.Asse
 
 	return nil
 }
+
+// Role represents a skill profile (role) from the server
+type Role struct {
+	Title       string `json:"title"`
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+}
+
+// RoleListResponse represents the response from the roles list endpoint
+type RoleListResponse struct {
+	Roles  []Role  `json:"profiles"`
+	Active *string `json:"active"`
+}
+
+// ListRoles retrieves the list of available roles from the server
+func (s *SleuthVault) ListRoles(ctx context.Context) (*RoleListResponse, error) {
+	endpoint := s.serverURL + "/api/skills/sx.profiles"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
+	if s.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.authToken)
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch roles: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result RoleListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse roles response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// SetActiveRole sets or clears the active role on the server.
+// Pass nil to clear the active role.
+func (s *SleuthVault) SetActiveRole(ctx context.Context, slug *string) (*Role, error) {
+	endpoint := s.serverURL + "/api/skills/sx.profiles/active"
+
+	reqBody := map[string]*string{"slug": slug}
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
+	if s.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.authToken)
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set active role: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		var errResp struct {
+			Error string `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil && errResp.Error != "" {
+			return nil, fmt.Errorf("%s", errResp.Error)
+		}
+		return nil, fmt.Errorf("role not found")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Profile *Role `json:"profile"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return result.Profile, nil
+}

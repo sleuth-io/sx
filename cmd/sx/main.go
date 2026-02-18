@@ -93,6 +93,7 @@ Capture what your best AI users have learned and spread it to everyone automatic
 	rootCmd.AddCommand(commands.NewConfigCommand())
 	rootCmd.AddCommand(commands.NewClientsCommand())
 	rootCmd.AddCommand(commands.NewVaultCommand())
+	rootCmd.AddCommand(commands.NewRoleCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
