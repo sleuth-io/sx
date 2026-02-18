@@ -30,9 +30,7 @@ jobs:
           fi
 
       - name: Lint
-        run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-          golangci-lint run
+        run: go tool golangci-lint run
 
       - name: Test
         run: |

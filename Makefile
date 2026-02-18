@@ -54,16 +54,9 @@ test: ## Run tests
 		echo "✓ All $$PASSED packages passed"; \
 	fi
 
-lint: ## Run linters (requires golangci-lint)
+lint: ## Run linters
 	@echo "Running linters..."
-	@GOBIN=$$(go env GOPATH)/bin; \
-	if command -v golangci-lint > /dev/null 2>&1; then \
-		golangci-lint run; \
-	elif [ -x "$$GOBIN/golangci-lint" ]; then \
-		"$$GOBIN/golangci-lint" run; \
-	else \
-		echo "golangci-lint not found. Run 'make postpull' to install." && exit 1; \
-	fi
+	@go tool golangci-lint run
 
 format: ## Format code
 	@echo "Formatting code..."
@@ -113,15 +106,13 @@ update-deps: ## Update all dependencies to latest versions
 	@go get -u ./...
 	@go mod tidy
 
-init: ## Initialize development environment (install tools, download deps)
+init: ## Initialize development environment (download deps)
 	@echo "Initializing development environment..."
-	@echo "Installing development tools..."
-	@echo "Building golangci-lint from source (to match Go version)..."
-	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$$(go env GOPATH)/bin" v2.8.0
 	@echo "Downloading dependencies..."
 	@go mod download
 	@echo ""
 	@echo "✓ Development environment initialized"
+	@echo "  Tools available via 'go tool <name>' (see go.mod tool section)"
 
 prepush: format lint test build ## Run before pushing (format, lint, test, build)
 
