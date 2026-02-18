@@ -7,4 +7,10 @@ const (
 	DirPrompts      = "prompts"
 	DirAgents       = "agents"
 	DirMCPServers   = "mcp-servers"
+	DirHooks        = "hooks"
+)
+
+// File names
+const (
+	FileHooks = "sx.json"
 )

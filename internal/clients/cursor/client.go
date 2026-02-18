@@ -431,17 +431,28 @@ func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.Inst
 }
 
 // GetBootstrapOptions returns bootstrap options for Cursor.
-// This includes the beforeSubmitPrompt hook for auto-update.
+// Uses shared options that apply to all clients.
 func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
-	return []bootstrap.Option{bootstrap.CursorBeforeSubmitHook}
+	return []bootstrap.Option{
+		bootstrap.SessionHook,
+		bootstrap.AnalyticsHook,
+		bootstrap.SleuthAIQueryMCP(),
+	}
 }
 
 // InstallBootstrap installs Cursor infrastructure (hooks and MCP servers).
 // Only installs options that are present in the opts slice.
 func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
 	// Install beforeSubmitPrompt hook (if enabled)
-	if bootstrap.ContainsKey(opts, bootstrap.CursorSessionHookKey) {
+	if bootstrap.ContainsKey(opts, bootstrap.SessionHookKey) {
 		if err := c.installBeforeSubmitPromptHook(); err != nil {
+			return err
+		}
+	}
+
+	// Install postToolUse hook for analytics (if enabled)
+	if bootstrap.ContainsKey(opts, bootstrap.AnalyticsHookKey) {
+		if err := c.installPostToolUseHook(); err != nil {
 			return err
 		}
 	}
@@ -490,8 +501,12 @@ func (c *Client) installMCPServerFromConfig(config *bootstrap.MCPServerConfig) e
 func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
 	for _, opt := range opts {
 		switch opt.Key {
-		case bootstrap.CursorSessionHookKey:
+		case bootstrap.SessionHookKey:
 			if err := c.uninstallBeforeSubmitPromptHook(); err != nil {
+				return err
+			}
+		case bootstrap.AnalyticsHookKey:
+			if err := c.uninstallPostToolUseHook(); err != nil {
 				return err
 			}
 		default:
@@ -718,6 +733,122 @@ func (c *Client) installBeforeSubmitPromptHook() error {
 		})
 		log.Info("hook installed", "hook", "beforeSubmitPrompt", "command", hookCommand, "cwd", cwd)
 	}
+
+	if err := handlers.WriteHooksJSON(hooksJSONPath, config); err != nil {
+		return fmt.Errorf("failed to write hooks.json: %w", err)
+	}
+
+	return nil
+}
+
+// installPostToolUseHook installs the postToolUse hook for analytics
+func (c *Client) installPostToolUseHook() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	hooksJSONPath := filepath.Join(home, ".cursor", "hooks.json")
+	log := logger.Get()
+
+	// Read existing hooks.json
+	config, err := handlers.ReadHooksJSON(hooksJSONPath)
+	if err != nil {
+		return fmt.Errorf("failed to read hooks.json: %w", err)
+	}
+
+	hookCommand := "sx report-usage --client=cursor"
+
+	// Check if exact hook command already exists
+	if hooks, ok := config.Hooks["postToolUse"]; ok {
+		for _, hook := range hooks {
+			if cmd, ok := hook["command"].(string); ok && cmd == hookCommand {
+				// Already installed
+				return nil
+			}
+		}
+	}
+
+	// Remove old sx/skills report-usage hooks first
+	if hooks, ok := config.Hooks["postToolUse"]; ok {
+		filtered := []map[string]any{}
+		for _, hook := range hooks {
+			cmd, ok := hook["command"].(string)
+			if !ok {
+				filtered = append(filtered, hook)
+				continue
+			}
+			if !strings.HasPrefix(cmd, "sx report-usage") && !strings.HasPrefix(cmd, "skills report-usage") {
+				filtered = append(filtered, hook)
+			}
+		}
+		config.Hooks["postToolUse"] = filtered
+	}
+
+	// Add the hook
+	if config.Hooks["postToolUse"] == nil {
+		config.Hooks["postToolUse"] = []map[string]any{}
+	}
+	config.Hooks["postToolUse"] = append(config.Hooks["postToolUse"], map[string]any{
+		"command": hookCommand,
+	})
+	log.Info("hook installed", "hook", "postToolUse", "command", hookCommand)
+
+	if err := handlers.WriteHooksJSON(hooksJSONPath, config); err != nil {
+		return fmt.Errorf("failed to write hooks.json: %w", err)
+	}
+
+	return nil
+}
+
+// uninstallPostToolUseHook removes the postToolUse hook
+func (c *Client) uninstallPostToolUseHook() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	hooksJSONPath := filepath.Join(home, ".cursor", "hooks.json")
+	log := logger.Get()
+
+	// Read existing hooks.json
+	config, err := handlers.ReadHooksJSON(hooksJSONPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to read hooks.json: %w", err)
+	}
+
+	// Filter out our hook from postToolUse
+	hooks, ok := config.Hooks["postToolUse"]
+	if !ok || len(hooks) == 0 {
+		return nil
+	}
+
+	filtered := []map[string]any{}
+	for _, hook := range hooks {
+		cmd, ok := hook["command"].(string)
+		if !ok {
+			filtered = append(filtered, hook)
+			continue
+		}
+		if !strings.HasPrefix(cmd, "sx report-usage") && !strings.HasPrefix(cmd, "skills report-usage") {
+			filtered = append(filtered, hook)
+		}
+	}
+
+	if len(filtered) == len(hooks) {
+		return nil
+	}
+
+	if len(filtered) == 0 {
+		delete(config.Hooks, "postToolUse")
+	} else {
+		config.Hooks["postToolUse"] = filtered
+	}
+
+	log.Info("hook removed", "hook", "postToolUse")
 
 	if err := handlers.WriteHooksJSON(hooksJSONPath, config); err != nil {
 		return fmt.Errorf("failed to write hooks.json: %w", err)

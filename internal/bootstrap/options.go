@@ -25,41 +25,29 @@ type MCPServerConfig struct {
 
 // Option keys as constants for comparison
 const (
-	SessionHookKey       = "session_hook"
-	AnalyticsHookKey     = "analytics_hook"
-	SleuthAIQueryMCPKey  = "sleuth_ai_query_mcp"
-	CursorSessionHookKey = "cursor_session_hook"
+	SessionHookKey      = "session_hook"
+	AnalyticsHookKey    = "analytics_hook"
+	SleuthAIQueryMCPKey = "sleuth_ai_query_mcp"
 )
 
-// SessionHook is the Claude Code SessionStart hook option for auto-update.
-// Integrates with Claude Code's native SessionStart hook in ~/.claude/settings.json.
+// SessionHook is the session start hook option for auto-update.
+// Installs hooks for all detected clients (Claude Code, Copilot CLI, Cursor).
 var SessionHook = Option{
 	Key:         SessionHookKey,
-	Description: "Claude Code SessionStart hook - Auto-update assets when sessions start",
-	Prompt:      "Install hook? (recommended)",
+	Description: "Session hook - Auto-update assets when sessions start",
+	Prompt:      "Install session hooks? (recommended)",
 	Default:     true,
 	DeclineNote: "Without this hook, you'll need to run 'sx install' manually.",
 }
 
-// AnalyticsHook is the Claude Code PostToolUse hook option for usage tracking.
-// Integrates with Claude Code's native PostToolUse hook in ~/.claude/settings.json.
+// AnalyticsHook is the usage tracking hook option.
+// Installs hooks for all detected clients (Claude Code, Copilot CLI, Cursor).
 var AnalyticsHook = Option{
 	Key:         AnalyticsHookKey,
-	Description: "Claude Code PostToolUse hook - Track skill usage for analytics",
-	Prompt:      "Install hook?",
+	Description: "Analytics hook - Track skill usage for analytics",
+	Prompt:      "Install analytics hooks?",
 	Default:     true,
 	DeclineNote: "Skill usage analytics will not be tracked.",
-}
-
-// CursorBeforeSubmitHook is the Cursor hook option for auto-update.
-// Integrates with Cursor's beforeSubmitPrompt hook in ~/.cursor/hooks.json.
-// Runs once per conversation (tracked via conversation IDs).
-var CursorBeforeSubmitHook = Option{
-	Key:         CursorSessionHookKey,
-	Description: "Cursor beforeSubmitPrompt hook - Auto-update assets once per conversation",
-	Prompt:      "Install hook? (recommended)",
-	Default:     true,
-	DeclineNote: "Without this hook, you'll need to run 'sx install' manually.",
 }
 
 // SleuthAIQueryMCP returns the Sleuth AI query MCP server option

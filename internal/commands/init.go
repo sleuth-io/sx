@@ -339,6 +339,37 @@ func initSleuthServer(cmd *cobra.Command, ctx context.Context, enabledClients []
 func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL string, enabledClients []string) error {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
+	// Check if we already have a valid token for this server
+	existingCfg, err := config.Load()
+	if err == nil && existingCfg != nil &&
+		existingCfg.Type == config.RepositoryTypeSleuth &&
+		existingCfg.RepositoryURL == serverURL &&
+		existingCfg.AuthToken != "" {
+		// Try to validate the existing token by creating a vault and fetching something
+		v := vault.NewSleuthVault(serverURL, existingCfg.AuthToken)
+		if _, _, _, err := v.GetLockFile(ctx, ""); err == nil {
+			// Token is still valid, just update the config with new client settings
+			styledOut.Newline()
+			styledOut.Success("Already authenticated with " + serverURL)
+
+			cfg := &config.Config{
+				Type:                 config.RepositoryTypeSleuth,
+				RepositoryURL:        serverURL,
+				AuthToken:            existingCfg.AuthToken,
+				ForceDisabledClients: computeDisabledClients(enabledClients),
+			}
+
+			if err := config.Save(cfg); err != nil {
+				return fmt.Errorf("failed to save configuration: %w", err)
+			}
+
+			return nil
+		}
+		// Token invalid, proceed with re-auth
+		styledOut.Newline()
+		styledOut.Muted("Existing token expired, re-authenticating...")
+	}
+
 	styledOut.Newline()
 
 	// Start OAuth device code flow
@@ -671,6 +702,7 @@ func promptFeaturedSkills(cmd *cobra.Command, ctx context.Context) {
 
 // promptBootstrapOptions prompts for or applies bootstrap options.
 // If interactive is true, prompts for each option. Otherwise applies defaults.
+// Only prompts for options that aren't already configured.
 func promptBootstrapOptions(cmd *cobra.Command, ctx context.Context, enabledClientIDs []string, interactive bool) error {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
@@ -678,11 +710,6 @@ func promptBootstrapOptions(cmd *cobra.Command, ctx context.Context, enabledClie
 	mpc, err := config.LoadMultiProfile()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	// If bootstrap options are already configured, skip (grandfathered/existing users)
-	if len(mpc.BootstrapOptions) > 0 {
-		return nil
 	}
 
 	// Get the active vault
@@ -727,6 +754,17 @@ func promptBootstrapOptions(cmd *cobra.Command, ctx context.Context, enabledClie
 		allOpts = append(allOpts, vaultOpts...)
 	}
 
+	// Deduplicate options by key (since all clients return the same shared options)
+	seen := make(map[string]bool)
+	var uniqueOpts []bootstrap.Option
+	for _, opt := range allOpts {
+		if !seen[opt.Key] {
+			seen[opt.Key] = true
+			uniqueOpts = append(uniqueOpts, opt)
+		}
+	}
+	allOpts = uniqueOpts
+
 	// If no options to configure, nothing to do
 	if len(allOpts) == 0 {
 		return nil
@@ -743,11 +781,17 @@ func promptBootstrapOptions(cmd *cobra.Command, ctx context.Context, enabledClie
 		styledOut.Newline()
 
 		for _, opt := range allOpts {
+			// Use existing value as default if already configured
+			defaultVal := opt.Default
+			if existingVal, exists := mpc.BootstrapOptions[opt.Key]; exists && existingVal != nil {
+				defaultVal = *existingVal
+			}
+
 			styledOut.Println(opt.Description)
-			answer, err := components.Confirm(opt.Prompt, opt.Default)
+			answer, err := components.Confirm(opt.Prompt, defaultVal)
 			if err != nil {
 				// On error, use default
-				answer = opt.Default
+				answer = defaultVal
 			}
 			mpc.SetBootstrapOption(opt.Key, answer)
 
@@ -756,9 +800,11 @@ func promptBootstrapOptions(cmd *cobra.Command, ctx context.Context, enabledClie
 			}
 		}
 	} else {
-		// Non-interactive: apply defaults
+		// Non-interactive: apply defaults (only for options not already configured)
 		for _, opt := range allOpts {
-			mpc.SetBootstrapOption(opt.Key, opt.Default)
+			if _, exists := mpc.BootstrapOptions[opt.Key]; !exists {
+				mpc.SetBootstrapOption(opt.Key, opt.Default)
+			}
 		}
 	}
 

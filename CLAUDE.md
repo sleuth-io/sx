@@ -39,6 +39,7 @@ make build && ./dist/sx <command>
 - Lint: `golangci-lint`
 - Tests must pass with race detection
 - Use conventional commit messages
+- **NEVER run `git push` without explicit user permission**
 
 ## Releases
 

@@ -194,3 +194,152 @@ func writeMCPConfig(path string, config *mcpConfig) error {
 func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
 	return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
 }
+
+// AddMCPServer adds an MCP server entry to .vscode/mcp.json
+// This is used by bootstrap to add servers like the sx query MCP.
+func AddMCPServer(vscodeDir, name string, serverConfig map[string]any) error {
+	mcpConfigPath := filepath.Join(vscodeDir, "mcp.json")
+
+	// Read existing mcp.json
+	config, err := readMCPConfig(mcpConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to read mcp.json: %w", err)
+	}
+
+	// Only add if missing (don't overwrite existing entry)
+	if config.Servers == nil {
+		config.Servers = make(map[string]any)
+	}
+	if _, exists := config.Servers[name]; exists {
+		// Already configured, don't overwrite
+		return nil
+	}
+
+	config.Servers[name] = serverConfig
+
+	// Write updated mcp.json
+	if err := writeMCPConfig(mcpConfigPath, config); err != nil {
+		return fmt.Errorf("failed to write mcp.json: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveMCPServer removes an MCP server entry from .vscode/mcp.json
+func RemoveMCPServer(vscodeDir, name string) error {
+	mcpConfigPath := filepath.Join(vscodeDir, "mcp.json")
+
+	// Read existing mcp.json
+	config, err := readMCPConfig(mcpConfigPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // Already removed
+		}
+		return fmt.Errorf("failed to read mcp.json: %w", err)
+	}
+
+	// Remove entry
+	delete(config.Servers, name)
+
+	// Write updated mcp.json
+	if err := writeMCPConfig(mcpConfigPath, config); err != nil {
+		return fmt.Errorf("failed to write mcp.json: %w", err)
+	}
+
+	return nil
+}
+
+// copilotCLIMCPConfig represents Copilot CLI's ~/.copilot/mcp-config.json structure
+type copilotCLIMCPConfig struct {
+	MCPServers map[string]any `json:"mcpServers"`
+}
+
+// AddCopilotCLIMCPServer adds an MCP server entry to ~/.copilot/mcp-config.json
+// This is the Copilot CLI-specific MCP config location.
+func AddCopilotCLIMCPServer(copilotDir, name string, serverConfig map[string]any) error {
+	mcpConfigPath := filepath.Join(copilotDir, "mcp-config.json")
+
+	// Read existing mcp-config.json
+	config, err := readCopilotCLIMCPConfig(mcpConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to read mcp-config.json: %w", err)
+	}
+
+	// Only add if missing (don't overwrite existing entry)
+	if config.MCPServers == nil {
+		config.MCPServers = make(map[string]any)
+	}
+	if _, exists := config.MCPServers[name]; exists {
+		// Already configured, don't overwrite
+		return nil
+	}
+
+	config.MCPServers[name] = serverConfig
+
+	// Write updated mcp-config.json
+	if err := writeCopilotCLIMCPConfig(mcpConfigPath, config); err != nil {
+		return fmt.Errorf("failed to write mcp-config.json: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveCopilotCLIMCPServer removes an MCP server entry from ~/.copilot/mcp-config.json
+func RemoveCopilotCLIMCPServer(copilotDir, name string) error {
+	mcpConfigPath := filepath.Join(copilotDir, "mcp-config.json")
+
+	// Read existing mcp-config.json
+	config, err := readCopilotCLIMCPConfig(mcpConfigPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // Already removed
+		}
+		return fmt.Errorf("failed to read mcp-config.json: %w", err)
+	}
+
+	// Remove entry
+	delete(config.MCPServers, name)
+
+	// Write updated mcp-config.json
+	if err := writeCopilotCLIMCPConfig(mcpConfigPath, config); err != nil {
+		return fmt.Errorf("failed to write mcp-config.json: %w", err)
+	}
+
+	return nil
+}
+
+// readCopilotCLIMCPConfig reads Copilot CLI's mcp-config.json file
+func readCopilotCLIMCPConfig(path string) (*copilotCLIMCPConfig, error) {
+	config := &copilotCLIMCPConfig{
+		MCPServers: make(map[string]any),
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return config, nil // Return empty config
+		}
+		return nil, err
+	}
+
+	if err := json.Unmarshal(data, config); err != nil {
+		return nil, err
+	}
+
+	return config, nil
+}
+
+// writeCopilotCLIMCPConfig writes Copilot CLI's mcp-config.json file
+func writeCopilotCLIMCPConfig(path string, config *copilotCLIMCPConfig) error {
+	// Ensure directory exists
+	if err := utils.EnsureDir(filepath.Dir(path)); err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, data, 0644)
+}
