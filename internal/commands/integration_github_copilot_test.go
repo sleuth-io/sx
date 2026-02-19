@@ -1448,3 +1448,138 @@ func TestGitHubCopilotBootstrapMCPUninstall(t *testing.T) {
 		t.Errorf("mcp-config.json should not contain sx server after uninstall, got: %s", content)
 	}
 }
+
+// TestHookModeOnlyInstallsHooksForSpecifiedClient tests that when sx install
+// is run with --hook-mode --client=X, only client X's hooks are installed,
+// not hooks for other detected clients. However, assets should still be
+// installed for ALL detected clients.
+//
+// This prevents the situation where opening Claude Code in a repo creates
+// GitHub Copilot's .github/hooks/sx.json file, while still ensuring assets
+// are available for all clients.
+func TestHookModeOnlyInstallsHooksForSpecifiedClient(t *testing.T) {
+	env := NewTestEnv(t)
+
+	// Setup vault with a skill (needed for install to run)
+	vaultDir := env.SetupPathVault()
+	env.AddSkillToVault(vaultDir, "test-skill", "1.0.0")
+
+	lockFile := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "test-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/test-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFile)
+
+	// Create a git repo (required for Copilot hooks installation)
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	// Run install with --hook-mode --client=claude-code
+	// This simulates Claude Code's SessionStart hook triggering sx install
+	installCmd := NewInstallCommand()
+	installCmd.SetArgs([]string{"--hook-mode", "--client=claude-code"})
+
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	// Verify Claude Code hooks WERE installed (in ~/.claude/settings.json)
+	claudeSettingsPath := filepath.Join(env.HomeDir, ".claude", "settings.json")
+	claudeSettings, err := os.ReadFile(claudeSettingsPath)
+	if err != nil {
+		t.Fatalf("Failed to read Claude settings: %v", err)
+	}
+	if !strings.Contains(string(claudeSettings), "sx install") {
+		t.Errorf("Claude Code hooks should be installed, but settings.json doesn't contain 'sx install': %s", claudeSettings)
+	}
+
+	// Verify GitHub Copilot hooks were NOT installed (no .github/hooks/sx.json)
+	copilotHooksPath := filepath.Join(projectDir, ".github", handlers.DirHooks, handlers.FileHooks)
+	if _, err := os.Stat(copilotHooksPath); err == nil {
+		content, _ := os.ReadFile(copilotHooksPath)
+		t.Errorf("Copilot hooks should NOT be installed when --client=claude-code, but found %s with content: %s",
+			copilotHooksPath, content)
+	}
+
+	// Verify assets ARE installed for BOTH clients (hooks filtering doesn't affect asset installation)
+	claudeSkillDir := filepath.Join(env.HomeDir, ".claude", "skills", "test-skill")
+	env.AssertFileExists(claudeSkillDir)
+
+	copilotSkillDir := filepath.Join(env.HomeDir, ".copilot", "skills", "test-skill")
+	env.AssertFileExists(copilotSkillDir)
+}
+
+// TestHookModeWithCopilotClientOnlyInstallsCopilotHooks is the reverse test:
+// when --client=github-copilot is specified, only Copilot hooks should be installed,
+// but assets should still be installed for all clients.
+func TestHookModeWithCopilotClientOnlyInstallsCopilotHooks(t *testing.T) {
+	env := NewTestEnv(t)
+
+	// Setup vault with a skill
+	vaultDir := env.SetupPathVault()
+	env.AddSkillToVault(vaultDir, "test-skill", "1.0.0")
+
+	lockFile := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "test-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/test-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFile)
+
+	// Create a git repo
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	// Clear any existing Claude settings to start fresh
+	claudeSettingsPath := filepath.Join(env.HomeDir, ".claude", "settings.json")
+	os.WriteFile(claudeSettingsPath, []byte("{}"), 0644)
+
+	// Run install with --hook-mode --client=github-copilot
+	installCmd := NewInstallCommand()
+	installCmd.SetArgs([]string{"--hook-mode", "--client=github-copilot"})
+
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	// Verify Copilot hooks WERE installed
+	copilotHooksPath := filepath.Join(projectDir, ".github", handlers.DirHooks, handlers.FileHooks)
+	copilotHooks, err := os.ReadFile(copilotHooksPath)
+	if err != nil {
+		t.Fatalf("Copilot hooks should be installed, but failed to read %s: %v", copilotHooksPath, err)
+	}
+	if !strings.Contains(string(copilotHooks), "sx install") {
+		t.Errorf("Copilot hooks should contain 'sx install', got: %s", copilotHooks)
+	}
+
+	// Verify Claude Code hooks were NOT modified (should still be empty {})
+	claudeSettings, err := os.ReadFile(claudeSettingsPath)
+	if err != nil {
+		t.Fatalf("Failed to read Claude settings: %v", err)
+	}
+	if strings.Contains(string(claudeSettings), "sx install") {
+		t.Errorf("Claude Code hooks should NOT be installed when --client=github-copilot, but settings.json contains 'sx install': %s", claudeSettings)
+	}
+
+	// Verify assets ARE installed for BOTH clients (hooks filtering doesn't affect asset installation)
+	claudeSkillDir := filepath.Join(env.HomeDir, ".claude", "skills", "test-skill")
+	env.AssertFileExists(claudeSkillDir)
+
+	copilotSkillDir := filepath.Join(env.HomeDir, ".copilot", "skills", "test-skill")
+	env.AssertFileExists(copilotSkillDir)
+}

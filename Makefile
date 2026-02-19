@@ -12,7 +12,7 @@ BUILD_DIR=./dist
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.Date=$(DATE)"
+LDFLAGS=-ldflags "-X github.com/sleuth-io/sx/internal/buildinfo.Version=$(VERSION) -X github.com/sleuth-io/sx/internal/buildinfo.Commit=$(COMMIT) -X github.com/sleuth-io/sx/internal/buildinfo.Date=$(DATE)"
 
 build: ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
@@ -127,3 +127,8 @@ demo: build ## Generate demo GIF (requires vhs)
 	HOME="$$DEMO_HOME" PATH="$(CURDIR)/$(BUILD_DIR):$$PATH" PS1="$$ " vhs docs/demo.tape && \
 	rm -rf "$$DEMO_HOME"
 	@echo "Generated: docs/demo.gif"
+
+logs:  ## Tail the sx log file, which is often ~/.cache/sx/sx.log, but not always
+	@LOG_FILE="$$(sx config 2>/dev/null | grep 'Log File:' | cut -d: -f2 | tr -d ' ')"; \
+	echo "Tailing $$LOG_FILE\n"; \
+	tail -f "$$LOG_FILE"
