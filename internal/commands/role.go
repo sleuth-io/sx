@@ -17,9 +17,10 @@ import (
 // NewRoleCommand creates the role command with subcommands
 func NewRoleCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "role",
-		Short: "Manage roles",
-		Long:  "Manage roles for the current profile. Roles control which skills are available.",
+		Use:    "role",
+		Short:  "Manage roles",
+		Long:   "Manage roles for the current profile. Roles control which skills are available.",
+		Hidden: true,
 	}
 
 	cmd.AddCommand(newRoleListCommand())
