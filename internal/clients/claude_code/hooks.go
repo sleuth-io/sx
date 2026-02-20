@@ -43,7 +43,7 @@ func installBootstrap(opts []bootstrap.Option) error {
 	// Install MCP servers from options that have MCPConfig
 	for _, opt := range opts {
 		if opt.MCPConfig != nil {
-			if err := installMCPServerFromConfig(home, opt.MCPConfig); err != nil {
+			if err := installMCPServerFromConfig(claudeDir, opt.MCPConfig); err != nil {
 				log.Error("failed to install MCP server", "server", opt.MCPConfig.Name, "error", err)
 				return fmt.Errorf("failed to install MCP server %s: %w", opt.MCPConfig.Name, err)
 			}
@@ -54,7 +54,7 @@ func installBootstrap(opts []bootstrap.Option) error {
 }
 
 // installMCPServerFromConfig installs an MCP server from a bootstrap.MCPServerConfig
-func installMCPServerFromConfig(homeDir string, config *bootstrap.MCPServerConfig) error {
+func installMCPServerFromConfig(claudeDir string, config *bootstrap.MCPServerConfig) error {
 	log := logger.Get()
 
 	serverConfig := map[string]any{
@@ -74,7 +74,7 @@ func installMCPServerFromConfig(homeDir string, config *bootstrap.MCPServerConfi
 		serverConfig["env"] = map[string]any{}
 	}
 
-	if err := handlers.AddMCPServer(homeDir, config.Name, serverConfig); err != nil {
+	if err := handlers.AddMCPServer(claudeDir, config.Name, serverConfig); err != nil {
 		return err
 	}
 
@@ -278,7 +278,7 @@ func uninstallBootstrap(opts []bootstrap.Option) error {
 
 	// Remove MCP servers
 	for _, name := range mcpToUninstall {
-		if err := uninstallMCPServerByName(home, name); err != nil {
+		if err := uninstallMCPServerByName(claudeDir, name); err != nil {
 			log.Error("failed to uninstall MCP server", "server", name, "error", err)
 			return fmt.Errorf("failed to uninstall MCP server %s: %w", name, err)
 		}
@@ -429,10 +429,10 @@ func installUsageReportingHook(claudeDir string) error {
 }
 
 // uninstallMCPServerByName removes an MCP server by name from ~/.claude.json
-func uninstallMCPServerByName(homeDir, name string) error {
+func uninstallMCPServerByName(claudeDir, name string) error {
 	log := logger.Get()
 
-	if err := handlers.RemoveMCPServer(homeDir, name); err != nil {
+	if err := handlers.RemoveMCPServer(claudeDir, name); err != nil {
 		return err
 	}
 
