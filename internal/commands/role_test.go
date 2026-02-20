@@ -73,7 +73,7 @@ func TestRoleCommandRejectsLocalProfile(t *testing.T) {
 				t.Fatal("Expected error for local profile, got nil")
 			}
 			if !strings.Contains(err.Error(), "only supported for remote") {
-				t.Errorf("Expected 'only supported for remote' error, got: %v", err)
+				t.Errorf("Expected 'only supported for remote' in error, got: %v", err)
 			}
 		})
 	}
