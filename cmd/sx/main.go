@@ -11,6 +11,7 @@ import (
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	_ "github.com/sleuth-io/sx/internal/clients/claude_code"    // Register Claude Code client
 	_ "github.com/sleuth-io/sx/internal/clients/cursor"         // Register Cursor client
+	_ "github.com/sleuth-io/sx/internal/clients/gemini"         // Register Gemini Code Assist client
 	_ "github.com/sleuth-io/sx/internal/clients/github_copilot" // Register GitHub Copilot client
 	"github.com/sleuth-io/sx/internal/commands"
 	"github.com/sleuth-io/sx/internal/config"
