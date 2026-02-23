@@ -46,6 +46,11 @@ type Client interface {
 	// These are options for hooks, MCP servers, or other infrastructure the client provides.
 	GetBootstrapOptions(ctx context.Context) []bootstrap.Option
 
+	// GetBootstrapPath returns the path where bootstrap config is stored.
+	// This is used for display purposes during init.
+	// Returns empty string if not applicable.
+	GetBootstrapPath() string
+
 	// InstallBootstrap installs client infrastructure (hooks, MCP servers, etc.).
 	// This sets up hooks for auto-update/usage tracking and registers the sx MCP server.
 	// Called during installation to ensure all client infrastructure is in place.

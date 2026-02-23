@@ -81,6 +81,9 @@ func installCopilotHooks(repoRoot string, opts []bootstrap.Option) error {
 		config.Version = 1
 	}
 
+	// Track if we made any changes
+	modified := false
+
 	// Install sessionStart hook (if enabled)
 	if bootstrap.ContainsKey(opts, bootstrap.SessionHookKey) {
 		installHook := "sx install --hook-mode --client=github-copilot"
@@ -93,6 +96,7 @@ func installCopilotHooks(repoRoot string, opts []bootstrap.Option) error {
 				TimeoutSec: 30,
 			})
 			log.Info("hook installed", "hook", "sessionStart", "command", installHook)
+			modified = true
 		}
 	}
 
@@ -108,7 +112,14 @@ func installCopilotHooks(repoRoot string, opts []bootstrap.Option) error {
 				TimeoutSec: 30,
 			})
 			log.Info("hook installed", "hook", "postToolUse", "command", reportHook)
+			modified = true
 		}
+	}
+
+	// Only write and notify if something changed
+	if modified {
+		// Print where hooks were installed (this is workspace-level, user should know)
+		fmt.Printf("  Installed Copilot hooks to %s\n", hookFilePath)
 	}
 
 	// Write back to file

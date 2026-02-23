@@ -27,12 +27,13 @@ type MultiSelectOption struct {
 
 // multiSelectModel is the bubbletea model for the multi-select component.
 type multiSelectModel struct {
-	title   string
-	options []MultiSelectOption
-	cursor  int
-	done    bool
-	theme   theme.Theme
-	width   int
+	title     string
+	options   []MultiSelectOption
+	cursor    int
+	done      bool
+	cancelled bool
+	theme     theme.Theme
+	width     int
 }
 
 // multiSelectKeyMap defines the keybindings for the multi-select component.
@@ -100,10 +101,7 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, multiSelectKeys.Quit):
-			// Return empty selection on quit
-			for i := range m.options {
-				m.options[i].Selected = false
-			}
+			m.cancelled = true
 			m.done = true
 			return m, tea.Quit
 
@@ -242,6 +240,9 @@ func MultiSelectWithIO(title string, options []MultiSelectOption, in io.Reader, 
 	}
 
 	final := result.(multiSelectModel)
+	if final.cancelled {
+		return nil, errors.New("selection cancelled")
+	}
 	return final.options, nil
 }
 

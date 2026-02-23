@@ -211,16 +211,21 @@ func PrintClientsSection(out *ui.Output, clientInfos []ClientInfo) {
 		// Client name as emphasized text
 		out.Bold(info.Name)
 
-		if info.Installed {
-			out.SuccessItem("Status: installed")
-		} else {
-			out.ListItem("○", "Status: not detected")
-		}
-
+		// Show disabled/enabled warnings first, before status
 		if info.ForceDisabled {
 			out.ListItem("⚠", "Disabled in config")
 		} else if info.ForceEnabled && !info.Installed {
 			out.ListItem("⚠", "Enabled in config but not detected")
+		}
+
+		// Show status - no green check if disabled
+		if info.ForceDisabled {
+			// Don't show green check for disabled clients
+			out.ListItem("○", "Status: installed (disabled)")
+		} else if info.Installed {
+			out.SuccessItem("Status: installed")
+		} else {
+			out.ListItem("○", "Status: not detected")
 		}
 
 		if info.Version != "" {

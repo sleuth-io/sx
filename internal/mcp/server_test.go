@@ -67,6 +67,10 @@ func (m *mockClient) GetBootstrapOptions(ctx context.Context) []bootstrap.Option
 	return nil
 }
 
+func (m *mockClient) GetBootstrapPath() string {
+	return ""
+}
+
 func (m *mockClient) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
 	return nil
 }

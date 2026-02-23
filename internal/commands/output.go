@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sleuth-io/sx/internal/ui"
+	"github.com/sleuth-io/sx/internal/ui/theme"
 	"github.com/spf13/cobra"
 )
 
@@ -64,14 +66,26 @@ func (o *outputHelper) printf(format string, args ...any) {
 	}
 }
 
-// printErr writes a line to the command's error output
+// printErr writes a line to the command's error output with error styling
 func (o *outputHelper) printErr(args ...any) {
-	fmt.Fprintln(o.cmd.ErrOrStderr(), args...)
+	msg := fmt.Sprint(args...)
+	if ui.IsTTY(o.cmd.ErrOrStderr()) && !ui.NoColor() {
+		style := theme.Current().Styles().Error
+		fmt.Fprintln(o.cmd.ErrOrStderr(), style.Render(msg))
+	} else {
+		fmt.Fprintln(o.cmd.ErrOrStderr(), msg)
+	}
 }
 
-// printfErr writes formatted output to the command's error output
+// printfErr writes formatted output to the command's error output with error styling
 func (o *outputHelper) printfErr(format string, args ...any) {
-	fmt.Fprintf(o.cmd.ErrOrStderr(), format, args...)
+	msg := fmt.Sprintf(format, args...)
+	if ui.IsTTY(o.cmd.ErrOrStderr()) && !ui.NoColor() {
+		style := theme.Current().Styles().Error
+		fmt.Fprint(o.cmd.ErrOrStderr(), style.Render(msg))
+	} else {
+		fmt.Fprint(o.cmd.ErrOrStderr(), msg)
+	}
 }
 
 // prompt prompts the user for input and returns the trimmed response

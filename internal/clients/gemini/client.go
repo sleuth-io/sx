@@ -94,16 +94,20 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		}
 
 		var err error
+		var installedPath string
 		switch bundle.Metadata.Asset.Type {
 		case asset.TypeMCP:
 			handler := handlers.NewMCPHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
+			installedPath = filepath.Join(targetBase, handlers.SettingsFile)
 		case asset.TypeRule:
 			handler := handlers.NewRuleHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
+			installedPath = filepath.Join(targetBase, handlers.GeminiRuleFile)
 		case asset.TypeSkill, asset.TypeCommand:
 			handler := handlers.NewSkillHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
+			installedPath = filepath.Join(targetBase, handlers.ConfigDir, handlers.DirCommands, bundle.Asset.Name+".toml")
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + bundle.Metadata.Asset.Type.Key
@@ -117,7 +121,7 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 			result.Message = fmt.Sprintf("Installation failed: %v", err)
 		} else {
 			result.Status = clients.StatusSuccess
-			result.Message = "Installed to " + targetBase
+			result.Message = installedPath
 		}
 
 		resp.Results = append(resp.Results, result)
@@ -234,6 +238,15 @@ func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 		bootstrap.AnalyticsHook,
 		bootstrap.SleuthAIQueryMCP(),
 	}
+}
+
+// GetBootstrapPath returns the path to Gemini's settings file.
+func (c *Client) GetBootstrapPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, handlers.ConfigDir, handlers.SettingsFile)
 }
 
 // InstallBootstrap installs Gemini infrastructure (hooks and MCP servers).

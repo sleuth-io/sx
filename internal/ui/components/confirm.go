@@ -2,6 +2,7 @@ package components
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/muesli/reflow/wordwrap"
+	"golang.org/x/term"
 
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/theme"
@@ -20,7 +23,9 @@ type confirmModel struct {
 	confirmed  bool
 	defaultYes bool
 	done       bool
+	cancelled  bool
 	theme      theme.Theme
+	width      int
 }
 
 // confirmKeyMap defines the keybindings for the confirm component.
@@ -56,11 +61,16 @@ var confirmKeys = confirmKeyMap{
 }
 
 func newConfirmModel(message string, defaultYes bool) confirmModel {
+	width := 80 // default
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		width = w
+	}
 	return confirmModel{
 		message:    message,
 		confirmed:  defaultYes,
 		defaultYes: defaultYes,
 		theme:      theme.Current(),
+		width:      width,
 	}
 }
 
@@ -74,6 +84,7 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, confirmKeys.Quit):
 			m.confirmed = false
+			m.cancelled = true
 			m.done = true
 			return m, tea.Quit
 
@@ -115,7 +126,17 @@ func (m confirmModel) View() string {
 		no = styles.Selected.Render("[No]")
 	}
 
-	return fmt.Sprintf("%s %s %s", m.message, yes, no)
+	// Calculate available width for message (leave room for buttons)
+	buttonWidth := 12 // "[Yes]  No " is about 12 chars
+	msgWidth := m.width - buttonWidth - 1
+	if msgWidth < 20 {
+		msgWidth = 20
+	}
+
+	// Wrap message if needed
+	wrappedMsg := wordwrap.String(m.message, msgWidth)
+
+	return fmt.Sprintf("%s %s %s", wrappedMsg, yes, no)
 }
 
 // Confirm displays an interactive confirmation prompt.
@@ -141,6 +162,9 @@ func ConfirmWithIO(message string, defaultYes bool, in io.Reader, out io.Writer)
 	}
 
 	final := result.(confirmModel)
+	if final.cancelled {
+		return false, errors.New("cancelled")
+	}
 	return final.confirmed, nil
 }
 

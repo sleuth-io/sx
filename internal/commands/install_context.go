@@ -265,7 +265,13 @@ func handleNothingToInstall(
 	if hookMode {
 		outputHookModeJSON(out, map[string]any{"continue": true})
 	} else {
-		styledOut.Success("All assets up to date")
+		if len(sortedAssets) == 0 {
+			styledOut.Success("No assets to install")
+		} else if len(sortedAssets) == 1 {
+			styledOut.Success(fmt.Sprintf("%s is up to date", sortedAssets[0].Name))
+		} else {
+			styledOut.Success(fmt.Sprintf("All %d assets up to date", len(sortedAssets)))
+		}
 	}
 
 	return nil

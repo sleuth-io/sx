@@ -17,6 +17,7 @@ import (
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/ui"
 )
 
 func main() {
@@ -68,7 +69,8 @@ Capture what your best AI users have learned and spread it to everyone automatic
 			// Default command: run install if lock file exists
 			return commands.RunDefaultCommand(cmd, args)
 		},
-		SilenceUsage: true,
+		SilenceUsage:  true,
+		SilenceErrors: true, // We handle error output ourselves with styling
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},
@@ -97,6 +99,9 @@ Capture what your best AI users have learned and spread it to everyone automatic
 	rootCmd.AddCommand(commands.NewRoleCommand())
 
 	if err := rootCmd.Execute(); err != nil {
+		// Print error with styling
+		styledOut := ui.NewOutput(os.Stdout, os.Stderr)
+		styledOut.Error(err.Error())
 		os.Exit(1)
 	}
 }

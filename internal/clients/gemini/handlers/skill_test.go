@@ -53,8 +53,8 @@ description = "Review code for best practices"
 		t.Fatalf("Install() error = %v", err)
 	}
 
-	// Verify the TOML file was created
-	tomlPath := filepath.Join(tempDir, "commands", "code-review.toml")
+	// Verify the TOML file was created in .gemini/commands/
+	tomlPath := filepath.Join(tempDir, ConfigDir, "commands", "code-review.toml")
 	content, err := os.ReadFile(tomlPath)
 	if err != nil {
 		t.Fatalf("Failed to read TOML file: %v", err)
@@ -98,8 +98,8 @@ description = "Review code for best practices"
 func TestSkillHandler_Remove(t *testing.T) {
 	tempDir := t.TempDir()
 
-	// Create commands directory and a TOML file
-	commandsDir := filepath.Join(tempDir, "commands")
+	// Create .gemini/commands directory and a TOML file
+	commandsDir := filepath.Join(tempDir, ConfigDir, "commands")
 	if err := os.MkdirAll(commandsDir, 0755); err != nil {
 		t.Fatalf("Failed to create commands dir: %v", err)
 	}

@@ -37,7 +37,8 @@ func (h *SkillHandler) Install(ctx context.Context, zipData []byte, targetBase s
 	tomlContent := h.buildTOMLContent(convertedPrompt)
 
 	// Ensure commands directory exists
-	commandsDir := filepath.Join(targetBase, DirCommands)
+	// Skills always go in .gemini/commands/ regardless of scope
+	commandsDir := filepath.Join(targetBase, ConfigDir, DirCommands)
 	if err := os.MkdirAll(commandsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create commands directory: %w", err)
 	}
@@ -53,7 +54,7 @@ func (h *SkillHandler) Install(ctx context.Context, zipData []byte, targetBase s
 
 // Remove removes the skill's TOML command file
 func (h *SkillHandler) Remove(ctx context.Context, targetBase string) error {
-	tomlPath := filepath.Join(targetBase, DirCommands, h.metadata.Asset.Name+".toml")
+	tomlPath := filepath.Join(targetBase, ConfigDir, DirCommands, h.metadata.Asset.Name+".toml")
 
 	if _, err := os.Stat(tomlPath); os.IsNotExist(err) {
 		return nil // Already removed
@@ -68,7 +69,7 @@ func (h *SkillHandler) Remove(ctx context.Context, targetBase string) error {
 
 // VerifyInstalled checks if the skill's TOML command file exists
 func (h *SkillHandler) VerifyInstalled(targetBase string) (bool, string) {
-	tomlPath := filepath.Join(targetBase, DirCommands, h.metadata.Asset.Name+".toml")
+	tomlPath := filepath.Join(targetBase, ConfigDir, DirCommands, h.metadata.Asset.Name+".toml")
 
 	if _, err := os.Stat(tomlPath); err == nil {
 		return true, "Found at " + tomlPath

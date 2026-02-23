@@ -458,7 +458,11 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, o
 		for _, result := range resp.Results {
 			switch result.Status {
 			case clients.StatusSuccess:
-				out.printf("  ✓ %s → %s\n", result.AssetName, client.DisplayName())
+				if result.Message != "" {
+					out.printf("  ✓ %s → %s (%s)\n", result.AssetName, client.DisplayName(), result.Message)
+				} else {
+					out.printf("  ✓ %s → %s\n", result.AssetName, client.DisplayName())
+				}
 				successfullyInstalled[result.AssetName] = true
 			case clients.StatusFailed:
 				out.printfErr("  ✗ %s → %s: %v\n", result.AssetName, client.DisplayName(), result.Error)

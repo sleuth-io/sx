@@ -290,11 +290,13 @@ func getClientDirectory(clientID string) string {
 	}
 
 	switch clientID {
-	case "claude-code":
+	case clients.ClientIDClaudeCode:
 		return filepath.Join(home, ".claude")
-	case "cursor":
+	case clients.ClientIDCursor:
 		return filepath.Join(home, ".cursor")
-	case "github-copilot":
+	case clients.ClientIDGemini:
+		return filepath.Join(home, ".gemini")
+	case clients.ClientIDGitHubCopilot:
 		return filepath.Join(home, ".copilot")
 	default:
 		return ""
@@ -317,7 +319,7 @@ func checkHooksInstalled(clientID, clientDir string) bool {
 	}
 
 	switch clientID {
-	case "claude-code":
+	case clients.ClientIDClaudeCode:
 		// Check settings.json for sx hooks (or legacy skills hooks)
 		settingsPath := filepath.Join(clientDir, "settings.json")
 		data, err := os.ReadFile(settingsPath)
@@ -327,7 +329,7 @@ func checkHooksInstalled(clientID, clientDir string) bool {
 		content := string(data)
 		return strings.Contains(content, "sx install") || strings.Contains(content, "skills install")
 
-	case "cursor":
+	case clients.ClientIDCursor:
 		// Check hooks.json for sx hooks (or legacy skills hooks)
 		hooksPath := filepath.Join(clientDir, "hooks.json")
 		data, err := os.ReadFile(hooksPath)
@@ -336,6 +338,42 @@ func checkHooksInstalled(clientID, clientDir string) bool {
 		}
 		content := string(data)
 		return strings.Contains(content, "sx install") || strings.Contains(content, "skills install")
+
+	case clients.ClientIDGemini:
+		// Check settings.json for sx hooks
+		settingsPath := filepath.Join(clientDir, "settings.json")
+		data, err := os.ReadFile(settingsPath)
+		if err != nil {
+			return false
+		}
+		content := string(data)
+		return strings.Contains(content, "sx install") || strings.Contains(content, "sx-session")
+
+	case clients.ClientIDGitHubCopilot:
+		// Copilot hooks are workspace-level in .github/hooks/sx.json
+		// Check the current repo if we're in one
+		cwd, err := os.Getwd()
+		if err != nil {
+			return false
+		}
+		// Walk up to find .git directory
+		dir := cwd
+		for {
+			if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+				hooksPath := filepath.Join(dir, ".github", "hooks", "sx.json")
+				data, err := os.ReadFile(hooksPath)
+				if err != nil {
+					return false
+				}
+				content := string(data)
+				return strings.Contains(content, "sx install") || strings.Contains(content, "skills install")
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				return false
+			}
+			dir = parent
+		}
 	}
 
 	return false
