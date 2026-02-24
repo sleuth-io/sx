@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/clients"
@@ -181,6 +182,27 @@ func filterClientsByID(allClients []clients.Client, clientID string) []clients.C
 		}
 	}
 	return nil
+}
+
+// filterClientsByFlag filters clients by a comma-separated list of client IDs.
+// Returns only clients whose ID is in the list.
+func filterClientsByFlag(allClients []clients.Client, clientsFlag string) []clients.Client {
+	// Parse comma-separated list
+	wantedIDs := make(map[string]bool)
+	for _, id := range strings.Split(clientsFlag, ",") {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			wantedIDs[id] = true
+		}
+	}
+
+	var filtered []clients.Client
+	for _, c := range allClients {
+		if wantedIDs[c.ID()] {
+			filtered = append(filtered, c)
+		}
+	}
+	return filtered
 }
 
 // handleCursorWorkspace handles changing to Cursor workspace directory in hook mode

@@ -129,7 +129,7 @@ func runRemove(cmd *cobra.Command, assetName, versionFlag string, yes bool) erro
 
 	if shouldInstall {
 		out.println()
-		if err := runInstall(cmd, nil, false, "", false, ""); err != nil {
+		if err := runInstall(cmd, nil, false, "", false, "", ""); err != nil {
 			out.printfErr("Install failed: %v\n", err)
 		}
 	} else {

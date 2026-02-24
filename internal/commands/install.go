@@ -30,6 +30,7 @@ func NewInstallCommand() *cobra.Command {
 	var clientID string
 	var fixMode bool
 	var targetDir string
+	var clientsFlag string
 
 	cmd := &cobra.Command{
 		Use:   "install",
@@ -41,7 +42,7 @@ Use --target to install as if running from a different directory. This is useful
 when you want to install assets for a project without being in that directory
 (e.g., Docker sandboxes, CI pipelines).`, constants.SkillLockFile),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInstall(cmd, args, hookMode, clientID, fixMode, targetDir)
+			return runInstall(cmd, args, hookMode, clientID, fixMode, targetDir, clientsFlag)
 		},
 	}
 
@@ -49,6 +50,7 @@ when you want to install assets for a project without being in that directory
 	cmd.Flags().StringVar(&clientID, "client", "", "Client ID that triggered the hook (used with --hook-mode)")
 	cmd.Flags().BoolVar(&fixMode, "repair", false, "Verify assets are actually installed and fix any discrepancies")
 	cmd.Flags().StringVar(&targetDir, "target", "", "Install as if running from this directory")
+	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Comma-separated client IDs to install to (e.g., 'claude-code,cursor')")
 	_ = cmd.Flags().MarkHidden("hook-mode") // Hide from help output since it's internal
 	_ = cmd.Flags().MarkHidden("client")    // Hide from help output since it's internal
 
@@ -56,7 +58,7 @@ when you want to install assets for a project without being in that directory
 }
 
 // runInstall executes the install command
-func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID string, repairMode bool, targetDir string) error {
+func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID string, repairMode bool, targetDir string, clientsFlag string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
@@ -89,6 +91,14 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	env, err := detectInstallEnvironment(ctx, cfg, status, targetDir)
 	if err != nil {
 		return err
+	}
+
+	// Filter clients if --clients flag is set
+	if clientsFlag != "" {
+		env.Clients = filterClientsByFlag(env.Clients, clientsFlag)
+		if len(env.Clients) == 0 {
+			return fmt.Errorf("no matching clients found for: %s", clientsFlag)
+		}
 	}
 
 	// Hook mode fast path check

@@ -174,7 +174,7 @@ func handleAssetRemoval(ctx context.Context, cmd *cobra.Command, out *outputHelp
 
 		if confirmed {
 			out.println()
-			if err := runInstall(cmd, nil, false, "", false, ""); err != nil {
+			if err := runInstall(cmd, nil, false, "", false, "", ""); err != nil {
 				out.printfErr("Install failed: %v\n", err)
 			}
 		} else {
