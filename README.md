@@ -134,13 +134,14 @@ sx uses a lock file (like package-lock.json) for deterministic installations acr
 
 ## Supported Clients
 
-| Client         | Status         | Notes                                                     |
-|----------------|----------------|-----------------------------------------------------------|
-| Claude Code    | ✅ Supported    | Full support for all asset types                          |
-| Cursor         | ✅ Experimental | Skills, rules, commands, MCP servers, hooks               |
-| GitHub Copilot | ✅ Experimental | Skills, rules, commands, agents, MCP servers, local hooks |
-| Gemini         | ✅ Experimental | Skills, rules, commands, MCP servers, hooks               |
-| Codex          | Coming soon    |                                                           |
+| Client             | Status         | Notes                                                     |
+|--------------------|----------------|-----------------------------------------------------------|
+| Claude Code        | ✅ Supported    | Full support for all asset types                          |
+| Cursor             | ✅ Experimental | Skills, rules, commands, MCP servers, hooks               |
+| GitHub Copilot     | ✅ Experimental | Skills, rules, commands, agents, MCP servers, local hooks |
+| Gemini CLI         | ✅ Experimental | Skills, rules, commands, MCP servers, hooks               |
+| Gemini (JetBrains) | ✅ Experimental | Rules, MCP servers only (no commands/hooks)               |
+| Codex              | Coming soon    |                                                           |
 
 
 ## Roadmap

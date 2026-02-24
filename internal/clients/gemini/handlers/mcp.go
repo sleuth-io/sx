@@ -24,6 +24,7 @@ func NewMCPHandler(meta *metadata.Metadata) *MCPHandler {
 
 // Install installs an MCP asset to Gemini by updating settings.json.
 // For packaged assets, extracts files first. For config-only, registers as-is.
+// Also installs to JetBrains IDEs if detected.
 func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	settingsPath := filepath.Join(targetBase, SettingsFile)
 
@@ -51,7 +52,7 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 		entry = h.generateConfigOnlyMCPEntry()
 	}
 
-	// Add to config
+	// Add to CLI config (settings.json)
 	if config.MCPServers == nil {
 		config.MCPServers = make(map[string]any)
 	}
@@ -62,7 +63,35 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 		return fmt.Errorf("failed to write settings.json: %w", err)
 	}
 
+	// Also install to JetBrains IDEs (best effort, ignore errors)
+	h.installToJetBrains(entry)
+
 	return nil
+}
+
+// installToJetBrains installs the MCP server to all detected JetBrains IDEs
+func (h *MCPHandler) installToJetBrains(entry map[string]any) {
+	server := JetBrainsMCPServer{}
+
+	if cmd, ok := entry["command"].(string); ok {
+		server.Command = cmd
+	}
+	if args, ok := entry["args"].([]any); ok {
+		for _, arg := range args {
+			if s, ok := arg.(string); ok {
+				server.Args = append(server.Args, s)
+			}
+		}
+	}
+	if url, ok := entry["url"].(string); ok {
+		server.URL = url
+	}
+	if env, ok := entry["env"].(map[string]string); ok {
+		server.Env = env
+	}
+
+	// Best effort - ignore errors for JetBrains
+	_ = AddJetBrainsMCPServer(h.metadata.Asset.Name, server)
 }
 
 // Remove removes an MCP entry from Gemini
@@ -75,7 +104,7 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 		return fmt.Errorf("failed to read settings.json: %w", err)
 	}
 
-	// Remove entry
+	// Remove entry from CLI config
 	delete(config.MCPServers, h.metadata.Asset.Name)
 
 	// Write updated settings.json
@@ -86,6 +115,9 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 	// Remove server directory if it exists (packaged mode)
 	serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 	os.RemoveAll(serverDir) // Ignore errors if doesn't exist
+
+	// Also remove from JetBrains IDEs (best effort)
+	_ = RemoveJetBrainsMCPServer(h.metadata.Asset.Name)
 
 	return nil
 }
@@ -161,22 +193,24 @@ func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
 	// Check if install directory exists (packaged mode)
 	installDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 	if utils.IsDirectory(installDir) {
-		// Packaged mode - check directory exists
 		return true, "installed (packaged)"
 	}
 
-	// Config-only mode: check settings.json for server entry
+	// Check CLI config (settings.json)
 	settingsPath := filepath.Join(targetBase, SettingsFile)
 	config, err := ReadSettingsJSON(settingsPath)
-	if err != nil {
-		return false, "failed to read settings.json: " + err.Error()
+	if err == nil {
+		if _, exists := config.MCPServers[h.metadata.Asset.Name]; exists {
+			return true, "installed (CLI)"
+		}
 	}
 
-	if _, exists := config.MCPServers[h.metadata.Asset.Name]; !exists {
-		return false, "MCP server not registered"
+	// Check JetBrains IDEs
+	if HasJetBrainsMCPServer(h.metadata.Asset.Name) {
+		return true, "installed (JetBrains)"
 	}
 
-	return true, "installed"
+	return false, "MCP server not registered"
 }
 
 // SettingsJSON represents Gemini's settings.json structure

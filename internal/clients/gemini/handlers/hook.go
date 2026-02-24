@@ -242,7 +242,7 @@ func (h *HookHandler) buildCommand(geminiDir string) string {
 
 // GetInstallPath returns the installation path relative to geminiDir
 func (h *HookHandler) GetInstallPath() string {
-	return filepath.Join("hooks", h.metadata.Asset.Name)
+	return filepath.Join(DirHooks, h.metadata.Asset.Name)
 }
 
 // containsFile checks if a filename exists in the file list
@@ -254,6 +254,3 @@ func containsFile(files []string, filename string) bool {
 	}
 	return false
 }
-
-// DirHooks is the directory for hook scripts
-const DirHooks = "hooks"

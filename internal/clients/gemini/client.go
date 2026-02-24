@@ -44,20 +44,21 @@ func (c *Client) RuleCapabilities() *clients.RuleCapabilities {
 	return RuleCapabilities()
 }
 
-// IsInstalled checks if Gemini is installed by checking for ~/.gemini/ directory
+// IsInstalled checks if Gemini is installed (CLI or JetBrains plugin)
 func (c *Client) IsInstalled() bool {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return false
 	}
 
-	// Check for .gemini directory
+	// Check for .gemini directory (CLI)
 	configDir := filepath.Join(home, handlers.ConfigDir)
-	if stat, err := os.Stat(configDir); err == nil {
-		return stat.IsDir()
+	if stat, err := os.Stat(configDir); err == nil && stat.IsDir() {
+		return true
 	}
 
-	return false
+	// Check for JetBrains IDEs with Gemini plugin
+	return handlers.IsJetBrainsInstalled()
 }
 
 // GetVersion returns the Gemini version
