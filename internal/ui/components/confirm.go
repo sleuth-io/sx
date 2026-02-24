@@ -128,10 +128,7 @@ func (m confirmModel) View() string {
 
 	// Calculate available width for message (leave room for buttons)
 	buttonWidth := 12 // "[Yes]  No " is about 12 chars
-	msgWidth := m.width - buttonWidth - 1
-	if msgWidth < 20 {
-		msgWidth = 20
-	}
+	msgWidth := max(m.width-buttonWidth-1, 20)
 
 	// Wrap message if needed
 	wrappedMsg := wordwrap.String(m.message, msgWidth)

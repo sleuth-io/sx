@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/theme"
-	"github.com/spf13/cobra"
 )
 
 // Context key for test prompter injection

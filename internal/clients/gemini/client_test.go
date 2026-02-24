@@ -152,6 +152,7 @@ func TestRuleCapabilities(t *testing.T) {
 
 	if caps == nil {
 		t.Fatal("RuleCapabilities() returned nil")
+		return // Make staticcheck happy
 	}
 
 	if caps.ClientName != "gemini" {

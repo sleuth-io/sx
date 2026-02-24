@@ -189,7 +189,7 @@ func filterClientsByID(allClients []clients.Client, clientID string) []clients.C
 func filterClientsByFlag(allClients []clients.Client, clientsFlag string) []clients.Client {
 	// Parse comma-separated list
 	wantedIDs := make(map[string]bool)
-	for _, id := range strings.Split(clientsFlag, ",") {
+	for id := range strings.SplitSeq(clientsFlag, ",") {
 		id = strings.TrimSpace(id)
 		if id != "" {
 			wantedIDs[id] = true
@@ -290,7 +290,7 @@ func handleNothingToInstall(
 		if len(sortedAssets) == 0 {
 			styledOut.Success("No assets to install")
 		} else if len(sortedAssets) == 1 {
-			styledOut.Success(fmt.Sprintf("%s is up to date", sortedAssets[0].Name))
+			styledOut.Success(sortedAssets[0].Name + " is up to date")
 		} else {
 			styledOut.Success(fmt.Sprintf("All %d assets up to date", len(sortedAssets)))
 		}

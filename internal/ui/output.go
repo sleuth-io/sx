@@ -7,8 +7,9 @@ import (
 	"strings"
 
 	"github.com/muesli/reflow/wordwrap"
-	"github.com/sleuth-io/sx/internal/ui/theme"
 	"golang.org/x/term"
+
+	"github.com/sleuth-io/sx/internal/ui/theme"
 )
 
 // Output provides styled terminal output.
