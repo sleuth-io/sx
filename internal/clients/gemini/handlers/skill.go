@@ -37,8 +37,13 @@ func (h *SkillHandler) Install(ctx context.Context, zipData []byte, targetBase s
 	tomlContent := h.buildTOMLContent(convertedPrompt)
 
 	// Ensure commands directory exists
-	// Skills always go in .gemini/commands/ regardless of scope
+	// For global scope, targetBase is already ~/.gemini, so we only add commands/
+	// For repo scope, targetBase is /repo, so we add .gemini/commands/
 	commandsDir := filepath.Join(targetBase, ConfigDir, DirCommands)
+	if filepath.Base(targetBase) == ConfigDir {
+		// Global scope: targetBase is already ~/.gemini
+		commandsDir = filepath.Join(targetBase, DirCommands)
+	}
 	if err := os.MkdirAll(commandsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create commands directory: %w", err)
 	}
@@ -54,7 +59,12 @@ func (h *SkillHandler) Install(ctx context.Context, zipData []byte, targetBase s
 
 // Remove removes the skill's TOML command file
 func (h *SkillHandler) Remove(ctx context.Context, targetBase string) error {
-	tomlPath := filepath.Join(targetBase, ConfigDir, DirCommands, h.metadata.Asset.Name+".toml")
+	// For global scope, targetBase is already ~/.gemini
+	commandsDir := filepath.Join(targetBase, ConfigDir, DirCommands)
+	if filepath.Base(targetBase) == ConfigDir {
+		commandsDir = filepath.Join(targetBase, DirCommands)
+	}
+	tomlPath := filepath.Join(commandsDir, h.metadata.Asset.Name+".toml")
 
 	if _, err := os.Stat(tomlPath); os.IsNotExist(err) {
 		return nil // Already removed
@@ -69,7 +79,12 @@ func (h *SkillHandler) Remove(ctx context.Context, targetBase string) error {
 
 // VerifyInstalled checks if the skill's TOML command file exists
 func (h *SkillHandler) VerifyInstalled(targetBase string) (bool, string) {
-	tomlPath := filepath.Join(targetBase, ConfigDir, DirCommands, h.metadata.Asset.Name+".toml")
+	// For global scope, targetBase is already ~/.gemini
+	commandsDir := filepath.Join(targetBase, ConfigDir, DirCommands)
+	if filepath.Base(targetBase) == ConfigDir {
+		commandsDir = filepath.Join(targetBase, DirCommands)
+	}
+	tomlPath := filepath.Join(commandsDir, h.metadata.Asset.Name+".toml")
 
 	if _, err := os.Stat(tomlPath); err == nil {
 		return true, "Found at " + tomlPath
@@ -78,11 +93,13 @@ func (h *SkillHandler) VerifyInstalled(targetBase string) (bool, string) {
 	return false, "Command file not found"
 }
 
-// readPromptContent reads the skill prompt from the zip
+// readPromptContent reads the skill/command prompt from the zip
 func (h *SkillHandler) readPromptContent(zipData []byte) (string, error) {
 	promptFile := DefaultSkillPromptFile
 	if h.metadata.Skill != nil && h.metadata.Skill.PromptFile != "" {
 		promptFile = h.metadata.Skill.PromptFile
+	} else if h.metadata.Command != nil && h.metadata.Command.PromptFile != "" {
+		promptFile = h.metadata.Command.PromptFile
 	}
 
 	content, err := utils.ReadZipFile(zipData, promptFile)
@@ -90,7 +107,14 @@ func (h *SkillHandler) readPromptContent(zipData []byte) (string, error) {
 		// Try lowercase variant
 		content, err = utils.ReadZipFile(zipData, "skill.md")
 		if err != nil {
-			return "", fmt.Errorf("prompt file not found: %s", promptFile)
+			// Try COMMAND.md for command assets
+			content, err = utils.ReadZipFile(zipData, "COMMAND.md")
+			if err != nil {
+				content, err = utils.ReadZipFile(zipData, "command.md")
+				if err != nil {
+					return "", fmt.Errorf("prompt file not found: %s", promptFile)
+				}
+			}
 		}
 	}
 
@@ -103,12 +127,16 @@ func (h *SkillHandler) convertPromptSyntax(content string) string {
 	content = strings.ReplaceAll(content, "$ARGUMENTS", "{{args}}")
 
 	// Convert @file references to Gemini's @{file} syntax
-	// sx uses @./path/file.md or @path/file.md
+	// sx uses @./path/file.md or @/absolute/path or @path/file.md
 	// Gemini uses @{path/file.md}
-	// This is a simple conversion - could be improved with regex for edge cases
+	// Only convert explicit file path references:
+	// - @./ for relative paths (e.g., @./src/file.ts)
+	// - @/ for absolute paths (e.g., @/etc/config)
+	// We intentionally do NOT convert @user/repo or @org/package style references
+	// as those are GitHub/npm references, not file paths.
 	lines := strings.Split(content, "\n")
 	for i, line := range lines {
-		// Look for @ followed by path-like content
+		// Look for @./ (relative path)
 		if before, after, found := strings.Cut(line, "@./"); found {
 			// Convert @./path to @{path}
 			endIdx := findPathEnd(after)
@@ -116,15 +144,13 @@ func (h *SkillHandler) convertPromptSyntax(content string) string {
 				path := after[:endIdx]
 				lines[i] = before + "@{" + path + "}" + after[endIdx:]
 			}
-		} else if idx := strings.Index(line, "@"); idx != -1 && idx+1 < len(line) {
-			// Check if it looks like a file path (not an email or other @ usage)
+		} else if idx := strings.Index(line, "@/"); idx != -1 && idx+1 < len(line) {
+			// Look for @/ (absolute path) - must start with /
 			rest := line[idx+1:]
-			if len(rest) > 0 && (rest[0] == '/' || (len(rest) > 1 && rest[0] != ' ' && strings.Contains(rest, "/"))) {
-				endIdx := findPathEnd(rest)
-				if endIdx > 0 {
-					path := rest[:endIdx]
-					lines[i] = line[:idx] + "@{" + path + "}" + rest[endIdx:]
-				}
+			endIdx := findPathEnd(rest)
+			if endIdx > 0 {
+				path := rest[:endIdx]
+				lines[i] = line[:idx] + "@{" + path + "}" + rest[endIdx:]
 			}
 		}
 	}

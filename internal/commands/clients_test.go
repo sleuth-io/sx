@@ -505,6 +505,7 @@ func TestComputeDisabledClients(t *testing.T) {
 				// Remove all detection markers
 				os.RemoveAll(filepath.Join(env.HomeDir, ".claude"))
 				os.RemoveAll(filepath.Join(env.HomeDir, ".copilot"))
+				os.RemoveAll(filepath.Join(env.HomeDir, ".gemini"))
 			},
 			selectedClients:  []string{"claude-code"},
 			expectedDisabled: nil,
@@ -512,24 +513,25 @@ func TestComputeDisabledClients(t *testing.T) {
 		{
 			name: "all detected clients selected returns nil",
 			setupDetected: func(env *TestEnv) {
-				// Claude and Copilot are detected (already setup in NewTestEnv)
+				// Claude, Copilot, and Gemini are detected (already setup in NewTestEnv)
 			},
-			selectedClients:  []string{"claude-code", "github-copilot"},
+			selectedClients:  []string{"claude-code", "github-copilot", "gemini"},
 			expectedDisabled: nil,
 		},
 		{
 			name: "one detected client not selected is disabled",
 			setupDetected: func(env *TestEnv) {
-				// Claude and Copilot are detected
+				// Claude, Copilot, and Gemini are detected
 			},
 			selectedClients:  []string{"claude-code"},
-			expectedDisabled: []string{"github-copilot"},
+			expectedDisabled: []string{"github-copilot", "gemini"},
 		},
 		{
 			name: "undetected client in selection is ignored",
 			setupDetected: func(env *TestEnv) {
 				// Only Claude detected
 				os.RemoveAll(filepath.Join(env.HomeDir, ".copilot"))
+				os.RemoveAll(filepath.Join(env.HomeDir, ".gemini"))
 			},
 			selectedClients:  []string{"claude-code", "github-copilot"}, // copilot not detected
 			expectedDisabled: nil,                                       // copilot not disabled because not detected

@@ -161,6 +161,26 @@ func TestConvertPromptSyntax(t *testing.T) {
 			input:    "Simple prompt without special syntax",
 			expected: "Simple prompt without special syntax",
 		},
+		{
+			name:     "absolute path with @/",
+			input:    "Check @/etc/config for settings",
+			expected: "Check @{/etc/config} for settings",
+		},
+		{
+			name:     "do not convert @user/repo GitHub reference",
+			input:    "See @user/repo for details",
+			expected: "See @user/repo for details",
+		},
+		{
+			name:     "do not convert @org/package npm reference",
+			input:    "Install @org/package for this",
+			expected: "Install @org/package for this",
+		},
+		{
+			name:     "email address not converted",
+			input:    "Contact user@example.com for help",
+			expected: "Contact user@example.com for help",
+		},
 	}
 
 	for _, tt := range tests {

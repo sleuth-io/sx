@@ -31,9 +31,10 @@ func NewClient() *Client {
 			[]asset.Type{
 				asset.TypeMCP,     // settings.json mcpServers
 				asset.TypeRule,    // GEMINI.md files
-				asset.TypeHook,    // settings.json hooks (Gemini CLI only)
 				asset.TypeSkill,   // .gemini/commands/*.toml (Gemini CLI only)
 				asset.TypeCommand, // .gemini/commands/*.toml (same as skill)
+				// Note: Hooks are managed via bootstrap (InstallBootstrap/UninstallBootstrap),
+				// not as standalone assets. See installSessionHook and installAnalyticsHook.
 			},
 		),
 	}
@@ -107,7 +108,13 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeSkill, asset.TypeCommand:
 			handler := handlers.NewSkillHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
-			installedPath = filepath.Join(targetBase, handlers.ConfigDir, handlers.DirCommands, bundle.Asset.Name+".toml")
+			// For global scope, targetBase is already ~/.gemini, so we only add commands/
+			// For repo scope, targetBase is /repo, so we add .gemini/commands/
+			if filepath.Base(targetBase) == handlers.ConfigDir {
+				installedPath = filepath.Join(targetBase, handlers.DirCommands, bundle.Asset.Name+".toml")
+			} else {
+				installedPath = filepath.Join(targetBase, handlers.ConfigDir, handlers.DirCommands, bundle.Asset.Name+".toml")
+			}
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + bundle.Metadata.Asset.Type.Key
@@ -190,7 +197,10 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 // For Gemini, rules are in GEMINI.md files relative to scope,
 // and MCP config is always in ~/.gemini/settings.json
 func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error) {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
 
 	switch scope.Type {
 	case clients.ScopeGlobal:

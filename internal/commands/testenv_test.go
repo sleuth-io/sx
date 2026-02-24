@@ -19,7 +19,7 @@ type TestEnv struct {
 
 // NewTestEnv creates a new isolated test environment.
 // It sets HOME and XDG environment variables and creates the necessary
-// directories so that Claude Code and GitHub Copilot clients are detected.
+// directories so that Claude Code, GitHub Copilot, and Gemini clients are detected.
 func NewTestEnv(t *testing.T) *TestEnv {
 	t.Helper()
 
@@ -27,14 +27,15 @@ func NewTestEnv(t *testing.T) *TestEnv {
 	homeDir := filepath.Join(tempDir, "home")
 	claudeDir := filepath.Join(homeDir, ".claude")
 	copilotDir := filepath.Join(homeDir, ".copilot")
+	geminiDir := filepath.Join(homeDir, ".gemini")
 
 	// Set environment for sandboxing
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 
-	// Create directories for both Claude Code and GitHub Copilot
-	for _, dir := range []string{homeDir, claudeDir, copilotDir} {
+	// Create directories for Claude Code, GitHub Copilot, and Gemini
+	for _, dir := range []string{homeDir, claudeDir, copilotDir, geminiDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatalf("Failed to create directory %s: %v", dir, err)
 		}
@@ -58,6 +59,11 @@ func NewTestEnv(t *testing.T) *TestEnv {
 // GlobalClaudeDir returns the path to ~/.claude
 func (e *TestEnv) GlobalClaudeDir() string {
 	return filepath.Join(e.HomeDir, ".claude")
+}
+
+// GlobalGeminiDir returns the path to ~/.gemini
+func (e *TestEnv) GlobalGeminiDir() string {
+	return filepath.Join(e.HomeDir, ".gemini")
 }
 
 // Chdir changes to the specified directory and registers cleanup to restore.

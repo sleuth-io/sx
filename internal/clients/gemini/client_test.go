@@ -35,7 +35,7 @@ func TestSupportsAssetType(t *testing.T) {
 	}{
 		{asset.TypeMCP, true},
 		{asset.TypeRule, true},
-		{asset.TypeHook, true},    // Supported via settings.json hooks (Gemini CLI)
+		{asset.TypeHook, false},   // Hooks are managed via bootstrap, not as standalone assets
 		{asset.TypeSkill, true},   // Supported via .gemini/commands/*.toml (Gemini CLI)
 		{asset.TypeCommand, true}, // Supported via .gemini/commands/*.toml (same as skill)
 		{asset.TypeAgent, false},

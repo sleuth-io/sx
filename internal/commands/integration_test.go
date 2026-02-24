@@ -356,3 +356,63 @@ path = "assets/test-skill/1.0.0"
 	}
 	t.Logf("✓ Got expected error: %v", err)
 }
+
+// TestGeminiSkillInstallation tests that skills are installed correctly for Gemini.
+// This specifically tests that global-scope skills go to ~/.gemini/commands/
+// and not ~/.gemini/.gemini/commands/ (double .gemini bug).
+func TestGeminiSkillInstallation(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddSkillToVault(vaultDir, "gemini-test-skill", "1.0.0")
+
+	// Lock file with a global skill
+	lockContent := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "gemini-test-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/gemini-test-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockContent)
+	env.Chdir(env.HomeDir)
+
+	installCmd := NewInstallCommand()
+	installCmd.SetArgs([]string{"--clients", "gemini"})
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	// Verify skill was installed to ~/.gemini/commands/ (not ~/.gemini/.gemini/commands/)
+	correctPath := filepath.Join(env.GlobalGeminiDir(), "commands", "gemini-test-skill.toml")
+	wrongPath := filepath.Join(env.GlobalGeminiDir(), ".gemini", "commands", "gemini-test-skill.toml")
+
+	if _, err := os.Stat(correctPath); os.IsNotExist(err) {
+		t.Errorf("Skill TOML not found at correct path: %s", correctPath)
+	}
+
+	if _, err := os.Stat(wrongPath); err == nil {
+		t.Errorf("Skill TOML found at wrong path (double .gemini bug): %s", wrongPath)
+	}
+
+	// Verify TOML content
+	content, err := os.ReadFile(correctPath)
+	if err != nil {
+		t.Fatalf("Failed to read installed TOML: %v", err)
+	}
+
+	if !strings.Contains(string(content), "description =") {
+		t.Error("TOML should contain description")
+	}
+
+	if !strings.Contains(string(content), "prompt =") {
+		t.Error("TOML should contain prompt")
+	}
+
+	t.Log("✓ Gemini skill installation test passed!")
+}
