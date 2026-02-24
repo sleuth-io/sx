@@ -64,10 +64,10 @@ func TestIsInstalled(t *testing.T) {
 
 	// Initially not installed
 	if client.IsInstalled() {
-		t.Error("IsInstalled() = true when ~/.gemini doesn't exist")
+		t.Error("IsInstalled() = true when nothing is installed")
 	}
 
-	// Create .gemini directory
+	// Create .gemini directory (CLI)
 	geminiDir := filepath.Join(tempDir, ".gemini")
 	if err := os.MkdirAll(geminiDir, 0755); err != nil {
 		t.Fatalf("Failed to create .gemini dir: %v", err)
@@ -76,6 +76,87 @@ func TestIsInstalled(t *testing.T) {
 	// Now should be installed
 	if !client.IsInstalled() {
 		t.Error("IsInstalled() = false when ~/.gemini exists")
+	}
+}
+
+func TestIsInstalled_VSCode(t *testing.T) {
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+
+	tempDir := t.TempDir()
+	os.Setenv("HOME", tempDir)
+
+	client := NewClient()
+
+	// Initially not installed
+	if client.IsInstalled() {
+		t.Error("IsInstalled() = true when nothing is installed")
+	}
+
+	// Create VS Code extension directory
+	extensionDir := filepath.Join(tempDir, ".vscode/extensions/google.geminicodeassist-1.0.0")
+	if err := os.MkdirAll(extensionDir, 0755); err != nil {
+		t.Fatalf("Failed to create VS Code extension dir: %v", err)
+	}
+
+	// Now should be installed
+	if !client.IsInstalled() {
+		t.Error("IsInstalled() = false when VS Code Gemini extension exists")
+	}
+}
+
+func TestIsInstalled_JetBrains(t *testing.T) {
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+
+	tempDir := t.TempDir()
+	os.Setenv("HOME", tempDir)
+
+	client := NewClient()
+
+	// Initially not installed
+	if client.IsInstalled() {
+		t.Error("IsInstalled() = true when nothing is installed")
+	}
+
+	// Create JetBrains config directory with mcp.json (indicates Gemini is configured)
+	jetbrainsDir := filepath.Join(tempDir, ".config/JetBrains/IntelliJIdea2025.1")
+	if err := os.MkdirAll(jetbrainsDir, 0755); err != nil {
+		t.Fatalf("Failed to create JetBrains dir: %v", err)
+	}
+	mcpPath := filepath.Join(jetbrainsDir, "mcp.json")
+	if err := os.WriteFile(mcpPath, []byte("{}"), 0644); err != nil {
+		t.Fatalf("Failed to create mcp.json: %v", err)
+	}
+
+	// Now should be installed
+	if !client.IsInstalled() {
+		t.Error("IsInstalled() = false when JetBrains with mcp.json exists")
+	}
+}
+
+func TestIsInstalled_AndroidStudio(t *testing.T) {
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+
+	tempDir := t.TempDir()
+	os.Setenv("HOME", tempDir)
+
+	client := NewClient()
+
+	// Create Android Studio config directory with mcp.json
+	androidStudioDir := filepath.Join(tempDir, ".config/JetBrains/AndroidStudio2024.2")
+	if err := os.MkdirAll(androidStudioDir, 0755); err != nil {
+		t.Fatalf("Failed to create Android Studio dir: %v", err)
+	}
+	mcpPath := filepath.Join(androidStudioDir, "mcp.json")
+	if err := os.WriteFile(mcpPath, []byte("{}"), 0644); err != nil {
+		t.Fatalf("Failed to create mcp.json: %v", err)
+	}
+
+	// Should be installed (Android Studio is detected as JetBrains IDE)
+	if !client.IsInstalled() {
+		t.Error("IsInstalled() = false when Android Studio with mcp.json exists")
 	}
 }
 
