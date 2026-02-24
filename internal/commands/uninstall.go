@@ -20,6 +20,7 @@ import (
 	"github.com/sleuth-io/sx/internal/gitutil"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
@@ -30,6 +31,7 @@ func NewUninstallCommand() *cobra.Command {
 	var yes bool
 	var dryRun bool
 	var verbose bool
+	var clientsFlag string
 
 	cmd := &cobra.Command{
 		Use:   "uninstall",
@@ -53,10 +55,11 @@ Examples:
   sx uninstall --all --yes`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := UninstallOptions{
-				All:     all,
-				Yes:     yes,
-				DryRun:  dryRun,
-				Verbose: verbose,
+				All:         all,
+				Yes:         yes,
+				DryRun:      dryRun,
+				Verbose:     verbose,
+				ClientsFlag: clientsFlag,
 			}
 			return runUninstall(cmd, args, opts)
 		},
@@ -66,16 +69,18 @@ Examples:
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be uninstalled without removing")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "Verbose output")
+	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Comma-separated client IDs to uninstall from (e.g., 'claude-code,cursor')")
 
 	return cmd
 }
 
 // UninstallOptions contains options for the uninstall command
 type UninstallOptions struct {
-	All     bool
-	Yes     bool
-	DryRun  bool
-	Verbose bool
+	All         bool
+	Yes         bool
+	DryRun      bool
+	Verbose     bool
+	ClientsFlag string
 }
 
 // AssetUninstallPlan contains info needed to uninstall one asset
@@ -109,14 +114,15 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 	defer cancel()
 
 	out := newOutputHelper(cmd)
+	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
 	// Step 1: Load lock file
 	lockFile, err := loadLockFileForUninstall(ctx, out)
 	if err != nil {
 		// If --all is passed, we should still remove system hooks even if lock file fails
 		if opts.All {
-			out.printfErr("Warning: %v\n", err)
-			return handleAllFlagWithoutAssets(ctx, opts, out)
+			styledOut.Warning(fmt.Sprintf("Warning: %v", err))
+			return handleAllFlagWithoutAssets(ctx, opts, styledOut)
 		}
 		return err
 	}
@@ -126,8 +132,8 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 	if err != nil {
 		// If --all is passed, we should still remove system hooks even if tracker fails
 		if opts.All {
-			out.printfErr("Warning: %v\n", err)
-			return handleAllFlagWithoutAssets(ctx, opts, out)
+			styledOut.Warning(fmt.Sprintf("Warning: %v", err))
+			return handleAllFlagWithoutAssets(ctx, opts, styledOut)
 		}
 		return err
 	}
@@ -135,9 +141,9 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 	if len(tracker.Assets) == 0 {
 		// No assets, but if --all is passed, still remove system hooks
 		if opts.All {
-			return handleAllFlagWithoutAssets(ctx, opts, out)
+			return handleAllFlagWithoutAssets(ctx, opts, styledOut)
 		}
-		out.println("No assets installed")
+		styledOut.Info("No assets installed")
 		return nil
 	}
 
@@ -147,34 +153,44 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 	if len(plan.Assets) == 0 {
 		// No assets to uninstall, but if --all is passed, still remove system hooks
 		if opts.All {
-			return handleAllFlagWithoutAssets(ctx, opts, out)
+			return handleAllFlagWithoutAssets(ctx, opts, styledOut)
 		}
-		out.println("No assets to uninstall")
+		styledOut.Info("No assets to uninstall")
 		return nil
 	}
 
-	// Step 4: Display plan and confirm
-	displayUninstallPlan(plan, out)
+	// Step 4: Filter plan by client flag if provided
+	if opts.ClientsFlag != "" {
+		plan = filterUninstallPlanByClients(plan, opts.ClientsFlag)
+		if len(plan.Assets) == 0 {
+			styledOut.Info("No assets to uninstall for specified client(s)")
+			return nil
+		}
+	}
+
+	// Step 5: Display plan and confirm
+	displayUninstallPlan(plan, styledOut)
 
 	if opts.All {
-		out.println("System hooks will also be removed (--all flag)")
+		styledOut.Info("System hooks will also be removed (--all flag)")
 	}
 
 	if !opts.Yes && !opts.DryRun {
-		if !confirmUninstall(out) {
-			out.println("Uninstall cancelled")
+		if !confirmUninstall(styledOut) {
+			styledOut.Muted("Uninstall cancelled")
 			return nil
 		}
 	}
 
 	if opts.DryRun {
-		out.println("\nNo changes made (dry run).")
+		styledOut.Muted("\nNo changes made (dry run).")
 		return nil
 	}
 
 	// Step 5: Execute uninstall
-	out.println("\nUninstalling assets...")
-	results := executeUninstall(ctx, plan, opts, out)
+	styledOut.Newline()
+	styledOut.Header("Uninstalling assets...")
+	results := executeUninstall(ctx, plan, opts, styledOut)
 
 	// Step 6: Update tracker
 	if err := updateTracker(results, plan, out); err != nil {
@@ -187,34 +203,34 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 
 	// Step 8: Uninstall system hooks if --all flag is passed
 	if opts.All {
-		uninstallSystemHooks(ctx, out)
+		uninstallSystemHooks(ctx, styledOut)
 	}
 
 	// Step 9: Report results
-	reportResults(results, out)
+	reportResults(results, styledOut)
 
 	return nil
 }
 
 // handleAllFlagWithoutAssets handles the --all flag when there are no assets to uninstall
-func handleAllFlagWithoutAssets(ctx context.Context, opts UninstallOptions, out *outputHelper) error {
-	out.println("No assets to uninstall")
+func handleAllFlagWithoutAssets(ctx context.Context, opts UninstallOptions, styledOut *ui.Output) error {
+	styledOut.Info("No assets to uninstall")
 
 	if !opts.Yes && !opts.DryRun {
-		out.println("\nSystem hooks will be removed (--all flag)")
-		if !confirmUninstall(out) {
-			out.println("Uninstall cancelled")
+		styledOut.Info("System hooks will be removed (--all flag)")
+		if !confirmUninstall(styledOut) {
+			styledOut.Muted("Uninstall cancelled")
 			return nil
 		}
 	}
 
 	if opts.DryRun {
-		out.println("\nWould remove system hooks (dry run).")
+		styledOut.Muted("Would remove system hooks (dry run).")
 		return nil
 	}
 
-	uninstallSystemHooks(ctx, out)
-	out.println("\nSystem hooks removed")
+	uninstallSystemHooks(ctx, styledOut)
+	styledOut.Success("System hooks removed")
 	return nil
 }
 
@@ -345,14 +361,42 @@ func buildUninstallPlanFromTracker(lockFile *lockfile.LockFile, tracker *assets.
 	return plan
 }
 
+// filterUninstallPlanByClients filters the plan to only include specified clients
+func filterUninstallPlanByClients(plan UninstallPlan, clientsFlag string) UninstallPlan {
+	wantedClients := make(map[string]bool)
+	for id := range strings.SplitSeq(clientsFlag, ",") {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			wantedClients[id] = true
+		}
+	}
+
+	var filteredAssets []AssetUninstallPlan
+	for _, asset := range plan.Assets {
+		var filteredClients []string
+		for _, clientID := range asset.Clients {
+			if wantedClients[clientID] {
+				filteredClients = append(filteredClients, clientID)
+			}
+		}
+		if len(filteredClients) > 0 {
+			asset.Clients = filteredClients
+			filteredAssets = append(filteredAssets, asset)
+		}
+	}
+
+	plan.Assets = filteredAssets
+	return plan
+}
+
 // executeUninstall performs the actual uninstallation
-func executeUninstall(ctx context.Context, plan UninstallPlan, opts UninstallOptions, out *outputHelper) []UninstallResult {
+func executeUninstall(ctx context.Context, plan UninstallPlan, opts UninstallOptions, styledOut *ui.Output) []UninstallResult {
 	var results []UninstallResult
 	registry := clients.Global()
 
 	for _, assetPlan := range plan.Assets {
 		for _, clientID := range assetPlan.Clients {
-			result := uninstallAssetFromClient(ctx, assetPlan, clientID, plan.GitContext, opts, registry, out)
+			result := uninstallAssetFromClient(ctx, assetPlan, clientID, plan.GitContext, opts, registry, styledOut)
 			results = append(results, result)
 		}
 	}
@@ -361,10 +405,10 @@ func executeUninstall(ctx context.Context, plan UninstallPlan, opts UninstallOpt
 }
 
 // uninstallAssetFromClient removes a single asset from a single client
-func uninstallAssetFromClient(ctx context.Context, assetPlan AssetUninstallPlan, clientID string, gitContext *gitutil.GitContext, opts UninstallOptions, registry *clients.Registry, out *outputHelper) UninstallResult {
+func uninstallAssetFromClient(ctx context.Context, assetPlan AssetUninstallPlan, clientID string, gitContext *gitutil.GitContext, opts UninstallOptions, registry *clients.Registry, styledOut *ui.Output) UninstallResult {
 	client, err := registry.Get(clientID)
 	if err != nil || client == nil {
-		out.printfErr("  ✗ Client %s not found, skipping\n", clientID)
+		styledOut.ErrorItem(fmt.Sprintf("Client %s not found, skipping", clientID))
 		return UninstallResult{
 			AssetName: assetPlan.Name,
 			ClientID:  clientID,
@@ -393,7 +437,7 @@ func uninstallAssetFromClient(ctx context.Context, assetPlan AssetUninstallPlan,
 
 	resp, err := client.UninstallAssets(ctx, req)
 	if err != nil {
-		out.printfErr("  ✗ Failed to uninstall %s from %s: %v\n", assetPlan.Name, client.DisplayName(), err)
+		styledOut.ErrorItem(fmt.Sprintf("Failed to uninstall %s from %s: %v", assetPlan.Name, client.DisplayName(), err))
 		return UninstallResult{
 			AssetName: assetPlan.Name,
 			ClientID:  clientID,
@@ -404,13 +448,13 @@ func uninstallAssetFromClient(ctx context.Context, assetPlan AssetUninstallPlan,
 
 	success := len(resp.Results) > 0 && resp.Results[0].Status == clients.StatusSuccess
 	if success {
-		out.printf("  ✓ Removed %s from %s\n", assetPlan.Name, client.DisplayName())
+		styledOut.SuccessItem(fmt.Sprintf("Removed %s from %s", assetPlan.Name, client.DisplayName()))
 	} else {
 		errMsg := "unknown error"
 		if len(resp.Results) > 0 && resp.Results[0].Error != nil {
 			errMsg = resp.Results[0].Error.Error()
 		}
-		out.printfErr("  ✗ Failed to remove %s from %s: %s\n", assetPlan.Name, client.DisplayName(), errMsg)
+		styledOut.ErrorItem(fmt.Sprintf("Failed to remove %s from %s: %s", assetPlan.Name, client.DisplayName(), errMsg))
 	}
 
 	return UninstallResult{
@@ -538,25 +582,31 @@ func regenerateClientSupport(ctx context.Context, plan UninstallPlan, results []
 }
 
 // displayUninstallPlan shows what will be uninstalled
-func displayUninstallPlan(plan UninstallPlan, out *outputHelper) {
-	out.println("\nThe following assets will be uninstalled:")
+func displayUninstallPlan(plan UninstallPlan, styledOut *ui.Output) {
+	styledOut.Newline()
+	styledOut.SubHeader("The following assets will be uninstalled:")
 
 	for _, a := range plan.Assets {
-		scopeDesc := "global"
+		scopeDesc := styledOut.MutedText("global")
 		if !a.IsGlobal {
-			scopeDesc = "repository"
+			scopeDesc = styledOut.MutedText("repository")
 		}
-		clientNames := strings.Join(a.Clients, ", ")
-		out.printf("  - %s (%s) v%s [%s] → %s\n", a.Name, a.Type.Label, a.Version, scopeDesc, clientNames)
+		clientNames := styledOut.EmphasisText(strings.Join(a.Clients, ", "))
+		styledOut.Printf("  %s %s v%s [%s] → %s\n",
+			styledOut.BoldText(a.Name),
+			styledOut.MutedText("("+a.Type.Label+")"),
+			a.Version,
+			scopeDesc,
+			clientNames)
 	}
 
-	out.println()
+	styledOut.Newline()
 }
 
 // confirmUninstall prompts user for confirmation
-func confirmUninstall(out *outputHelper) bool {
+func confirmUninstall(styledOut *ui.Output) bool {
 	reader := bufio.NewReader(os.Stdin)
-	out.printf("Continue with uninstall? [y/N]: ")
+	styledOut.Printf("Continue with uninstall? [y/N]: ")
 
 	response, err := reader.ReadString('\n')
 	if err != nil {
@@ -568,8 +618,9 @@ func confirmUninstall(out *outputHelper) bool {
 }
 
 // uninstallSystemHooks removes system hooks from all installed clients
-func uninstallSystemHooks(ctx context.Context, out *outputHelper) {
-	out.println("\nRemoving system hooks...")
+func uninstallSystemHooks(ctx context.Context, styledOut *ui.Output) {
+	styledOut.Newline()
+	styledOut.Header("Removing system hooks...")
 
 	registry := clients.Global()
 	installedClients := registry.DetectInstalled()
@@ -598,16 +649,16 @@ func uninstallSystemHooks(ctx context.Context, out *outputHelper) {
 		}
 
 		if err := client.UninstallBootstrap(ctx, enabledOpts); err != nil {
-			out.printfErr("  ✗ Failed to remove hooks from %s: %v\n", client.DisplayName(), err)
+			styledOut.ErrorItem("Failed to remove hooks from " + client.DisplayName() + ": " + err.Error())
 		} else {
-			out.printf("  ✓ Removed hooks from %s\n", client.DisplayName())
+			styledOut.SuccessItem("Removed hooks from " + client.DisplayName())
 		}
 	}
 }
 
 // reportResults displays final results to user
-func reportResults(results []UninstallResult, out *outputHelper) {
-	out.println()
+func reportResults(results []UninstallResult, styledOut *ui.Output) {
+	styledOut.Newline()
 
 	removedAssets := make(map[string]bool)
 	failedAssets := make(map[string]bool)
@@ -629,8 +680,8 @@ func reportResults(results []UninstallResult, out *outputHelper) {
 	totalFailed := len(failedAssets)
 
 	if totalFailed > 0 {
-		out.printf("Uninstalled %d asset(s) (%d failed)\n", totalRemoved, totalFailed)
+		styledOut.Warning(fmt.Sprintf("Uninstalled %d asset(s) (%d failed)", totalRemoved, totalFailed))
 	} else {
-		out.printf("Successfully uninstalled %d asset(s)\n", totalRemoved)
+		styledOut.Success(fmt.Sprintf("Successfully uninstalled %d asset(s)", totalRemoved))
 	}
 }
