@@ -44,16 +44,21 @@ func (c *Client) RuleCapabilities() *clients.RuleCapabilities {
 	return RuleCapabilities()
 }
 
-// IsInstalled checks if Gemini is installed (CLI or JetBrains plugin)
+// IsInstalled checks if Gemini is installed (CLI, VS Code extension, or JetBrains plugin)
 func (c *Client) IsInstalled() bool {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return false
 	}
 
-	// Check for .gemini directory (CLI)
+	// Check for .gemini directory (CLI or VS Code - they share the same config)
 	configDir := filepath.Join(home, handlers.ConfigDir)
 	if stat, err := os.Stat(configDir); err == nil && stat.IsDir() {
+		return true
+	}
+
+	// Check for VS Code Gemini extension
+	if handlers.IsVSCodeGeminiInstalled() {
 		return true
 	}
 

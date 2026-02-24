@@ -43,6 +43,14 @@ const (
 	JetBrainsConfigWindows = "AppData/Roaming/JetBrains"
 )
 
+// VS Code extension paths
+const (
+	// VSCodeExtensionsDir is the VS Code extensions directory (relative to home)
+	VSCodeExtensionsDir = ".vscode/extensions"
+	// VSCodeGeminiExtensionPrefix is the prefix for Gemini extension folders
+	VSCodeGeminiExtensionPrefix = "google.geminicodeassist"
+)
+
 // Default prompt files
 const (
 	// DefaultSkillPromptFile is the default prompt file for skills
