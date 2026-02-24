@@ -33,7 +33,7 @@ Your best developers have figured out how to make AI assistants incredibly produ
 - **Instant onboarding** - New devs inherit the team's AI playbook on day one
 - **Central updates** - Change once in your vault, everyone gets the update
 - **Scoped installation** - Right assets for each repo, no context bloat
-- **Works with any AI client** - Claude Code, Cursor, and more (coming soon)
+- **Works with any AI client** - Claude Code, Cursor, GitHub Copilot, Gemini, and more
 
 ## Quickstart
 
