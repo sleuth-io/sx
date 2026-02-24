@@ -137,9 +137,9 @@ sx uses a lock file (like package-lock.json) for deterministic installations acr
 | Client         | Status         | Notes                                                     |
 |----------------|----------------|-----------------------------------------------------------|
 | Claude Code    | ✅ Supported    | Full support for all asset types                          |
-| Cursor         | ✅ Experimental | Skills, rules, MCP servers, commands, hooks               |
+| Cursor         | ✅ Experimental | Skills, rules, commands, MCP servers, hooks               |
 | GitHub Copilot | ✅ Experimental | Skills, rules, commands, agents, MCP servers, local hooks |
-| Gemini         | Coming soon    |                                                           |
+| Gemini         | ✅ Experimental | Skills, rules, commands, MCP servers, hooks               |
 | Codex          | Coming soon    |                                                           |
 
 
@@ -148,7 +148,8 @@ sx uses a lock file (like package-lock.json) for deterministic installations acr
 - ✅ Claude Code support
 - ✅ Cursor support (experimental)
 - ✅ GitHub Copilot support (experimental)
-- **More clients** - Gemini, Codex
+- ✅ Gemini support (experimental)
+- **More clients** - Codex
 - **Skill discovery** - Use Skills.new to discover relevant skills from your code and architecture
 - **Analytics** - Track skill usage and impact
 
