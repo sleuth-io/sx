@@ -33,8 +33,7 @@ func NewClient() *Client {
 				asset.TypeRule,    // GEMINI.md files
 				asset.TypeSkill,   // .gemini/commands/*.toml (Gemini CLI only)
 				asset.TypeCommand, // .gemini/commands/*.toml (same as skill)
-				// Note: Hooks are managed via bootstrap (InstallBootstrap/UninstallBootstrap),
-				// not as standalone assets. See installSessionHook and installAnalyticsHook.
+				asset.TypeHook,    // settings.json hooks
 			},
 		),
 	}
@@ -115,6 +114,16 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 			} else {
 				installedPath = filepath.Join(targetBase, handlers.ConfigDir, handlers.DirCommands, bundle.Asset.Name+".toml")
 			}
+		case asset.TypeHook:
+			handler := handlers.NewHookHandler(bundle.Metadata)
+			err = handler.Install(ctx, bundle.ZipData, targetBase)
+			// For global scope, targetBase is already ~/.gemini
+			// For repo scope, targetBase is /repo
+			if filepath.Base(targetBase) == handlers.ConfigDir {
+				installedPath = filepath.Join(targetBase, handlers.SettingsFile)
+			} else {
+				installedPath = filepath.Join(targetBase, handlers.ConfigDir, handlers.SettingsFile)
+			}
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + bundle.Metadata.Asset.Type.Key
@@ -171,6 +180,9 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 			err = handler.Remove(ctx, targetBase)
 		case asset.TypeSkill, asset.TypeCommand:
 			handler := handlers.NewSkillHandler(meta)
+			err = handler.Remove(ctx, targetBase)
+		case asset.TypeHook:
+			handler := handlers.NewHookHandler(meta)
 			err = handler.Remove(ctx, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
@@ -426,6 +438,18 @@ func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, sco
 					Name:    a.Name,
 					Version: a.Version,
 					Type:    a.Type,
+				},
+			})
+			result.Installed, result.Message = handler.VerifyInstalled(targetBase)
+		case asset.TypeHook:
+			handler := handlers.NewHookHandler(&metadata.Metadata{
+				Asset: metadata.Asset{
+					Name:    a.Name,
+					Version: a.Version,
+					Type:    a.Type,
+				},
+				Hook: &metadata.HookConfig{
+					Event: "session-start", // Default event for verification
 				},
 			})
 			result.Installed, result.Message = handler.VerifyInstalled(targetBase)
