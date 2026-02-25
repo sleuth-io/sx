@@ -85,12 +85,14 @@ type UninstallOptions struct {
 
 // AssetUninstallPlan contains info needed to uninstall one asset
 type AssetUninstallPlan struct {
-	Name      string
-	Version   string
-	Type      asset.Type
-	IsGlobal  bool
-	Clients   []string // client IDs that have this installed
-	LockEntry *lockfile.Asset
+	Name       string
+	Version    string
+	Type       asset.Type
+	IsGlobal   bool
+	Repository string   // Empty for global scope
+	Path       string   // Path within repo (if path-scoped)
+	Clients    []string // client IDs that have this installed
+	LockEntry  *lockfile.Asset
 }
 
 // UninstallPlan contains the complete uninstall plan
@@ -102,10 +104,12 @@ type UninstallPlan struct {
 
 // UninstallResult tracks what was uninstalled
 type UninstallResult struct {
-	AssetName string
-	ClientID  string
-	Success   bool
-	Error     error
+	AssetName  string
+	Repository string // Empty for global scope
+	Path       string // Path within repo (if path-scoped)
+	ClientID   string
+	Success    bool
+	Error      error
 }
 
 // runUninstall executes the uninstall command
@@ -339,22 +343,26 @@ func buildUninstallPlanFromTracker(lockFile *lockfile.LockFile, tracker *assets.
 			// Determine type from lock file if possible
 			assetType := asset.TypeSkill // Default to skill
 			plan.Assets = append(plan.Assets, AssetUninstallPlan{
-				Name:     installed.Name,
-				Version:  installed.Version,
-				Type:     assetType,
-				IsGlobal: installed.IsGlobal(),
-				Clients:  installed.Clients,
+				Name:       installed.Name,
+				Version:    installed.Version,
+				Type:       assetType,
+				IsGlobal:   installed.IsGlobal(),
+				Repository: installed.Repository,
+				Path:       installed.Path,
+				Clients:    installed.Clients,
 			})
 			continue
 		}
 
 		plan.Assets = append(plan.Assets, AssetUninstallPlan{
-			Name:      installed.Name,
-			Version:   installed.Version,
-			Type:      lockEntry.Type,
-			IsGlobal:  lockEntry.IsGlobal(),
-			Clients:   installed.Clients,
-			LockEntry: lockEntry,
+			Name:       installed.Name,
+			Version:    installed.Version,
+			Type:       lockEntry.Type,
+			IsGlobal:   lockEntry.IsGlobal(),
+			Repository: installed.Repository,
+			Path:       installed.Path,
+			Clients:    installed.Clients,
+			LockEntry:  lockEntry,
 		})
 	}
 
@@ -410,10 +418,12 @@ func uninstallAssetFromClient(ctx context.Context, assetPlan AssetUninstallPlan,
 	if err != nil || client == nil {
 		styledOut.ErrorItem(fmt.Sprintf("Client %s not found, skipping", clientID))
 		return UninstallResult{
-			AssetName: assetPlan.Name,
-			ClientID:  clientID,
-			Success:   false,
-			Error:     fmt.Errorf("client not found: %s", clientID),
+			AssetName:  assetPlan.Name,
+			Repository: assetPlan.Repository,
+			Path:       assetPlan.Path,
+			ClientID:   clientID,
+			Success:    false,
+			Error:      fmt.Errorf("client not found: %s", clientID),
 		}
 	}
 
@@ -439,10 +449,12 @@ func uninstallAssetFromClient(ctx context.Context, assetPlan AssetUninstallPlan,
 	if err != nil {
 		styledOut.ErrorItem(fmt.Sprintf("Failed to uninstall %s from %s: %v", assetPlan.Name, client.DisplayName(), err))
 		return UninstallResult{
-			AssetName: assetPlan.Name,
-			ClientID:  clientID,
-			Success:   false,
-			Error:     err,
+			AssetName:  assetPlan.Name,
+			Repository: assetPlan.Repository,
+			Path:       assetPlan.Path,
+			ClientID:   clientID,
+			Success:    false,
+			Error:      err,
 		}
 	}
 
@@ -458,9 +470,11 @@ func uninstallAssetFromClient(ctx context.Context, assetPlan AssetUninstallPlan,
 	}
 
 	return UninstallResult{
-		AssetName: assetPlan.Name,
-		ClientID:  clientID,
-		Success:   success,
+		AssetName:  assetPlan.Name,
+		Repository: assetPlan.Repository,
+		Path:       assetPlan.Path,
+		ClientID:   clientID,
+		Success:    success,
 	}
 }
 
@@ -485,14 +499,16 @@ func buildScopeForAsset(assetPlan AssetUninstallPlan, gitContext *gitutil.GitCon
 func updateTracker(results []UninstallResult, plan UninstallPlan, out *outputHelper) error {
 	status := components.NewStatus(out.cmd.OutOrStdout())
 
-	// Build a map of successful removals: assetName -> set of removed clients
+	// Build a map of successful removals: assetKey -> set of removed clients
+	// Key format: "name|repository|path" to match by full scope
 	removedClients := make(map[string]map[string]bool)
 	for _, result := range results {
 		if result.Success {
-			if removedClients[result.AssetName] == nil {
-				removedClients[result.AssetName] = make(map[string]bool)
+			key := result.AssetName + "|" + result.Repository + "|" + result.Path
+			if removedClients[key] == nil {
+				removedClients[key] = make(map[string]bool)
 			}
-			removedClients[result.AssetName][result.ClientID] = true
+			removedClients[key][result.ClientID] = true
 		}
 	}
 
@@ -508,28 +524,27 @@ func updateTracker(results []UninstallResult, plan UninstallPlan, out *outputHel
 	}
 
 	// Update each asset: remove uninstalled clients, or remove entire asset if no clients remain
-	for assetName, clientsRemoved := range removedClients {
-		for i := range tracker.Assets {
-			if tracker.Assets[i].Name != assetName {
-				continue
-			}
+	for i := range tracker.Assets {
+		key := tracker.Assets[i].Name + "|" + tracker.Assets[i].Repository + "|" + tracker.Assets[i].Path
+		clientsRemoved, found := removedClients[key]
+		if !found {
+			continue
+		}
 
-			// Filter out removed clients
-			var remainingClients []string
-			for _, c := range tracker.Assets[i].Clients {
-				if !clientsRemoved[c] {
-					remainingClients = append(remainingClients, c)
-				}
+		// Filter out removed clients
+		var remainingClients []string
+		for _, c := range tracker.Assets[i].Clients {
+			if !clientsRemoved[c] {
+				remainingClients = append(remainingClients, c)
 			}
+		}
 
-			if len(remainingClients) == 0 {
-				// No clients left, remove the entire asset
-				tracker.RemoveAsset(tracker.Assets[i].Key())
-			} else {
-				// Update with remaining clients
-				tracker.Assets[i].Clients = remainingClients
-			}
-			break
+		if len(remainingClients) == 0 {
+			// No clients left, remove the entire asset
+			tracker.RemoveAsset(tracker.Assets[i].Key())
+		} else {
+			// Update with remaining clients
+			tracker.Assets[i].Clients = remainingClients
 		}
 	}
 
