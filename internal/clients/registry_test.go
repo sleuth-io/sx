@@ -37,6 +37,7 @@ func (m *mockClient) ReadSkill(context.Context, string, *InstallScope) (*SkillCo
 }
 func (m *mockClient) EnsureAssetSupport(context.Context, *InstallScope) error { return nil }
 func (m *mockClient) GetBootstrapOptions(context.Context) []bootstrap.Option  { return nil }
+func (m *mockClient) GetBootstrapPath() string                                { return "" }
 func (m *mockClient) InstallBootstrap(context.Context, []bootstrap.Option) error {
 	return nil
 }

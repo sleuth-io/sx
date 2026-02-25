@@ -11,11 +11,13 @@ import (
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	_ "github.com/sleuth-io/sx/internal/clients/claude_code"    // Register Claude Code client
 	_ "github.com/sleuth-io/sx/internal/clients/cursor"         // Register Cursor client
+	_ "github.com/sleuth-io/sx/internal/clients/gemini"         // Register Gemini Code Assist client
 	_ "github.com/sleuth-io/sx/internal/clients/github_copilot" // Register GitHub Copilot client
 	"github.com/sleuth-io/sx/internal/commands"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/ui"
 )
 
 func main() {
@@ -67,7 +69,8 @@ Capture what your best AI users have learned and spread it to everyone automatic
 			// Default command: run install if lock file exists
 			return commands.RunDefaultCommand(cmd, args)
 		},
-		SilenceUsage: true,
+		SilenceUsage:  true,
+		SilenceErrors: true, // We handle error output ourselves with styling
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},
@@ -96,6 +99,9 @@ Capture what your best AI users have learned and spread it to everyone automatic
 	rootCmd.AddCommand(commands.NewRoleCommand())
 
 	if err := rootCmd.Execute(); err != nil {
+		// Print error with styling
+		styledOut := ui.NewOutput(os.Stdout, os.Stderr)
+		styledOut.Error(err.Error())
 		os.Exit(1)
 	}
 }

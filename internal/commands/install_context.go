@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/clients"
@@ -183,6 +184,27 @@ func filterClientsByID(allClients []clients.Client, clientID string) []clients.C
 	return nil
 }
 
+// filterClientsByFlag filters clients by a comma-separated list of client IDs.
+// Returns only clients whose ID is in the list.
+func filterClientsByFlag(allClients []clients.Client, clientsFlag string) []clients.Client {
+	// Parse comma-separated list
+	wantedIDs := make(map[string]bool)
+	for id := range strings.SplitSeq(clientsFlag, ",") {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			wantedIDs[id] = true
+		}
+	}
+
+	var filtered []clients.Client
+	for _, c := range allClients {
+		if wantedIDs[c.ID()] {
+			filtered = append(filtered, c)
+		}
+	}
+	return filtered
+}
+
 // handleCursorWorkspace handles changing to Cursor workspace directory in hook mode
 func handleCursorWorkspace(hookMode bool, hookClientID string, log *slog.Logger) {
 	if !hookMode || hookClientID != "cursor" {
@@ -265,7 +287,13 @@ func handleNothingToInstall(
 	if hookMode {
 		outputHookModeJSON(out, map[string]any{"continue": true})
 	} else {
-		styledOut.Success("All assets up to date")
+		if len(sortedAssets) == 0 {
+			styledOut.Success("No assets to install")
+		} else if len(sortedAssets) == 1 {
+			styledOut.Success(sortedAssets[0].Name + " is up to date")
+		} else {
+			styledOut.Success(fmt.Sprintf("All %d assets up to date", len(sortedAssets)))
+		}
 	}
 
 	return nil

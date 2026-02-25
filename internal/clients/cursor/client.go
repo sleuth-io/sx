@@ -440,6 +440,15 @@ func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	}
 }
 
+// GetBootstrapPath returns the path to Cursor's hooks file.
+func (c *Client) GetBootstrapPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".cursor", "hooks.json")
+}
+
 // InstallBootstrap installs Cursor infrastructure (hooks and MCP servers).
 // Only installs options that are present in the opts slice.
 func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {

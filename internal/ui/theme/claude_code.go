@@ -21,7 +21,7 @@ func NewClaudeCodeTheme() Theme {
 		Secondary: lipgloss.AdaptiveColor{Light: "#2563eb", Dark: "#60a5fa"}, // Blue
 
 		Success: lipgloss.AdaptiveColor{Light: "#16a34a", Dark: "#4ade80"}, // Green
-		Error:   lipgloss.AdaptiveColor{Light: "#dc2626", Dark: "#f87171"}, // Red
+		Error:   lipgloss.AdaptiveColor{Light: "#dc2626", Dark: "#ef4444"}, // Red
 		Warning: lipgloss.AdaptiveColor{Light: "#ca8a04", Dark: "#facc15"}, // Yellow
 		Info:    lipgloss.AdaptiveColor{Light: "#2563eb", Dark: "#60a5fa"}, // Blue
 

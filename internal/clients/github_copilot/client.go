@@ -387,6 +387,16 @@ func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	}
 }
 
+// GetBootstrapPath returns the path to Copilot's hooks file.
+// For Copilot, this is workspace-level: .github/hooks/sx.json
+func (c *Client) GetBootstrapPath() string {
+	repoRoot := findGitRoot()
+	if repoRoot == "" {
+		return ".github/hooks/sx.json (per repo)"
+	}
+	return filepath.Join(repoRoot, ".github", handlers.DirHooks, handlers.FileHooks)
+}
+
 // InstallBootstrap installs GitHub Copilot infrastructure (hooks and MCP servers).
 // Only installs options that are present in the opts slice.
 func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {

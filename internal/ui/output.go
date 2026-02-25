@@ -3,7 +3,11 @@ package ui
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
+
+	"github.com/muesli/reflow/wordwrap"
+	"golang.org/x/term"
 
 	"github.com/sleuth-io/sx/internal/ui/theme"
 )
@@ -15,16 +19,35 @@ type Output struct {
 	theme  theme.Theme
 	silent bool
 	noTTY  bool
+	width  int
 }
 
 // NewOutput creates a new styled output instance.
 func NewOutput(out, err io.Writer) *Output {
+	width := 80 // default
+	if w, _, e := term.GetSize(int(os.Stdout.Fd())); e == nil && w > 0 {
+		width = w
+	}
 	return &Output{
 		out:   out,
 		err:   err,
 		theme: theme.Current(),
 		noTTY: !IsTTY(out) || NoColor(),
+		width: width,
 	}
+}
+
+// Width returns the terminal width.
+func (o *Output) Width() int {
+	return o.width
+}
+
+// Wrap wraps text to fit the terminal width.
+func (o *Output) Wrap(text string) string {
+	if o.width <= 0 {
+		return text
+	}
+	return wordwrap.String(text, o.width)
 }
 
 // SetSilent enables or disables silent mode (suppresses stdout).

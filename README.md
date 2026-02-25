@@ -33,7 +33,7 @@ Your best developers have figured out how to make AI assistants incredibly produ
 - **Instant onboarding** - New devs inherit the team's AI playbook on day one
 - **Central updates** - Change once in your vault, everyone gets the update
 - **Scoped installation** - Right assets for each repo, no context bloat
-- **Works with any AI client** - Claude Code, Cursor, and more (coming soon)
+- **Works with any AI client** - Claude Code, Cursor, GitHub Copilot, Gemini, and more
 
 ## Quickstart
 
@@ -134,13 +134,15 @@ sx uses a lock file (like package-lock.json) for deterministic installations acr
 
 ## Supported Clients
 
-| Client         | Status         | Notes                                                     |
-|----------------|----------------|-----------------------------------------------------------|
-| Claude Code    | ✅ Supported    | Full support for all asset types                          |
-| Cursor         | ✅ Experimental | Skills, rules, MCP servers, commands, hooks               |
-| GitHub Copilot | ✅ Experimental | Skills, rules, commands, agents, MCP servers, local hooks |
-| Gemini         | Coming soon    |                                                           |
-| Codex          | Coming soon    |                                                           |
+| Client                  | Status         | Notes                                                     |
+|-------------------------|----------------|-----------------------------------------------------------|
+| Claude Code             | ✅ Supported    | Full support for all asset types                          |
+| Cursor                  | ✅ Experimental | Skills, rules, commands, MCP servers, hooks               |
+| GitHub Copilot          | ✅ Experimental | Skills, rules, commands, agents, MCP servers, local hooks |
+| Gemini (CLI/VS Code)    | ✅ Experimental | Skills, rules, commands, MCP servers, hooks               |
+| Gemini (JetBrains)      | ✅ Experimental | Rules, MCP servers only (no commands/hooks)               |
+| Gemini (Android Studio) | ✅ Experimental | Rules, MCP-remote only (HTTP, no stdio)                   |
+| Codex                   | Coming soon    |                                                           |
 
 
 ## Roadmap
@@ -148,7 +150,8 @@ sx uses a lock file (like package-lock.json) for deterministic installations acr
 - ✅ Claude Code support
 - ✅ Cursor support (experimental)
 - ✅ GitHub Copilot support (experimental)
-- **More clients** - Gemini, Codex
+- ✅ Gemini support (experimental)
+- **More clients** - Codex
 - **Skill discovery** - Use Skills.new to discover relevant skills from your code and architecture
 - **Analytics** - Track skill usage and impact
 

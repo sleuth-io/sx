@@ -30,6 +30,7 @@ func NewInstallCommand() *cobra.Command {
 	var clientID string
 	var fixMode bool
 	var targetDir string
+	var clientsFlag string
 
 	cmd := &cobra.Command{
 		Use:   "install",
@@ -41,7 +42,7 @@ Use --target to install as if running from a different directory. This is useful
 when you want to install assets for a project without being in that directory
 (e.g., Docker sandboxes, CI pipelines).`, constants.SkillLockFile),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInstall(cmd, args, hookMode, clientID, fixMode, targetDir)
+			return runInstall(cmd, args, hookMode, clientID, fixMode, targetDir, clientsFlag)
 		},
 	}
 
@@ -49,6 +50,7 @@ when you want to install assets for a project without being in that directory
 	cmd.Flags().StringVar(&clientID, "client", "", "Client ID that triggered the hook (used with --hook-mode)")
 	cmd.Flags().BoolVar(&fixMode, "repair", false, "Verify assets are actually installed and fix any discrepancies")
 	cmd.Flags().StringVar(&targetDir, "target", "", "Install as if running from this directory")
+	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Comma-separated client IDs to install to (e.g., 'claude-code,cursor')")
 	_ = cmd.Flags().MarkHidden("hook-mode") // Hide from help output since it's internal
 	_ = cmd.Flags().MarkHidden("client")    // Hide from help output since it's internal
 
@@ -56,7 +58,7 @@ when you want to install assets for a project without being in that directory
 }
 
 // runInstall executes the install command
-func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID string, repairMode bool, targetDir string) error {
+func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID string, repairMode bool, targetDir string, clientsFlag string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
@@ -91,6 +93,14 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 		return err
 	}
 
+	// Filter clients if --clients flag is set
+	if clientsFlag != "" {
+		env.Clients = filterClientsByFlag(env.Clients, clientsFlag)
+		if len(env.Clients) == 0 {
+			return fmt.Errorf("no matching clients found for: %s", clientsFlag)
+		}
+	}
+
 	// Hook mode fast path check
 	if hookMode && checkHookModeFastPath(ctx, hookClientID, out) {
 		return nil
@@ -111,13 +121,13 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	// In repair mode, verify assets against filesystem and update tracker
 	if repairMode {
-		repairTracker(ctx, tracker, sortedAssets, env.Clients, env.GitContext, env.CurrentScope, out)
+		repairTracker(ctx, tracker, sortedAssets, env.Clients, env.GitContext, env.CurrentScope, styledOut)
 	}
 
 	assetsToInstall := determineAssetsToInstall(tracker, sortedAssets, env.CurrentScope, targetClientIDs, out)
 
 	// Clean up assets that were removed from lock file (must run even if no assets to install!)
-	cleanupRemovedAssets(ctx, tracker, sortedAssets, env.GitContext, env.CurrentScope, env.Clients, out)
+	cleanupRemovedAssets(ctx, tracker, sortedAssets, env.GitContext, env.CurrentScope, env.Clients, styledOut)
 
 	// Early exit if nothing to install
 	if len(assetsToInstall) == 0 {
@@ -131,7 +141,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	}
 
 	// Install assets to their appropriate locations
-	installResult := installAssets(ctx, downloadResult.Downloads, env.GitContext, env.CurrentScope, env.Clients, out)
+	installResult := installAssets(ctx, downloadResult.Downloads, env.GitContext, env.CurrentScope, env.Clients, styledOut)
 
 	// Save new installation state (saves ALL assets from lock file, not just changed ones)
 	saveInstallationState(tracker, sortedAssets, downloadResult.Downloads, env.CurrentScope, targetClientIDs, out)
@@ -210,7 +220,7 @@ func assetKeyForInstall(asset *lockfile.Asset, currentScope *scope.Scope) assets
 }
 
 // cleanupRemovedAssets removes assets that are no longer in the lock file from all clients
-func cleanupRemovedAssets(ctx context.Context, tracker *assets.Tracker, sortedAssets []*lockfile.Asset, gitContext *gitutil.GitContext, currentScope *scope.Scope, targetClients []clients.Client, out *outputHelper) {
+func cleanupRemovedAssets(ctx context.Context, tracker *assets.Tracker, sortedAssets []*lockfile.Asset, gitContext *gitutil.GitContext, currentScope *scope.Scope, targetClients []clients.Client, styledOut *ui.Output) {
 	// Find assets in tracker for this scope that are no longer in lock file
 	key := assets.NewAssetKey("", currentScope.Type, currentScope.RepoURL, currentScope.RepoPath)
 	currentInScope := tracker.FindByScope(key.Repository, key.Path)
@@ -237,19 +247,20 @@ func cleanupRemovedAssets(ctx context.Context, tracker *assets.Tracker, sortedAs
 		return
 	}
 
-	out.printf("\nCleaning up %d removed asset(s)...\n", len(removedAssets))
+	styledOut.Newline()
+	styledOut.Header(fmt.Sprintf("Cleaning up %d removed asset(s)...", len(removedAssets)))
 
 	// Group assets by scope and uninstall with appropriate scope
 	globalAssets, scopedAssets := separateGlobalAndScopedAssets(removedAssets)
 
 	if len(globalAssets) > 0 {
 		globalScope := &clients.InstallScope{Type: clients.ScopeGlobal}
-		uninstallAssetsWithScope(ctx, globalAssets, globalScope, targetClients, out)
+		uninstallAssetsWithScope(ctx, globalAssets, globalScope, targetClients, styledOut)
 	}
 
 	if len(scopedAssets) > 0 {
 		uninstallScope := buildInstallScope(currentScope, gitContext)
-		uninstallAssetsWithScope(ctx, scopedAssets, uninstallScope, targetClients, out)
+		uninstallAssetsWithScope(ctx, scopedAssets, uninstallScope, targetClients, styledOut)
 	}
 
 	// Remove from tracker
@@ -260,9 +271,9 @@ func cleanupRemovedAssets(ctx context.Context, tracker *assets.Tracker, sortedAs
 
 // repairTracker verifies assets against the filesystem and updates the tracker to match reality
 // This is called when --repair flag is used to fix discrepancies between tracker and actual installation
-func repairTracker(ctx context.Context, tracker *assets.Tracker, sortedAssets []*lockfile.Asset, targetClients []clients.Client, gitContext *gitutil.GitContext, currentScope *scope.Scope, out *outputHelper) {
+func repairTracker(ctx context.Context, tracker *assets.Tracker, sortedAssets []*lockfile.Asset, targetClients []clients.Client, gitContext *gitutil.GitContext, currentScope *scope.Scope, styledOut *ui.Output) {
 	log := logger.Get()
-	out.println("Repair mode: verifying installed assets...")
+	styledOut.Header("Repair mode: verifying installed assets...")
 
 	// Track which assets are missing for each client
 	var totalMissing int
@@ -273,7 +284,7 @@ func repairTracker(ctx context.Context, tracker *assets.Tracker, sortedAssets []
 		key := assetKeyForInstall(art, currentScope)
 		existing := tracker.FindAsset(key)
 		if existing != nil && existing.Version != art.Version {
-			out.printf("  ↻ %s version mismatch (tracker: %s, lock file: %s)\n", art.Name, existing.Version, art.Version)
+			styledOut.Warning(fmt.Sprintf("  ↻ %s version mismatch (tracker: %s, lock file: %s)", art.Name, existing.Version, art.Version))
 			log.Info("asset version mismatch", "name", art.Name, "tracker_version", existing.Version, "lock_version", art.Version)
 			// Remove from tracker so it will be reinstalled with correct version
 			tracker.RemoveAsset(key)
@@ -293,7 +304,7 @@ func repairTracker(ctx context.Context, tracker *assets.Tracker, sortedAssets []
 
 				for _, result := range results {
 					if !result.Installed {
-						out.printf("  ✗ %s not installed for %s: %s\n", result.Asset.Name, client.DisplayName(), result.Message)
+						styledOut.ErrorItem(fmt.Sprintf("%s not installed for %s: %s", result.Asset.Name, client.DisplayName(), result.Message))
 						log.Info("asset verification failed", "name", result.Asset.Name, "client", client.ID(), "reason", result.Message)
 
 						// Remove this client from the asset's tracker entry
@@ -324,21 +335,21 @@ func repairTracker(ctx context.Context, tracker *assets.Tracker, sortedAssets []
 	}
 
 	if totalMissing == 0 && totalOutdated == 0 {
-		out.println("  ✓ All assets verified")
+		styledOut.SuccessItem("All assets verified")
 	} else {
 		if totalOutdated > 0 {
-			out.printf("  Found %d outdated assets that will be updated\n", totalOutdated)
+			styledOut.Info(fmt.Sprintf("Found %d outdated assets that will be updated", totalOutdated))
 		}
 		if totalMissing > 0 {
-			out.printf("  Found %d missing assets that will be reinstalled\n", totalMissing)
+			styledOut.Info(fmt.Sprintf("Found %d missing assets that will be reinstalled", totalMissing))
 		}
 	}
-	out.println()
+	styledOut.Newline()
 }
 
 // installAssets installs assets to all detected clients using the orchestrator
-func installAssets(ctx context.Context, successfulDownloads []*assets.AssetWithMetadata, gitContext *gitutil.GitContext, currentScope *scope.Scope, targetClients []clients.Client, out *outputHelper) *assets.InstallResult {
-	out.println("Installing assets...")
+func installAssets(ctx context.Context, successfulDownloads []*assets.AssetWithMetadata, gitContext *gitutil.GitContext, currentScope *scope.Scope, targetClients []clients.Client, styledOut *ui.Output) *assets.InstallResult {
+	styledOut.Header("Installing assets...")
 
 	// Install each asset to its proper scope
 	// Global assets go to ~/.claude, repo-scoped assets go to {repoRoot}/.claude
@@ -372,7 +383,7 @@ func installAssets(ctx context.Context, successfulDownloads []*assets.AssetWithM
 	}
 
 	// Process and report results
-	return processInstallationResults(allResults, out)
+	return processInstallationResults(allResults, styledOut)
 }
 
 // buildInstallScope creates the installation scope from current context
@@ -443,7 +454,7 @@ func runMultiClientInstallation(ctx context.Context, bundles []*clients.AssetBun
 }
 
 // processInstallationResults processes results from all clients and builds the final result
-func processInstallationResults(allResults map[string]clients.InstallResponse, out *outputHelper) *assets.InstallResult {
+func processInstallationResults(allResults map[string]clients.InstallResponse, styledOut *ui.Output) *assets.InstallResult {
 	installResult := &assets.InstallResult{
 		Installed: []string{},
 		Failed:    []string{},
@@ -458,15 +469,19 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, o
 		for _, result := range resp.Results {
 			switch result.Status {
 			case clients.StatusSuccess:
-				out.printf("  ✓ %s → %s\n", result.AssetName, client.DisplayName())
+				msg := result.AssetName + " → " + client.DisplayName()
+				if result.Message != "" {
+					msg += " (" + result.Message + ")"
+				}
+				styledOut.SuccessItem(msg)
 				successfullyInstalled[result.AssetName] = true
 			case clients.StatusFailed:
-				out.printfErr("  ✗ %s → %s: %v\n", result.AssetName, client.DisplayName(), result.Error)
+				styledOut.ErrorItem(result.AssetName + " → " + client.DisplayName() + ": " + result.Error.Error())
 				installResult.Failed = append(installResult.Failed, result.AssetName)
 				installResult.Errors = append(installResult.Errors, result.Error)
 			case clients.StatusSkipped:
 				if result.AssetName != "" && result.Message != "" {
-					out.printf("  ⊘ %s → %s: %s\n", result.AssetName, client.DisplayName(), result.Message)
+					styledOut.ListItem("⊘", result.AssetName+" → "+client.DisplayName()+": "+result.Message)
 				}
 			}
 		}

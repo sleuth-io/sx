@@ -110,7 +110,7 @@ func addRemoteMCP(ctx context.Context, cmd *cobra.Command, out *outputHelper, st
 	// Handle install: auto-run if --yes, prompt if interactive, skip if --no-install
 	if opts.Yes && !opts.NoInstall {
 		out.println()
-		if err := runInstall(cmd, nil, false, "", false, ""); err != nil {
+		if err := runInstall(cmd, nil, false, "", false, "", ""); err != nil {
 			out.printfErr("Install failed: %v\n", err)
 		}
 	} else if !opts.NoInstall && !opts.isNonInteractive() {

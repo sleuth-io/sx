@@ -100,6 +100,7 @@ func TestParseTreeURL(t *testing.T) {
 
 			if result == nil {
 				t.Fatalf("expected %+v, got nil", tt.expected)
+				return // Make staticcheck happy
 			}
 
 			if result.Owner != tt.expected.Owner {

@@ -289,6 +289,15 @@ func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	}
 }
 
+// GetBootstrapPath returns the path to Claude Code's settings file.
+func (c *Client) GetBootstrapPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".claude", "settings.json")
+}
+
 // InstallBootstrap installs Claude Code infrastructure (hooks and MCP servers)
 func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
 	return installBootstrap(opts)

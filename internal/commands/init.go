@@ -108,21 +108,22 @@ func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL, cl
 		existingCfg, _ = config.Load()
 	}
 
+	// Parse clients flag (works for both interactive and non-interactive modes)
+	flagClients, err := parseClientsFlag(clientsFlag)
+	if err != nil {
+		return err
+	}
+
 	// Determine if we're in non-interactive mode
 	nonInteractive := repoType != ""
 
 	var enabledClients []string
-	var err error
 
 	if nonInteractive {
-		// Parse clients flag for non-interactive mode
-		enabledClients, err = parseClientsFlag(clientsFlag)
-		if err != nil {
-			return err
-		}
+		enabledClients = flagClients
 		err = runInitNonInteractive(cmd, ctx, repoType, serverURL, repoURL, enabledClients)
 	} else {
-		enabledClients, err = runInitInteractive(cmd, ctx, existingCfg)
+		enabledClients, err = runInitInteractive(cmd, ctx, existingCfg, flagClients)
 	}
 
 	if err != nil {
@@ -135,13 +136,13 @@ func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL, cl
 	}
 
 	// Post-init steps (hooks and featured skills)
-	runPostInit(cmd, ctx, enabledClients)
+	runPostInit(cmd, ctx, enabledClients, nonInteractive)
 
 	return nil
 }
 
 // runPostInit runs common steps after successful initialization
-func runPostInit(cmd *cobra.Command, ctx context.Context, enabledClients []string) {
+func runPostInit(cmd *cobra.Command, ctx context.Context, enabledClients []string, nonInteractive bool) {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 	out := newOutputHelper(cmd)
 
@@ -149,13 +150,16 @@ func runPostInit(cmd *cobra.Command, ctx context.Context, enabledClients []strin
 	installSelectedClientHooks(ctx, out, enabledClients)
 
 	// Show summary of what was configured
-	showInitSummary(cmd, enabledClients)
+	showInitSummary(cmd)
 
-	// Offer to import existing assets from clients
-	promptImportAssets(cmd, ctx, enabledClients)
+	// Skip prompts in non-interactive mode
+	if !nonInteractive {
+		// Offer to import existing assets from clients
+		promptImportAssets(cmd, ctx, enabledClients)
 
-	// Offer to install featured skills
-	promptFeaturedSkills(cmd, ctx)
+		// Offer to install featured skills
+		promptFeaturedSkills(cmd, ctx)
+	}
 
 	// Final hint
 	styledOut.Newline()
@@ -163,50 +167,19 @@ func runPostInit(cmd *cobra.Command, ctx context.Context, enabledClients []strin
 }
 
 // showInitSummary displays a summary of what was configured
-func showInitSummary(cmd *cobra.Command, enabledClients []string) {
+func showInitSummary(cmd *cobra.Command) {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
-
-	cfg, err := config.Load()
-	if err != nil {
-		return
-	}
-
 	styledOut.Newline()
 	styledOut.Success("Setup complete!")
-
-	// Show vault type
-	switch cfg.Type {
-	case config.RepositoryTypePath:
-		styledOut.KeyValue("Vault", "Local")
-	case config.RepositoryTypeGit:
-		styledOut.KeyValue("Vault", "Git ("+cfg.RepositoryURL+")")
-	case config.RepositoryTypeSleuth:
-		styledOut.KeyValue("Vault", "Skills.new")
-	}
-
-	// Show enabled clients
-	if len(enabledClients) > 0 {
-		clientRegistry := clients.Global()
-		var clientNames []string
-		for _, id := range enabledClients {
-			if c, err := clientRegistry.Get(id); err == nil {
-				clientNames = append(clientNames, c.DisplayName())
-			}
-		}
-		if len(clientNames) > 0 {
-			styledOut.KeyValue("Clients", strings.Join(clientNames, ", "))
-		}
-	}
 }
 
 // runInitInteractive runs the init command in interactive mode
 // Returns the list of enabled client IDs
 // existingCfg may be nil if no previous config exists
-func runInitInteractive(cmd *cobra.Command, ctx context.Context, existingCfg *config.Config) ([]string, error) {
+func runInitInteractive(cmd *cobra.Command, ctx context.Context, existingCfg *config.Config, flagClients []string) ([]string, error) {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
 	styledOut.Header("Initialize sx")
-	styledOut.Newline()
 
 	options := []components.Option{
 		{Label: "Just for myself", Value: "personal", Description: "Local vault"},
@@ -224,15 +197,23 @@ func runInitInteractive(cmd *cobra.Command, ctx context.Context, existingCfg *co
 		return nil, err
 	}
 
-	// Prompt for client selection (with existing enabled clients pre-selected)
-	// Compute enabled clients by inverting the disabled list
-	var existingDisabledClients []string
-	if existingCfg != nil {
-		existingDisabledClients = existingCfg.ForceDisabledClients
-	}
-	enabledClients, err := promptClientSelection(styledOut, existingDisabledClients)
-	if err != nil {
-		return nil, err
+	var enabledClients []string
+
+	// If clients were specified via --clients flag, use those
+	if flagClients != nil {
+		enabledClients = flagClients
+		styledOut.Printf("Using specified clients: %s\n", strings.Join(flagClients, ", "))
+	} else {
+		// Prompt for client selection (with existing enabled clients pre-selected)
+		// Compute enabled clients by inverting the disabled list
+		var existingDisabledClients []string
+		if existingCfg != nil {
+			existingDisabledClients = existingCfg.ForceDisabledClients
+		}
+		enabledClients, err = promptClientSelection(styledOut, existingDisabledClients)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	switch selected.Value {
@@ -318,9 +299,6 @@ func runInitNonInteractive(cmd *cobra.Command, ctx context.Context, repoType, se
 
 // initSleuthServer initializes Skills.new server configuration
 func initSleuthServer(cmd *cobra.Command, ctx context.Context, enabledClients []string, existingCfg *config.Config) error {
-	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
-	styledOut.Newline()
-
 	// Pre-populate with existing server URL if available
 	defaultURL := defaultSleuthServerURL
 	if existingCfg != nil && existingCfg.Type == config.RepositoryTypeSleuth && existingCfg.RepositoryURL != "" {
@@ -347,9 +325,12 @@ func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL strin
 		existingCfg.AuthToken != "" {
 		// Try to validate the existing token by creating a vault and fetching something
 		v := vault.NewSleuthVault(serverURL, existingCfg.AuthToken)
-		if _, _, _, err := v.GetLockFile(ctx, ""); err == nil {
+		tokenValid, _ := components.RunWithSpinner("Checking authentication...", func() (bool, error) {
+			_, _, _, err := v.GetLockFile(ctx, "")
+			return err == nil, nil
+		})
+		if tokenValid {
 			// Token is still valid, just update the config with new client settings
-			styledOut.Newline()
 			styledOut.Success("Already authenticated with " + serverURL)
 
 			cfg := &config.Config{
@@ -363,14 +344,14 @@ func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL strin
 				return fmt.Errorf("failed to save configuration: %w", err)
 			}
 
+			configPath, _ := utils.GetConfigFile()
+			styledOut.SuccessItem("Saved configuration to " + configPath)
+
 			return nil
 		}
 		// Token invalid, proceed with re-auth
-		styledOut.Newline()
 		styledOut.Muted("Existing token expired, re-authenticating...")
 	}
-
-	styledOut.Newline()
 
 	// Start OAuth device code flow
 	oauthClient := config.NewOAuthClient(serverURL)
@@ -419,6 +400,9 @@ func authenticateSleuth(cmd *cobra.Command, ctx context.Context, serverURL strin
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
+	configPath, _ := utils.GetConfigFile()
+	styledOut.SuccessItem("Saved configuration to " + configPath)
+
 	styledOut.Newline()
 	styledOut.Success("Authentication successful!")
 
@@ -451,6 +435,8 @@ func initGitRepository(cmd *cobra.Command, ctx context.Context, enabledClients [
 
 // configureGitRepo configures a Git repository
 func configureGitRepo(cmd *cobra.Command, ctx context.Context, repoURL string, enabledClients []string) error {
+	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
+
 	// Save configuration
 	cfg := &config.Config{
 		Type:                 config.RepositoryTypeGit,
@@ -462,11 +448,16 @@ func configureGitRepo(cmd *cobra.Command, ctx context.Context, repoURL string, e
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
+	configPath, _ := utils.GetConfigFile()
+	styledOut.SuccessItem("Saved configuration to " + configPath)
+
 	return nil
 }
 
 // configurePathRepo configures a local path repository
 func configurePathRepo(cmd *cobra.Command, ctx context.Context, repoPath string, enabledClients []string) error {
+	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
+
 	// Convert path to absolute path first
 	var absPath string
 	var err error
@@ -490,6 +481,7 @@ func configurePathRepo(cmd *cobra.Command, ctx context.Context, repoPath string,
 		if err := os.MkdirAll(absPath, 0755); err != nil {
 			return fmt.Errorf("failed to create directory: %w", err)
 		}
+		styledOut.SuccessItem("Created vault directory: " + absPath)
 	}
 
 	// Save configuration
@@ -502,6 +494,9 @@ func configurePathRepo(cmd *cobra.Command, ctx context.Context, repoPath string,
 	if err := config.Save(cfg); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
+
+	configPath, _ := utils.GetConfigFile()
+	styledOut.SuccessItem("Saved configuration to " + configPath)
 
 	return nil
 }
@@ -598,7 +593,6 @@ func promptClientSelection(styledOut *ui.Output, existingDisabledClients []strin
 		}
 	}
 
-	styledOut.Newline()
 	installAll, err := components.Confirm(fmt.Sprintf("Install to all detected clients (%s)?", clientList), allPreviouslyEnabled)
 	if err != nil {
 		return nil, err
@@ -778,7 +772,6 @@ func promptBootstrapOptions(cmd *cobra.Command, ctx context.Context, enabledClie
 	if interactive {
 		styledOut.Newline()
 		styledOut.Info("Configure bootstrap options:")
-		styledOut.Newline()
 
 		for _, opt := range allOpts {
 			// Use existing value as default if already configured
@@ -790,8 +783,7 @@ func promptBootstrapOptions(cmd *cobra.Command, ctx context.Context, enabledClie
 			styledOut.Println(opt.Description)
 			answer, err := components.Confirm(opt.Prompt, defaultVal)
 			if err != nil {
-				// On error, use default
-				answer = defaultVal
+				return err // Exit on cancel
 			}
 			mpc.SetBootstrapOption(opt.Key, answer)
 
@@ -799,6 +791,7 @@ func promptBootstrapOptions(cmd *cobra.Command, ctx context.Context, enabledClie
 				styledOut.Muted("  " + opt.DeclineNote)
 			}
 		}
+		styledOut.Newline()
 	} else {
 		// Non-interactive: apply defaults (only for options not already configured)
 		for _, opt := range allOpts {

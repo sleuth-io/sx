@@ -66,14 +66,38 @@ func checkAndUpdate() error {
 	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
 	defer cancel()
 
-	// Use the library's UpdateSelf function which handles everything:
-	// - Detecting latest version
-	// - Comparing versions
-	// - Downloading the right binary for OS/arch
-	// - Replacing the executable
-	release, err := selfupdate.UpdateSelf(ctx, currentVersion, selfupdate.ParseSlug(fmt.Sprintf("%s/%s", githubOwner, githubRepo)))
+	// Use the library's Updater with silent output to avoid confusing users
+	// during normal operations (the auto-update runs in background)
+	source, _ := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})
+	updater, _ := selfupdate.NewUpdater(selfupdate.Config{
+		Source:    source,
+		Validator: nil, // Use default validator
+	})
+
+	// Detect latest release
+	release, found, err := updater.DetectLatest(ctx, selfupdate.ParseSlug(fmt.Sprintf("%s/%s", githubOwner, githubRepo)))
+	if err != nil || !found {
+		_ = updateCheckTimestamp()
+		return err
+	}
+
+	// Check if update is needed
+	if release.LessOrEqual(currentVersion) {
+		_ = updateCheckTimestamp()
+		return nil
+	}
+
+	// Suppress stdout during update - the library prints progress messages
+	// that can confuse users when they appear during other operations
+	restoreStdout := suppressStdout()
+
+	// Perform update
+	err = updater.UpdateTo(ctx, release, "")
+
+	// Restore stdout
+	restoreStdout()
+
 	if err != nil {
-		// Network error, GitHub API issue, or already up to date - just skip silently
 		_ = updateCheckTimestamp()
 		return err
 	}
@@ -83,7 +107,7 @@ func checkAndUpdate() error {
 
 	// Log the successful update
 	log := logger.Get()
-	log.Info("autoupdate completed", "old_version", currentVersion, "new_version", release.Version)
+	log.Info("autoupdate completed", "old_version", currentVersion, "new_version", release.Version())
 
 	// Note: We don't exec into the new binary because it can interrupt
 	// critical operations like git clones. The new version will be used

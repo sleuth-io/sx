@@ -505,6 +505,7 @@ func TestComputeDisabledClients(t *testing.T) {
 				// Remove all detection markers
 				os.RemoveAll(filepath.Join(env.HomeDir, ".claude"))
 				os.RemoveAll(filepath.Join(env.HomeDir, ".copilot"))
+				os.RemoveAll(filepath.Join(env.HomeDir, ".gemini"))
 			},
 			selectedClients:  []string{"claude-code"},
 			expectedDisabled: nil,
@@ -512,24 +513,25 @@ func TestComputeDisabledClients(t *testing.T) {
 		{
 			name: "all detected clients selected returns nil",
 			setupDetected: func(env *TestEnv) {
-				// Claude and Copilot are detected (already setup in NewTestEnv)
+				// Claude, Copilot, and Gemini are detected (already setup in NewTestEnv)
 			},
-			selectedClients:  []string{"claude-code", "github-copilot"},
+			selectedClients:  []string{"claude-code", "github-copilot", "gemini"},
 			expectedDisabled: nil,
 		},
 		{
 			name: "one detected client not selected is disabled",
 			setupDetected: func(env *TestEnv) {
-				// Claude and Copilot are detected
+				// Claude, Copilot, and Gemini are detected
 			},
 			selectedClients:  []string{"claude-code"},
-			expectedDisabled: []string{"github-copilot"},
+			expectedDisabled: []string{"github-copilot", "gemini"},
 		},
 		{
 			name: "undetected client in selection is ignored",
 			setupDetected: func(env *TestEnv) {
 				// Only Claude detected
 				os.RemoveAll(filepath.Join(env.HomeDir, ".copilot"))
+				os.RemoveAll(filepath.Join(env.HomeDir, ".gemini"))
 			},
 			selectedClients:  []string{"claude-code", "github-copilot"}, // copilot not detected
 			expectedDisabled: nil,                                       // copilot not disabled because not detected
@@ -580,5 +582,89 @@ func TestClientInfoHasAllKnownClients(t *testing.T) {
 		if !infoIDs[id] {
 			t.Errorf("gatherClientInfo() missing client %q", id)
 		}
+	}
+}
+
+// TestClientsCommandShowsGemini tests that 'sx clients' shows Gemini with installed status and version
+func TestClientsCommandShowsGemini(t *testing.T) {
+	env := NewTestEnv(t)
+
+	// Create .gemini directory so Gemini is detected as installed
+	geminiDir := filepath.Join(env.HomeDir, ".gemini")
+	if err := os.MkdirAll(geminiDir, 0755); err != nil {
+		t.Fatalf("Failed to create .gemini dir: %v", err)
+	}
+
+	setupTestConfig(t, env.HomeDir, nil, nil)
+
+	// Use gatherClientInfo directly since runClients writes to os.Stdout
+	infos := gatherClientInfo()
+
+	// Find Gemini in the results
+	var geminiInfo *ClientInfo
+	for i := range infos {
+		if infos[i].ID == "gemini" {
+			geminiInfo = &infos[i]
+			break
+		}
+	}
+
+	if geminiInfo == nil {
+		t.Fatal("Gemini client not found in gatherClientInfo()")
+	}
+
+	// Check that Gemini is detected as installed
+	if !geminiInfo.Installed {
+		t.Error("Gemini should be detected as installed when .gemini directory exists")
+	}
+
+	// Check that Gemini has the correct display name
+	if geminiInfo.Name != "Gemini Code Assist" {
+		t.Errorf("Gemini Name = %q, want %q", geminiInfo.Name, "Gemini Code Assist")
+	}
+}
+
+// TestClientsCommandGeminiVersion tests that 'sx clients' shows Gemini version when CLI is available
+func TestClientsCommandGeminiVersion(t *testing.T) {
+	env := NewTestEnv(t)
+
+	// Create .gemini directory so Gemini is detected as installed
+	geminiDir := filepath.Join(env.HomeDir, ".gemini")
+	if err := os.MkdirAll(geminiDir, 0755); err != nil {
+		t.Fatalf("Failed to create .gemini dir: %v", err)
+	}
+
+	setupTestConfig(t, env.HomeDir, nil, nil)
+
+	// Get client info directly to check version
+	infos := gatherClientInfo()
+
+	var geminiInfo *ClientInfo
+	for i := range infos {
+		if infos[i].ID == "gemini" {
+			geminiInfo = &infos[i]
+			break
+		}
+	}
+
+	if geminiInfo == nil {
+		t.Fatal("Gemini client not found in gatherClientInfo()")
+	}
+
+	if !geminiInfo.Installed {
+		t.Error("Gemini should be detected as installed")
+	}
+
+	// If gemini CLI is available, version should be non-empty
+	// This test passes regardless of whether CLI is installed,
+	// but verifies the version field is populated when it is
+	if geminiInfo.Version != "" {
+		t.Logf("Gemini version detected: %s", geminiInfo.Version)
+		// Version format should be semver-like (e.g., "0.29.5")
+		if !strings.Contains(geminiInfo.Version, ".") {
+			t.Errorf("Gemini version %q doesn't look like a valid version", geminiInfo.Version)
+		}
+	} else {
+		t.Log("Gemini CLI not available, skipping version check")
 	}
 }

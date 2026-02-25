@@ -7,6 +7,7 @@ import (
 	"github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/ui"
 )
 
 // separateGlobalAndScopedAssets separates installed assets into global and repository-scoped
@@ -22,7 +23,7 @@ func separateGlobalAndScopedAssets(installedAssets []assets.InstalledAsset) (glo
 }
 
 // uninstallAssetsWithScope uninstalls a list of assets from all clients using the given scope
-func uninstallAssetsWithScope(ctx context.Context, installedAssets []assets.InstalledAsset, scope *clients.InstallScope, targetClients []clients.Client, out *outputHelper) {
+func uninstallAssetsWithScope(ctx context.Context, installedAssets []assets.InstalledAsset, scope *clients.InstallScope, targetClients []clients.Client, styledOut *ui.Output) {
 	// Convert InstalledAsset to asset.Asset
 	assetsToRemove := make([]asset.Asset, len(installedAssets))
 	for i, installed := range installedAssets {
@@ -44,7 +45,7 @@ func uninstallAssetsWithScope(ctx context.Context, installedAssets []assets.Inst
 	for _, client := range targetClients {
 		resp, err := client.UninstallAssets(ctx, uninstallReq)
 		if err != nil {
-			out.printfErr("Warning: cleanup failed for %s: %v\n", client.DisplayName(), err)
+			styledOut.Warning("Cleanup failed for " + client.DisplayName() + ": " + err.Error())
 			log.Error("cleanup failed", "client", client.ID(), "error", err)
 			continue
 		}
@@ -52,10 +53,10 @@ func uninstallAssetsWithScope(ctx context.Context, installedAssets []assets.Inst
 		for _, result := range resp.Results {
 			switch result.Status {
 			case clients.StatusSuccess:
-				out.printf("  - Removed %s from %s\n", result.AssetName, client.DisplayName())
+				styledOut.ListItem("-", "Removed "+result.AssetName+" from "+client.DisplayName())
 				log.Info("asset removed", "name", result.AssetName, "client", client.ID())
 			case clients.StatusFailed:
-				out.printfErr("Warning: failed to remove %s from %s: %v\n", result.AssetName, client.DisplayName(), result.Error)
+				styledOut.Warning("Failed to remove " + result.AssetName + " from " + client.DisplayName() + ": " + result.Error.Error())
 				log.Error("asset removal failed", "name", result.AssetName, "client", client.ID(), "error", result.Error)
 			case clients.StatusSkipped:
 				// Skipped assets don't need cleanup logging
