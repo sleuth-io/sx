@@ -8,6 +8,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/clients/claude_code"
+	"github.com/sleuth-io/sx/internal/clients/codex"
 	"github.com/sleuth-io/sx/internal/clients/cursor"
 	"github.com/sleuth-io/sx/internal/clients/gemini"
 )
@@ -15,6 +16,7 @@ import (
 func init() {
 	// Register clients for tests
 	clients.Register(claude_code.NewClient())
+	clients.Register(codex.NewClient())
 	clients.Register(cursor.NewClient())
 	clients.Register(gemini.NewClient())
 }
