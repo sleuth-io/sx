@@ -480,12 +480,23 @@ func buildScopeForAsset(assetPlan AssetUninstallPlan, gitContext *gitutil.GitCon
 	}
 }
 
-// updateTracker removes successfully uninstalled assets from tracker
+// updateTracker removes successfully uninstalled clients from tracker
+// If an asset has no remaining clients, the asset is fully removed
 func updateTracker(results []UninstallResult, plan UninstallPlan, out *outputHelper) error {
 	status := components.NewStatus(out.cmd.OutOrStdout())
 
-	fullyRemoved := findFullyRemovedAssets(results)
-	if len(fullyRemoved) == 0 {
+	// Build a map of successful removals: assetName -> set of removed clients
+	removedClients := make(map[string]map[string]bool)
+	for _, result := range results {
+		if result.Success {
+			if removedClients[result.AssetName] == nil {
+				removedClients[result.AssetName] = make(map[string]bool)
+			}
+			removedClients[result.AssetName][result.ClientID] = true
+		}
+	}
+
+	if len(removedClients) == 0 {
 		return nil
 	}
 
@@ -496,14 +507,29 @@ func updateTracker(results []UninstallResult, plan UninstallPlan, out *outputHel
 		return fmt.Errorf("failed to load tracker: %w", err)
 	}
 
-	// Remove each fully removed asset
-	for _, assetName := range fullyRemoved {
-		// Find the asset in tracker to get its key
-		for _, a := range tracker.Assets {
-			if a.Name == assetName {
-				tracker.RemoveAsset(a.Key())
-				break
+	// Update each asset: remove uninstalled clients, or remove entire asset if no clients remain
+	for assetName, clientsRemoved := range removedClients {
+		for i := range tracker.Assets {
+			if tracker.Assets[i].Name != assetName {
+				continue
 			}
+
+			// Filter out removed clients
+			var remainingClients []string
+			for _, c := range tracker.Assets[i].Clients {
+				if !clientsRemoved[c] {
+					remainingClients = append(remainingClients, c)
+				}
+			}
+
+			if len(remainingClients) == 0 {
+				// No clients left, remove the entire asset
+				tracker.RemoveAsset(tracker.Assets[i].Key())
+			} else {
+				// Update with remaining clients
+				tracker.Assets[i].Clients = remainingClients
+			}
+			break
 		}
 	}
 
@@ -519,35 +545,6 @@ func updateTracker(results []UninstallResult, plan UninstallPlan, out *outputHel
 	}
 	status.Done("")
 	return nil
-}
-
-// findFullyRemovedAssets returns assets where all client removals succeeded
-func findFullyRemovedAssets(results []UninstallResult) []string {
-	// Group results by asset
-	assetClients := make(map[string]map[string]bool)
-	for _, result := range results {
-		if _, exists := assetClients[result.AssetName]; !exists {
-			assetClients[result.AssetName] = make(map[string]bool)
-		}
-		assetClients[result.AssetName][result.ClientID] = result.Success
-	}
-
-	// Find assets where all succeeded
-	var fullyRemoved []string
-	for assetName, clientResults := range assetClients {
-		allSuccess := true
-		for _, success := range clientResults {
-			if !success {
-				allSuccess = false
-				break
-			}
-		}
-		if allSuccess {
-			fullyRemoved = append(fullyRemoved, assetName)
-		}
-	}
-
-	return fullyRemoved
 }
 
 // regenerateClientSupport calls EnsureAssetSupport on affected clients
