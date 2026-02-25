@@ -31,15 +31,15 @@ build-darwin-amd64: ## Build for macOS (amd64/Intel)
 
 install: build ## Install binary to ~/.local/bin
 	@echo "Installing $(BINARY_NAME)..."
-	@mkdir -p $$HOME/.local/bin
-	@rm $(HOME)/.local/bin/$(BINARY_NAME) -f && cp $(BUILD_DIR)/$(BINARY_NAME) $$HOME/.local/bin/
-	@echo "✓ $(BINARY_NAME) installed to $$HOME/.local/bin/$(BINARY_NAME)"
+	@mkdir -p $(HOME)/.local/bin
+	@rm -f $(HOME)/.local/bin/$(BINARY_NAME) && cp $(BUILD_DIR)/$(BINARY_NAME) $(HOME)/.local/bin/
+	@echo "✓ $(BINARY_NAME) installed to $(HOME)/.local/bin/$(BINARY_NAME)"
 	@case ":$$PATH:" in \
 		*":$$HOME/.local/bin:"*) ;; \
 		*) echo ""; \
-		   echo "⚠ Warning: $$HOME/.local/bin is not in your PATH"; \
+		   echo "⚠ Warning: $(HOME)/.local/bin is not in your PATH"; \
 		   echo "Add this to your ~/.bashrc or ~/.zshrc:"; \
-		   echo "  export PATH=\"\$$PATH:$$HOME/.local/bin\"" ;; \
+		   echo "  export PATH=\"\$$PATH:\$$HOME/.local/bin\"" ;; \
 	esac
 
 test: ## Run tests
