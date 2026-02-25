@@ -1,3 +1,4 @@
+version: 2
 project_name: sx
 
 before:
@@ -26,10 +27,12 @@ builds:
 
 archives:
   - id: sx
-    format: tar.gz
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
