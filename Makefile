@@ -32,7 +32,7 @@ build-darwin-amd64: ## Build for macOS (amd64/Intel)
 install: build ## Install binary to ~/.local/bin
 	@echo "Installing $(BINARY_NAME)..."
 	@mkdir -p $$HOME/.local/bin
-	@cp $(BUILD_DIR)/$(BINARY_NAME) $$HOME/.local/bin/
+	@rm $(HOME)/.local/bin/$(BINARY_NAME) -f && cp $(BUILD_DIR)/$(BINARY_NAME) $$HOME/.local/bin/
 	@echo "✓ $(BINARY_NAME) installed to $$HOME/.local/bin/$(BINARY_NAME)"
 	@case ":$$PATH:" in \
 		*":$$HOME/.local/bin:"*) ;; \
