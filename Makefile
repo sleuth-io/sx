@@ -37,7 +37,7 @@ install: build ## Install binary to ~/.local/bin
 	@case ":$$PATH:" in \
 		*":$$HOME/.local/bin:"*) ;; \
 		*) echo ""; \
-		   echo "⚠ Warning: $(HOME)/.local/bin is not in your PATH"; \
+		   echo "⚠ Warning: $$HOME/.local/bin is not in your PATH"; \
 		   echo "Add this to your ~/.bashrc or ~/.zshrc:"; \
 		   echo "  export PATH=\"\$$PATH:\$$HOME/.local/bin\"" ;; \
 	esac
