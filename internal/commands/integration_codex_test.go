@@ -127,7 +127,7 @@ func TestCodexBootstrapOptions(t *testing.T) {
 			hasMCP = true
 		}
 		// Should NOT have session hook (Codex doesn't support it)
-		if opt.Key == "session_hook" {
+		if opt.Key == bootstrap.SessionHookKey {
 			t.Error("Codex should not offer session_hook option")
 		}
 	}
