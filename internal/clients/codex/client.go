@@ -351,11 +351,9 @@ func (c *Client) installMCPServerFromConfig(codexDir string, config *bootstrap.M
 	configPath := filepath.Join(codexDir, "config.toml")
 
 	entry := handlers.MCPServerEntry{
-		Name:      config.Name,
-		Transport: "stdio",
-		Command:   config.Command,
-		Args:      config.Args,
-		Env:       config.Env,
+		Command: config.Command,
+		Args:    config.Args,
+		Env:     config.Env,
 	}
 
 	return handlers.AddMCPServer(configPath, config.Name, entry)

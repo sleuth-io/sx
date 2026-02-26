@@ -365,8 +365,7 @@ func TestCodexClient_UninstallBootstrap_MCP(t *testing.T) {
 	}
 
 	configContent := `
-[[mcp]]
-name = "test-server"
+[mcp_servers.test-server]
 command = "/usr/bin/test"
 `
 	if err := os.WriteFile(filepath.Join(codexDir, "config.toml"), []byte(configContent), 0644); err != nil {

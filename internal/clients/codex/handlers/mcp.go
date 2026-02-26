@@ -104,11 +104,9 @@ func (h *MCPHandler) generatePackagedMCPEntry(serverDir string) MCPServerEntry {
 	}
 
 	return MCPServerEntry{
-		Name:      h.metadata.Asset.Name,
-		Transport: "stdio",
-		Command:   command,
-		Args:      args,
-		Env:       mcpConfig.Env,
+		Command: command,
+		Args:    args,
+		Env:     mcpConfig.Env,
 	}
 }
 
@@ -117,19 +115,15 @@ func (h *MCPHandler) generateConfigOnlyMCPEntry() MCPServerEntry {
 
 	if mcpConfig.IsRemote() {
 		return MCPServerEntry{
-			Name:      h.metadata.Asset.Name,
-			Transport: mcpConfig.Transport,
-			URL:       mcpConfig.URL,
-			Env:       mcpConfig.Env,
+			URL: mcpConfig.URL,
+			Env: mcpConfig.Env,
 		}
 	}
 
 	return MCPServerEntry{
-		Name:      h.metadata.Asset.Name,
-		Transport: "stdio",
-		Command:   mcpConfig.Command,
-		Args:      mcpConfig.Args,
-		Env:       mcpConfig.Env,
+		Command: mcpConfig.Command,
+		Args:    mcpConfig.Args,
+		Env:     mcpConfig.Env,
 	}
 }
 
@@ -139,18 +133,17 @@ func mcpConfigPath(targetBase string) string {
 }
 
 // MCPServerEntry represents a single MCP server entry in config.toml
+// Codex uses [mcp_servers.<name>] table format, not [[mcp]] array
 type MCPServerEntry struct {
-	Name      string            `toml:"name"`
-	Transport string            `toml:"transport,omitempty"`
-	Command   string            `toml:"command,omitempty"`
-	Args      []string          `toml:"args,omitempty"`
-	URL       string            `toml:"url,omitempty"`
-	Env       map[string]string `toml:"env,omitempty"`
+	Command string            `toml:"command,omitempty"`
+	Args    []string          `toml:"args,omitempty"`
+	URL     string            `toml:"url,omitempty"`
+	Env     map[string]string `toml:"env,omitempty"`
 }
 
 // CodexConfig represents the relevant parts of Codex's config.toml
 type CodexConfig struct {
-	MCP []MCPServerEntry `toml:"mcp"`
+	MCPServers map[string]MCPServerEntry `toml:"mcp_servers"`
 	// Other fields are preserved as raw data
 	Other map[string]any `toml:"-"`
 }
@@ -158,7 +151,7 @@ type CodexConfig struct {
 // ReadCodexConfig reads the Codex config.toml file
 func ReadCodexConfig(path string) (*CodexConfig, map[string]any, error) {
 	config := &CodexConfig{
-		MCP: []MCPServerEntry{},
+		MCPServers: make(map[string]MCPServerEntry),
 	}
 
 	if !utils.FileExists(path) {
@@ -171,31 +164,25 @@ func ReadCodexConfig(path string) (*CodexConfig, map[string]any, error) {
 		return nil, nil, fmt.Errorf("failed to parse config.toml: %w", err)
 	}
 
-	// Decode MCP servers
-	if mcpData, ok := raw["mcp"]; ok {
-		if mcpList, ok := mcpData.([]map[string]any); ok {
-			for _, entry := range mcpList {
-				server := MCPServerEntry{}
-				if name, ok := entry["name"].(string); ok {
-					server.Name = name
-				}
-				if transport, ok := entry["transport"].(string); ok {
-					server.Transport = transport
-				}
-				if command, ok := entry["command"].(string); ok {
+	// Decode MCP servers from [mcp_servers.<name>] tables
+	if mcpServers, ok := raw["mcp_servers"].(map[string]any); ok {
+		for name, serverData := range mcpServers {
+			server := MCPServerEntry{}
+			if serverMap, ok := serverData.(map[string]any); ok {
+				if command, ok := serverMap["command"].(string); ok {
 					server.Command = command
 				}
-				if args, ok := entry["args"].([]any); ok {
+				if args, ok := serverMap["args"].([]any); ok {
 					for _, arg := range args {
 						if s, ok := arg.(string); ok {
 							server.Args = append(server.Args, s)
 						}
 					}
 				}
-				if url, ok := entry["url"].(string); ok {
+				if url, ok := serverMap["url"].(string); ok {
 					server.URL = url
 				}
-				if env, ok := entry["env"].(map[string]any); ok {
+				if env, ok := serverMap["env"].(map[string]any); ok {
 					server.Env = make(map[string]string)
 					for k, v := range env {
 						if s, ok := v.(string); ok {
@@ -203,8 +190,8 @@ func ReadCodexConfig(path string) (*CodexConfig, map[string]any, error) {
 						}
 					}
 				}
-				config.MCP = append(config.MCP, server)
 			}
+			config.MCPServers[name] = server
 		}
 	}
 
@@ -213,16 +200,11 @@ func ReadCodexConfig(path string) (*CodexConfig, map[string]any, error) {
 
 // WriteCodexConfig writes the Codex config.toml file, preserving other fields
 func WriteCodexConfig(path string, config *CodexConfig, raw map[string]any) error {
-	// Update MCP servers in raw data
-	if len(config.MCP) > 0 {
-		mcpList := make([]map[string]any, 0, len(config.MCP))
-		for _, server := range config.MCP {
-			entry := map[string]any{
-				"name": server.Name,
-			}
-			if server.Transport != "" {
-				entry["transport"] = server.Transport
-			}
+	// Update MCP servers in raw data using [mcp_servers.<name>] format
+	if len(config.MCPServers) > 0 {
+		mcpServers := make(map[string]any)
+		for name, server := range config.MCPServers {
+			entry := make(map[string]any)
 			if server.Command != "" {
 				entry["command"] = server.Command
 			}
@@ -235,11 +217,11 @@ func WriteCodexConfig(path string, config *CodexConfig, raw map[string]any) erro
 			if len(server.Env) > 0 {
 				entry["env"] = server.Env
 			}
-			mcpList = append(mcpList, entry)
+			mcpServers[name] = entry
 		}
-		raw["mcp"] = mcpList
+		raw["mcp_servers"] = mcpServers
 	} else {
-		delete(raw, "mcp")
+		delete(raw, "mcp_servers")
 	}
 
 	// Ensure directory exists
@@ -269,18 +251,8 @@ func AddMCPServer(configPath, serverName string, entry MCPServerEntry) error {
 		return err
 	}
 
-	// Check if server already exists and update, or add new
-	found := false
-	for i, server := range config.MCP {
-		if server.Name == serverName {
-			config.MCP[i] = entry
-			found = true
-			break
-		}
-	}
-	if !found {
-		config.MCP = append(config.MCP, entry)
-	}
+	// Add or update the server entry
+	config.MCPServers[serverName] = entry
 
 	return WriteCodexConfig(configPath, config, raw)
 }
@@ -292,14 +264,8 @@ func RemoveMCPServer(configPath, serverName string) error {
 		return err
 	}
 
-	// Filter out the server
-	newMCP := make([]MCPServerEntry, 0, len(config.MCP))
-	for _, server := range config.MCP {
-		if server.Name != serverName {
-			newMCP = append(newMCP, server)
-		}
-	}
-	config.MCP = newMCP
+	// Remove the server
+	delete(config.MCPServers, serverName)
 
 	return WriteCodexConfig(configPath, config, raw)
 }
@@ -311,10 +277,8 @@ func VerifyMCPServerInstalled(configPath, serverName string) (bool, string) {
 		return false, "failed to read config.toml: " + err.Error()
 	}
 
-	for _, server := range config.MCP {
-		if server.Name == serverName {
-			return true, "installed"
-		}
+	if _, exists := config.MCPServers[serverName]; exists {
+		return true, "installed"
 	}
 
 	return false, "MCP server not registered"

@@ -75,28 +75,19 @@ args = ["-y", "@example/mcp-server"]
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Verify config.toml was created
+	// Verify config.toml was created with [mcp_servers.remote-server] format
 	config := readTOML(t, filepath.Join(targetBase, "config.toml"))
-	mcpList, ok := config["mcp"].([]map[string]any)
+	mcpServers, ok := config["mcp_servers"].(map[string]any)
 	if !ok {
-		t.Fatal("mcp section not found in config.toml")
+		t.Fatal("mcp_servers section not found in config.toml")
 	}
 
-	var found bool
-	for _, server := range mcpList {
-		if server["name"] == "remote-server" {
-			found = true
-			if server["command"] != "npx" {
-				t.Errorf("command = %v, want npx", server["command"])
-			}
-			if server["transport"] != "stdio" {
-				t.Errorf("transport = %v, want stdio", server["transport"])
-			}
-			break
-		}
-	}
+	server, found := mcpServers["remote-server"].(map[string]any)
 	if !found {
 		t.Error("remote-server not found in config.toml")
+	}
+	if server["command"] != "npx" {
+		t.Errorf("command = %v, want npx", server["command"])
 	}
 
 	// No install directory for config-only
@@ -140,40 +131,38 @@ args = ["src/index.js"]
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Verify config.toml
+	// Verify config.toml with [mcp_servers.local-server] format
 	config := readTOML(t, filepath.Join(targetBase, "config.toml"))
-	mcpList := config["mcp"].([]map[string]any)
-
-	var found bool
-	for _, server := range mcpList {
-		if server["name"] == "local-server" {
-			found = true
-			// System commands like "node" should stay as-is (resolved from PATH)
-			command, ok := server["command"].(string)
-			if !ok {
-				t.Fatal("command should be string")
-			}
-			if command != "node" {
-				t.Errorf("System command should stay as 'node', got: %s", command)
-			}
-
-			// Args with paths should become absolute
-			args, ok := server["args"].([]any)
-			if !ok || len(args) == 0 {
-				t.Fatal("args should exist")
-			}
-			arg0, ok := args[0].(string)
-			if !ok {
-				t.Fatal("arg should be string")
-			}
-			if !filepath.IsAbs(arg0) {
-				t.Errorf("Packaged arg should be absolute, got: %s", arg0)
-			}
-			break
-		}
+	mcpServers, ok := config["mcp_servers"].(map[string]any)
+	if !ok {
+		t.Fatal("mcp_servers section not found")
 	}
+
+	server, found := mcpServers["local-server"].(map[string]any)
 	if !found {
 		t.Error("local-server not found")
+	}
+
+	// System commands like "node" should stay as-is (resolved from PATH)
+	command, ok := server["command"].(string)
+	if !ok {
+		t.Fatal("command should be string")
+	}
+	if command != "node" {
+		t.Errorf("System command should stay as 'node', got: %s", command)
+	}
+
+	// Args with paths should become absolute
+	args, ok := server["args"].([]any)
+	if !ok || len(args) == 0 {
+		t.Fatal("args should exist")
+	}
+	arg0, ok := args[0].(string)
+	if !ok {
+		t.Fatal("arg should be string")
+	}
+	if !filepath.IsAbs(arg0) {
+		t.Errorf("Packaged arg should be absolute, got: %s", arg0)
 	}
 
 	// Install directory should exist
@@ -193,14 +182,10 @@ func TestCodexMCPHandler_Remove(t *testing.T) {
 
 	// Pre-populate config.toml with multiple servers
 	configContent := `
-[[mcp]]
-name = "my-server"
-transport = "stdio"
+[mcp_servers.my-server]
 command = "npx"
 
-[[mcp]]
-name = "other-server"
-transport = "stdio"
+[mcp_servers.other-server]
 command = "other"
 `
 	configPath := filepath.Join(targetBase, "config.toml")
@@ -214,23 +199,17 @@ command = "other"
 	}
 
 	config := readTOML(t, configPath)
-	mcpList := config["mcp"].([]map[string]any)
+	mcpServers, ok := config["mcp_servers"].(map[string]any)
+	if !ok {
+		t.Fatal("mcp_servers should exist")
+	}
 
-	for _, server := range mcpList {
-		if server["name"] == "my-server" {
-			t.Error("my-server should be removed")
-		}
+	if _, exists := mcpServers["my-server"]; exists {
+		t.Error("my-server should be removed")
 	}
 
 	// Verify other-server is still there
-	var otherFound bool
-	for _, server := range mcpList {
-		if server["name"] == "other-server" {
-			otherFound = true
-			break
-		}
-	}
-	if !otherFound {
+	if _, exists := mcpServers["other-server"]; !exists {
 		t.Error("other-server should be preserved")
 	}
 }
@@ -252,9 +231,7 @@ func TestCodexMCPHandler_VerifyInstalled_ConfigOnly(t *testing.T) {
 
 	// Write config.toml
 	configContent := `
-[[mcp]]
-name = "remote"
-transport = "stdio"
+[mcp_servers.remote]
 command = "npx"
 `
 	if err := os.WriteFile(filepath.Join(targetBase, "config.toml"), []byte(configContent), 0644); err != nil {
@@ -300,27 +277,22 @@ url = "https://example.com/mcp/sse"
 	}
 
 	config := readTOML(t, filepath.Join(targetBase, "config.toml"))
-	mcpList := config["mcp"].([]map[string]any)
-
-	var found bool
-	for _, server := range mcpList {
-		if server["name"] == "remote-sse" {
-			found = true
-			if server["url"] != "https://example.com/mcp/sse" {
-				t.Errorf("url = %v, want https://example.com/mcp/sse", server["url"])
-			}
-			if server["transport"] != "sse" {
-				t.Errorf("transport = %v, want sse", server["transport"])
-			}
-			// Should NOT have command
-			if _, hasCommand := server["command"]; hasCommand {
-				t.Error("Remote MCP should not have command field")
-			}
-			break
-		}
+	mcpServers, ok := config["mcp_servers"].(map[string]any)
+	if !ok {
+		t.Fatal("mcp_servers section not found")
 	}
+
+	server, found := mcpServers["remote-sse"].(map[string]any)
 	if !found {
-		t.Error("remote-sse not found")
+		t.Fatal("remote-sse not found")
+	}
+
+	if server["url"] != "https://example.com/mcp/sse" {
+		t.Errorf("url = %v, want https://example.com/mcp/sse", server["url"])
+	}
+	// Should NOT have command
+	if _, hasCommand := server["command"]; hasCommand {
+		t.Error("Remote MCP should not have command field")
 	}
 }
 
@@ -353,9 +325,7 @@ func TestCodexMCPHandler_PreservesExistingConfig(t *testing.T) {
 model = "gpt-4"
 approval_policy = "unless-allow-listed"
 
-[[mcp]]
-name = "existing-server"
-transport = "stdio"
+[mcp_servers.existing-server]
 command = "existing"
 `
 	configPath := filepath.Join(targetBase, "config.toml")
@@ -396,21 +366,12 @@ args = ["new"]
 		t.Errorf("approval_policy should be preserved, got: %v", config["approval_policy"])
 	}
 
-	// Both servers should exist
-	mcpList := config["mcp"].([]map[string]any)
-	var foundExisting, foundNew bool
-	for _, server := range mcpList {
-		if server["name"] == "existing-server" {
-			foundExisting = true
-		}
-		if server["name"] == "new-server" {
-			foundNew = true
-		}
-	}
-	if !foundExisting {
+	// Both servers should exist in mcp_servers map
+	mcpServers := config["mcp_servers"].(map[string]any)
+	if _, found := mcpServers["existing-server"]; !found {
 		t.Error("existing-server should be preserved")
 	}
-	if !foundNew {
+	if _, found := mcpServers["new-server"]; !found {
 		t.Error("new-server should be added")
 	}
 }
@@ -420,9 +381,7 @@ func TestCodexMCPHandler_UpdateExistingServer(t *testing.T) {
 
 	// Create existing config.toml with a server
 	existingConfig := `
-[[mcp]]
-name = "my-server"
-transport = "stdio"
+[mcp_servers.my-server]
 command = "old-command"
 args = ["old-arg"]
 `
@@ -454,14 +413,14 @@ args = ["new-arg"]
 	}
 
 	config := readTOML(t, configPath)
-	mcpList := config["mcp"].([]map[string]any)
+	mcpServers := config["mcp_servers"].(map[string]any)
 
 	// Should only have one server entry
-	if len(mcpList) != 1 {
-		t.Errorf("Expected 1 server, got %d", len(mcpList))
+	if len(mcpServers) != 1 {
+		t.Errorf("Expected 1 server, got %d", len(mcpServers))
 	}
 
-	server := mcpList[0]
+	server := mcpServers["my-server"].(map[string]any)
 	if server["command"] != "new-command" {
 		t.Errorf("command should be updated, got: %v", server["command"])
 	}
@@ -477,10 +436,8 @@ func TestAddMCPServer(t *testing.T) {
 
 	// Add first server
 	entry1 := MCPServerEntry{
-		Name:      "server1",
-		Transport: "stdio",
-		Command:   "cmd1",
-		Args:      []string{"arg1"},
+		Command: "cmd1",
+		Args:    []string{"arg1"},
 	}
 	if err := AddMCPServer(configPath, "server1", entry1); err != nil {
 		t.Fatalf("AddMCPServer failed: %v", err)
@@ -488,9 +445,7 @@ func TestAddMCPServer(t *testing.T) {
 
 	// Add second server
 	entry2 := MCPServerEntry{
-		Name:      "server2",
-		Transport: "stdio",
-		Command:   "cmd2",
+		Command: "cmd2",
 	}
 	if err := AddMCPServer(configPath, "server2", entry2); err != nil {
 		t.Fatalf("AddMCPServer failed: %v", err)
@@ -502,19 +457,12 @@ func TestAddMCPServer(t *testing.T) {
 		t.Fatalf("ReadCodexConfig failed: %v", err)
 	}
 
-	if len(config.MCP) != 2 {
-		t.Errorf("Expected 2 servers, got %d", len(config.MCP))
+	if len(config.MCPServers) != 2 {
+		t.Errorf("Expected 2 servers, got %d", len(config.MCPServers))
 	}
 
-	var found1, found2 bool
-	for _, s := range config.MCP {
-		if s.Name == "server1" {
-			found1 = true
-		}
-		if s.Name == "server2" {
-			found2 = true
-		}
-	}
+	_, found1 := config.MCPServers["server1"]
+	_, found2 := config.MCPServers["server2"]
 	if !found1 || !found2 {
 		t.Error("Both servers should exist")
 	}
@@ -525,8 +473,8 @@ func TestRemoveMCPServer(t *testing.T) {
 	configPath := filepath.Join(targetBase, "config.toml")
 
 	// Add two servers
-	AddMCPServer(configPath, "keep", MCPServerEntry{Name: "keep", Command: "cmd"})
-	AddMCPServer(configPath, "remove", MCPServerEntry{Name: "remove", Command: "cmd"})
+	AddMCPServer(configPath, "keep", MCPServerEntry{Command: "cmd"})
+	AddMCPServer(configPath, "remove", MCPServerEntry{Command: "cmd"})
 
 	// Remove one
 	if err := RemoveMCPServer(configPath, "remove"); err != nil {
@@ -534,10 +482,10 @@ func TestRemoveMCPServer(t *testing.T) {
 	}
 
 	config, _, _ := ReadCodexConfig(configPath)
-	if len(config.MCP) != 1 {
-		t.Errorf("Expected 1 server, got %d", len(config.MCP))
+	if len(config.MCPServers) != 1 {
+		t.Errorf("Expected 1 server, got %d", len(config.MCPServers))
 	}
-	if config.MCP[0].Name != "keep" {
+	if _, exists := config.MCPServers["keep"]; !exists {
 		t.Error("Wrong server removed")
 	}
 }
@@ -553,7 +501,7 @@ func TestVerifyMCPServerInstalled(t *testing.T) {
 	}
 
 	// Add server
-	AddMCPServer(configPath, "test", MCPServerEntry{Name: "test", Command: "cmd"})
+	AddMCPServer(configPath, "test", MCPServerEntry{Command: "cmd"})
 
 	installed, msg := VerifyMCPServerInstalled(configPath, "test")
 	if !installed {
@@ -576,8 +524,8 @@ func TestReadCodexConfig_EmptyFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Should not error on non-existent: %v", err)
 	}
-	if len(config.MCP) != 0 {
-		t.Error("MCP should be empty")
+	if len(config.MCPServers) != 0 {
+		t.Error("MCPServers should be empty")
 	}
 	if len(raw) != 0 {
 		t.Error("raw should be empty")
@@ -591,15 +539,11 @@ func TestReadCodexConfig_WithMCP(t *testing.T) {
 	content := `
 model = "gpt-4"
 
-[[mcp]]
-name = "server1"
-transport = "stdio"
+[mcp_servers.server1]
 command = "/usr/bin/server"
 args = ["--port", "8080"]
 
-[[mcp]]
-name = "server2"
-transport = "sse"
+[mcp_servers.server2]
 url = "https://example.com"
 `
 	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
@@ -615,19 +559,13 @@ url = "https://example.com"
 		t.Errorf("model not preserved: %v", raw["model"])
 	}
 
-	if len(config.MCP) != 2 {
-		t.Errorf("Expected 2 servers, got %d", len(config.MCP))
+	if len(config.MCPServers) != 2 {
+		t.Errorf("Expected 2 servers, got %d", len(config.MCPServers))
 	}
 
 	// Check server1
-	var s1 *MCPServerEntry
-	for i := range config.MCP {
-		if config.MCP[i].Name == "server1" {
-			s1 = &config.MCP[i]
-			break
-		}
-	}
-	if s1 == nil {
+	s1, exists := config.MCPServers["server1"]
+	if !exists {
 		t.Fatal("server1 not found")
 	}
 	if s1.Command != "/usr/bin/server" {
@@ -644,8 +582,8 @@ func TestWriteCodexConfig_RoundTrip(t *testing.T) {
 
 	// Create config with MCP and other settings
 	config := &CodexConfig{
-		MCP: []MCPServerEntry{
-			{Name: "test", Transport: "stdio", Command: "cmd", Args: []string{"a", "b"}},
+		MCPServers: map[string]MCPServerEntry{
+			"test": {Command: "cmd", Args: []string{"a", "b"}},
 		},
 	}
 	raw := map[string]any{
@@ -666,11 +604,11 @@ func TestWriteCodexConfig_RoundTrip(t *testing.T) {
 	if raw2["model"] != "gpt-4" {
 		t.Errorf("model not preserved: %v", raw2["model"])
 	}
-	if len(config2.MCP) != 1 {
-		t.Errorf("MCP servers not preserved: %d", len(config2.MCP))
+	if len(config2.MCPServers) != 1 {
+		t.Errorf("MCPServers not preserved: %d", len(config2.MCPServers))
 	}
-	if config2.MCP[0].Name != "test" {
-		t.Errorf("MCP name = %q", config2.MCP[0].Name)
+	if _, exists := config2.MCPServers["test"]; !exists {
+		t.Error("test server not found")
 	}
 }
 

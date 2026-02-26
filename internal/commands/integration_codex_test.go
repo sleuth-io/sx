@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/clients/codex"
 )
@@ -119,10 +120,10 @@ func TestCodexBootstrapOptions(t *testing.T) {
 	// Should have analytics hook and MCP option
 	var hasAnalytics, hasMCP bool
 	for _, opt := range opts {
-		if opt.Key == "analytics_hook" {
+		if opt.Key == bootstrap.AnalyticsHookKey {
 			hasAnalytics = true
 		}
-		if opt.Key == "sleuth_ai_query_mcp" {
+		if opt.Key == bootstrap.SleuthAIQueryMCPKey {
 			hasMCP = true
 		}
 		// Should NOT have session hook (Codex doesn't support it)
