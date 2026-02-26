@@ -58,7 +58,7 @@ func (c *Client) hasCopilotCLIConfig() bool {
 		return false
 	}
 
-	configDir := filepath.Join(home, ".copilot")
+	configDir := filepath.Join(home, handlers.ConfigDir)
 	if stat, err := os.Stat(configDir); err == nil {
 		return stat.IsDir()
 	}
@@ -284,7 +284,7 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 
 	switch scope.Type {
 	case clients.ScopeGlobal:
-		return filepath.Join(home, ".copilot"), nil
+		return filepath.Join(home, handlers.ConfigDir), nil
 	case clients.ScopeRepository:
 		if scope.RepoRoot == "" {
 			return "", errors.New("repo-scoped install requires RepoRoot but none provided (not in a git repository?)")
@@ -298,7 +298,7 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 		}
 		return filepath.Join(scope.RepoRoot, scope.Path, ".github"), nil
 	default:
-		return filepath.Join(home, ".copilot"), nil
+		return filepath.Join(home, handlers.ConfigDir), nil
 	}
 }
 

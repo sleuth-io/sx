@@ -43,7 +43,7 @@ func (c *Client) IsInstalled() bool {
 		return false
 	}
 
-	configDir := filepath.Join(home, ".codex")
+	configDir := filepath.Join(home, handlers.ConfigDir)
 	if stat, err := os.Stat(configDir); err == nil {
 		return stat.IsDir()
 	}
@@ -190,7 +190,7 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope, assetType asse
 	switch scope.Type {
 	case clients.ScopeGlobal:
 		// Global scope always uses ~/.codex/
-		return filepath.Join(home, ".codex"), nil
+		return filepath.Join(home, handlers.ConfigDir), nil
 
 	case clients.ScopeRepository:
 		if scope.RepoRoot == "" {
@@ -199,9 +199,9 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope, assetType asse
 		// For skills, use .agents/ (Codex convention for repo skills)
 		// For other assets, use .codex/
 		if assetType == asset.TypeSkill {
-			return filepath.Join(scope.RepoRoot, ".agents"), nil
+			return filepath.Join(scope.RepoRoot, handlers.AgentsDir), nil
 		}
-		return filepath.Join(scope.RepoRoot, ".codex"), nil
+		return filepath.Join(scope.RepoRoot, handlers.ConfigDir), nil
 
 	case clients.ScopePath:
 		if scope.RepoRoot == "" {
@@ -209,12 +209,12 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope, assetType asse
 		}
 		// For skills, use .agents/ (Codex convention)
 		if assetType == asset.TypeSkill {
-			return filepath.Join(scope.RepoRoot, scope.Path, ".agents"), nil
+			return filepath.Join(scope.RepoRoot, scope.Path, handlers.AgentsDir), nil
 		}
-		return filepath.Join(scope.RepoRoot, scope.Path, ".codex"), nil
+		return filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir), nil
 
 	default:
-		return filepath.Join(home, ".codex"), nil
+		return filepath.Join(home, handlers.ConfigDir), nil
 	}
 }
 
@@ -284,7 +284,7 @@ func (c *Client) GetBootstrapPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".codex", "config.toml")
+	return filepath.Join(home, handlers.ConfigDir, "config.toml")
 }
 
 // InstallBootstrap installs Codex infrastructure (notify hooks and MCP servers)
@@ -293,7 +293,7 @@ func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) 
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
-	codexDir := filepath.Join(home, ".codex")
+	codexDir := filepath.Join(home, handlers.ConfigDir)
 
 	// Install analytics hook via notify (if enabled)
 	if bootstrap.ContainsKey(opts, bootstrap.AnalyticsHookKey) {
@@ -367,7 +367,7 @@ func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
-	codexDir := filepath.Join(home, ".codex")
+	codexDir := filepath.Join(home, handlers.ConfigDir)
 
 	for _, opt := range opts {
 		switch opt.Key {

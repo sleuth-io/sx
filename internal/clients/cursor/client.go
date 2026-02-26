@@ -58,7 +58,7 @@ func (c *Client) IsInstalled() bool {
 	}
 
 	// Check for .cursor directory (primary indicator)
-	configDir := filepath.Join(home, ".cursor")
+	configDir := filepath.Join(home, handlers.ConfigDir)
 	if stat, err := os.Stat(configDir); err == nil {
 		return stat.IsDir()
 	}
@@ -208,19 +208,19 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 
 	switch scope.Type {
 	case clients.ScopeGlobal:
-		return filepath.Join(home, ".cursor"), nil
+		return filepath.Join(home, handlers.ConfigDir), nil
 	case clients.ScopeRepository:
 		if scope.RepoRoot == "" {
 			return "", errors.New("repo-scoped install requires RepoRoot but none provided (not in a git repository?)")
 		}
-		return filepath.Join(scope.RepoRoot, ".cursor"), nil
+		return filepath.Join(scope.RepoRoot, handlers.ConfigDir), nil
 	case clients.ScopePath:
 		if scope.RepoRoot == "" {
 			return "", errors.New("path-scoped install requires RepoRoot but none provided (not in a git repository?)")
 		}
-		return filepath.Join(scope.RepoRoot, scope.Path, ".cursor"), nil
+		return filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir), nil
 	default:
-		return filepath.Join(home, ".cursor"), nil
+		return filepath.Join(home, handlers.ConfigDir), nil
 	}
 }
 
@@ -272,7 +272,7 @@ func (c *Client) collectAllScopeSkills(scope *clients.InstallScope) []clients.In
 
 	// 1. Path-scoped skills (highest precedence)
 	if scope.Type == clients.ScopePath && scope.RepoRoot != "" && scope.Path != "" {
-		pathBase := filepath.Join(scope.RepoRoot, scope.Path, ".cursor")
+		pathBase := filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir)
 		if skills, err := skillOps.ScanInstalled(pathBase); err == nil {
 			for _, s := range skills {
 				addSkills([]clients.InstalledSkill{{Name: s.Name, Description: s.Description, Version: s.Version}})
@@ -282,7 +282,7 @@ func (c *Client) collectAllScopeSkills(scope *clients.InstallScope) []clients.In
 
 	// 2. Repo-scoped skills
 	if scope.RepoRoot != "" {
-		repoBase := filepath.Join(scope.RepoRoot, ".cursor")
+		repoBase := filepath.Join(scope.RepoRoot, handlers.ConfigDir)
 		if skills, err := skillOps.ScanInstalled(repoBase); err == nil {
 			for _, s := range skills {
 				addSkills([]clients.InstalledSkill{{Name: s.Name, Description: s.Description, Version: s.Version}})
@@ -292,7 +292,7 @@ func (c *Client) collectAllScopeSkills(scope *clients.InstallScope) []clients.In
 
 	// 3. Global skills (lowest precedence)
 	home, _ := os.UserHomeDir()
-	globalBase := filepath.Join(home, ".cursor")
+	globalBase := filepath.Join(home, handlers.ConfigDir)
 	if skills, err := skillOps.ScanInstalled(globalBase); err == nil {
 		for _, s := range skills {
 			addSkills([]clients.InstalledSkill{{Name: s.Name, Description: s.Description, Version: s.Version}})
@@ -313,15 +313,15 @@ func (c *Client) determineLocalTarget(scope *clients.InstallScope) string {
 		if err != nil {
 			return ""
 		}
-		return filepath.Join(cwd, ".cursor")
+		return filepath.Join(cwd, handlers.ConfigDir)
 	case clients.ScopePath:
 		if scope.RepoRoot != "" && scope.Path != "" {
-			return filepath.Join(scope.RepoRoot, scope.Path, ".cursor")
+			return filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir)
 		}
 		fallthrough
 	case clients.ScopeRepository:
 		if scope.RepoRoot != "" {
-			return filepath.Join(scope.RepoRoot, ".cursor")
+			return filepath.Join(scope.RepoRoot, handlers.ConfigDir)
 		}
 	}
 	// Fallback: use current working directory
@@ -329,7 +329,7 @@ func (c *Client) determineLocalTarget(scope *clients.InstallScope) string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(cwd, ".cursor")
+	return filepath.Join(cwd, handlers.ConfigDir)
 }
 
 // generateSkillsRulesFileFromSkills cleans up the legacy skills.md rules file.
@@ -352,7 +352,7 @@ func (c *Client) registerSkillsMCPServer() error {
 		return err
 	}
 
-	mcpConfigPath := filepath.Join(home, ".cursor", "mcp.json")
+	mcpConfigPath := filepath.Join(home, handlers.ConfigDir, "mcp.json")
 
 	// Read existing mcp.json
 	config, err := handlers.ReadMCPConfig(mcpConfigPath)
@@ -446,7 +446,7 @@ func (c *Client) GetBootstrapPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".cursor", "hooks.json")
+	return filepath.Join(home, handlers.ConfigDir, "hooks.json")
 }
 
 // InstallBootstrap installs Cursor infrastructure (hooks and MCP servers).
@@ -484,7 +484,7 @@ func (c *Client) installMCPServerFromConfig(config *bootstrap.MCPServerConfig) e
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
-	cursorDir := filepath.Join(home, ".cursor")
+	cursorDir := filepath.Join(home, handlers.ConfigDir)
 	log := logger.Get()
 
 	serverConfig := map[string]any{
@@ -634,7 +634,7 @@ func (c *Client) uninstallBeforeSubmitPromptHook() error {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	hooksJSONPath := filepath.Join(home, ".cursor", "hooks.json")
+	hooksJSONPath := filepath.Join(home, handlers.ConfigDir, "hooks.json")
 	log := logger.Get()
 
 	// Read existing hooks.json
@@ -693,7 +693,7 @@ func (c *Client) installBeforeSubmitPromptHook() error {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	hooksJSONPath := filepath.Join(home, ".cursor", "hooks.json")
+	hooksJSONPath := filepath.Join(home, handlers.ConfigDir, "hooks.json")
 	log := logger.Get()
 
 	// Read existing hooks.json
@@ -757,7 +757,7 @@ func (c *Client) installPostToolUseHook() error {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	hooksJSONPath := filepath.Join(home, ".cursor", "hooks.json")
+	hooksJSONPath := filepath.Join(home, handlers.ConfigDir, "hooks.json")
 	log := logger.Get()
 
 	// Read existing hooks.json
@@ -817,7 +817,7 @@ func (c *Client) uninstallPostToolUseHook() error {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	hooksJSONPath := filepath.Join(home, ".cursor", "hooks.json")
+	hooksJSONPath := filepath.Join(home, handlers.ConfigDir, "hooks.json")
 	log := logger.Get()
 
 	// Read existing hooks.json
@@ -924,7 +924,7 @@ func (c *Client) uninstallMCPServerByName(name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
-	cursorDir := filepath.Join(home, ".cursor")
+	cursorDir := filepath.Join(home, handlers.ConfigDir)
 	log := logger.Get()
 
 	if err := handlers.RemoveMCPServer(cursorDir, name); err != nil {
