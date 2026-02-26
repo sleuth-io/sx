@@ -142,7 +142,7 @@ sx uses a lock file (like package-lock.json) for deterministic installations acr
 | Gemini (CLI/VS Code)    | ✅ Experimental | Skills, rules, commands, MCP servers, hooks               |
 | Gemini (JetBrains)      | ✅ Experimental | Rules, MCP servers only (no commands/hooks)               |
 | Gemini (Android Studio) | ✅ Experimental | Rules, MCP-remote only (HTTP, no stdio)                   |
-| Codex                   | Coming soon    |                                                           |
+| Codex                   | ✅ Experimental | Skills, commands, MCP servers                             |
 
 
 ## Roadmap
@@ -151,7 +151,7 @@ sx uses a lock file (like package-lock.json) for deterministic installations acr
 - ✅ Cursor support (experimental)
 - ✅ GitHub Copilot support (experimental)
 - ✅ Gemini support (experimental)
-- **More clients** - Codex
+- ✅ Codex support (experimental)
 - **Skill discovery** - Use Skills.new to discover relevant skills from your code and architecture
 - **Analytics** - Track skill usage and impact
 
