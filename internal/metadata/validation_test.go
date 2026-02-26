@@ -227,6 +227,7 @@ func TestMCPConfig_IsRemote(t *testing.T) {
 		{"stdio", false},
 		{"sse", true},
 		{"http", true},
+		{"streamable-http", true},
 	}
 	for _, tc := range tests {
 		m := &MCPConfig{Transport: tc.transport}

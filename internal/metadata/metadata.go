@@ -84,9 +84,9 @@ type MCPConfig struct {
 	Timeout   int               `toml:"timeout,omitempty"`
 }
 
-// IsRemote returns true if the MCP config uses a remote transport (sse or http)
+// IsRemote returns true if the MCP config uses a remote transport (sse, http, or streamable-http)
 func (m *MCPConfig) IsRemote() bool {
-	return m.Transport == "sse" || m.Transport == "http"
+	return m.Transport == "sse" || m.Transport == "http" || m.Transport == "streamable-http"
 }
 
 // ClaudeCodePluginConfig represents the [claude-code-plugin] section
