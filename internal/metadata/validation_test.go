@@ -164,6 +164,13 @@ func TestMCPConfig_Validate_HTTP_Valid(t *testing.T) {
 	}
 }
 
+func TestMCPConfig_Validate_StreamableHTTP_Valid(t *testing.T) {
+	m := &MCPConfig{Transport: "streamable-http", URL: "https://example.com/mcp"}
+	if err := m.Validate(); err != nil {
+		t.Errorf("streamable-http with URL should be valid: %v", err)
+	}
+}
+
 func TestMCPConfig_Validate_SSE_MissingURL(t *testing.T) {
 	m := &MCPConfig{Transport: "sse"}
 	err := m.Validate()

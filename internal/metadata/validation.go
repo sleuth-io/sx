@@ -191,7 +191,7 @@ func (m *MCPConfig) Validate() error {
 		if m.URL != "" {
 			return errors.New("url is not allowed for stdio transport")
 		}
-	case "sse", "http":
+	case "sse", "http", "streamable-http":
 		if m.URL == "" {
 			return fmt.Errorf("url is required for %s transport", m.Transport)
 		}
@@ -202,7 +202,7 @@ func (m *MCPConfig) Validate() error {
 			return fmt.Errorf("args is not allowed for %s transport", m.Transport)
 		}
 	default:
-		return fmt.Errorf("invalid transport %q (must be one of: stdio, sse, http)", m.Transport)
+		return fmt.Errorf("invalid transport %q (must be one of: stdio, sse, http, streamable-http)", m.Transport)
 	}
 
 	if m.Timeout < 0 {
