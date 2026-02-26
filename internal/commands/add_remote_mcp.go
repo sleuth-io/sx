@@ -31,6 +31,7 @@ func addRemoteMCP(ctx context.Context, cmd *cobra.Command, out *outputHelper, st
 			[]components.Option{
 				{Label: "sse (most common)", Value: "sse", Description: "Server-Sent Events — choose if unsure"},
 				{Label: "http", Value: "http", Description: "Streamable HTTP transport"},
+				{Label: "streamable-http", Value: "streamable-http", Description: "MCP Streamable HTTP transport"},
 			},
 			cmd.InOrStdin(), cmd.OutOrStdout(),
 		)
