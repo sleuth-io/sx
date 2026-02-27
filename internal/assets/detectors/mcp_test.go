@@ -62,12 +62,12 @@ func TestMCPDetector_DetectUsageFromToolCall(t *testing.T) {
 			wantDetected: false,
 		},
 		{
-			// Edge case: mcp__ prefix but no server name
+			// Edge case: mcp__ prefix but no server name - should not be detected
 			name:         "mcp__ prefix without server",
 			toolName:     "mcp__",
 			toolInput:    map[string]any{},
 			wantAsset:    "",
-			wantDetected: true, // Returns empty string as server name
+			wantDetected: false,
 		},
 	}
 

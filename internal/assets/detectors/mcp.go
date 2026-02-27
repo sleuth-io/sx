@@ -45,7 +45,7 @@ func (h *MCPDetector) DetectUsageFromToolCall(toolName string, toolInput map[str
 	// Claude Code format: mcp__server__tool (e.g., "mcp__sx__query")
 	if strings.HasPrefix(toolName, "mcp__") {
 		parts := strings.Split(toolName, "__")
-		if len(parts) >= 2 {
+		if len(parts) >= 2 && parts[1] != "" {
 			return parts[1], true
 		}
 		return "", false
