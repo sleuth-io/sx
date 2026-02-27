@@ -44,22 +44,55 @@ type PostToolUseEvent struct {
 	ToolInput map[string]any `json:"tool_input"`
 }
 
+// CodexNotifyEvent represents the JSON payload from Codex notify hook
+type CodexNotifyEvent struct {
+	Type                 string   `json:"type"`
+	TurnID               string   `json:"turn-id"`
+	InputMessages        []string `json:"input-messages"`
+	LastAssistantMessage string   `json:"last-assistant-message"`
+}
+
 // runReportUsage executes the report-usage command
 func runReportUsage(cmd *cobra.Command, args []string) error {
 	// Initialize logger early to capture all errors
 	log := logger.Get()
 
-	// Read JSON from stdin
-	data, err := io.ReadAll(os.Stdin)
-	if err != nil {
-		log.Error("report-usage: failed to read stdin", "error", err)
-		return fmt.Errorf("failed to read stdin: %w", err)
+	clientID, _ := cmd.Flags().GetString("client")
+
+	var data []byte
+	var err error
+
+	// Codex passes JSON as command-line argument, others use stdin
+	if len(args) > 0 {
+		// Codex format: JSON as first argument
+		data = []byte(args[0])
+	} else {
+		// Claude Code/Cursor format: JSON from stdin
+		data, err = io.ReadAll(os.Stdin)
+		if err != nil {
+			log.Error("report-usage: failed to read stdin", "error", err)
+			return fmt.Errorf("failed to read stdin: %w", err)
+		}
 	}
 
-	// Parse hook event
+	// Try Codex format first (check for agent-turn-complete type)
+	var codexEvent CodexNotifyEvent
+	if err := json.Unmarshal(data, &codexEvent); err == nil && codexEvent.Type == "agent-turn-complete" {
+		// Codex event parsed successfully - log it but no asset detection possible
+		// Codex's agent-turn-complete doesn't contain tool usage data
+		log.Debug("report-usage: received Codex notify event", "type", codexEvent.Type, "turn_id", codexEvent.TurnID)
+		return nil
+	}
+
+	// Try Claude Code/Cursor format
 	var event PostToolUseEvent
 	if err := json.Unmarshal(data, &event); err != nil {
-		log.Error("report-usage: failed to parse hook event JSON", "error", err, "data_length", len(data))
+		log.Error("report-usage: failed to parse hook event JSON", "error", err, "data_length", len(data), "client", clientID)
+		return nil
+	}
+
+	// If no tool name, nothing to detect
+	if event.ToolName == "" {
 		return nil
 	}
 

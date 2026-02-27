@@ -292,6 +292,8 @@ func getClientDirectory(clientID string) string {
 	switch clientID {
 	case clients.ClientIDClaudeCode:
 		return filepath.Join(home, ".claude")
+	case clients.ClientIDCodex:
+		return filepath.Join(home, ".codex")
 	case clients.ClientIDCursor:
 		return filepath.Join(home, ".cursor")
 	case clients.ClientIDGemini:
@@ -348,6 +350,16 @@ func checkHooksInstalled(clientID, clientDir string) bool {
 		}
 		content := string(data)
 		return strings.Contains(content, "sx install") || strings.Contains(content, "sx-session")
+
+	case clients.ClientIDCodex:
+		// Check config.toml for sx notify hook with report-usage command
+		configPath := filepath.Join(clientDir, "config.toml")
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			return false
+		}
+		content := string(data)
+		return strings.Contains(content, "report-usage")
 
 	case clients.ClientIDGitHubCopilot:
 		// Copilot hooks are workspace-level in .github/hooks/sx.json

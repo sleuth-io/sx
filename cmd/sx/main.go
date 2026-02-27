@@ -10,6 +10,7 @@ import (
 	"github.com/sleuth-io/sx/internal/autoupdate"
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	_ "github.com/sleuth-io/sx/internal/clients/claude_code"    // Register Claude Code client
+	_ "github.com/sleuth-io/sx/internal/clients/codex"          // Register Codex client
 	_ "github.com/sleuth-io/sx/internal/clients/cursor"         // Register Cursor client
 	_ "github.com/sleuth-io/sx/internal/clients/gemini"         // Register Gemini Code Assist client
 	_ "github.com/sleuth-io/sx/internal/clients/github_copilot" // Register GitHub Copilot client
@@ -18,7 +19,12 @@ import (
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/ui"
+	"github.com/sleuth-io/sx/internal/ui/theme"
 )
+
+func joinStrings(items []string, sep string) string {
+	return strings.Join(items, sep)
+}
 
 func main() {
 	// Log command invocation with context
@@ -75,6 +81,52 @@ Capture what your best AI users have learned and spread it to everyone automatic
 			DisableDefaultCmd: true,
 		},
 	}
+
+	// Set colored version and help templates
+	styles := theme.Current().Styles()
+	rootCmd.SetVersionTemplate(
+		styles.Bold.Render("sx") + " " +
+			styles.Emphasis.Render(buildinfo.Version) + " " +
+			styles.Muted.Render("(commit: "+buildinfo.Commit+", built: "+buildinfo.Date+")") + "\n",
+	)
+
+	// Set colored help template
+	cobra.AddTemplateFunc("bold", styles.Bold.Render)
+	cobra.AddTemplateFunc("emphasis", styles.Emphasis.Render)
+	cobra.AddTemplateFunc("muted", styles.Muted.Render)
+	cobra.AddTemplateFunc("header", styles.Header.Render)
+	cobra.AddTemplateFunc("join", joinStrings)
+
+	rootCmd.SetHelpTemplate(`{{if .Long}}{{.Long}}{{else}}{{.Short}}{{end}}{{if .Version}}
+{{muted .Version}}{{end}}
+
+{{header "Usage:"}}
+  {{emphasis .UseLine}}{{if .HasAvailableSubCommands}}
+  {{emphasis (printf "%s [command]" .CommandPath)}}{{end}}{{if gt (len .Aliases) 0}}
+
+{{header "Aliases:"}}
+  {{muted (join .Aliases ", ")}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
+
+{{header "Available Commands:"}}{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{emphasis (rpad .Name .NamePadding)}} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
+
+{{header .Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
+  {{emphasis (rpad .Name .NamePadding)}} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
+
+{{header "Additional Commands:"}}{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
+  {{emphasis (rpad .Name .NamePadding)}} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+
+{{header "Flags:"}}
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+{{header "Global Flags:"}}
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
+
+{{header "Additional help topics:"}}{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+  {{emphasis (rpad .CommandPath .CommandPathPadding)}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
+
+Use "{{muted (printf "%s [command] --help" .CommandPath)}}" for more information about a command.{{end}}
+`)
 
 	// Add global flags
 	rootCmd.PersistentFlags().String("ssh-key", "",

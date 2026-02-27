@@ -48,7 +48,7 @@ func (c *Client) IsInstalled() bool {
 		return false
 	}
 
-	configDir := filepath.Join(home, ".claude")
+	configDir := filepath.Join(home, handlers.ConfigDir)
 	if stat, err := os.Stat(configDir); err == nil {
 		return stat.IsDir()
 	}
@@ -210,19 +210,19 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 
 	switch scope.Type {
 	case clients.ScopeGlobal:
-		return filepath.Join(home, ".claude"), nil
+		return filepath.Join(home, handlers.ConfigDir), nil
 	case clients.ScopeRepository:
 		if scope.RepoRoot == "" {
 			return "", errors.New("repo-scoped install requires RepoRoot but none provided (not in a git repository?)")
 		}
-		return filepath.Join(scope.RepoRoot, ".claude"), nil
+		return filepath.Join(scope.RepoRoot, handlers.ConfigDir), nil
 	case clients.ScopePath:
 		if scope.RepoRoot == "" {
 			return "", errors.New("path-scoped install requires RepoRoot but none provided (not in a git repository?)")
 		}
-		return filepath.Join(scope.RepoRoot, scope.Path, ".claude"), nil
+		return filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir), nil
 	default:
-		return filepath.Join(home, ".claude"), nil
+		return filepath.Join(home, handlers.ConfigDir), nil
 	}
 }
 
@@ -295,7 +295,7 @@ func (c *Client) GetBootstrapPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".claude", "settings.json")
+	return filepath.Join(home, handlers.ConfigDir, "settings.json")
 }
 
 // InstallBootstrap installs Claude Code infrastructure (hooks and MCP servers)
