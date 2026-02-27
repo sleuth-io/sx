@@ -185,6 +185,53 @@ func TestReportUsageCopilotReportIntentIgnored(t *testing.T) {
 	}
 }
 
+// TestReportUsageCursorSkillFormat tests Cursor's snake_case JSON format for skills
+// Cursor docs: https://cursor.com/docs/agent/hooks - postToolUse uses snake_case: tool_name, tool_input
+func TestReportUsageCursorSkillFormat(t *testing.T) {
+	cursorJSON := `{"session_id":"cursor-123","cwd":"/home/ines/work/sleuthio/sx","tool_name":"Skill","tool_input":{"skill":"fix-pr"}}`
+
+	cmd := NewReportUsageCommand()
+	cmd.SetIn(bytes.NewBufferString(cursorJSON))
+	cmd.Flags().Set("client", "cursor")
+
+	// Should not error (parses Cursor snake_case format)
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Cursor Skill format should parse successfully, got error: %v", err)
+	}
+}
+
+// TestReportUsageCursorMCPFormat tests Cursor's MCP tool format
+// Cursor uses same format as Claude Code: {"tool_name":"mcp__server__tool",...}
+func TestReportUsageCursorMCPFormat(t *testing.T) {
+	cursorJSON := `{"session_id":"cursor-456","cwd":"/tmp","tool_name":"mcp__sx__query","tool_input":{"query":"get PR","integration":"github"}}`
+
+	cmd := NewReportUsageCommand()
+	cmd.SetIn(bytes.NewBufferString(cursorJSON))
+	cmd.Flags().Set("client", "cursor")
+
+	// Should not error
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Cursor MCP format should parse successfully, got error: %v", err)
+	}
+}
+
+// TestReportUsageCursorBuiltinToolIgnored tests that Cursor's built-in tools are ignored
+func TestReportUsageCursorBuiltinToolIgnored(t *testing.T) {
+	cursorJSON := `{"session_id":"cursor-789","cwd":"/tmp","tool_name":"Read","tool_input":{"file_path":"/tmp/test.go"}}`
+
+	cmd := NewReportUsageCommand()
+	cmd.SetIn(bytes.NewBufferString(cursorJSON))
+	cmd.Flags().Set("client", "cursor")
+
+	// Should not error (just silently ignores non-asset tools)
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Cursor Read tool should be silently ignored, got error: %v", err)
+	}
+}
+
 // TestReportUsageGeminiSkillFormat tests Gemini's snake_case JSON format for skills
 // Gemini uses same format as Claude Code: {"tool_name":"Skill","tool_input":{...}}
 func TestReportUsageGeminiSkillFormat(t *testing.T) {
