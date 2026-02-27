@@ -24,8 +24,11 @@ const (
 	boldYellow = "\033[1;33m"
 )
 
+var filter string
+
 func main() {
 	lines := flag.Int("n", 20, "number of lines to show before following")
+	flag.StringVar(&filter, "f", "", "filter logs by substring (e.g., -f report-usage)")
 	flag.Parse()
 
 	logPath := getLogPath()
@@ -37,6 +40,13 @@ func main() {
 	// Always show last N lines, then follow
 	showLastLines(logPath, *lines)
 	followFile(logPath)
+}
+
+func matchesFilter(line string) bool {
+	if filter == "" {
+		return true
+	}
+	return strings.Contains(line, filter)
 }
 
 func getLogPath() string {
@@ -59,7 +69,10 @@ func showLastLines(path string, n int) {
 	var lines []string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+		line := scanner.Text()
+		if matchesFilter(line) {
+			lines = append(lines, line)
+		}
 	}
 
 	// Show last n lines
@@ -90,8 +103,10 @@ func followFile(path string) {
 			}
 			return
 		}
-		fmt.Print(colorizeLine(strings.TrimRight(line, "\n")))
-		fmt.Println()
+		line = strings.TrimRight(line, "\n")
+		if matchesFilter(line) {
+			fmt.Println(colorizeLine(line))
+		}
 	}
 }
 
