@@ -136,3 +136,24 @@ func ResolveArgs(args []string, installPath string) []string {
 	}
 	return resolved
 }
+
+// ResolveCommandAndArgs resolves a command and its args for a packaged MCP server,
+// returning them as []any suitable for JSON serialization into client configs.
+func ResolveCommandAndArgs(command string, args []string, installPath string) (string, []any) {
+	resolvedCmd := ResolveCommand(command, installPath)
+	resolvedArgs := ResolveArgs(args, installPath)
+	anyArgs := make([]any, len(resolvedArgs))
+	for i, arg := range resolvedArgs {
+		anyArgs[i] = arg
+	}
+	return resolvedCmd, anyArgs
+}
+
+// StringsToAny converts a []string to []any.
+func StringsToAny(s []string) []any {
+	result := make([]any, len(s))
+	for i, v := range s {
+		result[i] = v
+	}
+	return result
+}

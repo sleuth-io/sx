@@ -96,13 +96,7 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]any {
 	mcpConfig := h.metadata.MCP
 
-	command := utils.ResolveCommand(mcpConfig.Command, serverDir)
-
-	resolvedArgs := utils.ResolveArgs(mcpConfig.Args, serverDir)
-	args := make([]any, len(resolvedArgs))
-	for i, arg := range resolvedArgs {
-		args[i] = arg
-	}
+	command, args := utils.ResolveCommandAndArgs(mcpConfig.Command, mcpConfig.Args, serverDir)
 
 	entry := map[string]any{
 		"command": command,
@@ -122,14 +116,9 @@ func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
 
 	// For config-only MCPs, commands are external (npx, docker, etc.)
 	// No path conversion needed
-	args := make([]any, len(mcpConfig.Args))
-	for i, arg := range mcpConfig.Args {
-		args[i] = arg
-	}
-
 	entry := map[string]any{
 		"command": mcpConfig.Command,
-		"args":    args,
+		"args":    utils.StringsToAny(mcpConfig.Args),
 	}
 
 	// Add env if present

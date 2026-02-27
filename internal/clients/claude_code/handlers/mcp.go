@@ -192,13 +192,7 @@ func (h *MCPHandler) Validate(zipData []byte) error {
 func (h *MCPHandler) buildPackagedMCPServerConfig(installPath string) map[string]any {
 	mcpConfig := h.metadata.MCP
 
-	command := utils.ResolveCommand(mcpConfig.Command, installPath)
-
-	resolvedArgs := utils.ResolveArgs(mcpConfig.Args, installPath)
-	args := make([]any, len(resolvedArgs))
-	for i, arg := range resolvedArgs {
-		args[i] = arg
-	}
+	command, args := utils.ResolveCommandAndArgs(mcpConfig.Command, mcpConfig.Args, installPath)
 
 	config := map[string]any{
 		"type":      "stdio",
@@ -239,15 +233,10 @@ func (h *MCPHandler) buildConfigOnlyMCPServerConfig() map[string]any {
 
 	// For config-only MCPs, commands are external (npx, docker, etc.)
 	// No path conversion needed
-	args := make([]any, len(mcpConfig.Args))
-	for i, arg := range mcpConfig.Args {
-		args[i] = arg
-	}
-
 	config := map[string]any{
 		"type":      "stdio",
 		"command":   mcpConfig.Command,
-		"args":      args,
+		"args":      utils.StringsToAny(mcpConfig.Args),
 		"_artifact": h.metadata.Asset.Name,
 	}
 
