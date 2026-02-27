@@ -61,6 +61,34 @@ func getLogPath() string {
 }
 
 func showLastLines(path string, n int, filter string) {
+	// Read only the tail of the file (last ~200 lines worth of data)
+	// to avoid reading potentially huge log files entirely
+	lines := readTailLines(path, 200)
+
+	// Filter and collect matching lines
+	ring := make([]string, n)
+	idx := 0
+	count := 0
+
+	for _, line := range lines {
+		if matchesFilter(line, filter) {
+			ring[idx%n] = line
+			idx++
+			count++
+		}
+	}
+
+	// Print lines in order
+	total := min(count, n)
+	start := idx - total
+	for i := range total {
+		fmt.Println(colorizeLine(ring[(start+i)%n]))
+	}
+}
+
+// readTailLines reads approximately the last n lines from a file
+// by seeking near the end and reading forward
+func readTailLines(path string, n int) []string {
 	file, err := os.Open(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening log: %v\n", err)
@@ -68,21 +96,40 @@ func showLastLines(path string, n int, filter string) {
 	}
 	defer file.Close()
 
-	// Read all lines (simple approach for small log files)
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if matchesFilter(line, filter) {
-			lines = append(lines, line)
-		}
+	// Get file size
+	stat, err := file.Stat()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting file stats: %v\n", err)
+		os.Exit(1)
+	}
+	size := stat.Size()
+
+	// Estimate ~2KB per line (generous for log files with JSON payloads)
+	// Seek back enough to capture n lines
+	seekPos := max(0, size-int64(n*2048))
+
+	// Seek to position, fall back to start if seek fails
+	actualPos, err := file.Seek(seekPos, io.SeekStart)
+	if err != nil {
+		actualPos = 0
+		file.Seek(0, io.SeekStart)
 	}
 
-	// Show last n lines
-	start := max(len(lines)-n, 0)
-	for _, line := range lines[start:] {
-		fmt.Println(colorizeLine(line))
+	// Use a single scanner for all reading to avoid buffered reader issues
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer for long lines
+
+	// If we seeked into the middle of the file, skip the first partial line
+	if actualPos > 0 {
+		scanner.Scan() // Discard partial line
 	}
+
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+
+	return lines
 }
 
 func followFile(path, filter string) {
