@@ -198,13 +198,10 @@ func TestMCPConfig_Validate_SSE_WithArgs(t *testing.T) {
 }
 
 func TestMCPConfig_Validate_Stdio_WithURL(t *testing.T) {
+	// URL is allowed for stdio transport (may be a reference/homepage URL) — it's simply ignored
 	m := &MCPConfig{Transport: "stdio", Command: "npx", Args: []string{"server"}, URL: "https://example.com"}
-	err := m.Validate()
-	if err == nil {
-		t.Fatal("stdio with URL should fail")
-	}
-	if !strings.Contains(err.Error(), "url is not allowed") {
-		t.Errorf("Unexpected error: %v", err)
+	if err := m.Validate(); err != nil {
+		t.Errorf("stdio with URL should be valid (URL is ignored): %v", err)
 	}
 }
 

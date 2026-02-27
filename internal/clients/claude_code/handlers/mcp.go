@@ -192,23 +192,12 @@ func (h *MCPHandler) Validate(zipData []byte) error {
 func (h *MCPHandler) buildPackagedMCPServerConfig(installPath string) map[string]any {
 	mcpConfig := h.metadata.MCP
 
-	// Convert relative command paths to absolute (relative to install path).
-	// Bare command names like "node" or "python" are left as-is (resolved via PATH).
-	command := mcpConfig.Command
-	if !filepath.IsAbs(command) && filepath.Base(command) != command {
-		command = filepath.Join(installPath, command)
-	}
+	command := utils.ResolveCommand(mcpConfig.Command, installPath)
 
-	// Convert relative args to absolute paths (relative to install path).
-	// For packaged MCPs, args are file references within the package.
-	// Only skip args that are clearly not paths (flags starting with -).
-	args := make([]any, len(mcpConfig.Args))
-	for i, arg := range mcpConfig.Args {
-		if filepath.IsAbs(arg) || strings.HasPrefix(arg, "-") {
-			args[i] = arg
-		} else {
-			args[i] = filepath.Join(installPath, arg)
-		}
+	resolvedArgs := utils.ResolveArgs(mcpConfig.Args, installPath)
+	args := make([]any, len(resolvedArgs))
+	for i, arg := range resolvedArgs {
+		args[i] = arg
 	}
 
 	config := map[string]any{
