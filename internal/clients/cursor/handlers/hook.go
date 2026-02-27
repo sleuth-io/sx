@@ -3,15 +3,13 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
+	"github.com/sleuth-io/sx/internal/handlers/hook"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
@@ -35,6 +33,7 @@ var cursorEventMap = map[string]string{
 // HookHandler handles hook asset installation for Cursor
 type HookHandler struct {
 	metadata *metadata.Metadata
+	zipFiles []string // populated during Install to resolve args to absolute paths
 }
 
 // NewHookHandler creates a new hook handler
@@ -44,27 +43,18 @@ func NewHookHandler(meta *metadata.Metadata) *HookHandler {
 
 // Install installs a hook asset to Cursor by extracting scripts and updating hooks.json
 func (h *HookHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
-	// Validate hook configuration
-	if err := h.Validate(zipData); err != nil {
+	if err := hook.ValidateZipForHook(zipData); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	if h.metadata.Hook.ScriptFile != "" {
-		// Script mode: extract to .cursor/hooks/{name}/
-		installPath := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name)
-		if err := os.RemoveAll(installPath); err != nil {
-			return fmt.Errorf("failed to remove existing hook: %w", err)
-		}
-		if err := utils.EnsureDir(installPath); err != nil {
-			return fmt.Errorf("failed to create hook directory: %w", err)
-		}
-		if err := utils.ExtractZip(zipData, installPath); err != nil {
-			return fmt.Errorf("failed to extract hook: %w", err)
+	h.zipFiles = hook.CacheZipFiles(zipData)
+
+	if hook.HasExtractableFiles(zipData) {
+		if err := hookOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name); err != nil {
+			return err
 		}
 	}
-	// Command mode: no extraction needed
 
-	// Update hooks.json
 	if err := h.updateHooksJSON(targetBase); err != nil {
 		return fmt.Errorf("failed to update hooks.json: %w", err)
 	}
@@ -74,12 +64,10 @@ func (h *HookHandler) Install(ctx context.Context, zipData []byte, targetBase st
 
 // Remove uninstalls a hook asset from Cursor
 func (h *HookHandler) Remove(ctx context.Context, targetBase string) error {
-	// Remove from hooks.json
 	if err := h.removeFromHooksJSON(targetBase); err != nil {
 		return fmt.Errorf("failed to remove from hooks.json: %w", err)
 	}
 
-	// Remove directory if it exists (script mode)
 	installPath := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name)
 	if utils.IsDirectory(installPath) {
 		if err := os.RemoveAll(installPath); err != nil {
@@ -92,27 +80,7 @@ func (h *HookHandler) Remove(ctx context.Context, targetBase string) error {
 
 // Validate checks if the zip structure is valid for a hook asset
 func (h *HookHandler) Validate(zipData []byte) error {
-	files, err := utils.ListZipFiles(zipData)
-	if err != nil {
-		return fmt.Errorf("failed to list zip files: %w", err)
-	}
-
-	if !containsFile(files, "metadata.toml") {
-		return errors.New("metadata.toml not found in zip")
-	}
-
-	if h.metadata.Hook == nil {
-		return errors.New("[hook] section missing in metadata")
-	}
-
-	// Only check script file when in script mode
-	if h.metadata.Hook.ScriptFile != "" {
-		if !containsFile(files, h.metadata.Hook.ScriptFile) {
-			return fmt.Errorf("script file not found in zip: %s", h.metadata.Hook.ScriptFile)
-		}
-	}
-
-	return nil
+	return hook.ValidateZipForHook(zipData)
 }
 
 // HooksConfig represents Cursor's hooks.json structure
@@ -124,19 +92,7 @@ type HooksConfig struct {
 // mapEventToCursor maps a canonical event name to Cursor native event.
 // If the hook has a [hook.cursor] event override, that is returned instead.
 func (h *HookHandler) mapEventToCursor() (string, bool) {
-	// Check for client-specific event override
-	if h.metadata.Hook.Cursor != nil {
-		if eventOverride, ok := h.metadata.Hook.Cursor["event"].(string); ok && eventOverride != "" {
-			return eventOverride, true
-		}
-	}
-
-	// Map canonical event to Cursor native
-	if nativeEvent, ok := cursorEventMap[h.metadata.Hook.Event]; ok {
-		return nativeEvent, true
-	}
-
-	return "", false
+	return hook.MapEvent(h.metadata.Hook.Event, cursorEventMap, h.metadata.Hook.Cursor)
 }
 
 func (h *HookHandler) updateHooksJSON(targetBase string) error {
@@ -147,29 +103,24 @@ func (h *HookHandler) updateHooksJSON(targetBase string) error {
 		return err
 	}
 
-	// Map event to Cursor lifecycle hook
 	cursorEvent, supported := h.mapEventToCursor()
 	if !supported {
 		return fmt.Errorf("hook event %q not supported for Cursor", h.metadata.Hook.Event)
 	}
 
-	// Build entry
 	entry := h.buildHookEntry(targetBase)
 
-	// Add to hooks array
 	if config.Hooks[cursorEvent] == nil {
 		config.Hooks[cursorEvent] = []map[string]any{}
 	}
 
-	// Remove existing entry for this asset (if any)
 	filtered := []map[string]any{}
-	for _, hook := range config.Hooks[cursorEvent] {
-		if assetName, ok := hook["_artifact"].(string); !ok || assetName != h.metadata.Asset.Name {
-			filtered = append(filtered, hook)
+	for _, hk := range config.Hooks[cursorEvent] {
+		if assetName, ok := hk["_artifact"].(string); !ok || assetName != h.metadata.Asset.Name {
+			filtered = append(filtered, hk)
 		}
 	}
 
-	// Add new entry
 	filtered = append(filtered, entry)
 	config.Hooks[cursorEvent] = filtered
 
@@ -182,17 +133,16 @@ func (h *HookHandler) removeFromHooksJSON(targetBase string) error {
 	config, err := ReadHooksJSON(hooksJSONPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil // Nothing to remove
+			return nil
 		}
 		return err
 	}
 
-	// Remove from all hook types
 	for eventName, hooks := range config.Hooks {
 		filtered := []map[string]any{}
-		for _, hook := range hooks {
-			if assetName, ok := hook["_artifact"].(string); !ok || assetName != h.metadata.Asset.Name {
-				filtered = append(filtered, hook)
+		for _, hk := range hooks {
+			if assetName, ok := hk["_artifact"].(string); !ok || assetName != h.metadata.Asset.Name {
+				filtered = append(filtered, hk)
 			}
 		}
 		config.Hooks[eventName] = filtered
@@ -207,29 +157,18 @@ func (h *HookHandler) buildHookEntry(targetBase string) map[string]any {
 		"_artifact": h.metadata.Asset.Name,
 	}
 
-	if h.metadata.Hook.ScriptFile != "" {
-		// Script mode: use absolute path to script
-		scriptPath := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name, h.metadata.Hook.ScriptFile)
-		entry["command"] = scriptPath
-	} else if h.metadata.Hook.Command != "" {
-		// Command mode: join command and args
-		cmd := h.metadata.Hook.Command
-		if len(h.metadata.Hook.Args) > 0 {
-			cmd = cmd + " " + strings.Join(h.metadata.Hook.Args, " ")
-		}
-		entry["command"] = cmd
-	}
+	installDir := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name)
+	resolved := hook.ResolveCommand(h.metadata.Hook, installDir, h.zipFiles)
+	entry["command"] = resolved.Command
 
-	// Add timeout if present
 	if h.metadata.Hook.Timeout > 0 {
 		entry["timeout"] = h.metadata.Hook.Timeout
 	}
 
-	// Merge Cursor-specific overrides
 	if h.metadata.Hook.Cursor != nil {
 		for k, v := range h.metadata.Hook.Cursor {
 			if k == "event" {
-				continue // event override handled in mapEventToCursor
+				continue
 			}
 			entry[k] = v
 		}
@@ -278,13 +217,8 @@ func WriteHooksJSON(path string, config *HooksConfig) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-func containsFile(files []string, name string) bool {
-	return slices.Contains(files, name)
-}
-
 // VerifyInstalled checks if the hook is properly installed
 func (h *HookHandler) VerifyInstalled(targetBase string) (bool, string) {
-	// For script-file hooks, check install directory
 	if h.metadata.Hook != nil && h.metadata.Hook.ScriptFile != "" {
 		installDir := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name)
 		if utils.IsDirectory(installDir) {
@@ -292,7 +226,6 @@ func (h *HookHandler) VerifyInstalled(targetBase string) (bool, string) {
 		}
 	}
 
-	// For command-only hooks, check hooks.json
 	hooksJSONPath := filepath.Join(targetBase, "hooks.json")
 	config, err := ReadHooksJSON(hooksJSONPath)
 	if err != nil {
@@ -300,8 +233,8 @@ func (h *HookHandler) VerifyInstalled(targetBase string) (bool, string) {
 	}
 
 	for _, hooks := range config.Hooks {
-		for _, hook := range hooks {
-			if assetName, ok := hook["_artifact"].(string); ok && assetName == h.metadata.Asset.Name {
+		for _, hk := range hooks {
+			if assetName, ok := hk["_artifact"].(string); ok && assetName == h.metadata.Asset.Name {
 				return true, "installed"
 			}
 		}
