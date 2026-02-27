@@ -17,6 +17,7 @@ import (
 // ANSI color codes
 const (
 	reset      = "\033[0m"
+	bold       = "\033[1m"
 	green      = "\033[32m"
 	cyan       = "\033[36m"
 	magenta    = "\033[35m"
@@ -36,6 +37,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Could not determine log path")
 		os.Exit(1)
 	}
+
+	// Print log file location
+	fmt.Printf("%s%s%s\n", bold, logPath, reset)
+	fmt.Println("---------------------------------------")
 
 	// Always show last N lines, then follow
 	showLastLines(logPath, *lines)
