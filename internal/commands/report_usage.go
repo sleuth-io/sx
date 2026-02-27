@@ -88,11 +88,9 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 	}
 
 	// Try Codex format first (check for agent-turn-complete type)
+	// Codex's agent-turn-complete doesn't contain tool usage data, so skip it
 	var codexEvent CodexNotifyEvent
 	if err := json.Unmarshal(data, &codexEvent); err == nil && codexEvent.Type == "agent-turn-complete" {
-		// Codex event parsed successfully - log it but no asset detection possible
-		// Codex's agent-turn-complete doesn't contain tool usage data
-		log.Debug("report-usage: received Codex notify event", "type", codexEvent.Type, "turn_id", codexEvent.TurnID)
 		return nil
 	}
 
@@ -109,15 +107,11 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 		if err := json.Unmarshal(data, &copilotEvent); err == nil && copilotEvent.ToolName != "" {
 			event.ToolName = copilotEvent.ToolName
 			event.ToolInput = copilotEvent.ToolArgs
-			log.Debug("report-usage: parsed Copilot event", "tool_name", event.ToolName, "tool_input", event.ToolInput)
 		}
-	} else {
-		log.Debug("report-usage: parsed event", "tool_name", event.ToolName, "tool_input", event.ToolInput)
 	}
 
 	// If no tool name, nothing to detect
 	if event.ToolName == "" {
-		log.Debug("report-usage: no tool name, skipping")
 		return nil
 	}
 
