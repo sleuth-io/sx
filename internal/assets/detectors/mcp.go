@@ -52,6 +52,8 @@ func (h *MCPDetector) DetectUsageFromToolCall(toolName string, toolInput map[str
 	}
 
 	// Copilot format: server-tool (e.g., "sx-query")
+	// Copilot uses hyphenated tool names for MCP tools where the server name
+	// is the prefix before the first hyphen. This is a Copilot-specific convention.
 	if strings.Contains(toolName, "-") {
 		parts := strings.SplitN(toolName, "-", 2)
 		if len(parts) == 2 && parts[0] != "" {
