@@ -87,6 +87,54 @@ func TestReportUsageEmptyInput(t *testing.T) {
 	}
 }
 
+// TestReportUsageClaudeCodeMCPFormat tests Claude Code's snake_case JSON format for MCP tools
+// Actual Claude Code log: {"session_id":"...","tool_name":"mcp__sx__query","tool_input":{...}}
+func TestReportUsageClaudeCodeMCPFormat(t *testing.T) {
+	claudeJSON := `{"session_id":"c31e8751-8b7b-416c-a976-d4fb590202ef","transcript_path":"/home/ines/.claude/projects/-home-ines-work-sleuthio-sx/c31e8751-8b7b-416c-a976-d4fb590202ef.jsonl","cwd":"/home/ines/work/sleuthio/sx","permission_mode":"default","hook_event_name":"PostToolUse","tool_name":"mcp__sx__query","tool_input":{"query":"show pr comments","integration":"github"},"tool_response":[{"type":"text","text":"response"}],"tool_use_id":"toolu_01G8PafqkmFHtgbKL4somdT6"}`
+
+	cmd := NewReportUsageCommand()
+	cmd.SetIn(bytes.NewBufferString(claudeJSON))
+	cmd.Flags().Set("client", "claude-code")
+
+	// Should not error (parses Claude Code snake_case format)
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Claude Code MCP format should parse successfully, got error: %v", err)
+	}
+}
+
+// TestReportUsageClaudeCodeSkillFormat tests Claude Code's snake_case JSON format for skills
+// Actual Claude Code format: {"tool_name":"Skill","tool_input":{"skill":"my-skill"}}
+func TestReportUsageClaudeCodeSkillFormat(t *testing.T) {
+	claudeJSON := `{"session_id":"abc-123","cwd":"/home/ines/work/sleuthio/sx","hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"fix-pr"},"tool_response":{"success":true},"tool_use_id":"toolu_123"}`
+
+	cmd := NewReportUsageCommand()
+	cmd.SetIn(bytes.NewBufferString(claudeJSON))
+	cmd.Flags().Set("client", "claude-code")
+
+	// Should not error
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Claude Code Skill format should parse successfully, got error: %v", err)
+	}
+}
+
+// TestReportUsageClaudeCodeNonAssetToolIgnored tests that Claude Code's non-asset tools are ignored
+// Actual Claude Code log: {"tool_name":"TaskOutput","tool_input":{"task_id":"bb1eb1b",...}}
+func TestReportUsageClaudeCodeNonAssetToolIgnored(t *testing.T) {
+	claudeJSON := `{"session_id":"613f4723-d86e-4c5c-9b54-3880b1af8763","transcript_path":"/home/ines/.claude/projects/-home-ines-work-sleuthio-sx/613f4723-d86e-4c5c-9b54-3880b1af8763.jsonl","cwd":"/home/ines/work/sleuthio/sx","permission_mode":"acceptEdits","hook_event_name":"PostToolUse","tool_name":"TaskOutput","tool_input":{"task_id":"bb1eb1b","block":true,"timeout":5000},"tool_response":{"retrieval_status":"timeout"},"tool_use_id":"toolu_01KqvWRQkquZrN2BYeM134EY"}`
+
+	cmd := NewReportUsageCommand()
+	cmd.SetIn(bytes.NewBufferString(claudeJSON))
+	cmd.Flags().Set("client", "claude-code")
+
+	// Should not error (just silently ignores non-asset tools)
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Claude Code TaskOutput should be silently ignored, got error: %v", err)
+	}
+}
+
 // TestReportUsageCopilotSkillFormat tests Copilot's camelCase JSON format for skills
 // Actual Copilot log: {"timestamp":1772181780833,"cwd":"/home/ines/work/sleuthio/sx",
 //
