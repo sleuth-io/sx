@@ -50,15 +50,8 @@ func (h *HookHandler) Install(ctx context.Context, zipData []byte, targetBase st
 	h.zipFiles = hook.CacheZipFiles(zipData)
 
 	if hook.HasExtractableFiles(zipData) {
-		installPath := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name)
-		if err := os.RemoveAll(installPath); err != nil {
-			return fmt.Errorf("failed to remove existing hook: %w", err)
-		}
-		if err := utils.EnsureDir(installPath); err != nil {
-			return fmt.Errorf("failed to create hook directory: %w", err)
-		}
-		if err := utils.ExtractZip(zipData, installPath); err != nil {
-			return fmt.Errorf("failed to extract hook: %w", err)
+		if err := hookOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name); err != nil {
+			return err
 		}
 	}
 

@@ -177,10 +177,11 @@ func (h *HookHandler) updateSettings(targetBase string) error {
 		settings = make(map[string]any)
 	}
 
-	if settings["hooks"] == nil {
-		settings["hooks"] = make(map[string]any)
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		hooks = make(map[string]any)
+		settings["hooks"] = hooks
 	}
-	hooks := settings["hooks"].(map[string]any)
 
 	hookEvent, supported := h.mapEventToClaudeCode()
 	if !supported {
@@ -189,11 +190,10 @@ func (h *HookHandler) updateSettings(targetBase string) error {
 
 	hookConfig := h.buildHookConfig(targetBase)
 
-	if hooks[hookEvent] == nil {
-		hooks[hookEvent] = []any{}
+	eventHooks, ok := hooks[hookEvent].([]any)
+	if !ok {
+		eventHooks = []any{}
 	}
-
-	eventHooks := hooks[hookEvent].([]any)
 
 	var filtered []any
 	for _, hk := range eventHooks {
@@ -240,10 +240,10 @@ func (h *HookHandler) removeFromSettings(targetBase string) error {
 		return fmt.Errorf("failed to parse settings.json: %w", err)
 	}
 
-	if settings["hooks"] == nil {
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
 		return nil
 	}
-	hooks := settings["hooks"].(map[string]any)
 
 	for eventName, eventHooksRaw := range hooks {
 		eventHooks, ok := eventHooksRaw.([]any)
