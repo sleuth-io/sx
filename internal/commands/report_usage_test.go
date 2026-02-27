@@ -185,6 +185,54 @@ func TestReportUsageCopilotReportIntentIgnored(t *testing.T) {
 	}
 }
 
+// TestReportUsageGeminiSkillFormat tests Gemini's snake_case JSON format for skills
+// Gemini uses same format as Claude Code: {"tool_name":"Skill","tool_input":{...}}
+func TestReportUsageGeminiSkillFormat(t *testing.T) {
+	geminiJSON := `{"session_id":"b4576730-3466-4e78-877c-6376b070d9a4","transcript_path":"/home/ines/.gemini/tmp/sx/chats/session-2026-02-27T12-34-b4576730.json","cwd":"/home/ines/work/sleuthio/sx","hook_event_name":"AfterTool","timestamp":"2026-02-27T12:46:42.726Z","tool_name":"Skill","tool_input":{"skill":"fix-pr"}}`
+
+	cmd := NewReportUsageCommand()
+	cmd.SetIn(bytes.NewBufferString(geminiJSON))
+	cmd.Flags().Set("client", "gemini")
+
+	// Should not error (parses Gemini snake_case format)
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Gemini Skill format should parse successfully, got error: %v", err)
+	}
+}
+
+// TestReportUsageGeminiBuiltinToolIgnored tests that Gemini's built-in tools are ignored
+// Actual Gemini log: {"tool_name":"replace","tool_input":{"file_path":"...","new_string":"..."}}
+func TestReportUsageGeminiBuiltinToolIgnored(t *testing.T) {
+	geminiJSON := `{"session_id":"b4576730-3466-4e78-877c-6376b070d9a4","transcript_path":"/home/ines/.gemini/tmp/sx/chats/session-2026-02-27T12-34-b4576730.json","cwd":"/home/ines/work/sleuthio/sx","hook_event_name":"AfterTool","timestamp":"2026-02-27T12:46:42.726Z","tool_name":"replace","tool_input":{"file_path":"/tmp/test.go","new_string":"test"}}`
+
+	cmd := NewReportUsageCommand()
+	cmd.SetIn(bytes.NewBufferString(geminiJSON))
+	cmd.Flags().Set("client", "gemini")
+
+	// Should not error (just silently ignores non-asset tools)
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Gemini replace tool should be silently ignored, got error: %v", err)
+	}
+}
+
+// TestReportUsageGeminiReadFileIgnored tests that Gemini's read_file tool is ignored
+// Actual Gemini log: {"tool_name":"read_file","tool_input":{"file_path":"..."}}
+func TestReportUsageGeminiReadFileIgnored(t *testing.T) {
+	geminiJSON := `{"session_id":"b4576730-3466-4e78-877c-6376b070d9a4","transcript_path":"/home/ines/.gemini/tmp/sx/chats/session-2026-02-27T12-34-b4576730.json","cwd":"/home/ines/work/sleuthio/sx","hook_event_name":"AfterTool","timestamp":"2026-02-27T12:46:49.361Z","tool_name":"read_file","tool_input":{"file_path":"internal/commands/init.go"}}`
+
+	cmd := NewReportUsageCommand()
+	cmd.SetIn(bytes.NewBufferString(geminiJSON))
+	cmd.Flags().Set("client", "gemini")
+
+	// Should not error (just silently ignores non-asset tools)
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Gemini read_file tool should be silently ignored, got error: %v", err)
+	}
+}
+
 func TestMain(m *testing.M) {
 	// Run tests
 	os.Exit(m.Run())
