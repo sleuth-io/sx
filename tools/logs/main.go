@@ -25,11 +25,9 @@ const (
 	boldYellow = "\033[1;33m"
 )
 
-var filter string
-
 func main() {
 	lines := flag.Int("n", 20, "number of lines to show before following")
-	flag.StringVar(&filter, "f", "", "filter logs by substring (e.g., -f report-usage)")
+	filter := flag.String("f", "", "filter logs by substring (e.g., -f report-usage)")
 	flag.Parse()
 
 	logPath := getLogPath()
@@ -43,11 +41,11 @@ func main() {
 	fmt.Println("---------------------------------------")
 
 	// Always show last N lines, then follow
-	showLastLines(logPath, *lines)
-	followFile(logPath)
+	showLastLines(logPath, *lines, *filter)
+	followFile(logPath, *filter)
 }
 
-func matchesFilter(line string) bool {
+func matchesFilter(line, filter string) bool {
 	if filter == "" {
 		return true
 	}
@@ -62,7 +60,7 @@ func getLogPath() string {
 	return filepath.Join(cacheDir, "sx", "sx.log")
 }
 
-func showLastLines(path string, n int) {
+func showLastLines(path string, n int, filter string) {
 	file, err := os.Open(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening log: %v\n", err)
@@ -75,7 +73,7 @@ func showLastLines(path string, n int) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if matchesFilter(line) {
+		if matchesFilter(line, filter) {
 			lines = append(lines, line)
 		}
 	}
@@ -87,7 +85,7 @@ func showLastLines(path string, n int) {
 	}
 }
 
-func followFile(path string) {
+func followFile(path, filter string) {
 	file, err := os.Open(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening log: %v\n", err)
@@ -109,7 +107,7 @@ func followFile(path string) {
 			return
 		}
 		line = strings.TrimRight(line, "\n")
-		if matchesFilter(line) {
+		if matchesFilter(line, filter) {
 			fmt.Println(colorizeLine(line))
 		}
 	}
