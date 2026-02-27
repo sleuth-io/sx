@@ -87,6 +87,56 @@ func TestReportUsageEmptyInput(t *testing.T) {
 	}
 }
 
+// TestReportUsageCopilotSkillFormat tests Copilot's camelCase JSON format for skills
+// Actual Copilot log: {"timestamp":1772181780833,"cwd":"/home/ines/work/sleuthio/sx",
+//
+//	"toolName":"skill","toolArgs":{"skill":"fix-pr"},"toolResult":{"resultType":"success",...}}
+func TestReportUsageCopilotSkillFormat(t *testing.T) {
+	copilotJSON := `{"sessionId":"cf4360fc-8ee6-4e7d-b659-bbf6ae161a3b","timestamp":1772181780833,"cwd":"/home/ines/work/sleuthio/sx","toolName":"skill","toolArgs":{"skill":"fix-pr"},"toolResult":{"resultType":"success","textResultForLlm":"Skill \"fix-pr\" loaded successfully. Follow the instructions in the skill context."}}`
+
+	cmd := NewReportUsageCommand()
+	cmd.SetIn(bytes.NewBufferString(copilotJSON))
+	cmd.Flags().Set("client", "github-copilot")
+
+	// Should not error (parses Copilot camelCase format)
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Copilot skill format should parse successfully, got error: %v", err)
+	}
+}
+
+// TestReportUsageCopilotMCPFormat tests Copilot's MCP tool format (server-tool)
+// Actual Copilot log: {"toolName":"sx-query","toolArgs":{"query":"..."}}
+func TestReportUsageCopilotMCPFormat(t *testing.T) {
+	copilotJSON := `{"sessionId":"abc-123","timestamp":1772181780833,"cwd":"/tmp","toolName":"sx-query","toolArgs":{"query":"get PR comments","integration":"github"},"toolResult":{"resultType":"success"}}`
+
+	cmd := NewReportUsageCommand()
+	cmd.SetIn(bytes.NewBufferString(copilotJSON))
+	cmd.Flags().Set("client", "github-copilot")
+
+	// Should not error
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Copilot MCP format should parse successfully, got error: %v", err)
+	}
+}
+
+// TestReportUsageCopilotReportIntentIgnored tests that Copilot's report_intent tool is ignored
+// Actual Copilot log: {"toolName":"report_intent","toolArgs":{"intent":"Fixing PR issues"},...}
+func TestReportUsageCopilotReportIntentIgnored(t *testing.T) {
+	copilotJSON := `{"sessionId":"cf4360fc-8ee6-4e7d-b659-bbf6ae161a3b","timestamp":1772181780807,"cwd":"/home/ines/work/sleuthio/sx","toolName":"report_intent","toolArgs":{"intent":"Fixing PR issues"},"toolResult":{"resultType":"success","textResultForLlm":"Intent logged"}}`
+
+	cmd := NewReportUsageCommand()
+	cmd.SetIn(bytes.NewBufferString(copilotJSON))
+	cmd.Flags().Set("client", "github-copilot")
+
+	// Should not error (just silently ignores non-asset tools)
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Copilot report_intent should be silently ignored, got error: %v", err)
+	}
+}
+
 func TestMain(m *testing.M) {
 	// Run tests
 	os.Exit(m.Run())

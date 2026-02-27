@@ -44,6 +44,12 @@ type PostToolUseEvent struct {
 	ToolInput map[string]any `json:"tool_input"`
 }
 
+// CopilotPostToolUseEvent represents the JSON payload from GitHub Copilot postToolUse hook
+type CopilotPostToolUseEvent struct {
+	ToolName string         `json:"toolName"`
+	ToolArgs map[string]any `json:"toolArgs"`
+}
+
 // CodexNotifyEvent represents the JSON payload from Codex notify hook
 type CodexNotifyEvent struct {
 	Type                 string   `json:"type"`
@@ -84,15 +90,28 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Try Claude Code/Cursor format
+	// Try Claude Code/Cursor format (snake_case)
 	var event PostToolUseEvent
 	if err := json.Unmarshal(data, &event); err != nil {
 		log.Error("report-usage: failed to parse hook event JSON", "error", err, "data_length", len(data), "client", clientID)
 		return nil
 	}
 
+	// If no tool name from Claude Code format, try Copilot format (camelCase)
+	if event.ToolName == "" {
+		var copilotEvent CopilotPostToolUseEvent
+		if err := json.Unmarshal(data, &copilotEvent); err == nil && copilotEvent.ToolName != "" {
+			event.ToolName = copilotEvent.ToolName
+			event.ToolInput = copilotEvent.ToolArgs
+			log.Debug("report-usage: parsed Copilot event", "tool_name", event.ToolName, "tool_input", event.ToolInput)
+		}
+	} else {
+		log.Debug("report-usage: parsed event", "tool_name", event.ToolName, "tool_input", event.ToolInput)
+	}
+
 	// If no tool name, nothing to detect
 	if event.ToolName == "" {
+		log.Debug("report-usage: no tool name, skipping")
 		return nil
 	}
 

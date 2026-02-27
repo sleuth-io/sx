@@ -42,15 +42,22 @@ func (h *MCPDetector) CreateDefaultMetadata(name, version string) *metadata.Meta
 
 // DetectUsageFromToolCall detects MCP server usage from tool calls
 func (h *MCPDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
-	// MCP tools follow pattern: mcp__server__tool
-	if !strings.HasPrefix(toolName, "mcp__") {
+	// Claude Code format: mcp__server__tool (e.g., "mcp__sx__query")
+	if strings.HasPrefix(toolName, "mcp__") {
+		parts := strings.Split(toolName, "__")
+		if len(parts) >= 2 {
+			return parts[1], true
+		}
 		return "", false
 	}
-	// Parse: "mcp__github__list_prs" -> "github"
-	parts := strings.Split(toolName, "__")
-	if len(parts) < 2 {
-		return "", false
+
+	// Copilot format: server-tool (e.g., "sx-query")
+	if strings.Contains(toolName, "-") {
+		parts := strings.SplitN(toolName, "-", 2)
+		if len(parts) == 2 {
+			return parts[0], true
+		}
 	}
-	serverName := parts[1]
-	return serverName, true
+
+	return "", false
 }

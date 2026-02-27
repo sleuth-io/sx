@@ -1,6 +1,8 @@
 package detectors
 
 import (
+	"strings"
+
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
@@ -46,7 +48,7 @@ func (h *SkillDetector) CreateDefaultMetadata(name, version string) *metadata.Me
 
 // DetectUsageFromToolCall detects skill usage from tool calls
 func (h *SkillDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
-	if toolName != "Skill" {
+	if !strings.EqualFold(toolName, "Skill") {
 		return "", false
 	}
 	skillName, ok := toolInput["skill"].(string)
