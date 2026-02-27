@@ -54,6 +54,14 @@ func TestMCPDetector_DetectUsageFromToolCall(t *testing.T) {
 			wantDetected: false,
 		},
 		{
+			// Edge case: leading hyphen should not be detected
+			name:         "leading hyphen not detected",
+			toolName:     "-query",
+			toolInput:    map[string]any{},
+			wantAsset:    "",
+			wantDetected: false,
+		},
+		{
 			// Should NOT match - Copilot internal tool
 			name:         "report_intent not detected",
 			toolName:     "report_intent",

@@ -54,7 +54,7 @@ func (h *MCPDetector) DetectUsageFromToolCall(toolName string, toolInput map[str
 	// Copilot format: server-tool (e.g., "sx-query")
 	if strings.Contains(toolName, "-") {
 		parts := strings.SplitN(toolName, "-", 2)
-		if len(parts) == 2 {
+		if len(parts) == 2 && parts[0] != "" {
 			return parts[0], true
 		}
 	}
