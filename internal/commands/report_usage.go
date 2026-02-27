@@ -81,6 +81,12 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Empty input is not an error - just nothing to do
+	if len(data) == 0 {
+		log.Debug("report-usage: no data received, skipping")
+		return nil
+	}
+
 	// Try Codex format first (check for agent-turn-complete type)
 	var codexEvent CodexNotifyEvent
 	if err := json.Unmarshal(data, &codexEvent); err == nil && codexEvent.Type == "agent-turn-complete" {
