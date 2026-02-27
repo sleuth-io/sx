@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
@@ -30,12 +31,7 @@ func ContainsFile(files []string, name string) bool {
 
 // IsZipFile returns true if the given arg matches a file path in the cached zip file list.
 func IsZipFile(zipFiles []string, arg string) bool {
-	for _, f := range zipFiles {
-		if f == arg {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(zipFiles, arg)
 }
 
 // HasExtractableFiles returns true if the zip contains files beyond metadata.toml.
