@@ -17,6 +17,7 @@ import (
 // ANSI color codes
 const (
 	reset      = "\033[0m"
+	bold       = "\033[1m"
 	green      = "\033[32m"
 	cyan       = "\033[36m"
 	magenta    = "\033[35m"
@@ -26,6 +27,7 @@ const (
 
 func main() {
 	lines := flag.Int("n", 20, "number of lines to show before following")
+	filter := flag.String("f", "", "filter logs by substring (e.g., -f report-usage)")
 	flag.Parse()
 
 	logPath := getLogPath()
@@ -34,9 +36,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Print log file location
+	fmt.Printf("%s%s%s\n", bold, logPath, reset)
+	fmt.Println("---------------------------------------")
+
 	// Always show last N lines, then follow
-	showLastLines(logPath, *lines)
-	followFile(logPath)
+	showLastLines(logPath, *lines, *filter)
+	followFile(logPath, *filter)
+}
+
+func matchesFilter(line, filter string) bool {
+	if filter == "" {
+		return true
+	}
+	return strings.Contains(line, filter)
 }
 
 func getLogPath() string {
@@ -47,7 +60,7 @@ func getLogPath() string {
 	return filepath.Join(cacheDir, "sx", "sx.log")
 }
 
-func showLastLines(path string, n int) {
+func showLastLines(path string, n int, filter string) {
 	file, err := os.Open(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening log: %v\n", err)
@@ -59,7 +72,10 @@ func showLastLines(path string, n int) {
 	var lines []string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+		line := scanner.Text()
+		if matchesFilter(line, filter) {
+			lines = append(lines, line)
+		}
 	}
 
 	// Show last n lines
@@ -69,7 +85,7 @@ func showLastLines(path string, n int) {
 	}
 }
 
-func followFile(path string) {
+func followFile(path, filter string) {
 	file, err := os.Open(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening log: %v\n", err)
@@ -90,8 +106,10 @@ func followFile(path string) {
 			}
 			return
 		}
-		fmt.Print(colorizeLine(strings.TrimRight(line, "\n")))
-		fmt.Println()
+		line = strings.TrimRight(line, "\n")
+		if matchesFilter(line, filter) {
+			fmt.Println(colorizeLine(line))
+		}
 	}
 }
 

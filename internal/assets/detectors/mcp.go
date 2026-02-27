@@ -42,15 +42,24 @@ func (h *MCPDetector) CreateDefaultMetadata(name, version string) *metadata.Meta
 
 // DetectUsageFromToolCall detects MCP server usage from tool calls
 func (h *MCPDetector) DetectUsageFromToolCall(toolName string, toolInput map[string]any) (string, bool) {
-	// MCP tools follow pattern: mcp__server__tool
-	if !strings.HasPrefix(toolName, "mcp__") {
+	// Claude Code format: mcp__server__tool (e.g., "mcp__sx__query")
+	if strings.HasPrefix(toolName, "mcp__") {
+		parts := strings.Split(toolName, "__")
+		if len(parts) >= 2 && parts[1] != "" {
+			return parts[1], true
+		}
 		return "", false
 	}
-	// Parse: "mcp__github__list_prs" -> "github"
-	parts := strings.Split(toolName, "__")
-	if len(parts) < 2 {
-		return "", false
+
+	// Copilot format: server-tool (e.g., "sx-query")
+	// Copilot uses hyphenated tool names for MCP tools where the server name
+	// is the prefix before the first hyphen. This is a Copilot-specific convention.
+	if strings.Contains(toolName, "-") {
+		parts := strings.SplitN(toolName, "-", 2)
+		if len(parts) == 2 && parts[0] != "" {
+			return parts[0], true
+		}
 	}
-	serverName := parts[1]
-	return serverName, true
+
+	return "", false
 }

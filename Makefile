@@ -128,5 +128,5 @@ demo: build ## Generate demo GIF (requires vhs)
 	rm -rf "$$DEMO_HOME"
 	@echo "Generated: docs/demo.gif"
 
-logs: ## Follow sx logs with colors (shows last 20 lines, then follows)
-	@go run ./tools/logs
+logs: ## Follow sx logs with colors (-f FILTER to filter, -n NUM for lines)
+	@go run ./tools/logs $(LOGS_ARGS)
