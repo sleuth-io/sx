@@ -172,6 +172,46 @@ args = ["src/index.js"]
 	}
 }
 
+func TestCodexMCPHandler_Packaged_SubcommandArgs(t *testing.T) {
+	// When args contain a mix of subcommands (e.g. "run") and actual files (e.g. "server.py"),
+	// only the files should be converted to absolute paths.
+	installPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(installPath, "server.py"), []byte("print('hi')"), 0644); err != nil {
+		t.Fatalf("Failed to create server.py: %v", err)
+	}
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "uv-server", Version: "1.0.0", Type: asset.TypeMCP},
+		MCP: &metadata.MCPConfig{
+			Command: "uv",
+			Args:    []string{"run", "server.py"},
+		},
+	}
+
+	handler := NewMCPHandler(meta)
+	entry := handler.generatePackagedMCPEntry(installPath)
+
+	// "uv" is a bare command, should stay as-is
+	if entry.Command != "uv" {
+		t.Errorf("command = %q, want \"uv\"", entry.Command)
+	}
+
+	if len(entry.Args) != 2 {
+		t.Fatalf("args should have 2 elements, got %v", entry.Args)
+	}
+
+	// "run" is a uv subcommand (not a file), should stay as-is
+	if entry.Args[0] != "run" {
+		t.Errorf("arg[0] = %q, want \"run\"", entry.Args[0])
+	}
+
+	// "server.py" exists in install dir, should be made absolute
+	expectedPath := filepath.Join(installPath, "server.py")
+	if entry.Args[1] != expectedPath {
+		t.Errorf("arg[1] = %q, want %q", entry.Args[1], expectedPath)
+	}
+}
+
 func TestCodexMCPHandler_Remove(t *testing.T) {
 	targetBase := t.TempDir()
 

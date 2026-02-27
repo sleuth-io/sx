@@ -263,7 +263,11 @@ func (h *HookHandler) removeFromSettings(targetBase string) error {
 			}
 		}
 
-		hooks[eventName] = filtered
+		if len(filtered) == 0 {
+			delete(hooks, eventName)
+		} else {
+			hooks[eventName] = filtered
+		}
 	}
 
 	data, err = json.MarshalIndent(settings, "", "  ")

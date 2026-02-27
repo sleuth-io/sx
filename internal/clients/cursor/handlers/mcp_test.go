@@ -142,14 +142,56 @@ args = ["src/index.js"]
 	if !ok {
 		t.Fatal("command should be string")
 	}
-	if !filepath.IsAbs(command) {
-		t.Errorf("Packaged command should be absolute, got: %s", command)
+	// Bare command names like "node" should stay as-is (resolved via PATH)
+	if command != "node" {
+		t.Errorf("Bare command should stay as-is, got: %s", command)
 	}
 
 	// Install directory should exist
 	installDir := filepath.Join(targetBase, "mcp-servers", "local-server")
 	if _, err := os.Stat(installDir); os.IsNotExist(err) {
 		t.Error("Packaged should create install directory")
+	}
+}
+
+func TestCursorMCPHandler_Packaged_SubcommandArgs(t *testing.T) {
+	// When args contain a mix of subcommands (e.g. "run") and actual files (e.g. "server.py"),
+	// only the files should be converted to absolute paths.
+	installPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(installPath, "server.py"), []byte("print('hi')"), 0644); err != nil {
+		t.Fatalf("Failed to create server.py: %v", err)
+	}
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "uv-server", Version: "1.0.0", Type: asset.TypeMCP},
+		MCP: &metadata.MCPConfig{
+			Command: "uv",
+			Args:    []string{"run", "server.py"},
+		},
+	}
+
+	handler := NewMCPHandler(meta)
+	entry := handler.generatePackagedMCPEntry(installPath)
+
+	// "uv" is a bare command, should stay as-is
+	if entry["command"] != "uv" {
+		t.Errorf("command = %q, want \"uv\"", entry["command"])
+	}
+
+	args, ok := entry["args"].([]any)
+	if !ok || len(args) != 2 {
+		t.Fatalf("args should have 2 elements, got %v", entry["args"])
+	}
+
+	// "run" is a uv subcommand (not a file), should stay as-is
+	if args[0] != "run" {
+		t.Errorf("arg[0] = %q, want \"run\"", args[0])
+	}
+
+	// "server.py" exists in install dir, should be made absolute
+	expectedPath := filepath.Join(installPath, "server.py")
+	if args[1] != expectedPath {
+		t.Errorf("arg[1] = %q, want %q", args[1], expectedPath)
 	}
 }
 

@@ -348,6 +348,16 @@ func TestMCPHandler_ConfigOnly_BuildConfig(t *testing.T) {
 }
 
 func TestMCPHandler_Packaged_BuildConfig(t *testing.T) {
+	// Create a temp directory to simulate the install path with the actual file
+	installPath := t.TempDir()
+	srcDir := filepath.Join(installPath, "src")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		t.Fatalf("Failed to create src dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "index.js"), []byte("console.log('server')"), 0644); err != nil {
+		t.Fatalf("Failed to create index.js: %v", err)
+	}
+
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{Name: "test", Version: "1.0.0", Type: asset.TypeMCP},
 		MCP: &metadata.MCPConfig{
@@ -357,7 +367,7 @@ func TestMCPHandler_Packaged_BuildConfig(t *testing.T) {
 	}
 
 	handler := NewMCPHandler(meta)
-	config := handler.buildPackagedMCPServerConfig("/opt/install/mcp-servers/test")
+	config := handler.buildPackagedMCPServerConfig(installPath)
 
 	// Bare command names like "node" should stay as-is (resolved via PATH)
 	command, ok := config["command"].(string)
@@ -372,10 +382,48 @@ func TestMCPHandler_Packaged_BuildConfig(t *testing.T) {
 	if !ok || len(args) != 1 {
 		t.Fatalf("args should have 1 element, got %v", config["args"])
 	}
-	// src/index.js is a relative path, should be made absolute
+	// src/index.js exists in install dir, should be made absolute
+	expectedPath := filepath.Join(installPath, "src/index.js")
 	argStr, ok := args[0].(string)
-	if !ok || argStr != "/opt/install/mcp-servers/test/src/index.js" {
-		t.Errorf("arg = %v, want absolute path", args[0])
+	if !ok || argStr != expectedPath {
+		t.Errorf("arg = %v, want %v", args[0], expectedPath)
+	}
+}
+
+func TestMCPHandler_Packaged_BuildConfig_SubcommandArgs(t *testing.T) {
+	// When args contain a mix of subcommands (e.g. "run") and actual files (e.g. "server.py"),
+	// only the files should be converted to absolute paths.
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "uv-server", Version: "1.0.0", Type: asset.TypeMCP},
+		MCP: &metadata.MCPConfig{
+			Command: "uv",
+			Args:    []string{"run", "server.py"},
+		},
+	}
+
+	// Create a temp directory to simulate the install path with the actual file
+	installPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(installPath, "server.py"), []byte("print('hi')"), 0644); err != nil {
+		t.Fatalf("Failed to create server.py: %v", err)
+	}
+
+	handler := NewMCPHandler(meta)
+	config := handler.buildPackagedMCPServerConfig(installPath)
+
+	args, ok := config["args"].([]any)
+	if !ok || len(args) != 2 {
+		t.Fatalf("args should have 2 elements, got %v", config["args"])
+	}
+
+	// "run" is a uv subcommand (not a file), should stay as-is
+	if args[0] != "run" {
+		t.Errorf("arg[0] = %q, want \"run\" (subcommand should not be converted to path)", args[0])
+	}
+
+	// "server.py" exists in install dir, should be made absolute
+	expectedPath := filepath.Join(installPath, "server.py")
+	if args[1] != expectedPath {
+		t.Errorf("arg[1] = %q, want %q", args[1], expectedPath)
 	}
 }
 

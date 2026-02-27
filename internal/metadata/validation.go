@@ -188,9 +188,7 @@ func (m *MCPConfig) Validate() error {
 		if len(m.Args) == 0 {
 			return errors.New("args is required for stdio transport (must be a non-empty array)")
 		}
-		if m.URL != "" {
-			return errors.New("url is not allowed for stdio transport")
-		}
+		// URL is allowed but ignored for stdio transport (may be a reference/homepage URL)
 	case "sse", "http":
 		if m.URL == "" {
 			return fmt.Errorf("url is required for %s transport", m.Transport)

@@ -340,6 +340,45 @@ func TestHookHandler_Remove(t *testing.T) {
 	}
 }
 
+func TestHookHandler_Remove_LastHook_DeletesEventKey(t *testing.T) {
+	targetBase := t.TempDir()
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "only-hook", Version: "1.0.0", Type: asset.TypeHook},
+		Hook:  &metadata.HookConfig{Event: "user-prompt-submit", Command: "echo check"},
+	}
+
+	// Pre-populate settings.json with a single hook for the event
+	settings := map[string]any{
+		"hooks": map[string]any{
+			"UserPromptSubmit": []any{
+				map[string]any{
+					"_artifact": "only-hook",
+					"hooks":     []any{map[string]any{"type": "command", "command": "echo check"}},
+				},
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(settings, "", "  ")
+	os.WriteFile(filepath.Join(targetBase, "settings.json"), data, 0644)
+
+	handler := NewHookHandler(meta)
+	if err := handler.Remove(context.Background(), targetBase); err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+
+	updated := readJSON(t, filepath.Join(targetBase, "settings.json"))
+	hooks, ok := updated["hooks"].(map[string]any)
+	if !ok {
+		// hooks section was removed entirely, which is fine
+		return
+	}
+
+	if entry, exists := hooks["UserPromptSubmit"]; exists {
+		t.Errorf("UserPromptSubmit should be removed when last hook is deleted, got: %v", entry)
+	}
+}
+
 func TestHookHandler_VerifyInstalled_CommandMode(t *testing.T) {
 	targetBase := t.TempDir()
 

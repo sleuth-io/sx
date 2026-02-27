@@ -96,22 +96,7 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]any {
 	mcpConfig := h.metadata.MCP
 
-	// Convert relative command paths to absolute (relative to server directory)
-	command := mcpConfig.Command
-	if !filepath.IsAbs(command) {
-		command = filepath.Join(serverDir, command)
-	}
-
-	// Convert relative args paths to absolute
-	args := make([]any, len(mcpConfig.Args))
-	for i, arg := range mcpConfig.Args {
-		// If arg looks like a relative path (contains / or \), make it absolute
-		if !filepath.IsAbs(arg) && (filepath.Base(arg) != arg) {
-			args[i] = filepath.Join(serverDir, arg)
-		} else {
-			args[i] = arg
-		}
-	}
+	command, args := utils.ResolveCommandAndArgs(mcpConfig.Command, mcpConfig.Args, serverDir)
 
 	entry := map[string]any{
 		"command": command,
@@ -131,14 +116,9 @@ func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
 
 	// For config-only MCPs, commands are external (npx, docker, etc.)
 	// No path conversion needed
-	args := make([]any, len(mcpConfig.Args))
-	for i, arg := range mcpConfig.Args {
-		args[i] = arg
-	}
-
 	entry := map[string]any{
 		"command": mcpConfig.Command,
-		"args":    args,
+		"args":    utils.StringsToAny(mcpConfig.Args),
 	}
 
 	// Add env if present

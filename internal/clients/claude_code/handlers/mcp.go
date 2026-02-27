@@ -192,24 +192,7 @@ func (h *MCPHandler) Validate(zipData []byte) error {
 func (h *MCPHandler) buildPackagedMCPServerConfig(installPath string) map[string]any {
 	mcpConfig := h.metadata.MCP
 
-	// Convert relative command paths to absolute (relative to install path).
-	// Bare command names like "node" or "python" are left as-is (resolved via PATH).
-	command := mcpConfig.Command
-	if !filepath.IsAbs(command) && filepath.Base(command) != command {
-		command = filepath.Join(installPath, command)
-	}
-
-	// Convert relative args to absolute paths (relative to install path).
-	// For packaged MCPs, args are file references within the package.
-	// Only skip args that are clearly not paths (flags starting with -).
-	args := make([]any, len(mcpConfig.Args))
-	for i, arg := range mcpConfig.Args {
-		if filepath.IsAbs(arg) || strings.HasPrefix(arg, "-") {
-			args[i] = arg
-		} else {
-			args[i] = filepath.Join(installPath, arg)
-		}
-	}
+	command, args := utils.ResolveCommandAndArgs(mcpConfig.Command, mcpConfig.Args, installPath)
 
 	config := map[string]any{
 		"type":      "stdio",
@@ -250,15 +233,10 @@ func (h *MCPHandler) buildConfigOnlyMCPServerConfig() map[string]any {
 
 	// For config-only MCPs, commands are external (npx, docker, etc.)
 	// No path conversion needed
-	args := make([]any, len(mcpConfig.Args))
-	for i, arg := range mcpConfig.Args {
-		args[i] = arg
-	}
-
 	config := map[string]any{
 		"type":      "stdio",
 		"command":   mcpConfig.Command,
-		"args":      args,
+		"args":      utils.StringsToAny(mcpConfig.Args),
 		"_artifact": h.metadata.Asset.Name,
 	}
 

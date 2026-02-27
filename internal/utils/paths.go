@@ -99,3 +99,61 @@ func IsDirectory(path string) bool {
 	}
 	return info.IsDir()
 }
+
+// ResolveCommand resolves a command for a packaged MCP server.
+// Bare command names (e.g. "node", "uv", "python") are left as-is to be resolved via PATH.
+// Relative paths containing a directory separator (e.g. "./bin/server") are made absolute
+// relative to installPath.
+func ResolveCommand(command string, installPath string) string {
+	if filepath.IsAbs(command) {
+		return command
+	}
+	// Bare command name (no directory separator) - resolve via PATH
+	if filepath.Base(command) == command {
+		return command
+	}
+	// Relative path with directory component - make absolute
+	return filepath.Join(installPath, command)
+}
+
+// ResolveArgs resolves args for a packaged MCP server.
+// Each arg is converted to an absolute path only if it corresponds to an actual file
+// or directory within installPath. Subcommands (e.g. "run" for "uv run"), flags,
+// and other non-file args are left as-is.
+func ResolveArgs(args []string, installPath string) []string {
+	resolved := make([]string, len(args))
+	for i, arg := range args {
+		if filepath.IsAbs(arg) || strings.HasPrefix(arg, "-") {
+			resolved[i] = arg
+		} else {
+			candidate := filepath.Join(installPath, arg)
+			if _, err := os.Stat(candidate); err == nil {
+				resolved[i] = candidate
+			} else {
+				resolved[i] = arg
+			}
+		}
+	}
+	return resolved
+}
+
+// ResolveCommandAndArgs resolves a command and its args for a packaged MCP server,
+// returning them as []any suitable for JSON serialization into client configs.
+func ResolveCommandAndArgs(command string, args []string, installPath string) (string, []any) {
+	resolvedCmd := ResolveCommand(command, installPath)
+	resolvedArgs := ResolveArgs(args, installPath)
+	anyArgs := make([]any, len(resolvedArgs))
+	for i, arg := range resolvedArgs {
+		anyArgs[i] = arg
+	}
+	return resolvedCmd, anyArgs
+}
+
+// StringsToAny converts a []string to []any.
+func StringsToAny(s []string) []any {
+	result := make([]any, len(s))
+	for i, v := range s {
+		result[i] = v
+	}
+	return result
+}

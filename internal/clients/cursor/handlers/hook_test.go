@@ -226,6 +226,43 @@ func TestCursorHookHandler_Remove(t *testing.T) {
 	}
 }
 
+func TestCursorHookHandler_Remove_LastHook_DeletesEventKey(t *testing.T) {
+	targetBase := t.TempDir()
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "only-hook", Version: "1.0.0", Type: asset.TypeHook},
+		Hook:  &metadata.HookConfig{Event: "pre-tool-use", Command: "echo"},
+	}
+
+	// Pre-populate hooks.json with a single hook for the event
+	hooksConfig := &HooksConfig{
+		Version: 1,
+		Hooks: map[string][]map[string]any{
+			"preToolUse": {
+				{"_artifact": "only-hook", "command": "echo"},
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(hooksConfig, "", "  ")
+	os.WriteFile(filepath.Join(targetBase, "hooks.json"), data, 0644)
+
+	handler := NewHookHandler(meta)
+	if err := handler.Remove(context.Background(), targetBase); err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+
+	config := readJSON(t, filepath.Join(targetBase, "hooks.json"))
+	hooks, ok := config["hooks"].(map[string]any)
+	if !ok {
+		// hooks section was removed entirely, which is fine
+		return
+	}
+
+	if entry, exists := hooks["preToolUse"]; exists {
+		t.Errorf("preToolUse should be removed when last hook is deleted, got: %v", entry)
+	}
+}
+
 func TestCursorHookHandler_VerifyInstalled_CommandMode(t *testing.T) {
 	targetBase := t.TempDir()
 

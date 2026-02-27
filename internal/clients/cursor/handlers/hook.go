@@ -145,7 +145,11 @@ func (h *HookHandler) removeFromHooksJSON(targetBase string) error {
 				filtered = append(filtered, hk)
 			}
 		}
-		config.Hooks[eventName] = filtered
+		if len(filtered) == 0 {
+			delete(config.Hooks, eventName)
+		} else {
+			config.Hooks[eventName] = filtered
+		}
 	}
 
 	return WriteHooksJSON(hooksJSONPath, config)

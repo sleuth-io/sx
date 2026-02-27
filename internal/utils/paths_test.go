@@ -106,6 +106,70 @@ func TestEnsureDir(t *testing.T) {
 	}
 }
 
+func TestResolveCommand(t *testing.T) {
+	tests := []struct {
+		name        string
+		command     string
+		installPath string
+		want        string
+	}{
+		{"bare command", "node", "/opt/install", "node"},
+		{"bare command uv", "uv", "/opt/install", "uv"},
+		{"relative path", "./bin/server", "/opt/install", "/opt/install/bin/server"},
+		{"absolute path", "/usr/bin/node", "/opt/install", "/usr/bin/node"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveCommand(tt.command, tt.installPath)
+			if got != tt.want {
+				t.Errorf("ResolveCommand(%q) = %q, want %q", tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveArgs(t *testing.T) {
+	// Create a temp dir with a real file to test os.Stat logic
+	installPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(installPath, "server.py"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(installPath, "src"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(installPath, "src", "index.js"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	args := []string{"run", "server.py", "-v", "src/index.js", "/abs/path", "nonexistent.txt"}
+	got := ResolveArgs(args, installPath)
+
+	// "run" - not a file, stays as-is
+	if got[0] != "run" {
+		t.Errorf("arg[0] = %q, want \"run\"", got[0])
+	}
+	// "server.py" - exists, made absolute
+	if got[1] != filepath.Join(installPath, "server.py") {
+		t.Errorf("arg[1] = %q, want absolute path", got[1])
+	}
+	// "-v" - flag, stays as-is
+	if got[2] != "-v" {
+		t.Errorf("arg[2] = %q, want \"-v\"", got[2])
+	}
+	// "src/index.js" - exists, made absolute
+	if got[3] != filepath.Join(installPath, "src/index.js") {
+		t.Errorf("arg[3] = %q, want absolute path", got[3])
+	}
+	// "/abs/path" - already absolute, stays as-is
+	if got[4] != "/abs/path" {
+		t.Errorf("arg[4] = %q, want \"/abs/path\"", got[4])
+	}
+	// "nonexistent.txt" - doesn't exist, stays as-is
+	if got[5] != "nonexistent.txt" {
+		t.Errorf("arg[5] = %q, want \"nonexistent.txt\"", got[5])
+	}
+}
+
 func TestURLHash(t *testing.T) {
 	tests := []struct {
 		name string

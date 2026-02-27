@@ -87,25 +87,9 @@ func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
 func (h *MCPHandler) generatePackagedMCPEntry(serverDir string) MCPServerEntry {
 	mcpConfig := h.metadata.MCP
 
-	// Convert relative command paths to absolute (relative to server directory)
-	command := mcpConfig.Command
-	if !filepath.IsAbs(command) && filepath.Base(command) != command {
-		command = filepath.Join(serverDir, command)
-	}
-
-	// Convert relative args paths to absolute
-	args := make([]string, len(mcpConfig.Args))
-	for i, arg := range mcpConfig.Args {
-		if !filepath.IsAbs(arg) && filepath.Base(arg) != arg {
-			args[i] = filepath.Join(serverDir, arg)
-		} else {
-			args[i] = arg
-		}
-	}
-
 	return MCPServerEntry{
-		Command: command,
-		Args:    args,
+		Command: utils.ResolveCommand(mcpConfig.Command, serverDir),
+		Args:    utils.ResolveArgs(mcpConfig.Args, serverDir),
 		Env:     mcpConfig.Env,
 	}
 }
