@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
+	"github.com/sleuth-io/sx/internal/handlers/hook"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
@@ -34,6 +34,7 @@ var claudeCodeEventMap = map[string]string{
 // HookHandler handles hook asset installation
 type HookHandler struct {
 	metadata *metadata.Metadata
+	zipFiles []string // populated during Install to resolve args to absolute paths
 }
 
 // NewHookHandler creates a new hook handler
@@ -107,23 +108,21 @@ func (h *HookHandler) DetectUsageFromToolCall(toolName string, toolInput map[str
 	return "", false
 }
 
-// Install installs the hook asset. For script-file hooks, extracts files and
-// registers with absolute path. For command-only hooks, no extraction needed.
+// Install installs the hook asset. Extracts files from the zip when there are
+// script files to install, then registers the hook in settings.json.
 func (h *HookHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
-	// Validate zip structure
-	if err := h.Validate(zipData); err != nil {
+	if err := hook.ValidateZipForHook(zipData); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	if h.metadata.Hook.ScriptFile != "" {
-		// Script mode: extract files to hooks directory
+	h.zipFiles = hook.CacheZipFiles(zipData)
+
+	if hook.HasExtractableFiles(zipData) {
 		if err := hookOps.Install(ctx, zipData, targetBase, h.metadata.Asset.Name); err != nil {
 			return err
 		}
 	}
-	// Command mode: no extraction needed
 
-	// Update settings.json to register the hook
 	if err := h.updateSettings(targetBase); err != nil {
 		return fmt.Errorf("failed to update settings: %w", err)
 	}
@@ -133,12 +132,10 @@ func (h *HookHandler) Install(ctx context.Context, zipData []byte, targetBase st
 
 // Remove uninstalls the hook asset
 func (h *HookHandler) Remove(ctx context.Context, targetBase string) error {
-	// Remove from settings.json first
 	if err := h.removeFromSettings(targetBase); err != nil {
 		return fmt.Errorf("failed to remove from settings: %w", err)
 	}
 
-	// Remove installation directory if it exists (script mode)
 	installDir := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name)
 	if utils.IsDirectory(installDir) {
 		return hookOps.Remove(ctx, targetBase, h.metadata.Asset.Name)
@@ -154,76 +151,19 @@ func (h *HookHandler) GetInstallPath() string {
 
 // Validate checks if the zip structure is valid for a hook asset
 func (h *HookHandler) Validate(zipData []byte) error {
-	// List files in zip
-	files, err := utils.ListZipFiles(zipData)
-	if err != nil {
-		return fmt.Errorf("failed to list zip files: %w", err)
-	}
-
-	// Check that metadata.toml exists
-	if !containsFile(files, "metadata.toml") {
-		return errors.New("metadata.toml not found in zip")
-	}
-
-	// Extract and validate metadata
-	metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
-	if err != nil {
-		return fmt.Errorf("failed to read metadata.toml: %w", err)
-	}
-
-	meta, err := metadata.Parse(metadataBytes)
-	if err != nil {
-		return fmt.Errorf("failed to parse metadata: %w", err)
-	}
-
-	// Validate metadata with file list
-	if err := meta.ValidateWithFiles(files); err != nil {
-		return fmt.Errorf("metadata validation failed: %w", err)
-	}
-
-	// Verify asset type matches
-	if meta.Asset.Type != asset.TypeHook {
-		return fmt.Errorf("asset type mismatch: expected hook, got %s", meta.Asset.Type)
-	}
-
-	// Check that hook section exists
-	if meta.Hook == nil {
-		return errors.New("[hook] section missing in metadata")
-	}
-
-	// Only check script file exists when using script-file mode
-	if meta.Hook.ScriptFile != "" {
-		if !containsFile(files, meta.Hook.ScriptFile) {
-			return fmt.Errorf("script file not found in zip: %s", meta.Hook.ScriptFile)
-		}
-	}
-
-	return nil
+	return hook.ValidateZipForHook(zipData)
 }
 
 // mapEventToClaudeCode maps a canonical event name to Claude Code native event.
 // If the hook has a [hook.claude-code] event override, that is returned instead.
 func (h *HookHandler) mapEventToClaudeCode() (string, bool) {
-	// Check for client-specific event override
-	if h.metadata.Hook.ClaudeCode != nil {
-		if eventOverride, ok := h.metadata.Hook.ClaudeCode["event"].(string); ok && eventOverride != "" {
-			return eventOverride, true
-		}
-	}
-
-	// Map canonical event to Claude Code native
-	if nativeEvent, ok := claudeCodeEventMap[h.metadata.Hook.Event]; ok {
-		return nativeEvent, true
-	}
-
-	return "", false
+	return hook.MapEvent(h.metadata.Hook.Event, claudeCodeEventMap, h.metadata.Hook.ClaudeCode)
 }
 
 // updateSettings updates settings.json to register the hook
 func (h *HookHandler) updateSettings(targetBase string) error {
 	settingsPath := filepath.Join(targetBase, "settings.json")
 
-	// Read existing settings or create new
 	var settings map[string]any
 	if utils.FileExists(settingsPath) {
 		data, err := os.ReadFile(settingsPath)
@@ -237,47 +177,39 @@ func (h *HookHandler) updateSettings(targetBase string) error {
 		settings = make(map[string]any)
 	}
 
-	// Ensure hooks section exists
 	if settings["hooks"] == nil {
 		settings["hooks"] = make(map[string]any)
 	}
 	hooks := settings["hooks"].(map[string]any)
 
-	// Map canonical event to Claude Code event
 	hookEvent, supported := h.mapEventToClaudeCode()
 	if !supported {
 		return fmt.Errorf("hook event %q not supported for Claude Code", h.metadata.Hook.Event)
 	}
 
-	// Build hook configuration
 	hookConfig := h.buildHookConfig(targetBase)
 
-	// Add/update hook entry
 	if hooks[hookEvent] == nil {
 		hooks[hookEvent] = []any{}
 	}
 
-	// Get existing hooks for this event
 	eventHooks := hooks[hookEvent].([]any)
 
-	// Remove any existing entry for this asset (by checking _artifact field)
 	var filtered []any
-	for _, hook := range eventHooks {
-		hookMap, ok := hook.(map[string]any)
+	for _, hk := range eventHooks {
+		hookMap, ok := hk.(map[string]any)
 		if !ok {
 			continue
 		}
 		assetID, ok := hookMap["_artifact"].(string)
 		if !ok || assetID != h.metadata.Asset.Name {
-			filtered = append(filtered, hook)
+			filtered = append(filtered, hk)
 		}
 	}
 
-	// Add new hook entry
 	filtered = append(filtered, hookConfig)
 	hooks[hookEvent] = filtered
 
-	// Write updated settings
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal settings: %w", err)
@@ -295,10 +227,9 @@ func (h *HookHandler) removeFromSettings(targetBase string) error {
 	settingsPath := filepath.Join(targetBase, "settings.json")
 
 	if !utils.FileExists(settingsPath) {
-		return nil // Nothing to remove
+		return nil
 	}
 
-	// Read settings
 	data, err := os.ReadFile(settingsPath)
 	if err != nil {
 		return fmt.Errorf("failed to read settings.json: %w", err)
@@ -309,13 +240,11 @@ func (h *HookHandler) removeFromSettings(targetBase string) error {
 		return fmt.Errorf("failed to parse settings.json: %w", err)
 	}
 
-	// Check if hooks section exists
 	if settings["hooks"] == nil {
 		return nil
 	}
 	hooks := settings["hooks"].(map[string]any)
 
-	// Remove from all event types (in case event mapping changed)
 	for eventName, eventHooksRaw := range hooks {
 		eventHooks, ok := eventHooksRaw.([]any)
 		if !ok {
@@ -323,21 +252,20 @@ func (h *HookHandler) removeFromSettings(targetBase string) error {
 		}
 
 		var filtered []any
-		for _, hook := range eventHooks {
-			hookMap, ok := hook.(map[string]any)
+		for _, hk := range eventHooks {
+			hookMap, ok := hk.(map[string]any)
 			if !ok {
 				continue
 			}
 			assetID, ok := hookMap["_artifact"].(string)
 			if !ok || assetID != h.metadata.Asset.Name {
-				filtered = append(filtered, hook)
+				filtered = append(filtered, hk)
 			}
 		}
 
 		hooks[eventName] = filtered
 	}
 
-	// Write updated settings
 	data, err = json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal settings: %w", err)
@@ -350,43 +278,45 @@ func (h *HookHandler) removeFromSettings(targetBase string) error {
 	return nil
 }
 
-// buildHookConfig builds the hook configuration for settings.json
+// buildHookConfig builds the hook configuration for settings.json.
+// Claude Code expects the "matcher group" format:
+//
+//	{
+//	  "matcher": "Edit|Write",          // top-level, optional
+//	  "_artifact": "hook-name",         // sx tracking field
+//	  "hooks": [                        // REQUIRED array of hook handlers
+//	    { "type": "command", "command": "...", "timeout": 30 }
+//	  ]
+//	}
 func (h *HookHandler) buildHookConfig(targetBase string) map[string]any {
-	config := map[string]any{
-		"_artifact": h.metadata.Asset.Name,
+	hookHandler := map[string]any{
+		"type": "command",
 	}
 
-	if h.metadata.Hook.ScriptFile != "" {
-		// Script mode: use absolute path to script file
-		scriptPath := filepath.Join(targetBase, h.GetInstallPath(), h.metadata.Hook.ScriptFile)
-		config["command"] = scriptPath
-	} else if h.metadata.Hook.Command != "" {
-		// Command mode: join command and args
-		cmd := h.metadata.Hook.Command
-		if len(h.metadata.Hook.Args) > 0 {
-			cmd = cmd + " " + strings.Join(h.metadata.Hook.Args, " ")
-		}
-		config["command"] = cmd
-	}
+	installDir := filepath.Join(targetBase, h.GetInstallPath())
+	resolved := hook.ResolveCommand(h.metadata.Hook, installDir, h.zipFiles)
+	hookHandler["command"] = resolved.Command
 
-	// Add matcher if present
-	if h.metadata.Hook.Matcher != "" {
-		config["matcher"] = h.metadata.Hook.Matcher
-	}
-
-	// Add timeout if present
 	if h.metadata.Hook.Timeout > 0 {
-		config["timeout"] = h.metadata.Hook.Timeout
+		hookHandler["timeout"] = h.metadata.Hook.Timeout
 	}
 
-	// Merge Claude Code-specific overrides
 	if h.metadata.Hook.ClaudeCode != nil {
 		for k, v := range h.metadata.Hook.ClaudeCode {
-			if k == "event" {
-				continue // event override is handled in mapEventToClaudeCode
+			if k == "event" || k == "matcher" {
+				continue
 			}
-			config[k] = v
+			hookHandler[k] = v
 		}
+	}
+
+	config := map[string]any{
+		"_artifact": h.metadata.Asset.Name,
+		"hooks":     []any{hookHandler},
+	}
+
+	if h.metadata.Hook.Matcher != "" {
+		config["matcher"] = h.metadata.Hook.Matcher
 	}
 
 	return config
@@ -399,7 +329,6 @@ func (h *HookHandler) CanDetectInstalledState() bool {
 
 // VerifyInstalled checks if the hook is properly installed
 func (h *HookHandler) VerifyInstalled(targetBase string) (bool, string) {
-	// For script-file hooks, check install directory
 	if h.metadata.Hook != nil && h.metadata.Hook.ScriptFile != "" {
 		installDir := filepath.Join(targetBase, "hooks", h.metadata.Asset.Name)
 		if utils.IsDirectory(installDir) {
@@ -407,7 +336,6 @@ func (h *HookHandler) VerifyInstalled(targetBase string) (bool, string) {
 		}
 	}
 
-	// For command-only hooks, check settings.json
 	settingsPath := filepath.Join(targetBase, "settings.json")
 	if !utils.FileExists(settingsPath) {
 		return false, "settings.json not found"
@@ -428,14 +356,13 @@ func (h *HookHandler) VerifyInstalled(targetBase string) (bool, string) {
 		return false, "hooks section not found"
 	}
 
-	// Check all event types for this asset
 	for _, eventHooksRaw := range hooks {
 		eventHooks, ok := eventHooksRaw.([]any)
 		if !ok {
 			continue
 		}
-		for _, hook := range eventHooks {
-			hookMap, ok := hook.(map[string]any)
+		for _, hk := range eventHooks {
+			hookMap, ok := hk.(map[string]any)
 			if !ok {
 				continue
 			}

@@ -68,20 +68,31 @@ timeout = 30
 		t.Fatal("PreToolUse event should have entries")
 	}
 
-	hookEntry := preToolUse[0].(map[string]any)
-	if hookEntry["_artifact"] != "lint-hook" {
-		t.Errorf("_artifact = %v, want lint-hook", hookEntry["_artifact"])
+	matcherGroup := preToolUse[0].(map[string]any)
+	if matcherGroup["_artifact"] != "lint-hook" {
+		t.Errorf("_artifact = %v, want lint-hook", matcherGroup["_artifact"])
 	}
 
-	command, ok := hookEntry["command"].(string)
+	// Verify nested hooks array exists
+	hooksArray, ok := matcherGroup["hooks"].([]any)
+	if !ok || len(hooksArray) == 0 {
+		t.Fatal("hooks array should exist in matcher group")
+	}
+
+	hookHandler := hooksArray[0].(map[string]any)
+	if hookHandler["type"] != "command" {
+		t.Errorf("type = %v, want \"command\"", hookHandler["type"])
+	}
+
+	command, ok := hookHandler["command"].(string)
 	if !ok || !strings.Contains(command, "hook.sh") {
-		t.Errorf("command should contain hook.sh path, got: %v", hookEntry["command"])
+		t.Errorf("command should contain hook.sh path, got: %v", hookHandler["command"])
 	}
 	if !filepath.IsAbs(command) {
 		t.Errorf("command should be absolute path, got: %s", command)
 	}
-	if hookEntry["timeout"] != float64(30) {
-		t.Errorf("timeout = %v, want 30", hookEntry["timeout"])
+	if hookHandler["timeout"] != float64(30) {
+		t.Errorf("timeout = %v, want 30", hookHandler["timeout"])
 	}
 }
 
@@ -139,9 +150,84 @@ timeout = 10
 		t.Fatal("PostToolUse event should have entries")
 	}
 
-	hookEntry := postToolUse[0].(map[string]any)
-	if hookEntry["command"] != "npx lint-check --fix" {
-		t.Errorf("command = %v, want \"npx lint-check --fix\"", hookEntry["command"])
+	matcherGroup := postToolUse[0].(map[string]any)
+
+	// Verify nested hooks array
+	hooksArray, ok := matcherGroup["hooks"].([]any)
+	if !ok || len(hooksArray) == 0 {
+		t.Fatal("hooks array should exist in matcher group")
+	}
+
+	hookHandler := hooksArray[0].(map[string]any)
+	if hookHandler["type"] != "command" {
+		t.Errorf("type = %v, want \"command\"", hookHandler["type"])
+	}
+	if hookHandler["command"] != "npx lint-check --fix" {
+		t.Errorf("command = %v, want \"npx lint-check --fix\"", hookHandler["command"])
+	}
+}
+
+func TestHookHandler_Command_Install_WithBundledScript(t *testing.T) {
+	targetBase := t.TempDir()
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{
+			Name:    "script-hook",
+			Version: "1.0.0",
+			Type:    asset.TypeHook,
+		},
+		Hook: &metadata.HookConfig{
+			Event:   "session-start",
+			Command: "python",
+			Args:    []string{"scripts/say_hi.py"},
+			Timeout: 30,
+		},
+	}
+
+	zipData := createTestZip(t, map[string]string{
+		"metadata.toml": `[asset]
+name = "script-hook"
+version = "1.0.0"
+type = "hook"
+description = "Hook with bundled script"
+
+[hook]
+event = "session-start"
+command = "python"
+args = ["scripts/say_hi.py"]
+timeout = 30
+`,
+		"scripts/say_hi.py": "#!/usr/bin/env python3\nprint('hi')",
+	})
+
+	handler := NewHookHandler(meta)
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	// Verify script was extracted
+	scriptPath := filepath.Join(targetBase, "hooks", "script-hook", "scripts", "say_hi.py")
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		t.Error("scripts/say_hi.py should be extracted to hooks directory")
+	}
+
+	// Verify settings.json has absolute path in command
+	settings := readJSON(t, filepath.Join(targetBase, "settings.json"))
+	hooks := settings["hooks"].(map[string]any)
+	sessionStart := hooks["SessionStart"].([]any)
+	matcherGroup := sessionStart[0].(map[string]any)
+	hooksArray := matcherGroup["hooks"].([]any)
+	hookHandler := hooksArray[0].(map[string]any)
+
+	command := hookHandler["command"].(string)
+	if !strings.Contains(command, "python") {
+		t.Errorf("command should start with python, got: %s", command)
+	}
+	if !filepath.IsAbs(strings.Fields(command)[1]) {
+		t.Errorf("script arg should be absolute path, got: %s", command)
+	}
+	if !strings.Contains(command, "say_hi.py") {
+		t.Errorf("command should contain say_hi.py, got: %s", command)
 	}
 }
 
@@ -217,12 +303,18 @@ func TestHookHandler_Remove(t *testing.T) {
 		Hook:  &metadata.HookConfig{Event: "pre-tool-use", Command: "echo lint"},
 	}
 
-	// Pre-populate settings.json with the hook
+	// Pre-populate settings.json with hooks in the nested format
 	settings := map[string]any{
 		"hooks": map[string]any{
 			"PreToolUse": []any{
-				map[string]any{"_artifact": "lint-hook", "command": "echo lint"},
-				map[string]any{"_artifact": "other-hook", "command": "echo other"},
+				map[string]any{
+					"_artifact": "lint-hook",
+					"hooks":     []any{map[string]any{"type": "command", "command": "echo lint"}},
+				},
+				map[string]any{
+					"_artifact": "other-hook",
+					"hooks":     []any{map[string]any{"type": "command", "command": "echo other"}},
+				},
 			},
 		},
 	}
@@ -263,11 +355,14 @@ func TestHookHandler_VerifyInstalled_CommandMode(t *testing.T) {
 		t.Error("Should not be installed before setup")
 	}
 
-	// Write settings.json with hook
+	// Write settings.json with hook in nested format
 	settings := map[string]any{
 		"hooks": map[string]any{
 			"PreToolUse": []any{
-				map[string]any{"_artifact": "cmd-hook", "command": "echo test"},
+				map[string]any{
+					"_artifact": "cmd-hook",
+					"hooks":     []any{map[string]any{"type": "command", "command": "echo test"}},
+				},
 			},
 		},
 	}
@@ -293,11 +388,22 @@ func TestHookHandler_BuildConfig_WithMatcher(t *testing.T) {
 	handler := NewHookHandler(meta)
 	config := handler.buildHookConfig(t.TempDir())
 
+	// matcher should be at top level (matcher group)
 	if config["matcher"] != "Edit|Write" {
 		t.Errorf("matcher = %v, want \"Edit|Write\"", config["matcher"])
 	}
-	if config["timeout"] != 30 {
-		t.Errorf("timeout = %v, want 30", config["timeout"])
+
+	// timeout should be inside the hooks array
+	hooksArray, ok := config["hooks"].([]any)
+	if !ok || len(hooksArray) == 0 {
+		t.Fatal("hooks array should exist")
+	}
+	hookHandler := hooksArray[0].(map[string]any)
+	if hookHandler["timeout"] != 30 {
+		t.Errorf("timeout = %v, want 30", hookHandler["timeout"])
+	}
+	if hookHandler["type"] != "command" {
+		t.Errorf("type = %v, want \"command\"", hookHandler["type"])
 	}
 }
 
@@ -313,11 +419,22 @@ func TestHookHandler_BuildConfig_MergesClaudeCodeOverrides(t *testing.T) {
 	handler := NewHookHandler(meta)
 	config := handler.buildHookConfig(t.TempDir())
 
-	if config["async"] != true {
-		t.Error("async should be merged from ClaudeCode overrides")
+	// Overrides should be inside the hook handler (inside hooks array)
+	hooksArray, ok := config["hooks"].([]any)
+	if !ok || len(hooksArray) == 0 {
+		t.Fatal("hooks array should exist")
 	}
-	// event should NOT be in the config (it's handled by mapEventToClaudeCode)
+	hookHandler := hooksArray[0].(map[string]any)
+
+	if hookHandler["async"] != true {
+		t.Error("async should be merged from ClaudeCode overrides into hook handler")
+	}
+	// event should NOT be in the hook handler (it's handled by mapEventToClaudeCode)
+	if _, exists := hookHandler["event"]; exists {
+		t.Error("event should not be merged into hook handler")
+	}
+	// event should NOT be at the matcher group level either
 	if _, exists := config["event"]; exists {
-		t.Error("event should not be merged into hook config")
+		t.Error("event should not appear in matcher group config")
 	}
 }
