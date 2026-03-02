@@ -142,6 +142,19 @@ func (c *Client) Push(ctx context.Context, repoPath string) error {
 	return nil
 }
 
+// PushSetUpstream pushes and sets the upstream tracking branch (for first push to empty repos)
+func (c *Client) PushSetUpstream(ctx context.Context, repoPath, branch string) error {
+	cmd := execGitCommand(ctx, c.sshKeyPath, "push", "--quiet", "-u", "origin", branch)
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git push failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return nil
+}
+
 // Checkout checks out a specific ref (branch, tag, or commit)
 func (c *Client) Checkout(ctx context.Context, repoPath, ref string) error {
 	cmd := execGitCommand(ctx, c.sshKeyPath, "checkout", "--quiet", ref)
@@ -256,6 +269,19 @@ func (c *Client) Commit(ctx context.Context, repoPath, message string) error {
 	}
 
 	return nil
+}
+
+// IsEmpty checks if a repository has no commits (e.g., freshly cloned empty repo)
+func (c *Client) IsEmpty(ctx context.Context, repoPath string) (bool, error) {
+	cmd := execGitCommand(ctx, c.sshKeyPath, "rev-parse", "HEAD")
+	cmd.Dir = repoPath
+
+	err := cmd.Run()
+	if err != nil {
+		// rev-parse HEAD fails when there are no commits
+		return true, nil
+	}
+	return false, nil
 }
 
 // HasStagedChanges checks if there are staged changes ready to be committed

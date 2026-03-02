@@ -294,9 +294,15 @@ func (g *GitVault) cloneOrUpdate(ctx context.Context) error {
 			return err
 		}
 	} else {
-		// Repository exists, pull updates
-		if err := g.pull(ctx); err != nil {
+		// Repository exists — but skip pull if it's empty (no commits yet)
+		empty, err := g.gitClient.IsEmpty(ctx, g.repoPath)
+		if err != nil {
 			return err
+		}
+		if !empty {
+			if err := g.pull(ctx); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -526,6 +532,12 @@ func convertToRawURL(repoURL string) string {
 
 // commitAndPush commits and pushes changes
 func (g *GitVault) commitAndPush(ctx context.Context, asset *lockfile.Asset) error {
+	// Check if this is the first commit (empty repo) before we commit
+	wasEmpty, err := g.gitClient.IsEmpty(ctx, g.repoPath)
+	if err != nil {
+		return err
+	}
+
 	// Ensure install.sh and README.md exist before committing
 	if err := g.ensureInstallScript(ctx); err != nil {
 		// Log warning but continue - these files are convenience features
@@ -554,9 +566,19 @@ func (g *GitVault) commitAndPush(ctx context.Context, asset *lockfile.Asset) err
 		return err
 	}
 
-	// Push
-	if err := g.gitClient.Push(ctx, g.repoPath); err != nil {
-		return err
+	// Push — first commit on empty repo needs to set upstream
+	if wasEmpty {
+		branch, err := g.gitClient.GetCurrentBranch(ctx, g.repoPath)
+		if err != nil {
+			return err
+		}
+		if err := g.gitClient.PushSetUpstream(ctx, g.repoPath, branch); err != nil {
+			return err
+		}
+	} else {
+		if err := g.gitClient.Push(ctx, g.repoPath); err != nil {
+			return err
+		}
 	}
 
 	return nil
