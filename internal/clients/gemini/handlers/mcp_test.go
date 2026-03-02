@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -244,3 +245,107 @@ func TestSettingsJSONPreservesOtherFields(t *testing.T) {
 		t.Error("test-server was not added")
 	}
 }
+
+func TestMCPHandler_RepoScope_WritesToGeminiDir(t *testing.T) {
+	// Simulate repo scope where targetBase is the repo root (not ~/.gemini)
+	repoRoot := t.TempDir()
+
+	// Create a config-only MCP asset (no extraction needed)
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "test-mcp", Version: "1.0.0", Type: asset.TypeMCP},
+		MCP: &metadata.MCPConfig{
+			URL:       "https://mcp.example.com/test",
+			Transport: "http",
+		},
+	}
+
+	// Create minimal zip with just metadata.toml
+	zipData := createTestZip(t, map[string]string{
+		"metadata.toml": `metadata_version = "1.0"
+[asset]
+name = "test-mcp"
+version = "1.0.0"
+type = "mcp"
+
+[mcp]
+url = "https://mcp.example.com/test"
+transport = "http"
+`,
+	})
+
+	handler := NewMCPHandler(meta)
+	if err := handler.Install(context.Background(), zipData, repoRoot); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	// Verify settings.json was written to .gemini/settings.json, not repo root
+	wrongPath := filepath.Join(repoRoot, "settings.json")
+	correctPath := filepath.Join(repoRoot, ".gemini", "settings.json")
+
+	if _, err := os.Stat(wrongPath); err == nil {
+		t.Errorf("settings.json was incorrectly written to repo root: %s", wrongPath)
+	}
+
+	if _, err := os.Stat(correctPath); os.IsNotExist(err) {
+		t.Errorf("settings.json not found at correct path: %s", correctPath)
+	}
+
+	// Verify the MCP server was registered
+	config, err := ReadSettingsJSON(correctPath)
+	if err != nil {
+		t.Fatalf("ReadSettingsJSON() error = %v", err)
+	}
+
+	if _, exists := config.MCPServers["test-mcp"]; !exists {
+		t.Error("test-mcp should be registered in settings.json")
+	}
+}
+
+func TestMCPHandler_GlobalScope_WritesToTargetBase(t *testing.T) {
+	// Simulate global scope where targetBase is already ~/.gemini
+	geminiDir := filepath.Join(t.TempDir(), ".gemini")
+	if err := os.MkdirAll(geminiDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "test-mcp", Version: "1.0.0", Type: asset.TypeMCP},
+		MCP: &metadata.MCPConfig{
+			URL:       "https://mcp.example.com/test",
+			Transport: "http",
+		},
+	}
+
+	zipData := createTestZip(t, map[string]string{
+		"metadata.toml": `metadata_version = "1.0"
+[asset]
+name = "test-mcp"
+version = "1.0.0"
+type = "mcp"
+
+[mcp]
+url = "https://mcp.example.com/test"
+transport = "http"
+`,
+	})
+
+	handler := NewMCPHandler(meta)
+	if err := handler.Install(context.Background(), zipData, geminiDir); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	// For global scope (targetBase ends with .gemini), settings.json should be in targetBase directly
+	correctPath := filepath.Join(geminiDir, "settings.json")
+
+	if _, err := os.Stat(correctPath); os.IsNotExist(err) {
+		t.Errorf("settings.json not found at: %s", correctPath)
+	}
+
+	// Should NOT create nested .gemini/.gemini/settings.json
+	wrongPath := filepath.Join(geminiDir, ".gemini", "settings.json")
+	if _, err := os.Stat(wrongPath); err == nil {
+		t.Errorf("settings.json was incorrectly written to nested .gemini: %s", wrongPath)
+	}
+}
+
+// createTestZip is defined in hook_test.go

@@ -26,7 +26,14 @@ func NewMCPHandler(meta *metadata.Metadata) *MCPHandler {
 // For packaged assets, extracts files first. For config-only, registers as-is.
 // Also installs to JetBrains IDEs if detected.
 func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
-	settingsPath := filepath.Join(targetBase, SettingsFile)
+	// For global scope, targetBase is already ~/.gemini
+	// For repo scope, targetBase is /repo, so we need .gemini/
+	geminiDir := targetBase
+	if filepath.Base(targetBase) != ConfigDir {
+		geminiDir = filepath.Join(targetBase, ConfigDir)
+	}
+
+	settingsPath := filepath.Join(geminiDir, SettingsFile)
 
 	// Read existing settings.json
 	config, err := ReadSettingsJSON(settingsPath)
@@ -42,7 +49,7 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 	var entry map[string]any
 	if hasContent {
 		// Packaged mode: extract MCP server files
-		serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
+		serverDir := filepath.Join(geminiDir, DirMCPServers, h.metadata.Asset.Name)
 		if err := utils.ExtractZip(zipData, serverDir); err != nil {
 			return fmt.Errorf("failed to extract MCP server: %w", err)
 		}
@@ -96,7 +103,14 @@ func (h *MCPHandler) installToJetBrains(entry map[string]any) {
 
 // Remove removes an MCP entry from Gemini
 func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
-	settingsPath := filepath.Join(targetBase, SettingsFile)
+	// For global scope, targetBase is already ~/.gemini
+	// For repo scope, targetBase is /repo, so we need .gemini/
+	geminiDir := targetBase
+	if filepath.Base(targetBase) != ConfigDir {
+		geminiDir = filepath.Join(targetBase, ConfigDir)
+	}
+
+	settingsPath := filepath.Join(geminiDir, SettingsFile)
 
 	// Read existing settings.json
 	config, err := ReadSettingsJSON(settingsPath)
@@ -113,7 +127,7 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 	}
 
 	// Remove server directory if it exists (packaged mode)
-	serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
+	serverDir := filepath.Join(geminiDir, DirMCPServers, h.metadata.Asset.Name)
 	os.RemoveAll(serverDir) // Ignore errors if doesn't exist
 
 	// Also remove from JetBrains IDEs (best effort)
@@ -170,14 +184,21 @@ func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
 
 // VerifyInstalled checks if the MCP server is properly installed.
 func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
+	// For global scope, targetBase is already ~/.gemini
+	// For repo scope, targetBase is /repo, so we need .gemini/
+	geminiDir := targetBase
+	if filepath.Base(targetBase) != ConfigDir {
+		geminiDir = filepath.Join(targetBase, ConfigDir)
+	}
+
 	// Check if install directory exists (packaged mode)
-	installDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
+	installDir := filepath.Join(geminiDir, DirMCPServers, h.metadata.Asset.Name)
 	if utils.IsDirectory(installDir) {
 		return true, "installed (packaged)"
 	}
 
 	// Check CLI config (settings.json)
-	settingsPath := filepath.Join(targetBase, SettingsFile)
+	settingsPath := filepath.Join(geminiDir, SettingsFile)
 	config, err := ReadSettingsJSON(settingsPath)
 	if err == nil {
 		if _, exists := config.MCPServers[h.metadata.Asset.Name]; exists {
