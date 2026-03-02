@@ -72,8 +72,17 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	out := newOutputHelper(cmd)
 	out.silent = hookMode
 
+	// Unify --client and --clients flags early
+	// --client is used in hooks and is for singular client
+	// --clients is user-facing and supports several clients
+	// but they both work THE Same.
+	effectiveClientsFlag := clientsFlag
+	if effectiveClientsFlag == "" && hookClientID != "" {
+		effectiveClientsFlag = hookClientID
+	}
+
 	// Handle Cursor workspace directory in hook mode
-	handleCursorWorkspace(hookMode, hookClientID, log)
+	handleCursorWorkspace(hookMode, effectiveClientsFlag, log)
 
 	// Load and validate configuration
 	cfg, vault, err := loadConfigAndVault()
@@ -93,16 +102,23 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 		return err
 	}
 
-	// Filter clients if --clients flag is set
-	if clientsFlag != "" {
-		env.Clients = filterClientsByFlag(env.Clients, clientsFlag)
+	// Filter clients based on --client/--clients flag
+	if effectiveClientsFlag != "" {
+		env.Clients = filterClientsByFlag(env.Clients, effectiveClientsFlag)
 		if len(env.Clients) == 0 {
-			return fmt.Errorf("no matching clients found for: %s", clientsFlag)
+			return fmt.Errorf("no matching clients found for: %s", effectiveClientsFlag)
+		}
+	}
+
+	// Hook mode requires exactly one client to be specified!
+	if hookMode {
+		if len(env.Clients) != 1 {
+			return fmt.Errorf("--hook-mode requires exactly one client (use --client=X)")
 		}
 	}
 
 	// Hook mode fast path check
-	if hookMode && checkHookModeFastPath(ctx, hookClientID, out) {
+	if hookMode && checkHookModeFastPath(ctx, env.Clients[0].ID(), out) {
 		return nil
 	}
 
@@ -131,7 +147,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	// Early exit if nothing to install
 	if len(assetsToInstall) == 0 {
-		return handleNothingToInstall(ctx, hookMode, hookClientID, tracker, sortedAssets, env, targetClientIDs, styledOut, out)
+		return handleNothingToInstall(ctx, hookMode, tracker, sortedAssets, env, targetClientIDs, styledOut, out)
 	}
 
 	// Download assets
@@ -155,14 +171,8 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	}
 
 	// Install client-specific hooks (e.g., auto-update, usage tracking)
-	// In hook mode, only install hooks for the triggering client to avoid
-	// creating files for other clients (e.g., Copilot's .github/hooks/sx.json
-	// when Claude Code triggers the install).
-	hookClients := env.Clients
-	if hookMode && hookClientID != "" {
-		hookClients = filterClientsByID(env.Clients, hookClientID)
-	}
-	installClientHooks(ctx, hookClients, out)
+	// env.Clients is already filtered by --client/--clients flag
+	installClientHooks(ctx, env.Clients, out)
 
 	// Log summary
 	log.Info("install completed", "installed", len(installResult.Installed), "failed", len(installResult.Failed))
