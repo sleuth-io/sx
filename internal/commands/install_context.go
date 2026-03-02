@@ -173,17 +173,6 @@ func getTargetClientIDs(targetClients []clients.Client) []string {
 	return ids
 }
 
-// filterClientsByID returns only the client matching the given ID.
-// Returns an empty slice if no client matches.
-func filterClientsByID(allClients []clients.Client, clientID string) []clients.Client {
-	for _, c := range allClients {
-		if c.ID() == clientID {
-			return []clients.Client{c}
-		}
-	}
-	return nil
-}
-
 // filterClientsByFlag filters clients by a comma-separated list of client IDs.
 // Returns only clients whose ID is in the list.
 func filterClientsByFlag(allClients []clients.Client, clientsFlag string) []clients.Client {
@@ -206,8 +195,8 @@ func filterClientsByFlag(allClients []clients.Client, clientsFlag string) []clie
 }
 
 // handleCursorWorkspace handles changing to Cursor workspace directory in hook mode
-func handleCursorWorkspace(hookMode bool, hookClientID string, log *slog.Logger) {
-	if !hookMode || hookClientID != "cursor" {
+func handleCursorWorkspace(hookMode bool, effectiveClient string, log *slog.Logger) {
+	if !hookMode || effectiveClient != "cursor" {
 		return
 	}
 
@@ -257,7 +246,6 @@ func resolveAssetDependencies(lf *lockfile.LockFile, applicableAssets []*lockfil
 func handleNothingToInstall(
 	ctx context.Context,
 	hookMode bool,
-	hookClientID string,
 	tracker *assets.Tracker,
 	sortedAssets []*lockfile.Asset,
 	env *installEnvironment,
@@ -269,14 +257,10 @@ func handleNothingToInstall(
 	saveInstallationState(tracker, sortedAssets, nil, env.CurrentScope, targetClientIDs, out)
 
 	// Install client-specific hooks
-	// In hook mode, only install hooks for the triggering client
-	hookClients := env.Clients
-	if hookMode && hookClientID != "" {
-		hookClients = filterClientsByID(env.Clients, hookClientID)
-	}
-	installClientHooks(ctx, hookClients, out)
+	// env.Clients is already filtered by --client/--clients flag
+	installClientHooks(ctx, env.Clients, out)
 
-	// Ensure asset support is configured for all clients
+	// Ensure asset support is configured for target clients
 	ensureAssetSupport(ctx, env.Clients, buildInstallScope(env.CurrentScope, env.GitContext), out)
 
 	// Log summary

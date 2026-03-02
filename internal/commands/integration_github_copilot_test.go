@@ -1449,15 +1449,10 @@ func TestGitHubCopilotBootstrapMCPUninstall(t *testing.T) {
 	}
 }
 
-// TestHookModeOnlyInstallsHooksForSpecifiedClient tests that when sx install
-// is run with --hook-mode --client=X, only client X's hooks are installed,
-// not hooks for other detected clients. However, assets should still be
-// installed for ALL detected clients.
-//
-// This prevents the situation where opening Claude Code in a repo creates
-// GitHub Copilot's .github/hooks/sx.json file, while still ensuring assets
-// are available for all clients.
-func TestHookModeOnlyInstallsHooksForSpecifiedClient(t *testing.T) {
+// TestHookModeOnlyInstallsToSpecifiedClient tests that when sx install
+// is run with --hook-mode --client=X, only client X receives assets and hooks.
+// Other detected clients are not affected.
+func TestHookModeOnlyInstallsToSpecifiedClient(t *testing.T) {
 	env := NewTestEnv(t)
 
 	// Setup vault with a skill (needed for install to run)
@@ -1509,18 +1504,20 @@ path = "assets/test-skill/1.0.0"
 			copilotHooksPath, content)
 	}
 
-	// Verify assets ARE installed for BOTH clients (hooks filtering doesn't affect asset installation)
+	// Verify assets ARE installed for Claude (the specified client)
 	claudeSkillDir := filepath.Join(env.HomeDir, ".claude", "skills", "test-skill")
 	env.AssertFileExists(claudeSkillDir)
 
+	// Verify assets are NOT installed for Copilot (not the specified client)
 	copilotSkillDir := filepath.Join(env.HomeDir, ".copilot", "skills", "test-skill")
-	env.AssertFileExists(copilotSkillDir)
+	if _, err := os.Stat(copilotSkillDir); err == nil {
+		t.Errorf("Copilot should NOT receive assets when --client=claude-code, but found %s", copilotSkillDir)
+	}
 }
 
-// TestHookModeWithCopilotClientOnlyInstallsCopilotHooks is the reverse test:
-// when --client=github-copilot is specified, only Copilot hooks should be installed,
-// but assets should still be installed for all clients.
-func TestHookModeWithCopilotClientOnlyInstallsCopilotHooks(t *testing.T) {
+// TestHookModeWithCopilotClientOnlyInstallsToCopilot is the reverse test:
+// when --client=github-copilot is specified, only Copilot receives assets and hooks.
+func TestHookModeWithCopilotClientOnlyInstallsToCopilot(t *testing.T) {
 	env := NewTestEnv(t)
 
 	// Setup vault with a skill
@@ -1576,10 +1573,13 @@ path = "assets/test-skill/1.0.0"
 		t.Errorf("Claude Code hooks should NOT be installed when --client=github-copilot, but settings.json contains 'sx install': %s", claudeSettings)
 	}
 
-	// Verify assets ARE installed for BOTH clients (hooks filtering doesn't affect asset installation)
-	claudeSkillDir := filepath.Join(env.HomeDir, ".claude", "skills", "test-skill")
-	env.AssertFileExists(claudeSkillDir)
-
+	// Verify assets ARE installed for Copilot (the specified client)
 	copilotSkillDir := filepath.Join(env.HomeDir, ".copilot", "skills", "test-skill")
 	env.AssertFileExists(copilotSkillDir)
+
+	// Verify assets are NOT installed for Claude (not the specified client)
+	claudeSkillDir := filepath.Join(env.HomeDir, ".claude", "skills", "test-skill")
+	if _, err := os.Stat(claudeSkillDir); err == nil {
+		t.Errorf("Claude should NOT receive assets when --client=github-copilot, but found %s", claudeSkillDir)
+	}
 }

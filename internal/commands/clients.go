@@ -208,8 +208,8 @@ func runClients(cmd *cobra.Command, args []string) error {
 // Used by both 'sx clients' and 'sx config' commands.
 func PrintClientsSection(out *ui.Output, clientInfos []ClientInfo) {
 	for _, info := range clientInfos {
-		// Client name as emphasized text
-		out.Bold(info.Name)
+		// Client name and ID as emphasized text
+		out.Bold(fmt.Sprintf("%s (%s)", info.Name, info.ID))
 
 		// Show disabled/enabled warnings first, before status
 		if info.ForceDisabled {

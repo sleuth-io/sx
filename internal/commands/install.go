@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -47,12 +48,11 @@ when you want to install assets for a project without being in that directory
 	}
 
 	cmd.Flags().BoolVar(&hookMode, "hook-mode", false, "Run in hook mode (outputs JSON for Claude Code)")
-	cmd.Flags().StringVar(&clientID, "client", "", "Client ID that triggered the hook (used with --hook-mode)")
+	cmd.Flags().StringVar(&clientID, "client", "", "Install to a single client (e.g., 'claude-code')")
 	cmd.Flags().BoolVar(&fixMode, "repair", false, "Verify assets are actually installed and fix any discrepancies")
 	cmd.Flags().StringVar(&targetDir, "target", "", "Install as if running from this directory")
-	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Comma-separated client IDs to install to (e.g., 'claude-code,cursor')")
+	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Install to multiple clients (e.g., 'claude-code,cursor')")
 	_ = cmd.Flags().MarkHidden("hook-mode") // Hide from help output since it's internal
-	_ = cmd.Flags().MarkHidden("client")    // Hide from help output since it's internal
 
 	return cmd
 }
@@ -72,8 +72,25 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	out := newOutputHelper(cmd)
 	out.silent = hookMode
 
+	// Validate flag usage
+	if hookClientID != "" && clientsFlag != "" {
+		return errors.New("cannot use both --client and --clients; choose one")
+	}
+	if hookClientID != "" && strings.Contains(hookClientID, ",") {
+		return errors.New("--client accepts only one client; use --clients for multiple")
+	}
+
+	// Unify --client and --clients into effectiveClientsFlag
+	// --client accepts exactly 1 client (used by hooks)
+	// --clients accepts 1 or more (comma-separated)
+	// Both filter clients identically
+	effectiveClientsFlag := clientsFlag
+	if effectiveClientsFlag == "" {
+		effectiveClientsFlag = hookClientID
+	}
+
 	// Handle Cursor workspace directory in hook mode
-	handleCursorWorkspace(hookMode, hookClientID, log)
+	handleCursorWorkspace(hookMode, effectiveClientsFlag, log)
 
 	// Load and validate configuration
 	cfg, vault, err := loadConfigAndVault()
@@ -93,16 +110,23 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 		return err
 	}
 
-	// Filter clients if --clients flag is set
-	if clientsFlag != "" {
-		env.Clients = filterClientsByFlag(env.Clients, clientsFlag)
+	// Filter clients based on --client/--clients flag
+	if effectiveClientsFlag != "" {
+		env.Clients = filterClientsByFlag(env.Clients, effectiveClientsFlag)
 		if len(env.Clients) == 0 {
-			return fmt.Errorf("no matching clients found for: %s", clientsFlag)
+			return fmt.Errorf("no matching clients found for: %s", effectiveClientsFlag)
+		}
+	}
+
+	// Hook mode requires exactly one client to be specified!
+	if hookMode {
+		if len(env.Clients) != 1 {
+			return errors.New("--hook-mode requires exactly one client (use --client=X)")
 		}
 	}
 
 	// Hook mode fast path check
-	if hookMode && checkHookModeFastPath(ctx, hookClientID, out) {
+	if hookMode && checkHookModeFastPath(ctx, env.Clients[0].ID(), out) {
 		return nil
 	}
 
@@ -131,7 +155,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	// Early exit if nothing to install
 	if len(assetsToInstall) == 0 {
-		return handleNothingToInstall(ctx, hookMode, hookClientID, tracker, sortedAssets, env, targetClientIDs, styledOut, out)
+		return handleNothingToInstall(ctx, hookMode, tracker, sortedAssets, env, targetClientIDs, styledOut, out)
 	}
 
 	// Download assets
@@ -155,14 +179,8 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	}
 
 	// Install client-specific hooks (e.g., auto-update, usage tracking)
-	// In hook mode, only install hooks for the triggering client to avoid
-	// creating files for other clients (e.g., Copilot's .github/hooks/sx.json
-	// when Claude Code triggers the install).
-	hookClients := env.Clients
-	if hookMode && hookClientID != "" {
-		hookClients = filterClientsByID(env.Clients, hookClientID)
-	}
-	installClientHooks(ctx, hookClients, out)
+	// env.Clients is already filtered by --client/--clients flag
+	installClientHooks(ctx, env.Clients, out)
 
 	// Log summary
 	log.Info("install completed", "installed", len(installResult.Installed), "failed", len(installResult.Failed))
