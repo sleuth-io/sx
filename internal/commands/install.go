@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -47,12 +48,11 @@ when you want to install assets for a project without being in that directory
 	}
 
 	cmd.Flags().BoolVar(&hookMode, "hook-mode", false, "Run in hook mode (outputs JSON for Claude Code)")
-	cmd.Flags().StringVar(&clientID, "client", "", "Client ID that triggered the hook (used with --hook-mode)")
+	cmd.Flags().StringVar(&clientID, "client", "", "Install to a single client (e.g., 'claude-code')")
 	cmd.Flags().BoolVar(&fixMode, "repair", false, "Verify assets are actually installed and fix any discrepancies")
 	cmd.Flags().StringVar(&targetDir, "target", "", "Install as if running from this directory")
-	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Comma-separated client IDs to install to (e.g., 'claude-code,cursor')")
+	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Install to multiple clients (e.g., 'claude-code,cursor')")
 	_ = cmd.Flags().MarkHidden("hook-mode") // Hide from help output since it's internal
-	_ = cmd.Flags().MarkHidden("client")    // Hide from help output since it's internal
 
 	return cmd
 }
@@ -72,12 +72,20 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	out := newOutputHelper(cmd)
 	out.silent = hookMode
 
-	// Unify --client and --clients flags early
-	// --client is used in hooks and is for singular client
-	// --clients is user-facing and supports several clients
-	// but they both work THE Same.
+	// Validate flag usage
+	if hookClientID != "" && clientsFlag != "" {
+		return errors.New("cannot use both --client and --clients; choose one")
+	}
+	if hookClientID != "" && strings.Contains(hookClientID, ",") {
+		return errors.New("--client accepts only one client; use --clients for multiple")
+	}
+
+	// Unify --client and --clients into effectiveClientsFlag
+	// --client accepts exactly 1 client (used by hooks)
+	// --clients accepts 1 or more (comma-separated)
+	// Both filter clients identically
 	effectiveClientsFlag := clientsFlag
-	if effectiveClientsFlag == "" && hookClientID != "" {
+	if effectiveClientsFlag == "" {
 		effectiveClientsFlag = hookClientID
 	}
 
@@ -113,7 +121,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	// Hook mode requires exactly one client to be specified!
 	if hookMode {
 		if len(env.Clients) != 1 {
-			return fmt.Errorf("--hook-mode requires exactly one client (use --client=X)")
+			return errors.New("--hook-mode requires exactly one client (use --client=X)")
 		}
 	}
 

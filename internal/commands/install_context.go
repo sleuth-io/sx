@@ -173,17 +173,6 @@ func getTargetClientIDs(targetClients []clients.Client) []string {
 	return ids
 }
 
-// filterClientsByID returns only the client matching the given ID.
-// Returns an empty slice if no client matches.
-func filterClientsByID(allClients []clients.Client, clientID string) []clients.Client {
-	for _, c := range allClients {
-		if c.ID() == clientID {
-			return []clients.Client{c}
-		}
-	}
-	return nil
-}
-
 // filterClientsByFlag filters clients by a comma-separated list of client IDs.
 // Returns only clients whose ID is in the list.
 func filterClientsByFlag(allClients []clients.Client, clientsFlag string) []clients.Client {
