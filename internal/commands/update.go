@@ -8,13 +8,9 @@ import (
 	"github.com/creativeprojects/go-selfupdate"
 	"github.com/spf13/cobra"
 
+	"github.com/sleuth-io/sx/internal/autoupdate"
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/ui/components"
-)
-
-const (
-	githubOwner = "sleuth-io"
-	githubRepo  = "sx"
 )
 
 // NewUpdateCommand creates the update command
@@ -55,7 +51,7 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 
 	out.printf("Current version: %s\n", buildinfo.Version)
 
-	repository := selfupdate.ParseSlug(fmt.Sprintf("%s/%s", githubOwner, githubRepo))
+	repository := selfupdate.ParseSlug(fmt.Sprintf("%s/%s", autoupdate.GithubOwner, autoupdate.GithubRepo))
 
 	if checkOnly {
 		// Just check for latest version without updating
@@ -114,6 +110,9 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 
 	out.printf("\nSuccessfully updated to %s!\n", release.Version())
 	out.printf("The new version is ready to use.\n")
+
+	// Clear any pending autoupdate marker since we just updated manually
+	autoupdate.ClearPendingUpdate()
 
 	return nil
 }
