@@ -8,6 +8,7 @@ import (
 	"github.com/creativeprojects/go-selfupdate"
 	"github.com/spf13/cobra"
 
+	"github.com/sleuth-io/sx/internal/autoupdate"
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/ui/components"
 )
@@ -114,6 +115,9 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 
 	out.printf("\nSuccessfully updated to %s!\n", release.Version())
 	out.printf("The new version is ready to use.\n")
+
+	// Clear any pending autoupdate marker since we just updated manually
+	autoupdate.ClearPendingUpdate()
 
 	return nil
 }

@@ -1,6 +1,7 @@
 package autoupdate
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -121,4 +122,256 @@ func TestUpdateCheckTimestamp(t *testing.T) {
 
 	// Clean up
 	_ = os.Remove(lastCheckFile)
+}
+
+func TestPendingUpdatePath(t *testing.T) {
+	path, err := pendingUpdatePath()
+	if err != nil {
+		t.Fatalf("Failed to get pending update path: %v", err)
+	}
+
+	if filepath.Base(path) != pendingUpdateFile {
+		t.Errorf("Expected filename %q, got %q", pendingUpdateFile, filepath.Base(path))
+	}
+}
+
+func TestClearPendingUpdate(t *testing.T) {
+	// Write a marker file
+	markerPath, err := pendingUpdatePath()
+	if err != nil {
+		t.Fatalf("Failed to get marker path: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(markerPath), 0755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+
+	if err := os.WriteFile(markerPath, []byte(`{"version":"1.0.0"}`), 0644); err != nil {
+		t.Fatalf("Failed to write marker: %v", err)
+	}
+
+	// Verify it exists
+	if _, err := os.Stat(markerPath); os.IsNotExist(err) {
+		t.Fatal("Marker file should exist before clear")
+	}
+
+	// Clear it
+	ClearPendingUpdate()
+
+	// Verify it's gone
+	if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+		t.Error("Marker file should not exist after ClearPendingUpdate")
+	}
+}
+
+func TestClearPendingUpdateNoFile(t *testing.T) {
+	// Should not panic when no marker exists
+	ClearPendingUpdate()
+}
+
+func TestApplyPendingUpdateNoMarker(t *testing.T) {
+	originalVersion := buildinfo.Version
+	defer func() { buildinfo.Version = originalVersion }()
+
+	buildinfo.Version = "0.10.0"
+
+	// Make sure no marker exists
+	markerPath, err := pendingUpdatePath()
+	if err != nil {
+		t.Fatalf("Failed to get marker path: %v", err)
+	}
+	_ = os.Remove(markerPath)
+
+	// Should return false (no update applied)
+	if ApplyPendingUpdate() {
+		t.Error("Expected false when no marker exists")
+	}
+}
+
+func TestApplyPendingUpdateDevBuild(t *testing.T) {
+	originalVersion := buildinfo.Version
+	defer func() { buildinfo.Version = originalVersion }()
+
+	buildinfo.Version = "dev"
+
+	// Write a marker that should be ignored for dev builds
+	markerPath, err := pendingUpdatePath()
+	if err != nil {
+		t.Fatalf("Failed to get marker path: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(markerPath), 0755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+
+	if err := os.WriteFile(markerPath, []byte(`{"version":"1.0.0"}`), 0644); err != nil {
+		t.Fatalf("Failed to write marker: %v", err)
+	}
+
+	// Should skip for dev builds without removing marker
+	if ApplyPendingUpdate() {
+		t.Error("Expected false for dev build")
+	}
+
+	// Marker should still exist (dev builds skip entirely)
+	if _, err := os.Stat(markerPath); os.IsNotExist(err) {
+		t.Error("Marker should still exist for dev builds")
+	}
+
+	// Clean up
+	_ = os.Remove(markerPath)
+}
+
+func TestApplyPendingUpdateDisabled(t *testing.T) {
+	originalVersion := buildinfo.Version
+	defer func() { buildinfo.Version = originalVersion }()
+
+	buildinfo.Version = "0.10.0"
+	t.Setenv("DISABLE_AUTOUPDATER", "1")
+
+	// Write a marker
+	markerPath, err := pendingUpdatePath()
+	if err != nil {
+		t.Fatalf("Failed to get marker path: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(markerPath), 0755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+
+	if err := os.WriteFile(markerPath, []byte(`{"version":"1.0.0"}`), 0644); err != nil {
+		t.Fatalf("Failed to write marker: %v", err)
+	}
+
+	// Should skip when disabled
+	if ApplyPendingUpdate() {
+		t.Error("Expected false when disabled")
+	}
+
+	// Marker should still exist
+	if _, err := os.Stat(markerPath); os.IsNotExist(err) {
+		t.Error("Marker should still exist when autoupdater is disabled")
+	}
+
+	// Clean up
+	_ = os.Remove(markerPath)
+}
+
+func TestApplyPendingUpdateAlreadyUpToDate(t *testing.T) {
+	originalVersion := buildinfo.Version
+	defer func() { buildinfo.Version = originalVersion }()
+
+	// Set current version ahead of pending version
+	buildinfo.Version = "2.0.0"
+
+	markerPath, err := pendingUpdatePath()
+	if err != nil {
+		t.Fatalf("Failed to get marker path: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(markerPath), 0755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+
+	pending := pendingUpdate{
+		Version:   "1.0.0",
+		AssetURL:  "https://example.com/asset.tar.gz",
+		AssetName: "asset.tar.gz",
+	}
+	data, _ := json.Marshal(pending)
+
+	if err := os.WriteFile(markerPath, data, 0644); err != nil {
+		t.Fatalf("Failed to write marker: %v", err)
+	}
+
+	// Should skip and remove marker since we're already ahead
+	if ApplyPendingUpdate() {
+		t.Error("Expected false when already up to date")
+	}
+
+	// Marker should be removed
+	if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+		t.Error("Marker should be removed when version is already at or ahead")
+	}
+}
+
+func TestApplyPendingUpdateInvalidJSON(t *testing.T) {
+	originalVersion := buildinfo.Version
+	defer func() { buildinfo.Version = originalVersion }()
+
+	buildinfo.Version = "0.10.0"
+
+	markerPath, err := pendingUpdatePath()
+	if err != nil {
+		t.Fatalf("Failed to get marker path: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(markerPath), 0755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+
+	// Write invalid JSON
+	if err := os.WriteFile(markerPath, []byte(`not json`), 0644); err != nil {
+		t.Fatalf("Failed to write marker: %v", err)
+	}
+
+	// Should handle gracefully and remove bad marker
+	if ApplyPendingUpdate() {
+		t.Error("Expected false for invalid JSON")
+	}
+
+	// Marker should be removed
+	if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+		t.Error("Invalid marker should be removed")
+	}
+}
+
+func TestMarkerFileFormat(t *testing.T) {
+	markerPath, err := pendingUpdatePath()
+	if err != nil {
+		t.Fatalf("Failed to get marker path: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(markerPath), 0755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+
+	pending := pendingUpdate{
+		Version:   "1.2.3",
+		AssetURL:  "https://github.com/sleuth-io/sx/releases/download/v1.2.3/sx_Linux_x86_64.tar.gz",
+		AssetName: "sx_Linux_x86_64.tar.gz",
+	}
+
+	data, err := json.Marshal(pending)
+	if err != nil {
+		t.Fatalf("Failed to marshal: %v", err)
+	}
+
+	if err := os.WriteFile(markerPath, data, 0644); err != nil {
+		t.Fatalf("Failed to write: %v", err)
+	}
+
+	// Read it back
+	readData, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("Failed to read: %v", err)
+	}
+
+	var readPending pendingUpdate
+	if err := json.Unmarshal(readData, &readPending); err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	if readPending.Version != "1.2.3" {
+		t.Errorf("Version = %q, want %q", readPending.Version, "1.2.3")
+	}
+	if readPending.AssetURL != pending.AssetURL {
+		t.Errorf("AssetURL = %q, want %q", readPending.AssetURL, pending.AssetURL)
+	}
+	if readPending.AssetName != pending.AssetName {
+		t.Errorf("AssetName = %q, want %q", readPending.AssetName, pending.AssetName)
+	}
+
+	// Clean up
+	_ = os.Remove(markerPath)
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -49,6 +50,16 @@ func main() {
 		logArgs = append(logArgs, "client", client)
 	}
 	log.Info("command invoked", logArgs...)
+
+	// Resolve executable path before any update replaces the binary on disk.
+	// After replacement, /proc/self/exe points to the old (deleted) inode.
+	exe, _ := os.Executable()
+
+	// Apply any pending update from a previous background check that didn't complete.
+	// If an update was applied, re-exec so the new binary handles this invocation.
+	if autoupdate.ApplyPendingUpdate() && exe != "" {
+		_ = syscall.Exec(exe, os.Args, os.Environ())
+	}
 
 	// Check for updates in the background (non-blocking, once per day)
 	// Skip if user is explicitly running the update command
