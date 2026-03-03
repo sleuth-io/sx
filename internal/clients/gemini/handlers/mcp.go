@@ -22,17 +22,21 @@ func NewMCPHandler(meta *metadata.Metadata) *MCPHandler {
 	return &MCPHandler{metadata: meta}
 }
 
+// resolveGeminiDir returns the .gemini directory for the given targetBase.
+// For global scope, targetBase is already ~/.gemini so it's returned as-is.
+// For repo scope, targetBase is /repo, so .gemini/ is appended.
+func resolveGeminiDir(targetBase string) string {
+	if filepath.Base(targetBase) == ConfigDir {
+		return targetBase
+	}
+	return filepath.Join(targetBase, ConfigDir)
+}
+
 // Install installs an MCP asset to Gemini by updating settings.json.
 // For packaged assets, extracts files first. For config-only, registers as-is.
 // Also installs to JetBrains IDEs if detected.
 func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
-	// For global scope, targetBase is already ~/.gemini
-	// For repo scope, targetBase is /repo, so we need .gemini/
-	geminiDir := targetBase
-	if filepath.Base(targetBase) != ConfigDir {
-		geminiDir = filepath.Join(targetBase, ConfigDir)
-	}
-
+	geminiDir := resolveGeminiDir(targetBase)
 	settingsPath := filepath.Join(geminiDir, SettingsFile)
 
 	// Read existing settings.json
@@ -103,13 +107,7 @@ func (h *MCPHandler) installToJetBrains(entry map[string]any) {
 
 // Remove removes an MCP entry from Gemini
 func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
-	// For global scope, targetBase is already ~/.gemini
-	// For repo scope, targetBase is /repo, so we need .gemini/
-	geminiDir := targetBase
-	if filepath.Base(targetBase) != ConfigDir {
-		geminiDir = filepath.Join(targetBase, ConfigDir)
-	}
-
+	geminiDir := resolveGeminiDir(targetBase)
 	settingsPath := filepath.Join(geminiDir, SettingsFile)
 
 	// Read existing settings.json
@@ -184,12 +182,7 @@ func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
 
 // VerifyInstalled checks if the MCP server is properly installed.
 func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
-	// For global scope, targetBase is already ~/.gemini
-	// For repo scope, targetBase is /repo, so we need .gemini/
-	geminiDir := targetBase
-	if filepath.Base(targetBase) != ConfigDir {
-		geminiDir = filepath.Join(targetBase, ConfigDir)
-	}
+	geminiDir := resolveGeminiDir(targetBase)
 
 	// Check if install directory exists (packaged mode)
 	installDir := filepath.Join(geminiDir, DirMCPServers, h.metadata.Asset.Name)

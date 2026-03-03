@@ -46,13 +46,7 @@ func (h *HookHandler) Install(ctx context.Context, zipData []byte, targetBase st
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	// For global scope, targetBase is already ~/.gemini
-	// For repo scope, targetBase is /repo, so we need .gemini/
-	geminiDir := targetBase
-	if filepath.Base(targetBase) != ConfigDir {
-		geminiDir = filepath.Join(targetBase, ConfigDir)
-	}
-
+	geminiDir := resolveGeminiDir(targetBase)
 	h.zipFiles = hook.CacheZipFiles(zipData)
 
 	if hook.HasExtractableFiles(zipData) {
@@ -70,10 +64,7 @@ func (h *HookHandler) Install(ctx context.Context, zipData []byte, targetBase st
 
 // Remove uninstalls the hook asset from Gemini
 func (h *HookHandler) Remove(ctx context.Context, targetBase string) error {
-	geminiDir := targetBase
-	if filepath.Base(targetBase) != ConfigDir {
-		geminiDir = filepath.Join(targetBase, ConfigDir)
-	}
+	geminiDir := resolveGeminiDir(targetBase)
 
 	if err := h.removeFromSettings(geminiDir); err != nil {
 		return fmt.Errorf("failed to remove from settings: %w", err)
@@ -89,10 +80,7 @@ func (h *HookHandler) Remove(ctx context.Context, targetBase string) error {
 
 // VerifyInstalled checks if the hook is properly installed
 func (h *HookHandler) VerifyInstalled(targetBase string) (bool, string) {
-	geminiDir := targetBase
-	if filepath.Base(targetBase) != ConfigDir {
-		geminiDir = filepath.Join(targetBase, ConfigDir)
-	}
+	geminiDir := resolveGeminiDir(targetBase)
 
 	if h.metadata.Hook != nil && h.metadata.Hook.ScriptFile != "" {
 		installDir := filepath.Join(geminiDir, "hooks", h.metadata.Asset.Name)
