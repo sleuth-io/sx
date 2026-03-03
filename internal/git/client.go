@@ -305,8 +305,12 @@ func (c *Client) IsEmpty(ctx context.Context, repoPath string) (bool, error) {
 
 	err := cmd.Run()
 	if err != nil {
-		// rev-parse HEAD fails when there are no commits
-		return true, nil
+		// Exit code 128 means no commits (expected for empty repos)
+		exitError := &exec.ExitError{}
+		if errors.As(err, &exitError) && exitError.ExitCode() == 128 {
+			return true, nil
+		}
+		return false, fmt.Errorf("git rev-parse HEAD failed: %w", err)
 	}
 	return false, nil
 }

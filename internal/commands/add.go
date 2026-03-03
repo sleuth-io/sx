@@ -94,7 +94,8 @@ func runAddWithFlags(cmd *cobra.Command, input string, opts addOptions) error {
 
 	// Handle --browse flag
 	if opts.Browse {
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
 		out := newOutputHelper(cmd)
 		if browseCommunitySkills(cmd) {
 			promptRunInstall(cmd, ctx, out)
@@ -296,8 +297,8 @@ func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHel
 }
 
 // promptAddMenu shows an interactive menu when sx add is called with no arguments.
-// Returns (true, nil) if the user chose "browse" and it was handled,
-// (false, nil) if the user chose "manual" (caller should continue),
+// Returns (true, nil) if the user browsed and added assets,
+// (false, nil) if the user chose "manual" or browse produced nothing (caller should continue),
 // or (false, err) on error.
 func promptAddMenu(cmd *cobra.Command, ctx context.Context, out *outputHelper) (bool, error) {
 	selected, err := components.Select("How would you like to add an asset?", []components.Option{
@@ -308,10 +309,11 @@ func promptAddMenu(cmd *cobra.Command, ctx context.Context, out *outputHelper) (
 		return false, err
 	}
 	if selected.Value == "browse" {
-		if browseCommunitySkills(cmd) {
+		browsedAny := browseCommunitySkills(cmd)
+		if browsedAny {
 			promptRunInstall(cmd, ctx, out)
 		}
-		return true, nil
+		return browsedAny, nil
 	}
 	return false, nil
 }
