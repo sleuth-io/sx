@@ -124,8 +124,10 @@ demo: build ## Generate demo GIF (requires vhs)
 	@$(BUILD_DIR)/$(BINARY_NAME) remove test-driven-development --yes 2>/dev/null || true
 	@DEMO_HOME=$$(mktemp -d) && \
 	mkdir -p "$$DEMO_HOME/.claude" && \
+	git init --bare /tmp/team-vault.git > /dev/null 2>&1 && \
+	printf '[user]\n\temail = demo@example.com\n\tname = Demo User\n' > "$$DEMO_HOME/.gitconfig" && \
 	HOME="$$DEMO_HOME" PATH="$(CURDIR)/$(BUILD_DIR):$$PATH" PS1="$$ " vhs docs/demo.tape && \
-	rm -rf "$$DEMO_HOME"
+	rm -rf "$$DEMO_HOME" /tmp/team-vault.git
 	@echo "Generated: docs/demo.gif"
 
 logs: ## Follow sx logs with colors (-f FILTER to filter, -n NUM for lines)

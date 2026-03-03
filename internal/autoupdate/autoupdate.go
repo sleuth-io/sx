@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -45,7 +46,7 @@ func isEnvTrue(key string) bool {
 // isDevBuild returns true if this is a development build
 func isDevBuild() bool {
 	v := buildinfo.Version
-	return v == "dev" || v == ""
+	return v == "dev" || v == "" || strings.Contains(v, "-dirty")
 }
 
 // pendingUpdatePath returns the path to the pending update marker file

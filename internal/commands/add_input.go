@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -80,6 +81,11 @@ func loadZipFile(out *outputHelper, status *components.Status, zipFile string) (
 	// Check if file or directory exists
 	if !utils.FileExists(zipFile) {
 		return "", nil, fmt.Errorf("file or directory not found: %s", zipFile)
+	}
+
+	// If the user pointed at a SKILL.md file, use the parent directory instead
+	if strings.EqualFold(filepath.Base(zipFile), "skill.md") {
+		zipFile = filepath.Dir(zipFile)
 	}
 
 	// Read zip file or create zip from directory

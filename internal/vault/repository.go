@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,6 +11,9 @@ import (
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
+
+// ErrLockFileNotFound is returned when the lock file does not exist in the vault
+var ErrLockFileNotFound = errors.New("lock file not found")
 
 // ErrVersionExists is returned when attempting to add an asset version that already exists
 type ErrVersionExists struct {

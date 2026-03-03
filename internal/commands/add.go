@@ -25,6 +25,7 @@ func NewAddCommand() *cobra.Command {
 	var (
 		yes         bool
 		noInstall   bool
+		browse      bool
 		name        string
 		assetType   string
 		version     string
@@ -40,6 +41,7 @@ If the argument is an existing asset name, configure its installation scope inst
 
 Examples:
   sx add ./my-skill                    # Interactive mode
+  sx add --browse                      # Browse community skills
   sx add ./my-skill --yes              # Accept defaults, install globally
   sx add ./my-skill -y --no-install    # Add to vault only
   sx add ./my-skill --yes --scope-global
@@ -55,6 +57,7 @@ Examples:
 			opts := addOptions{
 				Yes:         yes,
 				NoInstall:   noInstall,
+				Browse:      browse,
 				Name:        name,
 				Type:        assetType,
 				Version:     version,
@@ -67,6 +70,7 @@ Examples:
 
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Accept all defaults and skip prompts")
 	cmd.Flags().BoolVar(&noInstall, "no-install", false, "Skip running install after adding")
+	cmd.Flags().BoolVar(&browse, "browse", false, "Browse community skills")
 	cmd.Flags().StringVar(&name, "name", "", "Override detected asset name")
 	cmd.Flags().StringVar(&assetType, "type", "", "Override detected asset type (skill, rule, agent, command, mcp, hook)")
 	cmd.Flags().StringVar(&version, "version", "", "Override suggested version")
@@ -86,6 +90,17 @@ func runAddWithFlags(cmd *cobra.Command, input string, opts addOptions) error {
 		if strings.TrimSpace(repo) == "" {
 			return errors.New("--scope-repo cannot be empty")
 		}
+	}
+
+	// Handle --browse flag
+	if opts.Browse {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		out := newOutputHelper(cmd)
+		if browseCommunitySkills(cmd) {
+			promptRunInstall(cmd, ctx, out)
+		}
+		return nil
 	}
 
 	// In non-interactive mode, input is required
@@ -113,6 +128,13 @@ func runAddWithOptions(cmd *cobra.Command, input string, opts addOptions) error 
 
 	out := newOutputHelper(cmd)
 	status := components.NewStatus(cmd.OutOrStdout())
+
+	// Interactive menu when no input provided
+	if input == "" && !opts.isNonInteractive() {
+		if handled, err := promptAddMenu(cmd, ctx, out); handled || err != nil {
+			return err
+		}
+	}
 
 	// Check if input is plugin@marketplace syntax
 	if input != "" && IsMarketplaceReference(input) {
@@ -274,6 +296,28 @@ func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHel
 	return nil
 }
 
+// promptAddMenu shows an interactive menu when sx add is called with no arguments.
+// Returns (true, nil) if the user browsed and added assets,
+// (false, nil) if the user chose "manual" or browse produced nothing (caller should continue),
+// or (false, err) on error.
+func promptAddMenu(cmd *cobra.Command, ctx context.Context, out *outputHelper) (bool, error) {
+	selected, err := components.Select("How would you like to add an asset?", []components.Option{
+		{Label: "Browse community skills", Value: "browse"},
+		{Label: "Enter path or URL", Value: "manual"},
+	})
+	if err != nil {
+		return false, err
+	}
+	if selected.Value == "browse" {
+		browsedAny := browseCommunitySkills(cmd)
+		if browsedAny {
+			promptRunInstall(cmd, ctx, out)
+		}
+		return browsedAny, nil
+	}
+	return false, nil
+}
+
 // promptRunInstall asks if the user wants to run install after adding an asset
 func promptRunInstall(cmd *cobra.Command, ctx context.Context, out *outputHelper) {
 	out.println()
@@ -326,8 +370,22 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 	out.println()
 	out.printf("✓ Asset %s@%s already exists in vault with identical contents\n", name, version)
 
-	// Skip lock file update if --no-install
+	// Build lock asset
+	lockAsset := &lockfile.Asset{
+		Name:    name,
+		Version: version,
+		Type:    assetType,
+		SourcePath: &lockfile.SourcePath{
+			Path: fmt.Sprintf("./assets/%s/%s", name, version),
+		},
+	}
+
+	// --no-install: still write lock file (global scope) but skip install prompt
 	if opts.NoInstall {
+		lockAsset.Scopes = []lockfile.Scope{}
+		if err := updateLockFile(ctx, out, vault, lockAsset); err != nil {
+			return fmt.Errorf("failed to update lock file: %w", err)
+		}
 		return nil
 	}
 
@@ -349,23 +407,13 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 		if err != nil {
 			return fmt.Errorf("failed to configure repositories: %w", err)
 		}
-		// If nil, user chose not to install
 		if scopes == nil {
+			out.printf("Run 'sx add %s' to configure where to install it.\n", name)
 			return nil
 		}
 	}
 
-	// Update the lock file with asset
-	lockAsset := &lockfile.Asset{
-		Name:    name,
-		Version: version,
-		Type:    assetType,
-		SourcePath: &lockfile.SourcePath{
-			Path: fmt.Sprintf("./assets/%s/%s", name, version),
-		},
-		Scopes: scopes,
-	}
-
+	lockAsset.Scopes = scopes
 	if err := updateLockFile(ctx, out, vault, lockAsset); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
@@ -419,8 +467,12 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 
 	out.printf("✓ Successfully added %s@%s\n", meta.Asset.Name, meta.Asset.Version)
 
-	// Skip lock file update if --no-install
+	// --no-install: still write lock file (global scope) but skip install prompt
 	if opts.NoInstall {
+		lockAsset.Scopes = []lockfile.Scope{}
+		if err := updateLockFile(ctx, out, vault, lockAsset); err != nil {
+			return fmt.Errorf("failed to update lock file: %w", err)
+		}
 		return nil
 	}
 
@@ -443,6 +495,7 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 		}
 		// If nil, user chose not to install
 		if scopes == nil {
+			out.printf("Run 'sx add %s' to configure where to install it.\n", lockAsset.Name)
 			return nil
 		}
 	}

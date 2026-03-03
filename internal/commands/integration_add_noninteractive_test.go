@@ -220,7 +220,7 @@ prompt-file = "SKILL.md"
 		}
 	})
 
-	t.Run("add with --no-install skips lock file update", func(t *testing.T) {
+	t.Run("add with --no-install writes lock file but skips install", func(t *testing.T) {
 		// Clean up previous lock file
 		os.Remove(filepath.Join(vaultDir, "sx.lock"))
 
@@ -235,10 +235,25 @@ prompt-file = "SKILL.md"
 		assetsDir := filepath.Join(vaultDir, "assets", "test-skill")
 		env.AssertFileExists(assetsDir)
 
-		// Verify NO lock file was created (--no-install means vault only)
+		// Verify lock file WAS created with global scope (--no-install skips install, not lock file)
 		lockPath := filepath.Join(vaultDir, "sx.lock")
-		if _, err := os.Stat(lockPath); err == nil {
-			t.Error("Lock file should not exist with --no-install")
+		lockData, err := os.ReadFile(lockPath)
+		if err != nil {
+			t.Fatalf("Lock file should exist with --no-install, got error: %v", err)
+		}
+
+		lf, err := lockfile.Parse(lockData)
+		if err != nil {
+			t.Fatalf("Failed to parse lock file: %v", err)
+		}
+
+		if len(lf.Assets) == 0 {
+			t.Fatal("Expected at least one asset in lock file")
+		}
+
+		asset := lf.Assets[0]
+		if len(asset.Scopes) != 0 {
+			t.Errorf("Expected global scope (empty scopes), got %d scopes", len(asset.Scopes))
 		}
 	})
 

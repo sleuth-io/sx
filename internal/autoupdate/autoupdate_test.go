@@ -170,6 +170,36 @@ func TestApplyPendingUpdateDevBuild(t *testing.T) {
 	}
 }
 
+func TestApplyPendingUpdateDirtyBuild(t *testing.T) {
+	useTempCache(t)
+	originalVersion := buildinfo.Version
+	defer func() { buildinfo.Version = originalVersion }()
+
+	buildinfo.Version = "v0.12.6-6-g3f51665-dirty"
+
+	markerPath, err := pendingUpdatePath()
+	if err != nil {
+		t.Fatalf("Failed to get marker path: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(markerPath), 0755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+
+	if err := os.WriteFile(markerPath, []byte(`{"version":"1.0.0"}`), 0644); err != nil {
+		t.Fatalf("Failed to write marker: %v", err)
+	}
+
+	if ApplyPendingUpdate() {
+		t.Error("Expected false for dirty build")
+	}
+
+	// Marker should still exist (dirty builds skip entirely)
+	if _, err := os.Stat(markerPath); os.IsNotExist(err) {
+		t.Error("Marker should still exist for dirty builds")
+	}
+}
+
 func TestApplyPendingUpdateDisabled(t *testing.T) {
 	useTempCache(t)
 	originalVersion := buildinfo.Version

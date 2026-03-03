@@ -6,46 +6,71 @@ Set Width 1200
 Set Height 600
 Set Padding 20
 
-Sleep 1s
+Sleep 500ms
+
+# Run sx init
 Type "sx init"
-Sleep 500ms
+Sleep 300ms
 Enter
+
+# "How will you use sx?" - navigate to "Share with my team"
+Sleep 1500ms
+Down
+Sleep 2s
+Enter
+
+# "Choose how to share" - navigate to "Git repository"
+Sleep 2s
+Down
+Sleep 1500ms
+Enter
+
+# "Enter Git repository URL" - type local vault path
 Sleep 500ms
+Type "/tmp/team-vault.git"
+Sleep 300ms
+Enter
+
+# Bootstrap: "Install session hooks?" default [Yes] - accept
+Sleep 1s
+Enter
+
+# Bootstrap: "Install analytics hooks?" default [Yes] - accept
+Sleep 300ms
+Enter
+
+# Bootstrap: "Install Sleuth AI Query MCP server?" default [No] - accept
+Sleep 300ms
+Enter
+
+# Setup complete, "Browse popular community skills?" default [No] - say yes
+Sleep 1500ms
 Type "y"
-Sleep 1s
+
+# Featured skills menu - navigate to test-driven-development
+Sleep 2s
 Down
+Sleep 1s
+Enter
+
+# Download skill from registry, "Detected asset" confirmation - accept
 Sleep 2s
 Enter
+
+# Version input defaults to "1" - accept
 Sleep 1s
-Down
+Enter
+
+# "Successfully added" - back at skills menu, select "Done"
 Sleep 2s
 Enter
+
+# "Run install now?" default [Yes] - accept
 Sleep 500ms
-Type "git@github.com:sleuth-io/skills-repository.git"
-Sleep 500ms
 Enter
-Sleep 3s
-Down
-Sleep 1s
-Down
-Sleep 1s
-Down
-Sleep 1s
-Up
-Sleep 1s
-Up
-Sleep 3s
-Enter
-Sleep 3s
-Enter
-Sleep 6s
-Enter
+
+# Wait for install to complete
 Sleep 4s
-Enter
-Sleep 3s
-Enter
-Sleep 3s
-Type "sx install"
-Sleep 500ms
-Enter
-Sleep 6s
+
+# Final output visible
+Sleep 2s

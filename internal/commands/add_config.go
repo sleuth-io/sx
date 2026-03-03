@@ -123,7 +123,8 @@ func handleNewAssetFromVault(ctx context.Context, cmd *cobra.Command, out *outpu
 
 	if repositories == nil {
 		out.println()
-		out.println("Asset available in vault only")
+		out.printf("Asset %s is in the vault but not installed.\n", assetName)
+		out.printf("Run 'sx add %s' to configure where to install it.\n", assetName)
 		return nil
 	}
 

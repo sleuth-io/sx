@@ -22,7 +22,7 @@ import (
 	"github.com/sleuth-io/sx/internal/scope"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
-	"github.com/sleuth-io/sx/internal/vault"
+	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
 // NewInstallCommand creates the install command
@@ -101,6 +101,11 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	// Fetch and parse lock file
 	lockFile, err := fetchLockFileWithCache(ctx, vault, cfg, status)
 	if err != nil {
+		if errors.Is(err, vaultpkg.ErrLockFileNotFound) {
+			styledOut.Info("No assets installed yet.")
+			styledOut.Muted("Add skills with 'sx add' or browse community skills with 'sx add --browse'.")
+			return nil
+		}
 		return err
 	}
 
@@ -535,7 +540,7 @@ func installClientHooks(ctx context.Context, targetClients []clients.Client, out
 	cfg, _ := config.Load()
 	var vaultOpts []bootstrap.Option
 	if cfg != nil {
-		if v, err := vault.NewFromConfig(cfg); err == nil {
+		if v, err := vaultpkg.NewFromConfig(cfg); err == nil {
 			vaultOpts = v.GetBootstrapOptions(ctx)
 		}
 	}

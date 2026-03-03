@@ -163,7 +163,7 @@ func runPostInit(cmd *cobra.Command, ctx context.Context, enabledClients []strin
 
 	// Final hint
 	styledOut.Newline()
-	styledOut.Muted("Run 'sx vault list' to see your assets or 'sx add' to add more.")
+	styledOut.Muted("Run 'sx vault list' to see your assets or 'sx add --browse' to add community skills.")
 }
 
 // showInitSummary displays a summary of what was configured
@@ -654,38 +654,7 @@ func promptFeaturedSkills(cmd *cobra.Command, ctx context.Context) {
 		return
 	}
 
-	var addedAny bool
-	for {
-		styledOut.Newline()
-
-		// Build options with done at the top, then skills
-		options := make([]components.Option, len(skills)+1)
-		options[0] = components.Option{
-			Label: "Done",
-			Value: "done",
-		}
-		for i, skill := range skills {
-			options[i+1] = components.Option{
-				Label:       skill.Name,
-				Value:       skill.URL,
-				Description: skill.Description,
-			}
-		}
-
-		selected, err := components.SelectWithDefault("Select a skill to add:", options, 0)
-		if err != nil || selected.Value == "done" {
-			break
-		}
-
-		styledOut.Newline()
-
-		// Run the add command with the skill URL (skip install prompt, we'll do it at the end)
-		if err := runAddSkipInstall(cmd, selected.Value); err != nil {
-			styledOut.Error(fmt.Sprintf("Failed to add asset: %v", err))
-		} else {
-			addedAny = true
-		}
-	}
+	addedAny := browseCommunitySkills(cmd)
 
 	// If any skills were added, prompt to install once
 	if addedAny {

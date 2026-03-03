@@ -81,7 +81,7 @@ func (p *PathVault) Authenticate(ctx context.Context) (string, error) {
 func (p *PathVault) GetLockFile(ctx context.Context, cachedETag string) (content []byte, etag string, notModified bool, err error) {
 	lockFilePath := filepath.Join(p.repoPath, constants.SkillLockFile)
 	if _, err := os.Stat(lockFilePath); os.IsNotExist(err) {
-		return nil, "", false, fmt.Errorf("%s not found in directory: %s", constants.SkillLockFile, p.repoPath)
+		return nil, "", false, ErrLockFileNotFound
 	}
 
 	data, err := os.ReadFile(lockFilePath)

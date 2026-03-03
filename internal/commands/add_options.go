@@ -10,6 +10,7 @@ import (
 type addOptions struct {
 	Yes         bool
 	NoInstall   bool
+	Browse      bool
 	Name        string
 	Type        string
 	Version     string

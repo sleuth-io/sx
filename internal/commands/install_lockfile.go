@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/sleuth-io/sx/internal/cache"
@@ -20,6 +21,10 @@ func fetchLockFileWithCache(ctx context.Context, vault vaultpkg.Vault, cfg *conf
 	cachedETag, _ := cache.LoadETag(cfg.RepositoryURL)
 	lockFileData, newETag, notModified, err := vault.GetLockFile(ctx, cachedETag)
 	if err != nil {
+		if errors.Is(err, vaultpkg.ErrLockFileNotFound) {
+			status.Clear()
+			return nil, vaultpkg.ErrLockFileNotFound
+		}
 		status.Fail("Failed to fetch lock file")
 		return nil, fmt.Errorf("failed to fetch lock file: %w", err)
 	}

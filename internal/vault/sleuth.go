@@ -83,6 +83,10 @@ func (s *SleuthVault) GetLockFile(ctx context.Context, cachedETag string) (conte
 		return nil, cachedETag, true, nil
 	}
 
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, "", false, ErrLockFileNotFound
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, "", false, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
