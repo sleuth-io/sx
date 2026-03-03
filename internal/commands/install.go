@@ -114,7 +114,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	if effectiveClientsFlag != "" {
 		env.Clients = filterClientsByFlag(env.Clients, effectiveClientsFlag)
 		if len(env.Clients) == 0 {
-			return fmt.Errorf("no matching clients found for: %s", effectiveClientsFlag)
+			return fmt.Errorf("no matching clients found for: %s (valid clients: %s)", effectiveClientsFlag, strings.Join(clients.AllClientIDs(), ", "))
 		}
 	}
 
