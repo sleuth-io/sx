@@ -244,6 +244,33 @@ func (c *Client) GetCurrentBranch(ctx context.Context, repoPath string) (string,
 	return branch, nil
 }
 
+// GetCurrentBranchSymbolic returns the current branch name using symbolic-ref,
+// which works even on empty repos (no commits yet).
+func (c *Client) GetCurrentBranchSymbolic(ctx context.Context, repoPath string) (string, error) {
+	cmd := execGitCommand(ctx, c.sshKeyPath, "symbolic-ref", "--short", "HEAD")
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("git symbolic-ref failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
+
+// CheckoutNewBranch creates and switches to a new branch
+func (c *Client) CheckoutNewBranch(ctx context.Context, repoPath, branch string) error {
+	cmd := execGitCommand(ctx, c.sshKeyPath, "checkout", "-b", branch)
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git checkout -b failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return nil
+}
+
 // Add stages files for commit
 func (c *Client) Add(ctx context.Context, repoPath string, paths ...string) error {
 	args := append([]string{"add"}, paths...)

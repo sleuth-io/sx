@@ -538,6 +538,16 @@ func (g *GitVault) commitAndPush(ctx context.Context, asset *lockfile.Asset) err
 		return err
 	}
 
+	// For empty repos, ensure we start on 'main' branch
+	if wasEmpty {
+		branch, _ := g.gitClient.GetCurrentBranchSymbolic(ctx, g.repoPath)
+		if branch != "main" {
+			if err := g.gitClient.CheckoutNewBranch(ctx, g.repoPath, "main"); err != nil {
+				return fmt.Errorf("failed to create main branch: %w", err)
+			}
+		}
+	}
+
 	// Ensure install.sh and README.md exist before committing
 	if err := g.ensureInstallScript(ctx); err != nil {
 		// Log warning but continue - these files are convenience features
