@@ -16,26 +16,31 @@ type addOptions struct {
 	Version     string
 	ScopeGlobal bool
 	ScopeRepos  []string
+	Scope       string // --scope: vault-specific scope entity (e.g., "personal")
 }
 
 // isNonInteractive returns true if any non-interactive flag is set
 func (o addOptions) isNonInteractive() bool {
-	return o.Yes || o.Name != "" || o.Type != "" || o.Version != "" || o.ScopeGlobal || len(o.ScopeRepos) > 0
+	return o.Yes || o.Name != "" || o.Type != "" || o.Version != "" || o.ScopeGlobal || len(o.ScopeRepos) > 0 || o.Scope != ""
 }
 
 // getScopes returns the scopes based on flags
-// Returns: (scopes, error)
+// Returns: (*scopeResult, error)
+// - Scope: vault-specific scope entity (e.g., "personal")
 // - ScopeGlobal: empty slice (global install)
 // - ScopeRepos: slice with repo scopes (parsed from "repo#path1,path2" format)
-// - Neither + NoInstall: nil (vault only, no lock file update)
+// - Neither + NoInstall: remove (vault only, no lock file update)
 // - Neither + Yes: empty slice (default to global)
 //
-// Note: Validation of mutually exclusive flags (--scope-global with --scope-repo)
+// Note: Validation of mutually exclusive flags (--scope-global with --scope-repo, --scope)
 // is performed in runAddWithFlags for early error reporting. This function
 // assumes valid input.
-func (o addOptions) getScopes() ([]lockfile.Scope, error) {
+func (o addOptions) getScopes() (*scopeResult, error) {
+	if o.Scope != "" {
+		return &scopeResult{ScopeEntity: o.Scope}, nil
+	}
 	if o.ScopeGlobal {
-		return []lockfile.Scope{}, nil // Empty = global
+		return &scopeResult{Scopes: []lockfile.Scope{}}, nil
 	}
 	if len(o.ScopeRepos) > 0 {
 		scopes := make([]lockfile.Scope, len(o.ScopeRepos))
@@ -43,12 +48,12 @@ func (o addOptions) getScopes() ([]lockfile.Scope, error) {
 			repo, paths := parseRepoSpec(repoSpec)
 			scopes[i] = lockfile.Scope{Repo: repo, Paths: paths}
 		}
-		return scopes, nil
+		return &scopeResult{Scopes: scopes}, nil
 	}
 	if o.Yes {
-		return []lockfile.Scope{}, nil // Default to global with --yes
+		return &scopeResult{Scopes: []lockfile.Scope{}}, nil // Default to global with --yes
 	}
-	return nil, nil // No scope flags = vault only (with --no-install)
+	return &scopeResult{Remove: true}, nil // No scope flags = vault only (with --no-install)
 }
 
 // parseRepoSpec parses "repo#path1,path2" format

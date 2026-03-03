@@ -50,7 +50,9 @@ type Vault interface {
 
 	// SetInstallations configures where an asset should be installed
 	// Updates the lock file with the installation scopes
-	SetInstallations(ctx context.Context, asset *lockfile.Asset) error
+	// scopeEntity is a vault-specific value from ScopeOptionProvider (e.g., "personal").
+	// Empty string means standard global/repo scoping via asset.Scopes.
+	SetInstallations(ctx context.Context, asset *lockfile.Asset, scopeEntity string) error
 
 	// GetVersionList retrieves available versions for an asset (for resolution)
 	// Only applicable to repositories with version management (Sleuth, not Git)
@@ -90,6 +92,20 @@ type Vault interface {
 	// GetBootstrapOptions returns bootstrap options provided by this vault
 	// These are options for MCP servers or other infrastructure the vault provides
 	GetBootstrapOptions(ctx context.Context) []bootstrap.Option
+}
+
+// ScopeOption represents a vault-specific scope option (e.g., "personal", "team")
+// displayed in the interactive UI alongside the built-in global/repo options.
+type ScopeOption struct {
+	Label       string // Display text (e.g., "Just for me")
+	Value       string // Machine value passed to SetInstallations
+	Description string // Help text
+}
+
+// ScopeOptionProvider is implemented by vaults that provide additional scope options
+// beyond global and per-repository scoping.
+type ScopeOptionProvider interface {
+	GetScopeOptions() []ScopeOption
 }
 
 // SourceHandler handles fetching assets from specific source types

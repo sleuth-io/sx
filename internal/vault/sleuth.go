@@ -22,6 +22,9 @@ import (
 	"github.com/sleuth-io/sx/internal/version"
 )
 
+// scopeEntityPersonal is the scope entity value for personal (user-only) installations.
+const scopeEntityPersonal = "personal"
+
 // SleuthVault implements Vault for Sleuth HTTP servers
 type SleuthVault struct {
 	serverURL       string
@@ -44,6 +47,13 @@ func NewSleuthVault(serverURL, authToken string) *SleuthVault {
 		httpHandler:     NewHTTPSourceHandler(authToken),
 		pathHandler:     NewPathSourceHandler(""), // Lock file dir not applicable for Sleuth
 		gitHandler:      NewGitSourceHandler(gitClient),
+	}
+}
+
+// GetScopeOptions returns additional scope options for the Sleuth vault
+func (s *SleuthVault) GetScopeOptions() []ScopeOption {
+	return []ScopeOption{
+		{Label: "Just for me", Value: scopeEntityPersonal, Description: "Install only for your account"},
 	}
 }
 
@@ -847,7 +857,7 @@ func (s *SleuthVault) executeGraphQLQuery(ctx context.Context, query string, var
 }
 
 // SetInstallations sets the installation scopes for an asset using GraphQL mutation
-func (s *SleuthVault) SetInstallations(ctx context.Context, asset *lockfile.Asset) error {
+func (s *SleuthVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, scopeEntity string) error {
 	mutation := `mutation SetAssetInstallations($input: SetAssetInstallationsInput!) {
 		setAssetInstallations(input: $input) {
 			asset {
@@ -880,12 +890,17 @@ func (s *SleuthVault) SetInstallations(ctx context.Context, asset *lockfile.Asse
 		}
 	}
 
+	input := map[string]any{
+		"assetName":    asset.Name,
+		"assetVersion": asset.Version,
+		"repositories": repositories,
+	}
+	if scopeEntity == scopeEntityPersonal {
+		input["personalOnly"] = true
+	}
+
 	variables := map[string]any{
-		"input": map[string]any{
-			"assetName":    asset.Name,
-			"assetVersion": asset.Version,
-			"repositories": repositories,
-		},
+		"input": input,
 	}
 
 	var gqlResp struct {

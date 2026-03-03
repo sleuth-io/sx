@@ -9,12 +9,20 @@ import (
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
+	"github.com/sleuth-io/sx/internal/vault"
 )
+
+// scopeResult holds the result of scope prompting
+type scopeResult struct {
+	Scopes      []lockfile.Scope
+	ScopeEntity string // vault-specific (e.g., "personal"), empty for standard scoping
+	Remove      bool   // User chose "remove from installation"
+}
 
 // promptForRepositoriesWithUI prompts user for repository configurations using new UI
 // Takes currentRepos (nil if not installed, empty slice if global, or list of repos)
-// Returns nil, nil if user chooses not to install (which removes it from lock file if present)
-func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockfile.Scope, styledOut *ui.Output, ioc *components.IOContext) ([]lockfile.Scope, error) {
+// Returns scopeResult with Remove=true if user chooses not to install
+func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockfile.Scope, v vault.Vault, styledOut *ui.Output, ioc *components.IOContext) (*scopeResult, error) {
 	// Display current state
 	displayCurrentInstallation(currentRepos, styledOut)
 
@@ -43,12 +51,24 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 			Value:       "modify",
 			Description: "Add repositories, remove existing ones, or change paths",
 		},
-		{
-			Label:       "Remove from installation",
-			Value:       "remove",
-			Description: "Uninstall this asset (keeps it in vault)",
-		},
 	}...)
+
+	// Add vault-specific scope options (e.g., "Just for me" for Sleuth vaults)
+	if sop, ok := v.(vault.ScopeOptionProvider); ok {
+		for _, opt := range sop.GetScopeOptions() {
+			options = append(options, components.Option{
+				Label:       opt.Label,
+				Value:       opt.Value,
+				Description: opt.Description,
+			})
+		}
+	}
+
+	options = append(options, components.Option{
+		Label:       "Remove from installation",
+		Value:       "remove",
+		Description: "Uninstall this asset (keeps it in vault)",
+	})
 
 	// Show selection menu
 	selected, err := ioc.Select("What would you like to do?", options)
@@ -57,10 +77,10 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 		if err.Error() == "selection cancelled" {
 			if currentRepos != nil {
 				styledOut.Info("No changes made")
-				return currentRepos, nil
+				return &scopeResult{Scopes: currentRepos}, nil
 			}
 			styledOut.Info("Cancelled")
-			return nil, nil
+			return &scopeResult{Remove: true}, nil
 		}
 		return nil, err
 	}
@@ -68,23 +88,36 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 	switch selected.Value {
 	case "keep": // Keep current settings
 		styledOut.Success(fmt.Sprintf("%s v%s - no changes made", assetName, version))
-		return currentRepos, nil
+		return &scopeResult{Scopes: currentRepos}, nil
 
 	case "global": // Make it available globally
 		styledOut.Success("Set to global installation")
-		return []lockfile.Scope{}, nil // Empty array = global
+		return &scopeResult{Scopes: []lockfile.Scope{}}, nil
 
 	case "modify": // Add/modify repository-specific installations
 		if currentRepos == nil {
 			currentRepos = []lockfile.Scope{}
 		}
-		return modifyRepositories(currentRepos, styledOut, ioc)
+		scopes, err := modifyRepositories(currentRepos, styledOut, ioc)
+		if err != nil {
+			return nil, err
+		}
+		return &scopeResult{Scopes: scopes}, nil
 
 	case "remove": // Remove from installation
 		styledOut.Info("Removing from installation (will remain available in vault)")
-		return nil, nil // nil means don't install
+		return &scopeResult{Remove: true}, nil
 
 	default:
+		// Check if the selection matches a vault-specific scope option
+		if sop, ok := v.(vault.ScopeOptionProvider); ok {
+			for _, opt := range sop.GetScopeOptions() {
+				if selected.Value == opt.Value {
+					styledOut.Success("Set to " + opt.Label)
+					return &scopeResult{ScopeEntity: selected.Value}, nil
+				}
+			}
+		}
 		return nil, errors.New("invalid selection")
 	}
 }

@@ -199,7 +199,7 @@ func (p *PathVault) GetLockFilePath() string {
 }
 
 // SetInstallations updates the lock file with installation scopes
-func (p *PathVault) SetInstallations(ctx context.Context, asset *lockfile.Asset) error {
+func (p *PathVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, scopeEntity string) error {
 	lockFilePath := p.GetLockFilePath()
 	return lockfile.AddOrUpdateAsset(lockFilePath, asset)
 }

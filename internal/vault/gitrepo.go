@@ -703,7 +703,7 @@ func (r *GitVault) PostUsageStats(ctx context.Context, jsonlData string) error {
 }
 
 // SetInstallations updates the lock file with installation scopes and commits/pushes
-func (g *GitVault) SetInstallations(ctx context.Context, asset *lockfile.Asset) error {
+func (g *GitVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, scopeEntity string) error {
 	// Acquire file lock to prevent concurrent git operations
 	fileLock, err := g.acquireFileLock(ctx)
 	if err != nil {

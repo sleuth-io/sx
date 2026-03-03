@@ -409,22 +409,22 @@ func uploadRuleZip(ctx context.Context, status *components.Status, vault vaultpk
 
 // configureRuleScopes prompts for and saves scope configuration
 func configureRuleScopes(ctx context.Context, out *outputHelper, vault vaultpkg.Vault, name, version string) error {
-	scopes, err := promptForRepositories(out, name, version, nil)
+	result, err := promptForRepositories(out, name, version, nil, vault)
 	if err != nil {
 		return fmt.Errorf("failed to configure scopes: %w", err)
 	}
 
-	if scopes != nil {
+	if !result.Remove {
 		lockAsset := &lockfile.Asset{
 			Name:    name,
 			Version: version,
 			Type:    asset.TypeRule,
-			Scopes:  scopes,
+			Scopes:  result.Scopes,
 			SourcePath: &lockfile.SourcePath{
 				Path: fmt.Sprintf("./assets/%s/%s", name, version),
 			},
 		}
-		if err := updateLockFile(ctx, out, vault, lockAsset); err != nil {
+		if err := updateLockFile(ctx, out, vault, lockAsset, result.ScopeEntity); err != nil {
 			return fmt.Errorf("failed to update lock file: %w", err)
 		}
 	}

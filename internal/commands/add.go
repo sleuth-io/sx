@@ -31,6 +31,7 @@ func NewAddCommand() *cobra.Command {
 		version     string
 		scopeGlobal bool
 		scopeRepos  []string
+		scope       string
 	)
 
 	cmd := &cobra.Command{
@@ -47,7 +48,8 @@ Examples:
   sx add ./my-skill --yes --scope-global
   sx add ./my-skill --yes --scope-repo git@github.com:org/repo.git
   sx add ./my-skill --yes --scope-repo "git@github.com:org/repo.git#backend/services"
-  sx add ./my-skill --yes --scope-repo "git@github.com:org/repo.git#backend,frontend"`,
+  sx add ./my-skill --yes --scope-repo "git@github.com:org/repo.git#backend,frontend"
+  sx add ./my-skill --yes --scope personal                 # Install only for yourself (Sleuth only)`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var input string
@@ -63,6 +65,7 @@ Examples:
 				Version:     version,
 				ScopeGlobal: scopeGlobal,
 				ScopeRepos:  scopeRepos,
+				Scope:       scope,
 			}
 			return runAddWithFlags(cmd, input, opts)
 		},
@@ -76,6 +79,7 @@ Examples:
 	cmd.Flags().StringVar(&version, "version", "", "Override suggested version")
 	cmd.Flags().BoolVar(&scopeGlobal, "scope-global", false, "Install globally (all repositories)")
 	cmd.Flags().StringArrayVar(&scopeRepos, "scope-repo", nil, "Install for specific repository, optionally with paths (format: repo_url or repo_url#path1,path2)")
+	cmd.Flags().StringVar(&scope, "scope", "", "Vault-specific scope (e.g., personal for Sleuth vaults)")
 
 	return cmd
 }
@@ -83,6 +87,9 @@ Examples:
 // runAddWithFlags is the main entry point
 func runAddWithFlags(cmd *cobra.Command, input string, opts addOptions) error {
 	// Validate scope flags upfront
+	if opts.Scope != "" && (opts.ScopeGlobal || len(opts.ScopeRepos) > 0) {
+		return errors.New("cannot use --scope with --scope-global or --scope-repo")
+	}
 	if opts.ScopeGlobal && len(opts.ScopeRepos) > 0 {
 		return errors.New("cannot use --scope-global with --scope-repo")
 	}
@@ -261,30 +268,30 @@ func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHel
 	}
 
 	// Get scopes (from flags if non-interactive, otherwise prompt)
-	var scopes []lockfile.Scope
+	var result *scopeResult
 	var err error
 	if opts.isNonInteractive() {
-		scopes, err = opts.getScopes()
+		result, err = opts.getScopes()
 		if err != nil {
 			return err
 		}
 	} else {
-		scopes, err = promptForRepositories(out, foundAsset.Name, foundAsset.Version, currentScopes)
+		result, err = promptForRepositories(out, foundAsset.Name, foundAsset.Version, currentScopes, vault)
 		if err != nil {
 			return fmt.Errorf("failed to configure repositories: %w", err)
 		}
 	}
 
-	// If nil, user chose to remove from installation
-	if scopes == nil {
+	// If remove, user chose to remove from installation
+	if result.Remove {
 		return handleAssetRemoval(ctx, cmd, out, vault, foundAsset, promptInstall)
 	}
 
 	// Update asset with new repositories
-	foundAsset.Scopes = scopes
+	foundAsset.Scopes = result.Scopes
 
 	// Update lock file
-	if err := updateLockFile(ctx, out, vault, foundAsset); err != nil {
+	if err := updateLockFile(ctx, out, vault, foundAsset, result.ScopeEntity); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 
@@ -383,17 +390,17 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 	// --no-install: still write lock file (global scope) but skip install prompt
 	if opts.NoInstall {
 		lockAsset.Scopes = []lockfile.Scope{}
-		if err := updateLockFile(ctx, out, vault, lockAsset); err != nil {
+		if err := updateLockFile(ctx, out, vault, lockAsset, ""); err != nil {
 			return fmt.Errorf("failed to update lock file: %w", err)
 		}
 		return nil
 	}
 
 	// Get scopes (from flags if --yes, otherwise prompt)
-	var scopes []lockfile.Scope
+	var result *scopeResult
 	var err error
 	if opts.Yes {
-		scopes, err = opts.getScopes()
+		result, err = opts.getScopes()
 		if err != nil {
 			return err
 		}
@@ -403,18 +410,18 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 		if existingArt, exists := lockfile.FindAsset(lockFilePath, name); exists {
 			currentScopes = existingArt.Scopes
 		}
-		scopes, err = promptForRepositories(out, name, version, currentScopes)
+		result, err = promptForRepositories(out, name, version, currentScopes, vault)
 		if err != nil {
 			return fmt.Errorf("failed to configure repositories: %w", err)
 		}
-		if scopes == nil {
+		if result.Remove {
 			out.printf("Run 'sx add %s' to configure where to install it.\n", name)
 			return nil
 		}
 	}
 
-	lockAsset.Scopes = scopes
-	if err := updateLockFile(ctx, out, vault, lockAsset); err != nil {
+	lockAsset.Scopes = result.Scopes
+	if err := updateLockFile(ctx, out, vault, lockAsset, result.ScopeEntity); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 
@@ -470,16 +477,16 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 	// --no-install: still write lock file (global scope) but skip install prompt
 	if opts.NoInstall {
 		lockAsset.Scopes = []lockfile.Scope{}
-		if err := updateLockFile(ctx, out, vault, lockAsset); err != nil {
+		if err := updateLockFile(ctx, out, vault, lockAsset, ""); err != nil {
 			return fmt.Errorf("failed to update lock file: %w", err)
 		}
 		return nil
 	}
 
 	// Get scopes (from flags if --yes, otherwise prompt)
-	var scopes []lockfile.Scope
+	var result *scopeResult
 	if opts.Yes {
-		scopes, err = opts.getScopes()
+		result, err = opts.getScopes()
 		if err != nil {
 			return err
 		}
@@ -489,22 +496,22 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 		if existingArt, exists := lockfile.FindAsset(lockFilePath, lockAsset.Name); exists {
 			currentScopes = existingArt.Scopes
 		}
-		scopes, err = promptForRepositories(out, lockAsset.Name, lockAsset.Version, currentScopes)
+		result, err = promptForRepositories(out, lockAsset.Name, lockAsset.Version, currentScopes, vault)
 		if err != nil {
 			return fmt.Errorf("failed to configure scopes: %w", err)
 		}
-		// If nil, user chose not to install
-		if scopes == nil {
+		// If remove, user chose not to install
+		if result.Remove {
 			out.printf("Run 'sx add %s' to configure where to install it.\n", lockAsset.Name)
 			return nil
 		}
 	}
 
 	// Set scopes on asset
-	lockAsset.Scopes = scopes
+	lockAsset.Scopes = result.Scopes
 
 	// Update lock file with asset
-	if err := updateLockFile(ctx, out, vault, lockAsset); err != nil {
+	if err := updateLockFile(ctx, out, vault, lockAsset, result.ScopeEntity); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 
@@ -513,10 +520,10 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 
 // promptForRepositories prompts user for repository configurations and returns them
 // Takes currentRepos (nil if not installed, empty slice if global, or list of repos)
-// Returns nil, nil if user chooses not to install (which removes it from lock file if present)
-func promptForRepositories(out *outputHelper, assetName, version string, currentRepos []lockfile.Scope) ([]lockfile.Scope, error) {
+// Returns scopeResult with Remove=true if user chooses not to install
+func promptForRepositories(out *outputHelper, assetName, version string, currentRepos []lockfile.Scope, v vaultpkg.Vault) (*scopeResult, error) {
 	// Use the new UI components (they automatically fall back to simple text in non-TTY)
 	styledOut := ui.NewOutput(out.cmd.OutOrStdout(), out.cmd.ErrOrStderr())
 	ioc := components.NewIOContext(out.cmd.InOrStdin(), out.cmd.OutOrStdout())
-	return promptForRepositoriesWithUI(assetName, version, currentRepos, styledOut, ioc)
+	return promptForRepositoriesWithUI(assetName, version, currentRepos, v, styledOut, ioc)
 }

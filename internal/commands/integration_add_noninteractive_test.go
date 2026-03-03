@@ -220,6 +220,31 @@ prompt-file = "SKILL.md"
 		}
 	})
 
+	t.Run("add with --scope personal sets scope entity", func(t *testing.T) {
+		// Clean up previous lock file
+		os.Remove(filepath.Join(vaultDir, "sx.lock"))
+
+		addCmd := NewAddCommand()
+		addCmd.SetArgs([]string{sourceDir, "--yes", "--scope", "personal"})
+
+		if err := addCmd.Execute(); err != nil {
+			t.Fatalf("Failed to add skill: %v", err)
+		}
+
+		lockData, _ := os.ReadFile(filepath.Join(vaultDir, "sx.lock"))
+		lf, _ := lockfile.Parse(lockData)
+
+		if len(lf.Assets) == 0 {
+			t.Fatal("Expected at least one asset in lock file")
+		}
+
+		// With a path vault, scope entity is ignored — asset should be global
+		asset := lf.Assets[0]
+		if !asset.IsGlobal() {
+			t.Error("Expected global scope for asset with scope entity on path vault")
+		}
+	})
+
 	t.Run("add with --no-install writes lock file but skips install", func(t *testing.T) {
 		// Clean up previous lock file
 		os.Remove(filepath.Join(vaultDir, "sx.lock"))
@@ -303,6 +328,32 @@ func TestAddNonInteractiveErrors(t *testing.T) {
 		err := addCmd.Execute()
 		if err == nil {
 			t.Error("Expected error when no input provided in non-interactive mode")
+		}
+	})
+
+	t.Run("error when --scope and --scope-global both used", func(t *testing.T) {
+		sourceDir := env.MkdirAll(filepath.Join(env.TempDir, "source-skill-scope1"))
+		env.WriteFile(filepath.Join(sourceDir, "README.md"), "# Test")
+
+		addCmd := NewAddCommand()
+		addCmd.SetArgs([]string{sourceDir, "--yes", "--scope", "personal", "--scope-global"})
+
+		err := addCmd.Execute()
+		if err == nil {
+			t.Error("Expected error when both --scope and --scope-global are used")
+		}
+	})
+
+	t.Run("error when --scope and --scope-repo both used", func(t *testing.T) {
+		sourceDir := env.MkdirAll(filepath.Join(env.TempDir, "source-skill-scope2"))
+		env.WriteFile(filepath.Join(sourceDir, "README.md"), "# Test")
+
+		addCmd := NewAddCommand()
+		addCmd.SetArgs([]string{sourceDir, "--yes", "--scope", "personal", "--scope-repo", "git@github.com:org/repo.git"})
+
+		err := addCmd.Execute()
+		if err == nil {
+			t.Error("Expected error when both --scope and --scope-repo are used")
 		}
 	})
 
