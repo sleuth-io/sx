@@ -6,49 +6,6 @@ import (
 	"github.com/sleuth-io/sx/internal/lockfile"
 )
 
-func TestHasScopeFlags(t *testing.T) {
-	tests := []struct {
-		name     string
-		opts     addOptions
-		expected bool
-	}{
-		{
-			name:     "no flags",
-			opts:     addOptions{},
-			expected: false,
-		},
-		{
-			name:     "yes only",
-			opts:     addOptions{Yes: true},
-			expected: false,
-		},
-		{
-			name:     "scope-global",
-			opts:     addOptions{ScopeGlobal: true},
-			expected: true,
-		},
-		{
-			name:     "scope-repo",
-			opts:     addOptions{ScopeRepos: []string{"repo"}},
-			expected: true,
-		},
-		{
-			name:     "scope entity",
-			opts:     addOptions{Scope: "personal"},
-			expected: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tt.opts.hasScopeFlags()
-			if got != tt.expected {
-				t.Errorf("hasScopeFlags() = %v, want %v", got, tt.expected)
-			}
-		})
-	}
-}
-
 func TestGetScopes(t *testing.T) {
 	tests := []struct {
 		name           string

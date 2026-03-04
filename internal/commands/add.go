@@ -436,6 +436,7 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 		if err := inheritLockFile(ctx, out, vault, lockAsset); err != nil {
 			return fmt.Errorf("failed to inherit installations: %w", err)
 		}
+		out.printf("✓ Preserved existing scope for %s@%s\n", name, version)
 		return nil
 	}
 

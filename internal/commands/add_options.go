@@ -24,11 +24,6 @@ func (o addOptions) isNonInteractive() bool {
 	return o.Yes || o.Name != "" || o.Type != "" || o.Version != "" || o.ScopeGlobal || len(o.ScopeRepos) > 0 || o.Scope != ""
 }
 
-// hasScopeFlags returns true if any scope flag was explicitly provided
-func (o addOptions) hasScopeFlags() bool {
-	return o.ScopeGlobal || len(o.ScopeRepos) > 0 || o.Scope != ""
-}
-
 // getScopes returns the scopes based on flags
 // Returns: (*scopeResult, error)
 // - Scope: vault-specific scope entity (e.g., "personal")

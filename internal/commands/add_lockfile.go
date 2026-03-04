@@ -23,8 +23,5 @@ func updateLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, as
 // Used when --yes is provided without scope flags, so existing installations
 // are not overwritten.
 func inheritLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, asset *lockfile.Asset) error {
-	if err := repo.InheritInstallations(ctx, asset); err != nil {
-		return fmt.Errorf("failed to inherit installations: %w", err)
-	}
-	return nil
+	return repo.InheritInstallations(ctx, asset)
 }
