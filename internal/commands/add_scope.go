@@ -17,6 +17,7 @@ type scopeResult struct {
 	Scopes      []lockfile.Scope
 	ScopeEntity string // vault-specific (e.g., "personal"), empty for standard scoping
 	Remove      bool   // User chose "remove from installation"
+	Inherit     bool   // Preserve existing installations (no scope flags provided)
 }
 
 // promptForRepositoriesWithUI prompts user for repository configurations using new UI

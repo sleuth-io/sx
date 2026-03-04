@@ -941,6 +941,12 @@ func (s *SleuthVault) SetInstallations(ctx context.Context, asset *lockfile.Asse
 	return nil
 }
 
+// InheritInstallations is a no-op for Sleuth vaults.
+// The server auto-inherits installations when AddAsset uploads a new version.
+func (s *SleuthVault) InheritInstallations(ctx context.Context, asset *lockfile.Asset) error {
+	return nil
+}
+
 // Role represents a skill profile (role) from the server
 type Role struct {
 	Title       string `json:"title"`

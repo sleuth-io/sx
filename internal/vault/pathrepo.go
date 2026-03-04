@@ -204,6 +204,16 @@ func (p *PathVault) SetInstallations(ctx context.Context, asset *lockfile.Asset,
 	return lockfile.AddOrUpdateAsset(lockFilePath, asset)
 }
 
+// InheritInstallations preserves existing scopes when adding a new version.
+// Reads the lock file, finds any existing version of the asset, and copies its scopes.
+func (p *PathVault) InheritInstallations(ctx context.Context, asset *lockfile.Asset) error {
+	lockFilePath := p.GetLockFilePath()
+	if existing, exists := lockfile.FindAsset(lockFilePath, asset.Name); exists {
+		asset.Scopes = existing.Scopes
+	}
+	return lockfile.AddOrUpdateAsset(lockFilePath, asset)
+}
+
 // RemoveAsset removes an asset from the lock file
 func (p *PathVault) RemoveAsset(ctx context.Context, assetName, version string) error {
 	return lockfile.RemoveAsset(p.GetLockFilePath(), assetName, version)

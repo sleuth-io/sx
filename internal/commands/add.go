@@ -287,6 +287,15 @@ func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHel
 		return handleAssetRemoval(ctx, cmd, out, vault, foundAsset, promptInstall)
 	}
 
+	// If inherit, preserve existing installations
+	if result.Inherit {
+		if err := inheritLockFile(ctx, out, vault, foundAsset); err != nil {
+			return fmt.Errorf("failed to inherit installations: %w", err)
+		}
+		out.printf("✓ Preserved existing scope for %s@%s\n", foundAsset.Name, foundAsset.Version)
+		return nil
+	}
+
 	// Update asset with new repositories
 	foundAsset.Scopes = result.Scopes
 
@@ -294,6 +303,8 @@ func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHel
 	if err := updateLockFile(ctx, out, vault, foundAsset, result.ScopeEntity); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
+
+	out.printf("✓ Updated scope for %s@%s\n", foundAsset.Name, foundAsset.Version)
 
 	// Prompt to run install (if enabled)
 	if promptInstall {
@@ -420,6 +431,15 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 		}
 	}
 
+	// If inherit, preserve existing installations
+	if result.Inherit {
+		if err := inheritLockFile(ctx, out, vault, lockAsset); err != nil {
+			return fmt.Errorf("failed to inherit installations: %w", err)
+		}
+		out.printf("✓ Preserved existing scope for %s@%s\n", name, version)
+		return nil
+	}
+
 	lockAsset.Scopes = result.Scopes
 	if err := updateLockFile(ctx, out, vault, lockAsset, result.ScopeEntity); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
@@ -505,6 +525,14 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 			out.printf("Run 'sx add %s' to configure where to install it.\n", lockAsset.Name)
 			return nil
 		}
+	}
+
+	// If inherit, preserve existing installations
+	if result.Inherit {
+		if err := inheritLockFile(ctx, out, vault, lockAsset); err != nil {
+			return fmt.Errorf("failed to inherit installations: %w", err)
+		}
+		return nil
 	}
 
 	// Set scopes on asset

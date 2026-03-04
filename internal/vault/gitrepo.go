@@ -730,6 +730,41 @@ func (g *GitVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, 
 	return nil
 }
 
+// InheritInstallations preserves existing scopes when adding a new version.
+// Reads the lock file, finds any existing version of the asset, copies its scopes,
+// then commits and pushes.
+func (g *GitVault) InheritInstallations(ctx context.Context, asset *lockfile.Asset) error {
+	// Acquire file lock to prevent concurrent git operations
+	fileLock, err := g.acquireFileLock(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	defer func() { _ = fileLock.Unlock() }()
+
+	// Clone or update repository
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+
+	// Copy scopes from existing asset if found
+	lockFilePath := g.GetLockFilePath()
+	if existing, exists := lockfile.FindAsset(lockFilePath, asset.Name); exists {
+		asset.Scopes = existing.Scopes
+	}
+
+	// Update lock file with asset
+	if err := lockfile.AddOrUpdateAsset(lockFilePath, asset); err != nil {
+		return fmt.Errorf("failed to update lock file: %w", err)
+	}
+
+	// Commit and push changes
+	if err := g.commitAndPush(ctx, asset); err != nil {
+		return fmt.Errorf("failed to commit and push: %w", err)
+	}
+
+	return nil
+}
+
 // RemoveAsset removes an asset from the lock file and pushes to remote
 func (g *GitVault) RemoveAsset(ctx context.Context, assetName, version string) error {
 	// Acquire file lock to prevent concurrent git operations

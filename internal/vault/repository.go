@@ -54,6 +54,14 @@ type Vault interface {
 	// Empty string means standard global/repo scoping via asset.Scopes.
 	SetInstallations(ctx context.Context, asset *lockfile.Asset, scopeEntity string) error
 
+	// InheritInstallations preserves existing installation scopes for an asset.
+	// Called when no scope flags are provided (e.g., `sx add ./skill --yes`).
+	// For server-managed vaults (Sleuth), this is a no-op since the server
+	// auto-inherits installations when a new version is uploaded.
+	// For file-based vaults (Path, Git), this copies scopes from any existing
+	// version of the asset in the lock file.
+	InheritInstallations(ctx context.Context, asset *lockfile.Asset) error
+
 	// GetVersionList retrieves available versions for an asset (for resolution)
 	// Only applicable to repositories with version management (Sleuth, not Git)
 	GetVersionList(ctx context.Context, name string) ([]string, error)

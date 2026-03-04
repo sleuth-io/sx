@@ -18,3 +18,10 @@ func updateLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, as
 
 	return nil
 }
+
+// inheritLockFile preserves existing installation scopes for the asset.
+// Used when --yes is provided without scope flags, so existing installations
+// are not overwritten.
+func inheritLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, asset *lockfile.Asset) error {
+	return repo.InheritInstallations(ctx, asset)
+}

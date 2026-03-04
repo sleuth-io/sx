@@ -138,9 +138,23 @@ func handleNewAssetFromVault(ctx context.Context, cmd *cobra.Command, out *outpu
 		Scopes: result.Scopes,
 	}
 
+	// If inherit, preserve existing installations
+	if result.Inherit {
+		if err := inheritLockFile(ctx, out, vault, newAsset); err != nil {
+			return fmt.Errorf("failed to inherit installations: %w", err)
+		}
+		out.printf("✓ Preserved existing scope for %s@%s\n", newAsset.Name, newAsset.Version)
+		if promptInstall {
+			promptRunInstall(cmd, ctx, out)
+		}
+		return nil
+	}
+
 	if err := updateLockFile(ctx, out, vault, newAsset, result.ScopeEntity); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
+
+	out.printf("✓ Updated scope for %s@%s\n", newAsset.Name, newAsset.Version)
 
 	if promptInstall {
 		promptRunInstall(cmd, ctx, out)

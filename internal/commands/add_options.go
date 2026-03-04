@@ -30,7 +30,7 @@ func (o addOptions) isNonInteractive() bool {
 // - ScopeGlobal: empty slice (global install)
 // - ScopeRepos: slice with repo scopes (parsed from "repo#path1,path2" format)
 // - Neither + NoInstall: remove (vault only, no lock file update)
-// - Neither + Yes: empty slice (default to global)
+// - Neither + Yes (no scope flags): Inherit=true (preserve existing installations)
 //
 // Note: Validation of mutually exclusive flags (--scope-global with --scope-repo, --scope)
 // is performed in runAddWithFlags for early error reporting. This function
@@ -51,7 +51,7 @@ func (o addOptions) getScopes() (*scopeResult, error) {
 		return &scopeResult{Scopes: scopes}, nil
 	}
 	if o.Yes {
-		return &scopeResult{Scopes: []lockfile.Scope{}}, nil // Default to global with --yes
+		return &scopeResult{Inherit: true}, nil // No scope flags: inherit existing installations
 	}
 	return &scopeResult{Remove: true}, nil // No scope flags = vault only (with --no-install)
 }
