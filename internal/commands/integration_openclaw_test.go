@@ -4,18 +4,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients"
-	"github.com/sleuth-io/sx/internal/clients/openclaw"
+	_ "github.com/sleuth-io/sx/internal/clients/openclaw"
 )
-
-func init() {
-	// Ensure openclaw client is registered for these tests
-	clients.Register(openclaw.NewClient())
-}
 
 // TestOpenClawClientDetection tests that OpenClaw is detected when ~/.openclaw exists
 func TestOpenClawClientDetection(t *testing.T) {
@@ -125,7 +121,7 @@ func TestOpenClawBootstrapInstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to read HOOK.md: %v", err)
 	}
-	if !contains(string(hookContent), "before_agent_start") {
+	if !strings.Contains(string(hookContent), "before_agent_start") {
 		t.Error("HOOK.md should contain before_agent_start event")
 	}
 
@@ -134,7 +130,7 @@ func TestOpenClawBootstrapInstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to read index.ts: %v", err)
 	}
-	if !contains(string(indexContent), "sx install --hook-mode --client=openclaw") {
+	if !strings.Contains(string(indexContent), "sx install --hook-mode --client=openclaw") {
 		t.Error("index.ts should contain sx install command")
 	}
 }
@@ -332,17 +328,4 @@ func TestOpenClawRuleCapabilities(t *testing.T) {
 	if client.RuleCapabilities() != nil {
 		t.Error("OpenClaw should not have rule capabilities")
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

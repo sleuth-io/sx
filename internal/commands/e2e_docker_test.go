@@ -22,9 +22,9 @@ type DockerClientTest struct {
 	SxBinary string
 
 	// Resolved during Setup
-	ClientHome       string // e.g. testDir/client-home
-	FakeHome         string // e.g. testDir/fakehome
-	SxConfigDir      string // host sx config
+	ClientHome        string // e.g. testDir/client-home
+	FakeHome          string // e.g. testDir/fakehome
+	SxConfigDir       string // host sx config
 	ContainerSxConfig string // container sx config
 
 	// Client-specific configuration (set before calling Setup)

@@ -403,11 +403,13 @@ func (c *Client) ShouldInstall(_ context.Context) (bool, error) {
 		return true, nil
 	}
 
-	// Use a synthetic session ID based on the current hour to dedup within a 1-hour window
-	sessionID := time.Now().UTC().Truncate(time.Hour).Format(time.RFC3339)
+	// Use a synthetic session ID based on the current 30-minute window to dedup
+	now := time.Now().UTC()
+	window := now.Truncate(30 * time.Minute)
+	sessionID := window.Format(time.RFC3339)
 
 	if sessionCache.HasSession(sessionID) {
-		log.Debug("skipping install, already ran within this hour", "session", sessionID)
+		log.Debug("skipping install, already ran within this 30-minute window", "session", sessionID)
 		return false, nil
 	}
 

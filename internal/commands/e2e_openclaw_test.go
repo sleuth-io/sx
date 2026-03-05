@@ -9,7 +9,7 @@ import (
 )
 
 // TestE2EOpenClawSkillDiscovery verifies that OpenClaw discovers sx-installed skills.
-// Requires: Docker, SX_E2E=1, API key in /home/mrdon/dev/pulse/.env
+// Requires: Docker, SX_E2E=1, ANTHROPIC_API_KEY env var
 func TestE2EOpenClawSkillDiscovery(t *testing.T) {
 	d := newOpenClawDockerTest(t)
 
@@ -163,18 +163,11 @@ func newOpenClawDockerTest(t *testing.T) *DockerClientTest {
 
 func loadAPIKey(t *testing.T) string {
 	t.Helper()
-	envFile := "/home/mrdon/dev/pulse/.env"
-	data, err := os.ReadFile(envFile)
-	if err != nil {
-		t.Skipf("API key file not found: %s", envFile)
+	key := os.Getenv("ANTHROPIC_API_KEY")
+	if key == "" {
+		t.Skip("ANTHROPIC_API_KEY environment variable not set")
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, "SLEUTH_CLAUDE_API_KEY=") {
-			return strings.TrimPrefix(line, "SLEUTH_CLAUDE_API_KEY=")
-		}
-	}
-	t.Skip("SLEUTH_CLAUDE_API_KEY not found in env file")
-	return ""
+	return key
 }
 
 func onboardOpenClaw(t *testing.T, d *DockerClientTest) {
