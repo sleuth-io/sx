@@ -121,7 +121,9 @@ func browseCommunitySkills(cmd *cobra.Command) bool {
 
 		// Build the select title with context
 		var title string
-		if query != "" {
+		if len(current) == 0 {
+			title = "Browse skills.sh:"
+		} else if query != "" {
 			title = fmt.Sprintf("Results for \"%s\" (%d-%d of %d):",
 				query, offset+1, end, len(current))
 		} else {
