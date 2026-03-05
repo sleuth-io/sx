@@ -2,8 +2,6 @@ package openclaw
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -241,10 +239,12 @@ func (c *Client) EnsureAssetSupport(_ context.Context, _ *clients.InstallScope) 
 }
 
 // GetBootstrapOptions returns bootstrap options for OpenClaw.
+// Note: MCP server registration is not yet supported — OpenClaw's config
+// validation rejects unknown keys at the root level. We'll add MCP support
+// once we confirm the correct config location.
 func (c *Client) GetBootstrapOptions(_ context.Context) []bootstrap.Option {
 	return []bootstrap.Option{
 		bootstrap.SessionHook,
-		bootstrap.SleuthAIQueryMCP(),
 	}
 }
 
@@ -272,15 +272,6 @@ func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) 
 		}
 		if err := c.installCronJob(); err != nil {
 			return err
-		}
-	}
-
-	// Install MCP servers from options that have MCPConfig
-	for _, opt := range opts {
-		if opt.MCPConfig != nil {
-			if err := c.installMCPServer(openclawDir, opt.MCPConfig); err != nil {
-				return fmt.Errorf("failed to install MCP server %s: %w", opt.MCPConfig.Name, err)
-			}
 		}
 	}
 
@@ -358,46 +349,6 @@ func (c *Client) installCronJob() error {
 	return nil
 }
 
-// installMCPServer adds an MCP server to openclaw.json
-func (c *Client) installMCPServer(openclawDir string, config *bootstrap.MCPServerConfig) error {
-	log := logger.Get()
-	configPath := filepath.Join(openclawDir, "openclaw.json")
-
-	cfg, err := readOpenClawConfig(configPath)
-	if err != nil {
-		return err
-	}
-
-	// Get or create mcpServers section
-	mcpServers, ok := cfg["mcpServers"].(map[string]any)
-	if !ok {
-		mcpServers = make(map[string]any)
-		cfg["mcpServers"] = mcpServers
-	}
-
-	// Build server config
-	serverConfig := map[string]any{
-		"command": config.Command,
-		"args":    config.Args,
-	}
-	if len(config.Env) > 0 {
-		envMap := make(map[string]any)
-		for k, v := range config.Env {
-			envMap[k] = v
-		}
-		serverConfig["env"] = envMap
-	}
-
-	mcpServers[config.Name] = serverConfig
-
-	if err := writeOpenClawConfig(configPath, cfg); err != nil {
-		return err
-	}
-
-	log.Info("MCP server installed", "server", config.Name, "command", config.Command)
-	return nil
-}
-
 // UninstallBootstrap removes OpenClaw infrastructure
 func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
 	home, err := os.UserHomeDir()
@@ -418,11 +369,7 @@ func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option
 			c.removeCronJob()
 
 		default:
-			if opt.MCPConfig != nil {
-				if err := c.removeMCPServer(openclawDir, opt.MCPConfig.Name); err != nil {
-					return err
-				}
-			}
+			// No other bootstrap options currently supported
 		}
 	}
 	return nil
@@ -442,35 +389,6 @@ func (c *Client) removeCronJob() {
 	} else {
 		log.Info("cron job removed", "name", "sx-install")
 	}
-}
-
-// removeMCPServer removes an MCP server from openclaw.json
-func (c *Client) removeMCPServer(openclawDir string, name string) error {
-	log := logger.Get()
-	configPath := filepath.Join(openclawDir, "openclaw.json")
-
-	cfg, err := readOpenClawConfig(configPath)
-	if err != nil {
-		return err
-	}
-
-	mcpServers, ok := cfg["mcpServers"].(map[string]any)
-	if !ok {
-		return nil // No mcpServers section, nothing to remove
-	}
-
-	delete(mcpServers, name)
-
-	if len(mcpServers) == 0 {
-		delete(cfg, "mcpServers")
-	}
-
-	if err := writeOpenClawConfig(configPath, cfg); err != nil {
-		return err
-	}
-
-	log.Info("MCP server removed", "server", name)
-	return nil
 }
 
 // ShouldInstall checks if installation should proceed based on timestamp-based dedup.
@@ -558,42 +476,6 @@ func (c *Client) GetAssetPath(_ context.Context, name string, assetType asset.Ty
 	default:
 		return "", fmt.Errorf("path not supported for type: %s", assetType)
 	}
-}
-
-// readOpenClawConfig reads openclaw.json, returning empty map if file doesn't exist
-func readOpenClawConfig(path string) (map[string]any, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return make(map[string]any), nil
-		}
-		return nil, fmt.Errorf("failed to read openclaw.json: %w", err)
-	}
-
-	var config map[string]any
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse openclaw.json: %w", err)
-	}
-	return config, nil
-}
-
-// writeOpenClawConfig writes openclaw.json with pretty formatting
-func writeOpenClawConfig(path string, config map[string]any) error {
-	// Ensure parent directory exists
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal openclaw.json: %w", err)
-	}
-	data = append(data, '\n')
-
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return fmt.Errorf("failed to write openclaw.json: %w", err)
-	}
-	return nil
 }
 
 func init() {

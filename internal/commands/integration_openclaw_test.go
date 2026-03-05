@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -106,7 +105,6 @@ func TestOpenClawBootstrapInstall(t *testing.T) {
 	ctx := context.Background()
 	opts := []bootstrap.Option{
 		bootstrap.SessionHook,
-		bootstrap.SleuthAIQueryMCP(),
 	}
 
 	if err := client.InstallBootstrap(ctx, opts); err != nil {
@@ -139,26 +137,6 @@ func TestOpenClawBootstrapInstall(t *testing.T) {
 	if !contains(string(indexContent), "sx install --hook-mode --client=openclaw") {
 		t.Error("index.ts should contain sx install command")
 	}
-
-	// Verify MCP server in openclaw.json
-	configPath := filepath.Join(openclawDir, "openclaw.json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatalf("Failed to read openclaw.json: %v", err)
-	}
-
-	var config map[string]any
-	if err := json.Unmarshal(data, &config); err != nil {
-		t.Fatalf("Failed to parse openclaw.json: %v", err)
-	}
-
-	mcpServers, ok := config["mcpServers"].(map[string]any)
-	if !ok {
-		t.Fatal("mcpServers section should exist in openclaw.json")
-	}
-	if _, ok := mcpServers["sx"]; !ok {
-		t.Error("sx MCP server should be registered in openclaw.json")
-	}
 }
 
 // TestOpenClawBootstrapIdempotent verifies install can be run twice without duplicates
@@ -178,7 +156,6 @@ func TestOpenClawBootstrapIdempotent(t *testing.T) {
 	ctx := context.Background()
 	opts := []bootstrap.Option{
 		bootstrap.SessionHook,
-		bootstrap.SleuthAIQueryMCP(),
 	}
 
 	// Install twice
@@ -189,29 +166,17 @@ func TestOpenClawBootstrapIdempotent(t *testing.T) {
 		t.Fatalf("Second InstallBootstrap error: %v", err)
 	}
 
-	// Verify no duplicates in openclaw.json
-	configPath := filepath.Join(openclawDir, "openclaw.json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatalf("Failed to read openclaw.json: %v", err)
+	// Verify hook files still exist and aren't duplicated
+	hookDir := filepath.Join(openclawDir, "hooks", "sx-install")
+	if _, err := os.Stat(filepath.Join(hookDir, "HOOK.md")); err != nil {
+		t.Error("HOOK.md should still exist after second install")
 	}
-
-	var config map[string]any
-	if err := json.Unmarshal(data, &config); err != nil {
-		t.Fatalf("Failed to parse openclaw.json: %v", err)
-	}
-
-	mcpServers, ok := config["mcpServers"].(map[string]any)
-	if !ok {
-		t.Fatal("mcpServers section should exist")
-	}
-	// Should have exactly one sx entry
-	if len(mcpServers) != 1 {
-		t.Errorf("Expected 1 MCP server, got %d", len(mcpServers))
+	if _, err := os.Stat(filepath.Join(hookDir, "index.ts")); err != nil {
+		t.Error("index.ts should still exist after second install")
 	}
 }
 
-// TestOpenClawBootstrapUninstall verifies cleanup removes hook dir and MCP config
+// TestOpenClawBootstrapUninstall verifies cleanup removes hook dir
 func TestOpenClawBootstrapUninstall(t *testing.T) {
 	env := NewTestEnv(t)
 
@@ -228,7 +193,6 @@ func TestOpenClawBootstrapUninstall(t *testing.T) {
 	ctx := context.Background()
 	opts := []bootstrap.Option{
 		bootstrap.SessionHook,
-		bootstrap.SleuthAIQueryMCP(),
 	}
 
 	// Install first
@@ -236,14 +200,11 @@ func TestOpenClawBootstrapUninstall(t *testing.T) {
 		t.Fatalf("InstallBootstrap error: %v", err)
 	}
 
-	// Add some other config to verify it's preserved
-	configPath := filepath.Join(openclawDir, "openclaw.json")
-	data, _ := os.ReadFile(configPath)
-	var config map[string]any
-	json.Unmarshal(data, &config)
-	config["userSetting"] = "preserved"
-	data, _ = json.MarshalIndent(config, "", "  ")
-	os.WriteFile(configPath, data, 0644)
+	// Verify hook dir exists
+	hookDir := filepath.Join(openclawDir, "hooks", "sx-install")
+	if _, err := os.Stat(hookDir); err != nil {
+		t.Fatalf("Hook dir should exist after install: %v", err)
+	}
 
 	// Uninstall
 	if err := client.UninstallBootstrap(ctx, opts); err != nil {
@@ -251,25 +212,8 @@ func TestOpenClawBootstrapUninstall(t *testing.T) {
 	}
 
 	// Hook dir should be gone
-	hookDir := filepath.Join(openclawDir, "hooks", "sx-install")
 	if _, err := os.Stat(hookDir); !os.IsNotExist(err) {
 		t.Error("Hook directory should be removed after uninstall")
-	}
-
-	// MCP server should be gone but user config preserved
-	data, err = os.ReadFile(configPath)
-	if err != nil {
-		t.Fatalf("openclaw.json should still exist: %v", err)
-	}
-	var afterConfig map[string]any
-	if err := json.Unmarshal(data, &afterConfig); err != nil {
-		t.Fatalf("Failed to parse openclaw.json after uninstall: %v", err)
-	}
-	if _, ok := afterConfig["mcpServers"]; ok {
-		t.Error("mcpServers section should be removed (was empty)")
-	}
-	if afterConfig["userSetting"] != "preserved" {
-		t.Error("User settings should be preserved after uninstall")
 	}
 }
 
@@ -316,21 +260,19 @@ func TestOpenClawBootstrapOptions(t *testing.T) {
 
 	opts := client.GetBootstrapOptions(context.Background())
 
-	var hasSession, hasMCP bool
+	var hasSession bool
 	for _, opt := range opts {
 		if opt.Key == bootstrap.SessionHookKey {
 			hasSession = true
 		}
+		// MCP not yet supported for OpenClaw
 		if opt.Key == bootstrap.SleuthAIQueryMCPKey {
-			hasMCP = true
+			t.Error("OpenClaw should not offer MCP option (not yet supported)")
 		}
 	}
 
 	if !hasSession {
 		t.Error("OpenClaw should offer session_hook option")
-	}
-	if !hasMCP {
-		t.Error("OpenClaw should offer sleuth_ai_query_mcp option")
 	}
 }
 
