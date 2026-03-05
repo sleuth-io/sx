@@ -135,6 +135,32 @@ Format: `<path>`
 - Must point to valid `.zip` file
 - Version extracted from zip metadata or generated from file mtime
 
+### skills.sh Sources
+
+Format: `skills.sh:<owner>/<repo>` or `skills.sh:<owner>/<repo>/<skill-name>`
+
+```txt
+# All skills from a public skills.sh repository
+skills.sh:vercel-labs/agent-skills
+
+# A specific skill from the repository
+skills.sh:vercel-labs/agent-skills/find-skills
+```
+
+**Components**:
+
+- `skills.sh:` prefix (required)
+- `<owner>/<repo>`: GitHub owner and repository name (required)
+- `/<skill-name>`: Specific skill subdirectory within the repo (optional)
+
+**Resolution**:
+
+- Resolves to the latest commit SHA on the default branch (`HEAD`) for reproducible installs
+- When `<skill-name>` is specified, the lock entry uses subdirectory `skills/<skill-name>`
+- When only `<owner>/<repo>` is specified, the entire repository is used
+- Stored as a `SourceGit` lock entry so `sx update` re-resolves to the latest commit SHA
+- Asset name: `<skill-name>` when specified, otherwise `<repo>` name
+
 ### HTTP Sources
 
 Format: `<url>`
@@ -254,6 +280,12 @@ Generates `sx.lock` with resolved versions, dependencies, and hashes.
 ```txt
 # From vault
 github-mcp==1.2.3
+
+# Public skill from skills.sh registry
+skills.sh:vercel-labs/agent-skills/find-skills
+
+# All skills from a skills.sh repository
+skills.sh:org/shared-skills
 
 # From git (internal tool)
 git+https://github.com/company/agents.git@main#name=api-helper&path=dist

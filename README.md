@@ -94,6 +94,43 @@ Your prompt files stay exactly as they are - `sx` just wraps them with metadata 
 - **MCP Servers** (experimental) - Model Context Protocol (MCP) servers for external integrations
 - **Plugins** - Claude Code plugin bundles with commands, skills, and more
 
+## skills.sh support
+
+sx integrates with [skills.sh](https://skills.sh), a community registry of agent skills. You can search, browse, and install any of the 600+ public skills directly from the command line.
+
+### Adding skills
+
+Use the same `owner/repo/skill` syntax as the skills.sh CLI:
+
+```bash
+# Add a specific skill directly
+sx add anthropics/skills/frontend-design
+
+# Browse and select skills from a repo interactively
+sx add vercel-labs/agent-skills
+```
+
+### Browsing the directory
+
+Search and browse the full skills.sh directory with install counts:
+
+```bash
+sx add --browse
+```
+
+This fetches the live skills.sh directory and lets you search, paginate through results, and add skills — all without leaving your terminal.
+
+### Requirements file
+
+Pin skills.sh dependencies in your `sx.txt` requirements file for reproducible team installs:
+
+```txt
+skills.sh:anthropics/skills/frontend-design
+skills.sh:vercel-labs/agent-skills/vercel-react-best-practices
+```
+
+The `skills.sh:` format resolves to a pinned git commit SHA. Run `sx update` to re-resolve to the latest version.
+
 ## Distribution models
 
 Choose the right distribution model for your team:

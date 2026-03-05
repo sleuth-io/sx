@@ -32,6 +32,10 @@ type Requirement struct {
 
 	// For HTTP sources
 	URL string
+
+	// For skills.sh sources
+	SkillsShOwnerRepo string // e.g., "vercel-labs/agent-skills"
+	SkillsShSkillName string // e.g., "find-skills" (empty = whole repo)
 }
 
 // RequirementType indicates the type of requirement
@@ -42,6 +46,7 @@ const (
 	RequirementTypeGit      RequirementType = "git"
 	RequirementTypePath     RequirementType = "path"
 	RequirementTypeHTTP     RequirementType = "http"
+	RequirementTypeSkillsSh RequirementType = "skills-sh"
 )
 
 // Parse parses a requirements file
@@ -86,6 +91,11 @@ func Parse(filePath string) ([]Requirement, error) {
 func ParseLine(line string) (Requirement, error) {
 	line = strings.TrimSpace(line)
 
+	// skills.sh source: skills.sh:owner/repo or skills.sh:owner/repo/skill-name
+	if strings.HasPrefix(line, "skills.sh:") {
+		return parseSkillsShRequirement(line)
+	}
+
 	// Git source: git+https://...@ref#name=...
 	if strings.HasPrefix(line, "git+") {
 		return parseGitRequirement(line)
@@ -110,6 +120,41 @@ func ParseLine(line string) (Requirement, error) {
 
 	// Registry asset: name[version-spec]
 	return parseRegistryRequirement(line)
+}
+
+// parseSkillsShRequirement parses skills.sh:owner/repo or skills.sh:owner/repo/skill-name
+func parseSkillsShRequirement(line string) (Requirement, error) {
+	// Remove skills.sh: prefix
+	rest := strings.TrimPrefix(line, "skills.sh:")
+	if rest == "" {
+		return Requirement{}, fmt.Errorf("skills.sh requirement missing owner/repo: %s", line)
+	}
+
+	parts := strings.SplitN(rest, "/", 3)
+	if len(parts) < 2 {
+		return Requirement{}, fmt.Errorf("skills.sh requirement must be skills.sh:owner/repo[/skill-name]: %s", line)
+	}
+
+	owner := parts[0]
+	repo := parts[1]
+	if owner == "" || repo == "" {
+		return Requirement{}, fmt.Errorf("skills.sh requirement has empty owner or repo: %s", line)
+	}
+
+	ownerRepo := owner + "/" + repo
+	skillName := ""
+	if len(parts) == 3 {
+		skillName = parts[2]
+		if skillName == "" {
+			return Requirement{}, fmt.Errorf("skills.sh requirement has empty skill name: %s", line)
+		}
+	}
+
+	return Requirement{
+		Type:              RequirementTypeSkillsSh,
+		SkillsShOwnerRepo: ownerRepo,
+		SkillsShSkillName: skillName,
+	}, nil
 }
 
 // parseGitRequirement parses git+URL@ref#name=...&path=...
@@ -213,6 +258,11 @@ func (r Requirement) String() string {
 		return r.Path
 	case RequirementTypeHTTP:
 		return r.URL
+	case RequirementTypeSkillsSh:
+		if r.SkillsShSkillName != "" {
+			return fmt.Sprintf("skills.sh:%s/%s", r.SkillsShOwnerRepo, r.SkillsShSkillName)
+		}
+		return "skills.sh:" + r.SkillsShOwnerRepo
 	default:
 		return r.Raw
 	}

@@ -37,19 +37,19 @@ func NewAddCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add [source-or-asset-name]",
 		Short: "Add an asset or configure an existing one",
-		Long: `Add an asset from a local zip file, directory, URL, GitHub path, or marketplace.
+		Long: `Add an asset from a local zip file, directory, URL, GitHub path, skills.sh, or marketplace.
 If the argument is an existing asset name, configure its installation scope instead.
 
 Examples:
-  sx add ./my-skill                    # Interactive mode
-  sx add --browse                      # Browse community skills
-  sx add ./my-skill --yes              # Accept defaults, install globally
-  sx add ./my-skill -y --no-install    # Add to vault only
+  sx add anthropics/skills/frontend-design   # Add a skill from skills.sh
+  sx add vercel-labs/agent-skills            # Browse skills in a skills.sh repo
+  sx add ./my-skill                          # Interactive mode
+  sx add --browse                            # Search and browse skills.sh
+  sx add ./my-skill --yes                    # Accept defaults, install globally
+  sx add ./my-skill -y --no-install          # Add to vault only
   sx add ./my-skill --yes --scope-global
   sx add ./my-skill --yes --scope-repo git@github.com:org/repo.git
-  sx add ./my-skill --yes --scope-repo "git@github.com:org/repo.git#backend/services"
-  sx add ./my-skill --yes --scope-repo "git@github.com:org/repo.git#backend,frontend"
-  sx add ./my-skill --yes --scope personal                 # Install only for yourself (Sleuth only)`,
+  sx add ./my-skill --yes --scope personal   # Install only for yourself (Sleuth only)`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var input string
@@ -73,7 +73,7 @@ Examples:
 
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Accept all defaults and skip prompts")
 	cmd.Flags().BoolVar(&noInstall, "no-install", false, "Skip running install after adding")
-	cmd.Flags().BoolVar(&browse, "browse", false, "Browse community skills")
+	cmd.Flags().BoolVar(&browse, "browse", false, "Search and browse skills from skills.sh")
 	cmd.Flags().StringVar(&name, "name", "", "Override detected asset name")
 	cmd.Flags().StringVar(&assetType, "type", "", "Override detected asset type (skill, rule, agent, command, mcp, hook)")
 	cmd.Flags().StringVar(&version, "version", "", "Override suggested version")
@@ -141,6 +141,11 @@ func runAddWithOptions(cmd *cobra.Command, input string, opts addOptions) error 
 		if handled, err := promptAddMenu(cmd, ctx, out); handled || err != nil {
 			return err
 		}
+	}
+
+	// Check if input is a skills.sh reference (owner/repo or owner/repo/skill or skills.sh:...)
+	if input != "" && (strings.HasPrefix(input, "skills.sh:") || isSkillsShReference(input)) {
+		return addFromSkillsSh(cmd, input, opts)
 	}
 
 	// Check if input is plugin@marketplace syntax
@@ -320,7 +325,7 @@ func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHel
 // or (false, err) on error.
 func promptAddMenu(cmd *cobra.Command, ctx context.Context, out *outputHelper) (bool, error) {
 	selected, err := components.Select("How would you like to add an asset?", []components.Option{
-		{Label: "Browse community skills", Value: "browse"},
+		{Label: "Browse skills.sh", Value: "browse"},
 		{Label: "Enter path or URL", Value: "manual"},
 	})
 	if err != nil {

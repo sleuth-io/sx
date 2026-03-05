@@ -15,7 +15,6 @@ import (
 	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/config"
-	"github.com/sleuth-io/sx/internal/registry"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	"github.com/sleuth-io/sx/internal/utils"
@@ -163,7 +162,7 @@ func runPostInit(cmd *cobra.Command, ctx context.Context, enabledClients []strin
 
 	// Final hint
 	styledOut.Newline()
-	styledOut.Muted("Run 'sx vault list' to see your assets or 'sx add --browse' to add community skills.")
+	styledOut.Muted("Run 'sx vault list' to see your assets or 'sx add --browse' to browse skills.sh.")
 }
 
 // showInitSummary displays a summary of what was configured
@@ -642,14 +641,9 @@ func promptClientSelection(styledOut *ui.Output, existingDisabledClients []strin
 func promptFeaturedSkills(cmd *cobra.Command, ctx context.Context) {
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
-	skills, err := registry.FeaturedSkills()
-	if err != nil || len(skills) == 0 {
-		return
-	}
-
-	// Ask if user wants to browse community skills (default no for experienced users)
+	// Ask if user wants to browse skills.sh (default no for experienced users)
 	styledOut.Newline()
-	browse, err := components.Confirm("Browse popular community skills to help get started?", false)
+	browse, err := components.Confirm("Browse popular skills from skills.sh to get started?", false)
 	if err != nil || !browse {
 		return
 	}

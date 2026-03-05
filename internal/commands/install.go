@@ -103,7 +103,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	if err != nil {
 		if errors.Is(err, vaultpkg.ErrLockFileNotFound) {
 			styledOut.Info("No assets installed yet.")
-			styledOut.Muted("Add skills with 'sx add' or browse community skills with 'sx add --browse'.")
+			styledOut.Muted("Add skills with 'sx add' or browse skills.sh with 'sx add --browse'.")
 			return nil
 		}
 		return err

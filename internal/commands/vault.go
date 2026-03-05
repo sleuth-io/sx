@@ -170,7 +170,7 @@ func runVaultShow(cmd *cobra.Command, assetName string, jsonOutput bool) error {
 func printVaultListText(out *outputHelper, result *vaultpkg.ListAssetsResult, typeFilter string) error {
 	if len(result.Assets) == 0 {
 		out.println("No assets found in vault.")
-		out.println("Add skills with 'sx add' or browse community skills with 'sx add --browse'.")
+		out.println("Add skills with 'sx add' or browse skills.sh with 'sx add --browse'.")
 		return nil
 	}
 
