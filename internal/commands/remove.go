@@ -13,14 +13,16 @@ import (
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
-// NewRemoveCommand creates the remove command
+// NewRemoveCommand creates the remove command (deprecated: use 'sx vault remove')
 func NewRemoveCommand() *cobra.Command {
 	var yes bool
 	var versionFlag string
 
 	cmd := &cobra.Command{
-		Use:   "remove <asset-name>",
-		Short: "Remove an asset from the lock file",
+		Use:        "remove <asset-name>",
+		Short:      "Remove an asset from the lock file (deprecated: use 'sx vault remove')",
+		Hidden:     true,
+		Deprecated: "use 'sx vault remove' instead",
 		Long: `Remove an asset from the lock file. The asset remains in the vault/repository
 and can be re-added later.
 
@@ -108,7 +110,7 @@ func runRemove(cmd *cobra.Command, assetName, versionFlag string, yes bool) erro
 			status.Start(fmt.Sprintf("Removing %s@%s from lock file", assetName, assetVersion))
 		}
 
-		if err := vault.RemoveAsset(ctx, assetName, assetVersion); err != nil {
+		if err := vault.RemoveAsset(ctx, assetName, assetVersion, false); err != nil {
 			status.Fail("Failed to remove asset")
 			return fmt.Errorf("failed to remove asset: %w", err)
 		}

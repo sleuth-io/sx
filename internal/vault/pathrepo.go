@@ -214,9 +214,100 @@ func (p *PathVault) InheritInstallations(ctx context.Context, asset *lockfile.As
 	return lockfile.AddOrUpdateAsset(lockFilePath, asset)
 }
 
-// RemoveAsset removes an asset from the lock file
-func (p *PathVault) RemoveAsset(ctx context.Context, assetName, version string) error {
-	return lockfile.RemoveAsset(p.GetLockFilePath(), assetName, version)
+// RemoveAsset removes an asset from the lock file.
+// If delete is true, also permanently removes the asset files from the vault.
+func (p *PathVault) RemoveAsset(ctx context.Context, assetName, version string, delete bool) error {
+	if err := lockfile.RemoveAsset(p.GetLockFilePath(), assetName, version); err != nil {
+		return err
+	}
+
+	if delete {
+		if err := p.deleteAssetFiles(assetName, version); err != nil {
+			return fmt.Errorf("failed to delete asset files: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// deleteAssetFiles removes asset files from the vault storage.
+func (p *PathVault) deleteAssetFiles(assetName, version string) error {
+	assetBaseDir := filepath.Join(p.repoPath, "assets", assetName)
+
+	if version == "" {
+		return os.RemoveAll(assetBaseDir)
+	}
+
+	// Remove specific version directory
+	versionDir := filepath.Join(assetBaseDir, version)
+	if err := os.RemoveAll(versionDir); err != nil {
+		return err
+	}
+
+	// Update list.txt
+	listPath := filepath.Join(assetBaseDir, "list.txt")
+	if err := p.removeFromVersionList(listPath, version); err != nil {
+		return err
+	}
+
+	// If list.txt is now empty, remove entire asset directory
+	data, err := os.ReadFile(listPath)
+	if err == nil && len(parseVersionList(data)) == 0 {
+		return os.RemoveAll(assetBaseDir)
+	}
+
+	return nil
+}
+
+// removeFromVersionList removes a version from the list.txt file
+func (p *PathVault) removeFromVersionList(listPath, version string) error {
+	data, err := os.ReadFile(listPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	versions := parseVersionList(data)
+	var filtered []string
+	for _, v := range versions {
+		if v != version {
+			filtered = append(filtered, v)
+		}
+	}
+
+	if len(filtered) == 0 {
+		return os.WriteFile(listPath, []byte(""), 0644)
+	}
+
+	content := strings.Join(filtered, "\n") + "\n"
+	return os.WriteFile(listPath, []byte(content), 0644)
+}
+
+// RenameAsset renames an asset in the vault.
+func (p *PathVault) RenameAsset(ctx context.Context, oldName, newName string) error {
+	// Rename asset directory
+	oldDir := filepath.Join(p.repoPath, "assets", oldName)
+	newDir := filepath.Join(p.repoPath, "assets", newName)
+	if err := os.Rename(oldDir, newDir); err != nil {
+		return fmt.Errorf("failed to rename asset directory: %w", err)
+	}
+
+	// Update metadata.toml in each version dir
+	versions, err := p.GetVersionList(ctx, newName)
+	if err == nil {
+		for _, v := range versions {
+			metadataPath := filepath.Join(newDir, v, "metadata.toml")
+			if err := metadata.UpdateName(metadataPath, newName); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not update metadata for %s@%s: %v\n", newName, v, err)
+			}
+		}
+	}
+
+	// Update lock file
+	lockFilePath := p.GetLockFilePath()
+	return lockfile.RenameAsset(lockFilePath, oldName, newName)
 }
 
 // updateVersionList updates the list.txt file with a new version
