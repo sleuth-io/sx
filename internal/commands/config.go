@@ -300,6 +300,8 @@ func getClientDirectory(clientID string) string {
 		return filepath.Join(home, ".gemini")
 	case clients.ClientIDGitHubCopilot:
 		return filepath.Join(home, ".copilot")
+	case clients.ClientIDOpenClaw:
+		return filepath.Join(home, ".openclaw")
 	default:
 		return ""
 	}

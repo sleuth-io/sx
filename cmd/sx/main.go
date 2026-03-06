@@ -15,6 +15,7 @@ import (
 	_ "github.com/sleuth-io/sx/internal/clients/cursor"         // Register Cursor client
 	_ "github.com/sleuth-io/sx/internal/clients/gemini"         // Register Gemini Code Assist client
 	_ "github.com/sleuth-io/sx/internal/clients/github_copilot" // Register GitHub Copilot client
+	_ "github.com/sleuth-io/sx/internal/clients/openclaw"       // Register OpenClaw client
 	"github.com/sleuth-io/sx/internal/commands"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/git"
