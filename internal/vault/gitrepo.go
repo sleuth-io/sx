@@ -765,8 +765,9 @@ func (g *GitVault) InheritInstallations(ctx context.Context, asset *lockfile.Ass
 	return nil
 }
 
-// RemoveAsset removes an asset from the lock file and pushes to remote
-func (g *GitVault) RemoveAsset(ctx context.Context, assetName, version string) error {
+// RemoveAsset removes an asset from the lock file and pushes to remote.
+// If delete is true, also permanently removes the asset files from the vault.
+func (g *GitVault) RemoveAsset(ctx context.Context, assetName, version string, delete bool) error {
 	// Acquire file lock to prevent concurrent git operations
 	fileLock, err := g.acquireFileLock(ctx)
 	if err != nil {
@@ -784,18 +785,152 @@ func (g *GitVault) RemoveAsset(ctx context.Context, assetName, version string) e
 		return fmt.Errorf("failed to remove asset from lock file: %w", err)
 	}
 
-	// Add, commit and push
-	if err := g.gitClient.Add(ctx, g.repoPath, constants.SkillLockFile); err != nil {
-		return fmt.Errorf("failed to stage lock file: %w", err)
+	// If delete, also remove asset files from the vault
+	if delete {
+		if err := g.deleteAssetFiles(assetName, version); err != nil {
+			return fmt.Errorf("failed to delete asset files: %w", err)
+		}
 	}
 
-	commitMsg := fmt.Sprintf("Remove %s@%s", assetName, version)
+	// Add, commit and push
+	if err := g.gitClient.Add(ctx, g.repoPath, "."); err != nil {
+		return fmt.Errorf("failed to stage changes: %w", err)
+	}
+
+	action := "Remove"
+	if delete {
+		action = "Delete"
+	}
+	versionSuffix := ""
+	if version != "" {
+		versionSuffix = "@" + version
+	}
+	commitMsg := fmt.Sprintf("%s %s%s", action, assetName, versionSuffix)
 	if err := g.gitClient.Commit(ctx, g.repoPath, commitMsg); err != nil {
 		return fmt.Errorf("failed to commit removal: %w", err)
 	}
 
 	if err := g.gitClient.Push(ctx, g.repoPath); err != nil {
 		return fmt.Errorf("failed to push removal: %w", err)
+	}
+
+	return nil
+}
+
+// deleteAssetFiles removes asset files from the vault storage.
+// If version is specified, removes only that version directory and updates list.txt.
+// If version is empty, removes the entire asset directory.
+func (g *GitVault) deleteAssetFiles(assetName, version string) error {
+	assetBaseDir := filepath.Join(g.repoPath, "assets", assetName)
+
+	if version == "" {
+		// Remove entire asset directory
+		return os.RemoveAll(assetBaseDir)
+	}
+
+	// Remove specific version directory
+	versionDir := filepath.Join(assetBaseDir, version)
+	if err := os.RemoveAll(versionDir); err != nil {
+		return err
+	}
+
+	// Update list.txt
+	listPath := filepath.Join(assetBaseDir, "list.txt")
+	if err := g.removeFromVersionList(listPath, version); err != nil {
+		return err
+	}
+
+	// If list.txt is now empty, remove entire asset directory
+	data, err := os.ReadFile(listPath)
+	if err == nil && len(parseVersionList(data)) == 0 {
+		return os.RemoveAll(assetBaseDir)
+	}
+
+	return nil
+}
+
+// removeFromVersionList removes a version from the list.txt file
+func (g *GitVault) removeFromVersionList(listPath, version string) error {
+	data, err := os.ReadFile(listPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	versions := parseVersionList(data)
+	var filtered []string
+	for _, v := range versions {
+		if v != version {
+			filtered = append(filtered, v)
+		}
+	}
+
+	if len(filtered) == 0 {
+		return os.WriteFile(listPath, []byte(""), 0644)
+	}
+
+	var buf bytes.Buffer
+	for _, v := range filtered {
+		buf.WriteString(v)
+		buf.WriteByte('\n')
+	}
+	return os.WriteFile(listPath, buf.Bytes(), 0644)
+}
+
+// RenameAsset renames an asset in the vault.
+// All versions and installations are preserved under the new name.
+func (g *GitVault) RenameAsset(ctx context.Context, oldName, newName string) error {
+	// Acquire file lock to prevent concurrent git operations
+	fileLock, err := g.acquireFileLock(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	defer func() { _ = fileLock.Unlock() }()
+
+	// Clone or update repository
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+
+	// Rename asset directory
+	oldDir := filepath.Join(g.repoPath, "assets", oldName)
+	newDir := filepath.Join(g.repoPath, "assets", newName)
+	if err := os.Rename(oldDir, newDir); err != nil {
+		return fmt.Errorf("failed to rename asset directory: %w", err)
+	}
+
+	// Update metadata.toml in each version dir
+	versions, err := g.GetVersionList(ctx, newName)
+	if err == nil {
+		for _, v := range versions {
+			metadataPath := filepath.Join(newDir, v, "metadata.toml")
+			if err := metadata.UpdateName(metadataPath, newName); err != nil {
+				// Log warning but continue - metadata update is best-effort
+				fmt.Fprintf(os.Stderr, "Warning: could not update metadata for %s@%s: %v\n", newName, v, err)
+			}
+		}
+	}
+
+	// Update lock file: rename all entries with old name to new name
+	lockFilePath := g.GetLockFilePath()
+	if err := lockfile.RenameAsset(lockFilePath, oldName, newName); err != nil {
+		return fmt.Errorf("failed to update lock file: %w", err)
+	}
+
+	// Stage, commit and push
+	if err := g.gitClient.Add(ctx, g.repoPath, "."); err != nil {
+		return fmt.Errorf("failed to stage changes: %w", err)
+	}
+
+	commitMsg := fmt.Sprintf("Rename %s to %s", oldName, newName)
+	if err := g.gitClient.Commit(ctx, g.repoPath, commitMsg); err != nil {
+		return fmt.Errorf("failed to commit rename: %w", err)
+	}
+
+	if err := g.gitClient.Push(ctx, g.repoPath); err != nil {
+		return fmt.Errorf("failed to push rename: %w", err)
 	}
 
 	return nil

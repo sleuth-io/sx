@@ -178,3 +178,22 @@ func RemoveAsset(lockFilePath string, name, version string) error {
 
 	return Write(lockFile, lockFilePath)
 }
+
+// RenameAsset renames all entries of an asset in the lock file.
+func RenameAsset(lockFilePath string, oldName, newName string) error {
+	lockFile, err := ParseFile(lockFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // No lock file, nothing to rename
+		}
+		return fmt.Errorf("failed to parse lock file: %w", err)
+	}
+
+	for i := range lockFile.Assets {
+		if lockFile.Assets[i].Name == oldName {
+			lockFile.Assets[i].Name = newName
+		}
+	}
+
+	return Write(lockFile, lockFilePath)
+}

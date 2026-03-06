@@ -80,10 +80,14 @@ type Vault interface {
 	// jsonlData is newline-separated JSON (JSONL format)
 	PostUsageStats(ctx context.Context, jsonlData string) error
 
-	// RemoveAsset removes an asset from the lock file
-	// The asset remains in the vault and can be re-added later
-	// If version is empty, removes any version of the asset
-	RemoveAsset(ctx context.Context, assetName, version string) error
+	// RemoveAsset removes an asset from the lock file.
+	// If delete is true, also permanently removes the asset files from the vault.
+	// If version is empty, removes all versions of the asset.
+	RemoveAsset(ctx context.Context, assetName, version string, delete bool) error
+
+	// RenameAsset renames an asset in the vault.
+	// All versions and installations are preserved under the new name.
+	RenameAsset(ctx context.Context, oldName, newName string) error
 
 	// ListAssets returns a list of all assets in the vault
 	// This enables asset discovery via `sx vault list`

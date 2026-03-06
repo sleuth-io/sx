@@ -366,8 +366,9 @@ func (s *SleuthVault) PostUsageStats(ctx context.Context, jsonlData string) erro
 	return nil
 }
 
-// RemoveAsset removes an asset from the Sleuth server's lock file
-func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string) error {
+// RemoveAsset removes an asset from the Sleuth server's lock file.
+// The delete flag is passed to the server mutation for permanent deletion.
+func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string, delete bool) error {
 	// Use removeAssetInstallations mutation to clear all installations
 	mutation := `mutation RemoveAssetInstallations($input: RemoveAssetInstallationsInput!) {
 		removeAssetInstallations(input: $input) {
@@ -379,10 +380,15 @@ func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string
 		}
 	}`
 
+	input := map[string]any{
+		"assetName": assetName,
+	}
+	if delete {
+		input["delete"] = true
+	}
+
 	variables := map[string]any{
-		"input": map[string]any{
-			"assetName": assetName,
-		},
+		"input": input,
 	}
 
 	var gqlResp struct {
@@ -415,6 +421,60 @@ func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string
 
 	if gqlResp.Data.RemoveAssetInstallations.Success == nil || !*gqlResp.Data.RemoveAssetInstallations.Success {
 		return errors.New("failed to remove asset installations")
+	}
+
+	return nil
+}
+
+// RenameAsset renames an asset on the Sleuth server using a GraphQL mutation.
+func (s *SleuthVault) RenameAsset(ctx context.Context, oldName, newName string) error {
+	mutation := `mutation RenameAsset($input: RenameAssetInput!) {
+		renameAsset(input: $input) {
+			success
+			errors {
+				field
+				messages
+			}
+		}
+	}`
+
+	variables := map[string]any{
+		"input": map[string]any{
+			"oldName": oldName,
+			"newName": newName,
+		},
+	}
+
+	var gqlResp struct {
+		Data struct {
+			RenameAsset struct {
+				Success *bool `json:"success"`
+				Errors  []struct {
+					Field    string   `json:"field"`
+					Messages []string `json:"messages"`
+				} `json:"errors"`
+			} `json:"renameAsset"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+
+	if err := s.executeGraphQLQuery(ctx, mutation, variables, &gqlResp); err != nil {
+		return err
+	}
+
+	if len(gqlResp.Errors) > 0 {
+		return fmt.Errorf("GraphQL error: %s", gqlResp.Errors[0].Message)
+	}
+
+	if len(gqlResp.Data.RenameAsset.Errors) > 0 {
+		err := gqlResp.Data.RenameAsset.Errors[0]
+		return fmt.Errorf("%s: %s", err.Field, err.Messages[0])
+	}
+
+	if gqlResp.Data.RenameAsset.Success == nil || !*gqlResp.Data.RenameAsset.Success {
+		return errors.New("failed to rename asset")
 	}
 
 	return nil
