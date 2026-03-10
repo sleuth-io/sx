@@ -133,6 +133,11 @@ func EnsureMarketplaceInstalledFromFile(knownMarketsPath, identifier string) (st
 		return "", fmt.Errorf("marketplace %q not found and cannot be auto-installed (not a repository reference)", identifier)
 	}
 
+	// Check that claude CLI is available before attempting auto-install
+	if _, err := exec.LookPath("claude"); err != nil {
+		return "", fmt.Errorf("marketplace %q is not installed and the claude CLI is not available to auto-install it: %w", identifier, err)
+	}
+
 	// Auto-install the marketplace
 	addCmd := exec.Command("claude", "plugin", "marketplace", "add", identifier)
 	if output, err := addCmd.CombinedOutput(); err != nil {
