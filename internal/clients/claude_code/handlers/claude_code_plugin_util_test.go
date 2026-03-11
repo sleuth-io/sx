@@ -328,7 +328,7 @@ func TestEnsureMarketplaceInstalledFromFile(t *testing.T) {
 	}
 
 	t.Run("already installed by name", func(t *testing.T) {
-		name, err := EnsureMarketplaceInstalledFromFile(knownMarketsPath, "my-market")
+		name, err := EnsureMarketplaceInstalledFromFile(t.Context(), knownMarketsPath, "my-market")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -338,7 +338,7 @@ func TestEnsureMarketplaceInstalledFromFile(t *testing.T) {
 	})
 
 	t.Run("already installed by URL", func(t *testing.T) {
-		name, err := EnsureMarketplaceInstalledFromFile(knownMarketsPath, "https://github.com/myorg/my-market")
+		name, err := EnsureMarketplaceInstalledFromFile(t.Context(), knownMarketsPath, "https://github.com/myorg/my-market")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -348,7 +348,7 @@ func TestEnsureMarketplaceInstalledFromFile(t *testing.T) {
 	})
 
 	t.Run("plain name not found cannot auto-install", func(t *testing.T) {
-		_, err := EnsureMarketplaceInstalledFromFile(knownMarketsPath, "nonexistent")
+		_, err := EnsureMarketplaceInstalledFromFile(t.Context(), knownMarketsPath, "nonexistent")
 		if err == nil {
 			t.Fatal("expected error for plain name that can't be auto-installed")
 		}

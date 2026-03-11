@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -109,18 +110,18 @@ func ResolveMarketplaceNameFromFile(knownMarketsPath, identifier string) (string
 
 // EnsureMarketplaceInstalled resolves a marketplace identifier to its registered name,
 // automatically installing the marketplace via `claude plugin marketplace add` if not found.
-func EnsureMarketplaceInstalled(identifier string) (string, error) {
+func EnsureMarketplaceInstalled(ctx context.Context, identifier string) (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 	knownMarketsPath := filepath.Join(homeDir, ".claude", "plugins", "known_marketplaces.json")
-	return EnsureMarketplaceInstalledFromFile(knownMarketsPath, identifier)
+	return EnsureMarketplaceInstalledFromFile(ctx, knownMarketsPath, identifier)
 }
 
 // EnsureMarketplaceInstalledFromFile resolves a marketplace identifier to its registered name,
 // automatically installing the marketplace via `claude plugin marketplace add` if not found.
-func EnsureMarketplaceInstalledFromFile(knownMarketsPath, identifier string) (string, error) {
+func EnsureMarketplaceInstalledFromFile(ctx context.Context, knownMarketsPath, identifier string) (string, error) {
 	// Try resolving first — marketplace may already be installed
 	if name, err := ResolveMarketplaceNameFromFile(knownMarketsPath, identifier); err == nil {
 		return name, nil
@@ -138,10 +139,12 @@ func EnsureMarketplaceInstalledFromFile(knownMarketsPath, identifier string) (st
 		return "", fmt.Errorf("marketplace %q is not installed and the claude CLI is not available to auto-install it: %w", identifier, err)
 	}
 
+	fmt.Fprintf(os.Stderr, "  ℹ Marketplace %q not found locally, installing via claude CLI...\n", repo)
+
 	// Auto-install the marketplace
-	addCmd := exec.Command("claude", "plugin", "marketplace", "add", identifier)
+	addCmd := exec.CommandContext(ctx, "claude", "plugin", "marketplace", "add", repo)
 	if output, err := addCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to auto-install marketplace %q: %w\n%s", identifier, err, string(output))
+		return "", fmt.Errorf("failed to auto-install marketplace %q: %w\n%s", repo, err, string(output))
 	}
 
 	// Resolve to get the registered name, needed for the update command
@@ -151,10 +154,12 @@ func EnsureMarketplaceInstalledFromFile(knownMarketsPath, identifier string) (st
 	}
 
 	// Update to ensure the marketplace files are cloned to disk
-	updateCmd := exec.Command("claude", "plugin", "marketplace", "update", name)
+	updateCmd := exec.CommandContext(ctx, "claude", "plugin", "marketplace", "update", name)
 	if output, err := updateCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to update marketplace %q: %w\n%s", name, err, string(output))
 	}
+
+	fmt.Fprintf(os.Stderr, "  ✓ Marketplace %q installed successfully\n", name)
 
 	return name, nil
 }
@@ -445,7 +450,7 @@ func ResolveMarketplacePluginPathFromFile(knownMarketsPath, marketplaceName, plu
 		if utils.IsDirectory(dir) {
 			entries, _ := os.ReadDir(dir)
 			for _, entry := range entries {
-				if entry.IsDir() && entry.Name() != "." && entry.Name() != ".." {
+				if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
 					available = append(available, entry.Name())
 				}
 			}
