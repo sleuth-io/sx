@@ -639,3 +639,6 @@ func filterClientsByConfig(cfg *config.Config, detectedClients []clients.Client)
 	}
 	return filtered
 }
+
+
+
