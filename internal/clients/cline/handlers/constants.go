@@ -7,15 +7,13 @@ const (
 
 	// RulesDir is the directory name for Cline rules (at repo root, not inside .cline)
 	RulesDir = ".clinerules"
-
-	// GlobalRulesSubdir is the subdirectory under ~/Documents for global rules
-	GlobalRulesSubdir = "Cline/Rules"
 )
 
 // Directory names for Cline assets (inside .cline/)
 const (
 	DirSkills     = "skills"
 	DirMCPServers = "mcp-servers"
+	DirRules      = "rules" // For CLI: ~/.cline/rules/
 )
 
 // VS Code extension ID for Cline (used for globalStorage path)

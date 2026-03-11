@@ -54,7 +54,14 @@ func matchesPath(path string) bool {
 // matchesContent checks if content appears to be a Cline rule file
 func matchesContent(path string, content []byte) bool {
 	// Cline uses "paths:" in frontmatter (same as Claude Code)
-	return bytes.Contains(content, []byte("paths:"))
+	// To avoid false positives with Claude Code files, also check the path
+	if strings.Contains(path, ".claude/") {
+		return false // Claude Code file, not Cline
+	}
+	if matchesPath(path) || strings.Contains(path, ".cline/") {
+		return bytes.Contains(content, []byte("paths:"))
+	}
+	return false
 }
 
 // parseRuleFile parses a Cline rule file and returns the canonical format

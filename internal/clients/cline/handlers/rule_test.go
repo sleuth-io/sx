@@ -146,9 +146,13 @@ func TestRuleHandler_DetermineRulesDir_Global(t *testing.T) {
 
 	// Global scope: targetBase is ~/.cline
 	targetBase := filepath.Join(home, ConfigDir)
-	rulesDir := handler.determineRulesDir(targetBase)
+	rulesDir, err := handler.determineRulesDir(targetBase)
+	if err != nil {
+		t.Fatalf("determineRulesDir failed: %v", err)
+	}
 
-	expected := filepath.Join(home, "Documents", GlobalRulesSubdir)
+	// Always use ~/.cline/rules/ (not ~/Documents/Cline/Rules)
+	expected := filepath.Join(home, ConfigDir, DirRules)
 	if rulesDir != expected {
 		t.Errorf("Expected %s, got %s", expected, rulesDir)
 	}
@@ -163,7 +167,10 @@ func TestRuleHandler_DetermineRulesDir_Repo(t *testing.T) {
 
 	// Repo scope: targetBase is {repo}/.cline
 	targetBase := "/path/to/repo/.cline"
-	rulesDir := handler.determineRulesDir(targetBase)
+	rulesDir, err := handler.determineRulesDir(targetBase)
+	if err != nil {
+		t.Fatalf("determineRulesDir failed: %v", err)
+	}
 
 	expected := "/path/to/repo/.clinerules"
 	if rulesDir != expected {
@@ -180,7 +187,10 @@ func TestRuleHandler_DetermineRulesDir_Path(t *testing.T) {
 
 	// Path scope: targetBase is {repo}/{path}/.cline
 	targetBase := "/path/to/repo/services/api/.cline"
-	rulesDir := handler.determineRulesDir(targetBase)
+	rulesDir, err := handler.determineRulesDir(targetBase)
+	if err != nil {
+		t.Fatalf("determineRulesDir failed: %v", err)
+	}
 
 	expected := "/path/to/repo/services/api/.clinerules"
 	if rulesDir != expected {

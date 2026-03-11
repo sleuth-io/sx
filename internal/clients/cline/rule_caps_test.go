@@ -68,11 +68,13 @@ func TestMatchesPath(t *testing.T) {
 func TestMatchesContent(t *testing.T) {
 	tests := []struct {
 		name     string
+		path     string
 		content  string
 		expected bool
 	}{
 		{
-			name: "has paths frontmatter",
+			name: "has paths frontmatter in clinerules",
+			path: ".clinerules/test.md",
 			content: `---
 paths:
   - src/**/*.ts
@@ -81,7 +83,8 @@ paths:
 			expected: true,
 		},
 		{
-			name: "has paths inline",
+			name: "has paths inline in cline dir",
+			path: ".cline/rules/test.md",
 			content: `---
 description: Test rule
 paths: ["**/*.go"]
@@ -91,24 +94,46 @@ Content here`,
 		},
 		{
 			name:     "no paths",
+			path:     ".clinerules/test.md",
 			content:  "# Just markdown\nNo frontmatter",
 			expected: false,
 		},
 		{
 			name: "uses globs instead of paths",
+			path: ".clinerules/test.md",
 			content: `---
 globs: ["**/*.ts"]
 ---
 Content`,
 			expected: false, // Cline uses paths, not globs
 		},
+		{
+			name: "claude code file with paths - should not match",
+			path: ".claude/rules/test.md",
+			content: `---
+paths:
+  - src/**/*.ts
+---
+# Rule content`,
+			expected: false, // Claude Code file, not Cline
+		},
+		{
+			name: "unrelated path - should not match",
+			path: "random/test.md",
+			content: `---
+paths:
+  - src/**/*.ts
+---
+# Rule content`,
+			expected: false, // Not in a Cline-specific location
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := matchesContent("test.md", []byte(tt.content))
+			got := matchesContent(tt.path, []byte(tt.content))
 			if got != tt.expected {
-				t.Errorf("matchesContent() = %v, want %v", got, tt.expected)
+				t.Errorf("matchesContent(%q, ...) = %v, want %v", tt.path, got, tt.expected)
 			}
 		})
 	}
@@ -268,9 +293,9 @@ func TestDetectAssetType(t *testing.T) {
 		{"/repo/.clinerules/test.md", "rule"},
 		{".cline/skills/my-skill/SKILL.md", "skill"},
 		{"/home/user/.cline/skills/test/SKILL.md", "skill"},
-		{".cursor/rules/test.mdc", ""},  // Not Cline
-		{".claude/skills/test.md", ""},  // Not Cline
-		{"README.md", ""},               // Not a Cline asset
+		{".cursor/rules/test.mdc", ""}, // Not Cline
+		{".claude/skills/test.md", ""}, // Not Cline
+		{"README.md", ""},              // Not a Cline asset
 	}
 
 	for _, tt := range tests {

@@ -34,7 +34,10 @@ func (h *RuleHandler) Install(ctx context.Context, zipData []byte, targetBase st
 	// Determine rules directory
 	// For Cline, rules go to .clinerules/ at repo root, not inside .cline/
 	// targetBase is typically {repo}/.cline, so we need to go up one level
-	rulesDir := h.determineRulesDir(targetBase)
+	rulesDir, err := h.determineRulesDir(targetBase)
+	if err != nil {
+		return fmt.Errorf("failed to determine rules directory: %w", err)
+	}
 	if err := utils.EnsureDir(rulesDir); err != nil {
 		return fmt.Errorf("failed to create rules directory: %w", err)
 	}
@@ -53,7 +56,10 @@ func (h *RuleHandler) Install(ctx context.Context, zipData []byte, targetBase st
 
 // Remove removes the rule .md file
 func (h *RuleHandler) Remove(ctx context.Context, targetBase string) error {
-	rulesDir := h.determineRulesDir(targetBase)
+	rulesDir, err := h.determineRulesDir(targetBase)
+	if err != nil {
+		return fmt.Errorf("failed to determine rules directory: %w", err)
+	}
 	filePath := filepath.Join(rulesDir, h.metadata.Asset.Name+".md")
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
@@ -69,7 +75,10 @@ func (h *RuleHandler) Remove(ctx context.Context, targetBase string) error {
 
 // VerifyInstalled checks if the rule .md file exists
 func (h *RuleHandler) VerifyInstalled(targetBase string) (bool, string) {
-	rulesDir := h.determineRulesDir(targetBase)
+	rulesDir, err := h.determineRulesDir(targetBase)
+	if err != nil {
+		return false, "Failed to determine rules directory: " + err.Error()
+	}
 	filePath := filepath.Join(rulesDir, h.metadata.Asset.Name+".md")
 
 	if _, err := os.Stat(filePath); err == nil {
@@ -80,20 +89,27 @@ func (h *RuleHandler) VerifyInstalled(targetBase string) (bool, string) {
 }
 
 // determineRulesDir returns the rules directory based on targetBase
-// For global scope (targetBase contains home dir), use ~/Documents/Cline/Rules/
+// For global scope (targetBase contains home dir), use ~/.cline/rules/
 // For repo/path scope, use {repo}/.clinerules/ (sibling to .cline/)
-func (h *RuleHandler) determineRulesDir(targetBase string) string {
+func (h *RuleHandler) determineRulesDir(targetBase string) (string, error) {
 	// Check if this is a global install by looking for home directory pattern
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
 	if strings.HasPrefix(targetBase, filepath.Join(home, ConfigDir)) {
-		// Global scope - use ~/Documents/Cline/Rules/
-		return filepath.Join(home, "Documents", GlobalRulesSubdir)
+		// Global scope - always use ~/.cline/rules/
+		clineDir := os.Getenv("CLINE_DIR")
+		if clineDir == "" {
+			clineDir = filepath.Join(home, ConfigDir)
+		}
+		return filepath.Join(clineDir, DirRules), nil
 	}
 
 	// Repo/path scope - targetBase is {repo}/.cline or {repo}/{path}/.cline
 	// Rules go to .clinerules/ as sibling to .cline/
 	parent := filepath.Dir(targetBase)
-	return filepath.Join(parent, RulesDir)
+	return filepath.Join(parent, RulesDir), nil
 }
 
 // buildMDContent creates the markdown content with paths: frontmatter

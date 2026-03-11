@@ -4,46 +4,56 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/metadata"
 )
 
 func TestGetMCPConfigPath(t *testing.T) {
-	// This test verifies the path structure is correct for the current OS
+	// This test verifies the path structure is correct
 	path, err := GetMCPConfigPath()
 	if err != nil {
 		t.Fatalf("GetMCPConfigPath() failed: %v", err)
 	}
 
-	// Verify path contains expected components
-	if !contains(path, "globalStorage") {
-		t.Errorf("Path should contain 'globalStorage', got: %s", path)
-	}
-	if !contains(path, VSCodeExtensionID) {
-		t.Errorf("Path should contain extension ID '%s', got: %s", VSCodeExtensionID, path)
-	}
-	if !contains(path, "settings") {
-		t.Errorf("Path should contain 'settings', got: %s", path)
-	}
-	if !contains(path, "cline_mcp_settings.json") {
+	// Path should always end with cline_mcp_settings.json
+	if !strings.Contains(path, "cline_mcp_settings.json") {
 		t.Errorf("Path should end with 'cline_mcp_settings.json', got: %s", path)
 	}
 
-	// Verify OS-specific path prefix
-	home, _ := os.UserHomeDir()
-	switch runtime.GOOS {
-	case "darwin":
-		expected := filepath.Join(home, "Library", "Application Support", "Code")
-		if !contains(path, expected) {
-			t.Errorf("macOS path should contain '%s', got: %s", expected, path)
-		}
-	case "linux":
-		expected := filepath.Join(home, ".config", "Code")
-		if !contains(path, expected) {
-			t.Errorf("Linux path should contain '%s', got: %s", expected, path)
-		}
+	// Path should contain 'settings'
+	if !strings.Contains(path, "settings") {
+		t.Errorf("Path should contain 'settings', got: %s", path)
+	}
+
+	// Path should be either CLI format or VS Code format
+	isCLIPath := strings.Contains(path, ".cline/data/settings")
+	isVSCodePath := strings.Contains(path, "globalStorage") && strings.Contains(path, VSCodeExtensionID)
+
+	if !isCLIPath && !isVSCodePath {
+		t.Errorf("Path should be either CLI (~/.cline/data/settings/) or VS Code (globalStorage), got: %s", path)
+	}
+}
+
+func TestGetAllMCPConfigPaths(t *testing.T) {
+	paths, err := GetAllMCPConfigPaths()
+	if err != nil {
+		t.Fatalf("GetAllMCPConfigPaths() failed: %v", err)
+	}
+
+	if len(paths) != 2 {
+		t.Errorf("Expected 2 paths (CLI and VS Code), got %d", len(paths))
+	}
+
+	// First should be CLI path
+	if !strings.Contains(paths[0], ".cline/data/settings") {
+		t.Errorf("First path should be CLI path, got: %s", paths[0])
+	}
+
+	// Second should be VS Code path
+	if !strings.Contains(paths[1], "globalStorage") {
+		t.Errorf("Second path should be VS Code path, got: %s", paths[1])
 	}
 }
 
@@ -162,7 +172,7 @@ func TestMCPHandler_GeneratePackagedMCPEntry(t *testing.T) {
 	if !ok {
 		t.Fatal("Expected command to be a string")
 	}
-	if !contains(command, "/path/to/server") && !contains(command, "node") {
+	if !strings.Contains(command, "/path/to/server") && !strings.Contains(command, "node") {
 		t.Errorf("Expected command to reference server path, got: %s", command)
 	}
 
@@ -178,11 +188,11 @@ func TestMCPHandler_GeneratePackagedMCPEntry(t *testing.T) {
 
 func TestMCPHandler_GenerateConfigOnlyMCPEntry(t *testing.T) {
 	tests := []struct {
-		name           string
-		meta           *metadata.Metadata
-		expectCommand  bool
-		expectURL      bool
-		expectEnv      bool
+		name          string
+		meta          *metadata.Metadata
+		expectCommand bool
+		expectURL     bool
+		expectEnv     bool
 	}{
 		{
 			name: "command-based MCP",
@@ -319,18 +329,4 @@ func TestMCPConfig_JSONFormat(t *testing.T) {
 	if len(readConfig.MCPServers) != 2 {
 		t.Errorf("Expected 2 servers, got %d", len(readConfig.MCPServers))
 	}
-}
-
-// Helper function
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

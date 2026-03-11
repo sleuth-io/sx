@@ -1,11 +1,14 @@
 package cline
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients"
 )
 
@@ -213,39 +216,45 @@ func TestClient_RuleCapabilities(t *testing.T) {
 
 func TestClient_GetBootstrapOptions(t *testing.T) {
 	client := NewClient()
-	opts := client.GetBootstrapOptions(nil)
+	opts := client.GetBootstrapOptions(context.Background())
 
-	// Cline doesn't have hooks, so should only have MCP options
-	if len(opts) == 0 {
-		t.Error("Expected at least one bootstrap option")
+	// Cline should have hooks and MCP options
+	if len(opts) < 3 {
+		t.Errorf("Expected at least 3 bootstrap options (session hook, analytics hook, MCP), got %d", len(opts))
 	}
 
 	// Should have the Sleuth AI Query MCP option
 	hasMCPOption := false
+	hasSessionHook := false
+	hasAnalyticsHook := false
 	for _, opt := range opts {
 		if opt.MCPConfig != nil {
 			hasMCPOption = true
-			break
+		}
+		if opt.Key == bootstrap.SessionHookKey {
+			hasSessionHook = true
+		}
+		if opt.Key == bootstrap.AnalyticsHookKey {
+			hasAnalyticsHook = true
 		}
 	}
 
 	if !hasMCPOption {
-		t.Error("Expected at least one MCP bootstrap option")
+		t.Error("Expected MCP bootstrap option")
 	}
-
-	// Should NOT have session or analytics hooks
-	for _, opt := range opts {
-		if opt.Key == "session-hook" || opt.Key == "analytics-hook" {
-			t.Errorf("Cline should not have hook options, found: %s", opt.Key)
-		}
+	if !hasSessionHook {
+		t.Error("Expected session hook option")
+	}
+	if !hasAnalyticsHook {
+		t.Error("Expected analytics hook option")
 	}
 }
 
 func TestClient_ShouldInstall(t *testing.T) {
 	client := NewClient()
 
-	// Cline doesn't have hooks, so ShouldInstall always returns true
-	should, err := client.ShouldInstall(nil)
+	// Cline's TaskStart hook fires once per task, so ShouldInstall always returns true
+	should, err := client.ShouldInstall(context.Background())
 	if err != nil {
 		t.Errorf("ShouldInstall returned error: %v", err)
 	}
@@ -267,17 +276,7 @@ func TestClient_GetBootstrapPath(t *testing.T) {
 		t.Errorf("Expected absolute path, got %s", path)
 	}
 
-	if !contains(path, "cline_mcp_settings.json") {
+	if !strings.Contains(path, "cline_mcp_settings.json") {
 		t.Errorf("Expected path to end with cline_mcp_settings.json, got %s", path)
 	}
-}
-
-// Helper function
-func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

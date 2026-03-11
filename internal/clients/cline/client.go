@@ -204,7 +204,10 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 
 // determineTargetBase returns the installation directory based on scope
 func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error) {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
 
 	switch scope.Type {
 	case clients.ScopeGlobal:
@@ -276,10 +279,11 @@ func (c *Client) EnsureAssetSupport(ctx context.Context, scope *clients.InstallS
 }
 
 // GetBootstrapOptions returns bootstrap options for Cline.
-// Cline doesn't have a hook system, so only MCP server options are available.
+// Cline v3.36+ supports hooks via shell scripts in ~/.cline/hooks/.
 func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	return []bootstrap.Option{
-		// No session or analytics hooks - Cline doesn't have a hook system
+		bootstrap.SessionHook,
+		bootstrap.AnalyticsHook,
 		bootstrap.SleuthAIQueryMCP(),
 	}
 }
@@ -293,9 +297,25 @@ func (c *Client) GetBootstrapPath() string {
 	return path
 }
 
-// InstallBootstrap installs Cline infrastructure (MCP servers only, no hooks).
+// InstallBootstrap installs Cline infrastructure (hooks and MCP servers).
 func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
 	log := logger.Get()
+
+	// Install session hook for auto-update (if enabled)
+	if bootstrap.ContainsKey(opts, bootstrap.SessionHookKey) {
+		if err := installSessionHook(); err != nil {
+			log.Error("failed to install session hook", "error", err)
+			return fmt.Errorf("failed to install session hook: %w", err)
+		}
+	}
+
+	// Install analytics hook for usage tracking (if enabled)
+	if bootstrap.ContainsKey(opts, bootstrap.AnalyticsHookKey) {
+		if err := installAnalyticsHook(); err != nil {
+			log.Error("failed to install analytics hook", "error", err)
+			return fmt.Errorf("failed to install analytics hook: %w", err)
+		}
+	}
 
 	// Install MCP servers from options that have MCPConfig
 	for _, opt := range opts {
@@ -324,11 +344,22 @@ func (c *Client) installMCPServerFromConfig(config *bootstrap.MCPServerConfig) e
 	return handlers.AddMCPServer(config.Name, serverConfig)
 }
 
-// UninstallBootstrap removes Cline infrastructure (MCP servers).
+// UninstallBootstrap removes Cline infrastructure (hooks and MCP servers).
 func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
 	log := logger.Get()
 
 	for _, opt := range opts {
+		switch opt.Key {
+		case bootstrap.SessionHookKey:
+			if err := uninstallSessionHook(); err != nil {
+				return err
+			}
+		case bootstrap.AnalyticsHookKey:
+			if err := uninstallAnalyticsHook(); err != nil {
+				return err
+			}
+		}
+
 		if opt.MCPConfig != nil {
 			if err := handlers.RemoveMCPServer(opt.MCPConfig.Name); err != nil {
 				return err
@@ -341,7 +372,7 @@ func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option
 }
 
 // ShouldInstall always returns true for Cline.
-// Cline doesn't have a hook system, so no conversation tracking is needed.
+// Cline's TaskStart hook fires once per task, so no deduplication is needed.
 func (c *Client) ShouldInstall(ctx context.Context) (bool, error) {
 	return true, nil
 }

@@ -8,14 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sleuth-io/sx/internal/clients"
-	"github.com/sleuth-io/sx/internal/clients/cline"
+	_ "github.com/sleuth-io/sx/internal/clients/cline" // Auto-registers via init()
 )
-
-func init() {
-	// Register Cline client for tests
-	clients.Register(cline.NewClient())
-}
 
 // TestClineIntegration tests the full workflow with Cline client
 func TestClineIntegration(t *testing.T) {
@@ -226,8 +220,8 @@ Always use TypeScript strict mode and proper typing.
 	// Step 4: Verify rule installation to Cline
 	t.Log("Step 4: Verify rule installation to Cline")
 
-	// For global scope, rules go to ~/Documents/Cline/Rules/
-	globalRulesDir := filepath.Join(homeDir, "Documents", "Cline", "Rules")
+	// For global scope, rules go to ~/.cline/rules/
+	globalRulesDir := filepath.Join(homeDir, ".cline", "rules")
 	installedRuleFile := filepath.Join(globalRulesDir, "test-rule.md")
 
 	if _, err := os.Stat(installedRuleFile); os.IsNotExist(err) {
