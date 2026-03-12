@@ -926,6 +926,9 @@ func (s *SleuthVault) SetInstallations(ctx context.Context, asset *lockfile.Asse
 	}
 
 	if len(gqlResp.Errors) > 0 {
+		if gqlResp.Errors[0].Message == "PERMISSION_DENIED" {
+			return fmt.Errorf("permission denied. Check that you have write permissions on %s", s.serverURL)
+		}
 		return fmt.Errorf("GraphQL error: %s", gqlResp.Errors[0].Message)
 	}
 
