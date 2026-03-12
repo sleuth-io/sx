@@ -27,9 +27,10 @@ func TestNewClient(t *testing.T) {
 func TestClient_SupportedAssetTypes(t *testing.T) {
 	client := NewClient()
 
-	// Should support skill, rule, mcp, and hook
+	// Should support skill, command, rule, mcp, and hook
 	supportedTypes := []asset.Type{
 		asset.TypeSkill,
+		asset.TypeCommand,
 		asset.TypeRule,
 		asset.TypeMCP,
 		asset.TypeHook,

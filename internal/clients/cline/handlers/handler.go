@@ -26,6 +26,8 @@ func NewHandler(assetType asset.Type, meta *metadata.Metadata) (Handler, error) 
 	switch assetType {
 	case asset.TypeSkill:
 		return NewSkillHandler(meta), nil
+	case asset.TypeCommand:
+		return NewCommandHandler(meta), nil
 	case asset.TypeRule:
 		return NewRuleHandler(meta), nil
 	case asset.TypeMCP:

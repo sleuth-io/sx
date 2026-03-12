@@ -33,10 +33,11 @@ func NewClient() *Client {
 			clients.ClientIDCline,
 			"Cline",
 			[]asset.Type{
-				asset.TypeSkill, // Native skill discovery
-				asset.TypeRule,  // .clinerules/{name}.md
-				asset.TypeMCP,   // cline_mcp_settings.json
-				asset.TypeHook,  // ~/Documents/Cline/Hooks/
+				asset.TypeSkill,   // .cline/skills/{name}/
+				asset.TypeCommand, // .cline/skills/{name}/ (same as skill)
+				asset.TypeRule,    // .clinerules/{name}.md
+				asset.TypeMCP,     // cline_mcp_settings.json
+				asset.TypeHook,    // ~/Documents/Cline/Hooks/
 			},
 		),
 	}
@@ -119,6 +120,9 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeSkill:
 			handler := handlers.NewSkillHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeCommand:
+			handler := handlers.NewCommandHandler(bundle.Metadata)
+			err = handler.Install(ctx, bundle.ZipData, targetBase)
 		case asset.TypeRule:
 			handler := handlers.NewRuleHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
@@ -178,6 +182,9 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 		switch a.Type {
 		case asset.TypeSkill:
 			handler := handlers.NewSkillHandler(meta)
+			err = handler.Remove(ctx, targetBase)
+		case asset.TypeCommand:
+			handler := handlers.NewCommandHandler(meta)
 			err = handler.Remove(ctx, targetBase)
 		case asset.TypeRule:
 			handler := handlers.NewRuleHandler(meta)
