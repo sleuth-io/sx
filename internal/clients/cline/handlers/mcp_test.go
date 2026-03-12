@@ -36,27 +36,6 @@ func TestGetMCPConfigPath(t *testing.T) {
 	}
 }
 
-func TestGetAllMCPConfigPaths(t *testing.T) {
-	paths, err := GetAllMCPConfigPaths()
-	if err != nil {
-		t.Fatalf("GetAllMCPConfigPaths() failed: %v", err)
-	}
-
-	if len(paths) != 2 {
-		t.Errorf("Expected 2 paths (CLI and VS Code), got %d", len(paths))
-	}
-
-	// First should be CLI path
-	if !strings.Contains(paths[0], ".cline/data/settings") {
-		t.Errorf("First path should be CLI path, got: %s", paths[0])
-	}
-
-	// Second should be VS Code path
-	if !strings.Contains(paths[1], "globalStorage") {
-		t.Errorf("Second path should be VS Code path, got: %s", paths[1])
-	}
-}
-
 func TestReadMCPConfig_NonExistent(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "nonexistent.json")

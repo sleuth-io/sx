@@ -226,31 +226,6 @@ func getVSCodeMCPConfigPath(home string) (string, error) {
 	return filepath.Join(vsCodeConfigBase, VSCodeExtensionID, "settings", "cline_mcp_settings.json"), nil
 }
 
-// GetAllMCPConfigPaths returns all possible MCP config paths (CLI and VS Code)
-func GetAllMCPConfigPaths() ([]string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	var paths []string
-
-	// CLI path
-	clineDir := os.Getenv("CLINE_DIR")
-	if clineDir == "" {
-		clineDir = filepath.Join(home, ".cline")
-	}
-	paths = append(paths, filepath.Join(clineDir, "data", "settings", "cline_mcp_settings.json"))
-
-	// VS Code extension path
-	vsCodePath, err := getVSCodeMCPConfigPath(home)
-	if err == nil {
-		paths = append(paths, vsCodePath)
-	}
-
-	return paths, nil
-}
-
 // GetMCPConfigDir returns the OS-specific directory containing cline_mcp_settings.json
 func GetMCPConfigDir() (string, error) {
 	path, err := GetMCPConfigPath()
