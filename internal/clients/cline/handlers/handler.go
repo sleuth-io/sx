@@ -30,6 +30,8 @@ func NewHandler(assetType asset.Type, meta *metadata.Metadata) (Handler, error) 
 		return NewRuleHandler(meta), nil
 	case asset.TypeMCP:
 		return NewMCPHandler(meta), nil
+	case asset.TypeHook:
+		return NewHookHandler(meta), nil
 	default:
 		return nil, fmt.Errorf("unsupported asset type for Cline: %s", assetType.Key)
 	}

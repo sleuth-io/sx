@@ -147,7 +147,7 @@ sx uses a lock file (like package-lock.json) for deterministic installations acr
 | Client                  | Status         | Notes                                                     |
 |-------------------------|----------------|-----------------------------------------------------------|
 | Claude Code             | ✅ Supported    | Full support for all asset types                          |
-| Cline                   | ✅ Experimental | Skills, rules, MCP servers                                |
+| Cline                   | ✅ Experimental | Skills, rules, MCP servers, hooks                         |
 | Codex                   | ✅ Experimental | Skills, commands, MCP servers                             |
 | Cursor                  | ✅ Experimental | Skills, rules, commands, MCP servers, hooks               |
 | GitHub Copilot          | ✅ Experimental | Skills, rules, commands, agents, MCP servers, local hooks |

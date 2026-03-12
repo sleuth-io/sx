@@ -27,22 +27,18 @@ func TestNewClient(t *testing.T) {
 func TestClient_SupportedAssetTypes(t *testing.T) {
 	client := NewClient()
 
-	// Should support skill, rule, and mcp
+	// Should support skill, rule, mcp, and hook
 	supportedTypes := []asset.Type{
 		asset.TypeSkill,
 		asset.TypeRule,
 		asset.TypeMCP,
+		asset.TypeHook,
 	}
 
 	for _, at := range supportedTypes {
 		if !client.SupportsAssetType(at) {
 			t.Errorf("Expected client to support %s", at.Key)
 		}
-	}
-
-	// Should NOT support hook (Cline has no hook system)
-	if client.SupportsAssetType(asset.TypeHook) {
-		t.Error("Cline should not support hooks")
 	}
 }
 

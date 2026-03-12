@@ -36,6 +36,7 @@ func NewClient() *Client {
 				asset.TypeSkill, // Native skill discovery
 				asset.TypeRule,  // .clinerules/{name}.md
 				asset.TypeMCP,   // cline_mcp_settings.json
+				asset.TypeHook,  // ~/Documents/Cline/Hooks/
 			},
 		),
 	}
@@ -124,6 +125,9 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeMCP:
 			handler := handlers.NewMCPHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeHook:
+			handler := handlers.NewHookHandler(bundle.Metadata)
+			err = handler.Install(ctx, bundle.ZipData, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + bundle.Metadata.Asset.Type.Key
@@ -180,6 +184,9 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 			err = handler.Remove(ctx, targetBase)
 		case asset.TypeMCP:
 			handler := handlers.NewMCPHandler(meta)
+			err = handler.Remove(ctx, targetBase)
+		case asset.TypeHook:
+			handler := handlers.NewHookHandler(meta)
 			err = handler.Remove(ctx, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
@@ -279,7 +286,7 @@ func (c *Client) EnsureAssetSupport(ctx context.Context, scope *clients.InstallS
 }
 
 // GetBootstrapOptions returns bootstrap options for Cline.
-// Cline v3.36+ supports hooks via shell scripts in ~/.cline/hooks/.
+// Cline v3.36+ supports hooks via shell scripts in ~/Documents/Cline/Hooks/.
 func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	return []bootstrap.Option{
 		bootstrap.SessionHook,
