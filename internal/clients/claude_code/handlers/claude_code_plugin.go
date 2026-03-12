@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 
@@ -93,6 +94,14 @@ func (h *ClaudeCodePluginHandler) Install(ctx context.Context, zipData []byte, t
 
 	var installPath string
 	if h.isMarketplaceSource() {
+		// Resolve marketplace identifier (URL, org/repo, etc.) to registered name,
+		// auto-installing the marketplace if not found
+		resolvedName, err := EnsureMarketplaceInstalled(ctx, marketplace)
+		if err != nil {
+			return fmt.Errorf("failed to resolve marketplace name: %w", err)
+		}
+		marketplace = resolvedName
+
 		// Marketplace source: resolve path from marketplace, no extraction
 		resolvedPath, err := ResolveMarketplacePluginPath(marketplace, h.metadata.Asset.Name)
 		if err != nil {
@@ -144,6 +153,14 @@ func (h *ClaudeCodePluginHandler) getMarketplace() string {
 // Remove uninstalls the plugin asset
 func (h *ClaudeCodePluginHandler) Remove(ctx context.Context, targetBase string) error {
 	marketplace := h.getMarketplace()
+	if h.isMarketplaceSource() {
+		resolvedName, err := ResolveMarketplaceName(marketplace)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  ⚠ Could not resolve marketplace name %q during removal, using raw identifier: %v\n", marketplace, err)
+		} else {
+			marketplace = resolvedName
+		}
+	}
 
 	// Unregister plugin from installed_plugins.json
 	if err := UnregisterPlugin(targetBase, h.metadata.Asset.Name, marketplace); err != nil {
@@ -237,7 +254,12 @@ func (h *ClaudeCodePluginHandler) VerifyInstalled(targetBase string) (bool, stri
 		if marketplace == "" {
 			return false, "marketplace source requires marketplace field"
 		}
-		_, err := ResolveMarketplacePluginPath(marketplace, h.metadata.Asset.Name)
+		resolvedName, err := ResolveMarketplaceName(marketplace)
+		if err != nil {
+			return false, fmt.Sprintf("failed to resolve marketplace name: %v", err)
+		}
+		marketplace = resolvedName
+		_, err = ResolveMarketplacePluginPath(marketplace, h.metadata.Asset.Name)
 		if err != nil {
 			return false, fmt.Sprintf("marketplace plugin path not found: %v", err)
 		}

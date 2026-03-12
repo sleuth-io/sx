@@ -4,8 +4,39 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestExtractRepoIdentifier(t *testing.T) {
+	tests := []struct {
+		name       string
+		identifier string
+		expected   string
+	}{
+		// HTTPS URLs
+		{name: "HTTPS URL", identifier: "https://github.com/org/repo", expected: "org/repo"},
+		{name: "HTTPS URL with .git", identifier: "https://github.com/org/repo.git", expected: "org/repo"},
+		{name: "HTTPS URL with extra path segments", identifier: "https://github.com/anthropics/claude-plugins-official/tree/main/plugins/typescript-lsp", expected: "anthropics/claude-plugins-official"},
+		{name: "HTTPS URL with fragment", identifier: "https://github.com/org/repo.git#main", expected: "org/repo"},
+		// SSH URLs
+		{name: "SSH URL", identifier: "git@github.com:org/repo.git", expected: "org/repo"},
+		{name: "SSH URL without .git", identifier: "git@github.com:org/repo", expected: "org/repo"},
+		// org/repo format
+		{name: "org/repo", identifier: "anthropics/claude-code", expected: "anthropics/claude-code"},
+		// Plain names
+		{name: "plain name", identifier: "claude-plugins-official", expected: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := extractRepoIdentifier(tc.identifier)
+			if result != tc.expected {
+				t.Errorf("extractRepoIdentifier(%q) = %q, want %q", tc.identifier, result, tc.expected)
+			}
+		})
+	}
+}
 
 func TestResolveMarketplacePluginPathFromFile(t *testing.T) {
 	// Set up a fake marketplace
@@ -75,6 +106,27 @@ func TestResolveMarketplacePluginPathFromFile(t *testing.T) {
 		}
 	})
 
+	t.Run("found plugin without manifest (directory only)", func(t *testing.T) {
+		// LSP-type plugins may not have .claude-plugin/plugin.json
+		lspDir := filepath.Join(marketplaceDir, "plugins", "typescript-lsp")
+		if err := os.MkdirAll(lspDir, 0755); err != nil {
+			t.Fatalf("failed to create lsp dir: %v", err)
+		}
+		// Only a README, no .claude-plugin/plugin.json
+		if err := os.WriteFile(filepath.Join(lspDir, "README.md"), []byte("# LSP Plugin"), 0644); err != nil {
+			t.Fatalf("failed to write README: %v", err)
+		}
+
+		path, err := ResolveMarketplacePluginPathFromFile(knownMarketsPath, "my-market", "typescript-lsp")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := filepath.Join(marketplaceDir, "plugins", "typescript-lsp")
+		if path != expected {
+			t.Errorf("expected %q, got %q", expected, path)
+		}
+	})
+
 	t.Run("plugins dir takes precedence over external_plugins", func(t *testing.T) {
 		// Create plugin in both plugins/ and external_plugins/
 		for _, subdir := range []string{"plugins", "external_plugins"} {
@@ -124,6 +176,13 @@ func TestResolveMarketplaceNameFromFile(t *testing.T) {
 				"path":   "/some/local/path",
 			},
 			"installLocation": "/some/local/path",
+		},
+		"git-sourced-market": map[string]any{
+			"source": map[string]any{
+				"source": "git",
+				"url":    "https://github.com/someuser/agents.git",
+			},
+			"installLocation": "/home/user/.claude/plugins/marketplaces/git-sourced-market",
 		},
 	}
 	data, _ := json.Marshal(markets)
@@ -190,6 +249,28 @@ func TestResolveMarketplaceNameFromFile(t *testing.T) {
 			expected:   "anthropic-agent-skills",
 		},
 
+		// Git-sourced marketplace (source.url matching)
+		{
+			name:       "HTTPS URL matches git-sourced marketplace",
+			identifier: "https://github.com/someuser/agents",
+			expected:   "git-sourced-market",
+		},
+		{
+			name:       "HTTPS URL with .git matches git-sourced marketplace",
+			identifier: "https://github.com/someuser/agents.git",
+			expected:   "git-sourced-market",
+		},
+		{
+			name:       "org/repo matches git-sourced marketplace",
+			identifier: "someuser/agents",
+			expected:   "git-sourced-market",
+		},
+		{
+			name:       "HTTPS URL with extra path matches git-sourced marketplace",
+			identifier: "https://github.com/someuser/agents/tree/main/plugins/foo",
+			expected:   "git-sourced-market",
+		},
+
 		// Not found
 		{
 			name:        "nonexistent plain name",
@@ -225,6 +306,56 @@ func TestResolveMarketplaceNameFromFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEnsureMarketplaceInstalledFromFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	knownMarketsPath := filepath.Join(tmpDir, "known_marketplaces.json")
+
+	// Set up known_marketplaces.json with one existing marketplace
+	markets := map[string]any{
+		"my-market": map[string]any{
+			"source": map[string]any{
+				"source": "github",
+				"repo":   "myorg/my-market",
+			},
+			"installLocation": filepath.Join(tmpDir, "my-market"),
+		},
+	}
+	data, _ := json.Marshal(markets)
+	if err := os.WriteFile(knownMarketsPath, data, 0644); err != nil {
+		t.Fatalf("failed to write known_marketplaces.json: %v", err)
+	}
+
+	t.Run("already installed by name", func(t *testing.T) {
+		name, err := EnsureMarketplaceInstalledFromFile(t.Context(), knownMarketsPath, "my-market")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if name != "my-market" {
+			t.Errorf("expected %q, got %q", "my-market", name)
+		}
+	})
+
+	t.Run("already installed by URL", func(t *testing.T) {
+		name, err := EnsureMarketplaceInstalledFromFile(t.Context(), knownMarketsPath, "https://github.com/myorg/my-market")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if name != "my-market" {
+			t.Errorf("expected %q, got %q", "my-market", name)
+		}
+	})
+
+	t.Run("plain name not found cannot auto-install", func(t *testing.T) {
+		_, err := EnsureMarketplaceInstalledFromFile(t.Context(), knownMarketsPath, "nonexistent")
+		if err == nil {
+			t.Fatal("expected error for plain name that can't be auto-installed")
+		}
+		if !strings.Contains(err.Error(), "cannot be auto-installed") {
+			t.Errorf("expected 'cannot be auto-installed' error, got: %v", err)
+		}
+	})
 }
 
 func TestIsPluginRegistered(t *testing.T) {

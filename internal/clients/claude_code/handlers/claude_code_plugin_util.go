@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -16,7 +18,8 @@ import (
 var sshGitURLPattern = regexp.MustCompile(`^git@[^:]+:(.+?)(?:\.git)?(?:#.*)?$`)
 
 // httpsGitURLPattern matches HTTPS git URLs like https://gitlab.com/org/repo.git
-var httpsGitURLPattern = regexp.MustCompile(`^https?://[^/]+/(.+?)(?:\.git)?(?:#.*)?$`)
+// Captures only org/repo, ignoring extra path segments (e.g., /tree/main/...)
+var httpsGitURLPattern = regexp.MustCompile(`^https?://[^/]+/([^/]+/[^/]+?)(?:\.git)?(?:/.*)?(?:#.*)?$`)
 
 // extractRepoIdentifier extracts org/repo from various marketplace identifier formats.
 // Returns the org/repo string, or empty if the identifier is already a plain name.
@@ -44,7 +47,8 @@ func extractRepoIdentifier(identifier string) string {
 type knownMarketplaceEntry struct {
 	Source struct {
 		Source string `json:"source"`
-		Repo   string `json:"repo"`
+		Repo   string `json:"repo"` // GitHub-sourced: "org/repo"
+		URL    string `json:"url"`  // Git-sourced: "https://github.com/org/repo.git"
 	} `json:"source"`
 	InstallLocation string `json:"installLocation"`
 }
@@ -85,9 +89,13 @@ func ResolveMarketplaceNameFromFile(knownMarketsPath, identifier string) (string
 	// Extract org/repo from git URLs or use as-is for org/repo format
 	repo := extractRepoIdentifier(identifier)
 	if repo != "" {
-		// Search by source.repo
 		for name, m := range marketplaces {
+			// Match against source.repo (GitHub-sourced)
 			if m.Source.Repo == repo {
+				return name, nil
+			}
+			// Match against source.url (git-sourced) by extracting its org/repo
+			if m.Source.URL != "" && extractRepoIdentifier(m.Source.URL) == repo {
 				return name, nil
 			}
 		}
@@ -98,6 +106,62 @@ func ResolveMarketplaceNameFromFile(knownMarketsPath, identifier string) (string
 		available = append(available, name)
 	}
 	return "", fmt.Errorf("marketplace %q not found. Available: %s", identifier, strings.Join(available, ", "))
+}
+
+// EnsureMarketplaceInstalled resolves a marketplace identifier to its registered name,
+// automatically installing the marketplace via `claude plugin marketplace add` if not found.
+func EnsureMarketplaceInstalled(ctx context.Context, identifier string) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	knownMarketsPath := filepath.Join(homeDir, ".claude", "plugins", "known_marketplaces.json")
+	return EnsureMarketplaceInstalledFromFile(ctx, knownMarketsPath, identifier)
+}
+
+// EnsureMarketplaceInstalledFromFile resolves a marketplace identifier to its registered name,
+// automatically installing the marketplace via `claude plugin marketplace add` if not found.
+func EnsureMarketplaceInstalledFromFile(ctx context.Context, knownMarketsPath, identifier string) (string, error) {
+	// Try resolving first — marketplace may already be installed
+	if name, err := ResolveMarketplaceNameFromFile(knownMarketsPath, identifier); err == nil {
+		return name, nil
+	}
+
+	// Extract repo identifier for the add command (e.g., "f/prompts.chat" from a URL)
+	repo := extractRepoIdentifier(identifier)
+	if repo == "" {
+		// Plain name that doesn't exist — can't auto-install
+		return "", fmt.Errorf("marketplace %q not found and cannot be auto-installed (not a repository reference)", identifier)
+	}
+
+	// Check that claude CLI is available before attempting auto-install
+	if _, err := exec.LookPath("claude"); err != nil {
+		return "", fmt.Errorf("marketplace %q is not installed and the claude CLI is not available to auto-install it: %w", identifier, err)
+	}
+
+	fmt.Fprintf(os.Stderr, "  ℹ Marketplace %q not found locally, installing via claude CLI...\n", repo)
+
+	// Auto-install the marketplace
+	addCmd := exec.CommandContext(ctx, "claude", "plugin", "marketplace", "add", repo)
+	if output, err := addCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to auto-install marketplace %q: %w\n%s", repo, err, string(output))
+	}
+
+	// Resolve to get the registered name, needed for the update command
+	name, err := ResolveMarketplaceNameFromFile(knownMarketsPath, identifier)
+	if err != nil {
+		return "", fmt.Errorf("marketplace %q was added but could not be resolved: %w", identifier, err)
+	}
+
+	// Update to ensure the marketplace files are cloned to disk
+	updateCmd := exec.CommandContext(ctx, "claude", "plugin", "marketplace", "update", name)
+	if output, err := updateCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to update marketplace %q: %w\n%s", name, err, string(output))
+	}
+
+	fmt.Fprintf(os.Stderr, "  ✓ Marketplace %q installed successfully\n", name)
+
+	return name, nil
 }
 
 // installedPluginsFile is the filename for the installed plugins registry
@@ -372,8 +436,7 @@ func ResolveMarketplacePluginPathFromFile(knownMarketsPath, marketplaceName, plu
 	}
 
 	for _, path := range pluginPaths {
-		manifestPath := filepath.Join(path, ".claude-plugin", "plugin.json")
-		if utils.FileExists(manifestPath) {
+		if utils.IsDirectory(path) {
 			return path, nil
 		}
 	}
@@ -387,10 +450,8 @@ func ResolveMarketplacePluginPathFromFile(knownMarketsPath, marketplaceName, plu
 		if utils.IsDirectory(dir) {
 			entries, _ := os.ReadDir(dir)
 			for _, entry := range entries {
-				if entry.IsDir() && entry.Name() != "." && entry.Name() != ".." {
-					if utils.FileExists(filepath.Join(dir, entry.Name(), ".claude-plugin", "plugin.json")) {
-						available = append(available, entry.Name())
-					}
+				if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+					available = append(available, entry.Name())
 				}
 			}
 		}
