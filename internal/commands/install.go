@@ -128,6 +128,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 		if len(env.Clients) != 1 {
 			return errors.New("--hook-mode requires exactly one client (use --client=X)")
 		}
+		log.Info("session started", "client", env.Clients[0].ID())
 	}
 
 	// Hook mode fast path check
