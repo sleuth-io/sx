@@ -905,6 +905,9 @@ func (g *GitVault) RenameAsset(ctx context.Context, oldName, newName string) err
 	// Rename asset directory
 	oldDir := filepath.Join(g.repoPath, "assets", oldName)
 	newDir := filepath.Join(g.repoPath, "assets", newName)
+	if _, err := os.Stat(newDir); err == nil {
+		return fmt.Errorf("target asset directory already exists: %s", newName)
+	}
 	if err := os.Rename(oldDir, newDir); err != nil {
 		return fmt.Errorf("failed to rename asset directory: %w", err)
 	}
@@ -930,6 +933,14 @@ func (g *GitVault) RenameAsset(ctx context.Context, oldName, newName string) err
 	// Stage, commit and push
 	if err := g.gitClient.Add(ctx, g.repoPath, "."); err != nil {
 		return fmt.Errorf("failed to stage changes: %w", err)
+	}
+
+	hasChanges, err := g.gitClient.HasStagedChanges(ctx, g.repoPath)
+	if err != nil {
+		return err
+	}
+	if !hasChanges {
+		return nil
 	}
 
 	commitMsg := fmt.Sprintf("Rename %s to %s", oldName, newName)

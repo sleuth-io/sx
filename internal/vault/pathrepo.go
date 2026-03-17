@@ -290,6 +290,9 @@ func (p *PathVault) RenameAsset(ctx context.Context, oldName, newName string) er
 	// Rename asset directory
 	oldDir := filepath.Join(p.repoPath, "assets", oldName)
 	newDir := filepath.Join(p.repoPath, "assets", newName)
+	if _, err := os.Stat(newDir); err == nil {
+		return fmt.Errorf("target asset directory already exists: %s", newName)
+	}
 	if err := os.Rename(oldDir, newDir); err != nil {
 		return fmt.Errorf("failed to rename asset directory: %w", err)
 	}

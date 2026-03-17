@@ -393,6 +393,10 @@ func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string
 		}
 	}`
 
+	if version != "" {
+		return errors.New("version-specific removal is not supported for Sleuth vaults")
+	}
+
 	input := map[string]any{
 		"assetName": assetName,
 	}
