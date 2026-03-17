@@ -177,6 +177,16 @@ func Write(metadata *Metadata, filePath string) error {
 	return nil
 }
 
+// UpdateName reads a metadata file, updates the asset name, and writes it back.
+func UpdateName(filePath string, newName string) error {
+	meta, err := ParseFile(filePath)
+	if err != nil {
+		return err
+	}
+	meta.Asset.Name = newName
+	return Write(meta, filePath)
+}
+
 // GetTypeConfig returns the type-specific configuration section
 func (m *Metadata) GetTypeConfig() any {
 	switch m.Asset.Type {

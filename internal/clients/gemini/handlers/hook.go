@@ -132,6 +132,14 @@ func (h *HookHandler) updateSettings(geminiDir string) error {
 
 // removeFromSettings removes the hook from settings.json
 func (h *HookHandler) removeFromSettings(geminiDir string) error {
+	// During uninstall, hook metadata may not be available — try all events
+	if h.metadata.Hook == nil {
+		for _, event := range geminiEventMap {
+			_ = RemoveHook(geminiDir, event, h.metadata.Asset.Name)
+		}
+		return nil
+	}
+
 	hookEvent, supported := h.mapEventToGemini()
 	if !supported {
 		for _, event := range geminiEventMap {

@@ -169,12 +169,39 @@ func RemoveAsset(lockFilePath string, name, version string) error {
 	// Filter out the asset
 	var newAssets []Asset
 	for _, ast := range lockFile.Assets {
-		if ast.Name != name || ast.Version != version {
-			newAssets = append(newAssets, ast)
+		if version == "" {
+			// Remove all versions of this asset
+			if ast.Name != name {
+				newAssets = append(newAssets, ast)
+			}
+		} else {
+			// Remove specific version
+			if ast.Name != name || ast.Version != version {
+				newAssets = append(newAssets, ast)
+			}
 		}
 	}
 
 	lockFile.Assets = newAssets
+
+	return Write(lockFile, lockFilePath)
+}
+
+// RenameAsset renames all entries of an asset in the lock file.
+func RenameAsset(lockFilePath string, oldName, newName string) error {
+	lockFile, err := ParseFile(lockFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // No lock file, nothing to rename
+		}
+		return fmt.Errorf("failed to parse lock file: %w", err)
+	}
+
+	for i := range lockFile.Assets {
+		if lockFile.Assets[i].Name == oldName {
+			lockFile.Assets[i].Name = newName
+		}
+	}
 
 	return Write(lockFile, lockFilePath)
 }

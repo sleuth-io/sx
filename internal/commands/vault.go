@@ -21,12 +21,14 @@ import (
 func NewVaultCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "vault",
-		Short: "Manage vault assets (list, show)",
-		Long:  "Browse and inspect assets in the configured vault.",
+		Short: "Manage vault assets (list, show, remove, rename)",
+		Long:  "Browse, inspect, remove, and rename assets in the configured vault.",
 	}
 
 	cmd.AddCommand(newVaultListCommand())
 	cmd.AddCommand(newVaultShowCommand())
+	cmd.AddCommand(newVaultRemoveCommand())
+	cmd.AddCommand(newVaultRenameCommand())
 
 	return cmd
 }
@@ -343,5 +345,252 @@ func printVaultShowJSON(out *outputHelper, details *vaultpkg.AssetDetails, scope
 		return err
 	}
 	out.printlnAlways(string(data))
+	return nil
+}
+
+func newVaultRemoveCommand() *cobra.Command {
+	var yes bool
+	var versionFlag string
+	var deleteFlag bool
+
+	cmd := &cobra.Command{
+		Use:   "remove <asset-name>",
+		Short: "Remove an asset from the lock file and optionally delete from vault",
+		Long: `Remove an asset from the lock file. Optionally also permanently delete
+the asset files from the vault with --delete.
+
+Examples:
+  sx vault remove my-skill              # Remove from lock file only
+  sx vault remove my-skill --delete     # Remove and permanently delete from vault
+  sx vault remove my-skill -v 1.0.0     # Remove specific version
+  sx vault remove my-skill --yes        # Skip confirmation prompts`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runVaultRemove(cmd, args[0], versionFlag, yes, deleteFlag)
+		},
+	}
+
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts and automatically run install")
+	cmd.Flags().StringVarP(&versionFlag, "version", "v", "", "Version to remove (defaults to all versions)")
+	cmd.Flags().BoolVar(&deleteFlag, "delete", false, "Also permanently delete asset files from the vault")
+
+	return cmd
+}
+
+func runVaultRemove(cmd *cobra.Command, assetName, versionFlag string, yes, deleteFlag bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	out := newOutputHelper(cmd)
+	status := components.NewStatus(cmd.OutOrStdout())
+
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w\nRun 'sx init' to configure", err)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+
+	// Create vault
+	vault, err := vaultpkg.NewFromConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create vault: %w", err)
+	}
+
+	// Get all versions from the lock file
+	status.Start("Loading lock file")
+	lockFileData, _, _, err := vault.GetLockFile(ctx, "")
+	if err != nil {
+		status.Fail("Failed to get lock file")
+		return fmt.Errorf("failed to get lock file: %w", err)
+	}
+
+	lf, err := lockfile.Parse(lockFileData)
+	if err != nil {
+		status.Fail("Failed to parse lock file")
+		return fmt.Errorf("failed to parse lock file: %w", err)
+	}
+	status.Clear()
+
+	// Collect all versions of this asset
+	var versions []string
+	for _, a := range lf.Assets {
+		if a.Name == assetName {
+			versions = append(versions, a.Version)
+		}
+	}
+
+	if len(versions) == 0 {
+		return fmt.Errorf("asset %q not found in lock file", assetName)
+	}
+
+	// If version specified, only remove that version
+	versionsToRemove := versions
+	if versionFlag != "" {
+		versionsToRemove = []string{versionFlag}
+	}
+
+	// Confirm removal
+	if !yes {
+		action := "remove from lock file"
+		if deleteFlag {
+			action = "permanently delete from vault"
+		}
+		msg := fmt.Sprintf("%s %s? This will %s.", assetName, formatVersions(versionsToRemove), action)
+		confirmed, err := components.ConfirmWithIO(msg, true, cmd.InOrStdin(), cmd.OutOrStdout())
+		if err != nil || !confirmed {
+			return nil
+		}
+	}
+
+	for _, assetVersion := range versionsToRemove {
+		actionLabel := "Removing"
+		if deleteFlag {
+			actionLabel = "Deleting"
+		}
+		status.Start(fmt.Sprintf("%s %s@%s", actionLabel, assetName, assetVersion))
+
+		if err := vault.RemoveAsset(ctx, assetName, assetVersion, deleteFlag); err != nil {
+			status.Fail("Failed to remove asset")
+			return fmt.Errorf("failed to remove asset: %w", err)
+		}
+
+		doneLabel := "Removed"
+		if deleteFlag {
+			doneLabel = "Deleted"
+		}
+		status.Done(fmt.Sprintf("%s %s@%s", doneLabel, assetName, assetVersion))
+	}
+
+	// Prompt to run install
+	shouldInstall := yes
+	if !yes {
+		out.println()
+		confirmed, err := components.ConfirmWithIO("Run install now to apply changes to clients?", true, cmd.InOrStdin(), cmd.OutOrStdout())
+		if err != nil {
+			return nil
+		}
+		shouldInstall = confirmed
+	}
+
+	if shouldInstall {
+		out.println()
+		if err := runInstall(cmd, nil, false, "", false, "", ""); err != nil {
+			out.printfErr("Install failed: %v\n", err)
+		}
+	} else {
+		out.println("Run 'sx install' when ready to apply changes to clients.")
+	}
+
+	return nil
+}
+
+func formatVersions(versions []string) string {
+	if len(versions) == 1 {
+		return "@" + versions[0]
+	}
+	return fmt.Sprintf("(%d versions)", len(versions))
+}
+
+func newVaultRenameCommand() *cobra.Command {
+	var yes bool
+
+	cmd := &cobra.Command{
+		Use:   "rename <old-name> <new-name>",
+		Short: "Rename an asset in the vault",
+		Long: `Rename an asset in the vault. All versions and installations are
+preserved under the new name.
+
+Examples:
+  sx vault rename old-skill new-skill        # Rename an asset
+  sx vault rename old-skill new-skill --yes  # Skip confirmation`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runVaultRename(cmd, args[0], args[1], yes)
+		},
+	}
+
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts")
+
+	return cmd
+}
+
+func runVaultRename(cmd *cobra.Command, oldName, newName string, yes bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	out := newOutputHelper(cmd)
+	status := components.NewStatus(cmd.OutOrStdout())
+
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w\nRun 'sx init' to configure", err)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+
+	// Create vault
+	vault, err := vaultpkg.NewFromConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create vault: %w", err)
+	}
+
+	// Validate old name exists
+	status.Start("Checking asset")
+	_, err = vault.GetAssetDetails(ctx, oldName)
+	if err != nil {
+		status.Fail("Asset not found")
+		return fmt.Errorf("asset '%s' not found in vault", oldName)
+	}
+
+	// Validate new name does NOT exist (best-effort; server enforces atomicity for Sleuth vaults)
+	if _, err := vault.GetAssetDetails(ctx, newName); err == nil {
+		status.Fail("Name conflict")
+		return fmt.Errorf("asset '%s' already exists in vault", newName)
+	}
+	status.Clear()
+
+	// Confirm
+	if !yes {
+		msg := fmt.Sprintf("Rename '%s' to '%s'?", oldName, newName)
+		confirmed, err := components.ConfirmWithIO(msg, true, cmd.InOrStdin(), cmd.OutOrStdout())
+		if err != nil || !confirmed {
+			return nil
+		}
+	}
+
+	status.Start(fmt.Sprintf("Renaming %s to %s", oldName, newName))
+	if err := vault.RenameAsset(ctx, oldName, newName); err != nil {
+		status.Fail("Failed to rename asset")
+		return fmt.Errorf("failed to rename asset: %w", err)
+	}
+	status.Done(fmt.Sprintf("Renamed %s to %s", oldName, newName))
+
+	// Prompt to run install
+	shouldInstall := yes
+	if !yes {
+		out.println()
+		confirmed, err := components.ConfirmWithIO("Run install now to apply changes to clients?", true, cmd.InOrStdin(), cmd.OutOrStdout())
+		if err != nil {
+			return nil
+		}
+		shouldInstall = confirmed
+	}
+
+	if shouldInstall {
+		out.println()
+		if err := runInstall(cmd, nil, false, "", false, "", ""); err != nil {
+			out.printfErr("Install failed: %v\n", err)
+		}
+	} else {
+		out.println("Run 'sx install' when ready to apply changes to clients.")
+	}
+
 	return nil
 }
