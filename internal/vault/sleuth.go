@@ -18,6 +18,7 @@ import (
 	"github.com/sleuth-io/sx/internal/cache"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/version"
 )
@@ -630,9 +631,14 @@ func (s *SleuthVault) listAssetsByType(ctx context.Context, opts ListAssetsOptio
 	}
 
 	for _, node := range gqlResp.Data.Vault.Assets.Nodes {
+		assetType := asset.FromString(strings.ToLower(node.Type))
+		if !assetType.IsValid() {
+			log := logger.Get()
+			log.Warn("unknown asset type from GraphQL", "type", node.Type, "asset", node.Slug)
+		}
 		result.Assets = append(result.Assets, AssetSummary{
 			Name:          node.Slug,
-			Type:          asset.FromString(strings.ToLower(node.Type)),
+			Type:          assetType,
 			LatestVersion: node.LatestVersion,
 			VersionsCount: node.VersionsCount,
 			Description:   node.Description,

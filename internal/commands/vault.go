@@ -14,6 +14,7 @@ import (
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -113,7 +114,12 @@ func runVaultList(cmd *cobra.Command, typeFilter string, jsonOutput, installedOn
 	var lf *lockfile.LockFile
 	lockFileData, _, _, lfErr := vault.GetLockFile(ctx, "")
 	if lfErr == nil {
-		lf, _ = lockfile.Parse(lockFileData)
+		var parseErr error
+		lf, parseErr = lockfile.Parse(lockFileData)
+		if parseErr != nil {
+			log := logger.Get()
+			log.Warn("failed to parse lock file", "error", parseErr)
+		}
 	}
 
 	// If --installed, use lock file data instead of querying vault
@@ -124,7 +130,7 @@ func runVaultList(cmd *cobra.Command, typeFilter string, jsonOutput, installedOn
 
 		if lf == nil {
 			if jsonOutput {
-				return printVaultListJSON(out, &vaultpkg.ListAssetsResult{}, typeFilter)
+				return printInstalledListJSON(out, nil, typeFilter)
 			}
 			out.println("No assets installed. Run 'sx install' to install assets.")
 			return nil
@@ -326,11 +332,61 @@ func printVaultListText(out *outputHelper, result *vaultpkg.ListAssetsResult, lf
 				scopeInfo,
 			)
 			uiOut.Println(assetLine)
+
+			// Show description if available
+			if assetInfo.Description != "" {
+				uiOut.Println("    " + uiOut.MutedText(assetInfo.Description))
+			}
 		}
 		uiOut.Newline()
 	}
 
 	return nil
+}
+
+// jsonAssetItem represents a single asset for JSON output
+type jsonAssetItem struct {
+	Name    string
+	Version string
+	TypeKey string
+}
+
+// newGroupedJSONOutput creates an empty grouped output map with all type keys
+func newGroupedJSONOutput() map[string][]map[string]any {
+	return map[string][]map[string]any{
+		"skills":              {},
+		"mcps":                {},
+		"agents":              {},
+		"commands":            {},
+		"hooks":               {},
+		"rules":               {},
+		"claude-code-plugins": {},
+	}
+}
+
+// addItemToGroupedOutput adds an asset item to the appropriate type group
+func addItemToGroupedOutput(output map[string][]map[string]any, item jsonAssetItem) {
+	entry := map[string]any{
+		"name":    item.Name,
+		"version": item.Version,
+	}
+
+	switch item.TypeKey {
+	case "skill":
+		output["skills"] = append(output["skills"], entry)
+	case "mcp":
+		output["mcps"] = append(output["mcps"], entry)
+	case "agent":
+		output["agents"] = append(output["agents"], entry)
+	case "command":
+		output["commands"] = append(output["commands"], entry)
+	case "hook":
+		output["hooks"] = append(output["hooks"], entry)
+	case "rule":
+		output["rules"] = append(output["rules"], entry)
+	case "claude-code-plugin":
+		output["claude-code-plugins"] = append(output["claude-code-plugins"], entry)
+	}
 }
 
 func printVaultListJSON(out *outputHelper, result *vaultpkg.ListAssetsResult, typeFilter string) error {
@@ -354,38 +410,13 @@ func printVaultListJSON(out *outputHelper, result *vaultpkg.ListAssetsResult, ty
 	}
 
 	// No filter: return full object grouped by type
-	output := map[string][]map[string]any{
-		"skills":              {},
-		"mcps":                {},
-		"agents":              {},
-		"commands":            {},
-		"hooks":               {},
-		"rules":               {},
-		"claude-code-plugins": {},
-	}
-
+	output := newGroupedJSONOutput()
 	for _, a := range result.Assets {
-		item := map[string]any{
-			"name":    a.Name,
-			"version": a.LatestVersion,
-		}
-
-		switch a.Type.Key {
-		case "skill":
-			output["skills"] = append(output["skills"], item)
-		case "mcp":
-			output["mcps"] = append(output["mcps"], item)
-		case "agent":
-			output["agents"] = append(output["agents"], item)
-		case "command":
-			output["commands"] = append(output["commands"], item)
-		case "hook":
-			output["hooks"] = append(output["hooks"], item)
-		case "rule":
-			output["rules"] = append(output["rules"], item)
-		case "claude-code-plugin":
-			output["claude-code-plugins"] = append(output["claude-code-plugins"], item)
-		}
+		addItemToGroupedOutput(output, jsonAssetItem{
+			Name:    a.Name,
+			Version: a.LatestVersion,
+			TypeKey: a.Type.Key,
+		})
 	}
 
 	data, err := json.Marshal(output)
@@ -477,38 +508,13 @@ func printInstalledListJSON(out *outputHelper, assets []lockfile.Asset, typeFilt
 	}
 
 	// No filter: return full object grouped by type
-	output := map[string][]map[string]any{
-		"skills":              {},
-		"mcps":                {},
-		"agents":              {},
-		"commands":            {},
-		"hooks":               {},
-		"rules":               {},
-		"claude-code-plugins": {},
-	}
-
+	output := newGroupedJSONOutput()
 	for _, a := range assets {
-		item := map[string]any{
-			"name":    a.Name,
-			"version": a.Version,
-		}
-
-		switch a.Type.Key {
-		case "skill":
-			output["skills"] = append(output["skills"], item)
-		case "mcp":
-			output["mcps"] = append(output["mcps"], item)
-		case "agent":
-			output["agents"] = append(output["agents"], item)
-		case "command":
-			output["commands"] = append(output["commands"], item)
-		case "hook":
-			output["hooks"] = append(output["hooks"], item)
-		case "rule":
-			output["rules"] = append(output["rules"], item)
-		case "claude-code-plugin":
-			output["claude-code-plugins"] = append(output["claude-code-plugins"], item)
-		}
+		addItemToGroupedOutput(output, jsonAssetItem{
+			Name:    a.Name,
+			Version: a.Version,
+			TypeKey: a.Type.Key,
+		})
 	}
 
 	data, err := json.Marshal(output)
