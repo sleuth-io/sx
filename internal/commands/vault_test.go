@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/lockfile"
 )
 
 // TestVaultCommandWithPathRepository tests the vault list and show commands
@@ -61,9 +64,9 @@ func TestVaultCommandWithPathRepository(t *testing.T) {
 			t.Errorf("Expected 'bug-finder' in output, got:\n%s", output)
 		}
 
-		// Verify version count for multi-version asset
-		if !strings.Contains(output, "(3 versions)") {
-			t.Errorf("Expected '(3 versions)' for code-review, got:\n%s", output)
+		// Verify version is shown
+		if !strings.Contains(output, "v3.0.0") {
+			t.Errorf("Expected 'v3.0.0' for code-review, got:\n%s", output)
 		}
 	})
 
@@ -81,8 +84,8 @@ func TestVaultCommandWithPathRepository(t *testing.T) {
 
 		output := stdout.String()
 
-		if !strings.Contains(output, "skill Assets") {
-			t.Errorf("Expected 'skill Assets' header, got:\n%s", output)
+		if !strings.Contains(output, "Vault Skill Assets") {
+			t.Errorf("Expected 'Vault Skill Assets' header, got:\n%s", output)
 		}
 	})
 
@@ -100,21 +103,25 @@ func TestVaultCommandWithPathRepository(t *testing.T) {
 
 		output := stdout.String()
 
-		// Parse JSON to verify it's valid
-		var assets []map[string]any
-		if err := json.Unmarshal([]byte(output), &assets); err != nil {
+		// Parse JSON to verify it's valid - now returns grouped format
+		var result map[string][]map[string]any
+		if err := json.Unmarshal([]byte(output), &result); err != nil {
 			t.Fatalf("Invalid JSON output: %v\nOutput:\n%s", err, output)
 		}
 
-		// Verify we have 3 assets
-		if len(assets) != 3 {
-			t.Errorf("Expected 3 assets in JSON output, got %d", len(assets))
+		// Verify we have the skills key with 3 assets
+		skills, ok := result["skills"]
+		if !ok {
+			t.Fatalf("Expected 'skills' key in JSON output")
+		}
+		if len(skills) != 3 {
+			t.Errorf("Expected 3 skills in JSON output, got %d", len(skills))
 		}
 
-		// Verify structure of first asset
-		if len(assets) > 0 {
-			asset := assets[0]
-			requiredFields := []string{"name", "type", "latestVersion", "versionsCount", "description"}
+		// Verify structure of first asset (now simplified: name and version)
+		if len(skills) > 0 {
+			asset := skills[0]
+			requiredFields := []string{"name", "version"}
 			for _, field := range requiredFields {
 				if _, ok := asset[field]; !ok {
 					t.Errorf("Expected field '%s' in asset JSON", field)
@@ -122,9 +129,9 @@ func TestVaultCommandWithPathRepository(t *testing.T) {
 			}
 		}
 
-		// Find code-review asset and verify version count
+		// Find code-review asset and verify version
 		var codeReview map[string]any
-		for _, asset := range assets {
+		for _, asset := range skills {
 			if name, ok := asset["name"].(string); ok && name == "code-review" {
 				codeReview = asset
 				break
@@ -134,11 +141,8 @@ func TestVaultCommandWithPathRepository(t *testing.T) {
 		if codeReview == nil {
 			t.Errorf("Expected to find 'code-review' asset in JSON output")
 		} else {
-			if versionsCount, ok := codeReview["versionsCount"].(float64); !ok || int(versionsCount) != 3 {
-				t.Errorf("Expected code-review to have 3 versions, got %v", codeReview["versionsCount"])
-			}
-			if latestVersion, ok := codeReview["latestVersion"].(string); !ok || latestVersion != "3.0.0" {
-				t.Errorf("Expected code-review latest version to be '3.0.0', got %v", codeReview["latestVersion"])
+			if version, ok := codeReview["version"].(string); !ok || version != "3.0.0" {
+				t.Errorf("Expected code-review version to be '3.0.0', got %v", codeReview["version"])
 			}
 		}
 	})
@@ -657,8 +661,9 @@ func TestVaultCommandEmptyRepository(t *testing.T) {
 
 		output := stdout.String()
 
-		if !strings.Contains(output, "No assets found in vault") {
-			t.Errorf("Expected 'No assets found in vault', got:\n%s", output)
+		// Empty vault should still show header
+		if !strings.Contains(output, "Vault Assets") {
+			t.Errorf("Expected 'Vault Assets' header, got:\n%s", output)
 		}
 	})
 
@@ -675,14 +680,327 @@ func TestVaultCommandEmptyRepository(t *testing.T) {
 
 		output := stdout.String()
 
-		// Parse JSON to verify it's valid
-		var assets []map[string]any
-		if err := json.Unmarshal([]byte(output), &assets); err != nil {
+		// Parse JSON to verify it's valid - now returns grouped format
+		var result map[string][]map[string]any
+		if err := json.Unmarshal([]byte(output), &result); err != nil {
 			t.Fatalf("Invalid JSON output: %v\nOutput:\n%s", err, output)
 		}
 
-		if len(assets) != 0 {
-			t.Errorf("Expected empty array, got %d assets", len(assets))
+		// All type arrays should be empty
+		totalAssets := 0
+		for _, assets := range result {
+			totalAssets += len(assets)
+		}
+		if totalAssets != 0 {
+			t.Errorf("Expected all empty arrays, got %d total assets", totalAssets)
+		}
+	})
+}
+
+// TestVaultListInstalled tests the --installed flag
+func TestVaultListInstalled(t *testing.T) {
+	env := NewTestEnv(t)
+	vaultDir := env.SetupPathVault()
+
+	// Add skills to vault with different scopes
+	env.AddSkillToVault(vaultDir, "global-skill", "1.0.0")
+	env.AddSkillToVault(vaultDir, "scoped-skill", "2.0.0")
+	env.WriteFile(filepath.Join(vaultDir, "assets", "global-skill", "list.txt"), "1.0.0\n")
+	env.WriteFile(filepath.Join(vaultDir, "assets", "scoped-skill", "list.txt"), "2.0.0\n")
+
+	// Write lock file with installed assets
+	// Note: IsGlobal() returns true when there are no scopes
+	env.WriteLockFile(vaultDir, `
+[[assets]]
+name = "global-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/global-skill/1.0.0"
+
+[[assets]]
+name = "scoped-skill"
+version = "2.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/scoped-skill/2.0.0"
+
+[[assets.scopes]]
+repo = "https://github.com/test/repo"
+`)
+
+	workingDir := env.MkdirAll(filepath.Join(env.TempDir, "working"))
+	env.Chdir(workingDir)
+
+	t.Run("list installed text output", func(t *testing.T) {
+		cmd := NewVaultCommand()
+		cmd.SetArgs([]string{"list", "--installed"})
+
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("vault list --installed failed: %v", err)
+		}
+
+		output := stdout.String()
+
+		// Verify header
+		if !strings.Contains(output, "Installed Assets") {
+			t.Errorf("Expected 'Installed Assets' header, got:\n%s", output)
+		}
+
+		// Verify assets are listed
+		if !strings.Contains(output, "global-skill") {
+			t.Errorf("Expected 'global-skill' in output, got:\n%s", output)
+		}
+		if !strings.Contains(output, "scoped-skill") {
+			t.Errorf("Expected 'scoped-skill' in output, got:\n%s", output)
+		}
+
+		// Verify scope info
+		if !strings.Contains(output, "(global)") {
+			t.Errorf("Expected '(global)' scope info, got:\n%s", output)
+		}
+		if !strings.Contains(output, "(1 scopes)") {
+			t.Errorf("Expected '(1 scopes)' scope info, got:\n%s", output)
+		}
+	})
+
+	t.Run("list installed json output", func(t *testing.T) {
+		cmd := NewVaultCommand()
+		cmd.SetArgs([]string{"list", "--installed", "--json"})
+
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("vault list --installed --json failed: %v", err)
+		}
+
+		output := stdout.String()
+
+		var result map[string][]map[string]any
+		if err := json.Unmarshal([]byte(output), &result); err != nil {
+			t.Fatalf("Invalid JSON output: %v\nOutput:\n%s", err, output)
+		}
+
+		// Verify skills
+		skills := result["skills"]
+		if len(skills) != 2 {
+			t.Errorf("Expected 2 skills, got %d", len(skills))
+		}
+	})
+
+	t.Run("list installed with type filter", func(t *testing.T) {
+		cmd := NewVaultCommand()
+		cmd.SetArgs([]string{"list", "--installed", "--type", "skill"})
+
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("vault list --installed --type skill failed: %v", err)
+		}
+
+		output := stdout.String()
+
+		if !strings.Contains(output, "Installed Skill Assets") {
+			t.Errorf("Expected 'Installed Skill Assets' header, got:\n%s", output)
+		}
+		if !strings.Contains(output, "global-skill") {
+			t.Errorf("Expected 'global-skill' in output, got:\n%s", output)
+		}
+	})
+
+	t.Run("list installed with type filter json", func(t *testing.T) {
+		cmd := NewVaultCommand()
+		cmd.SetArgs([]string{"list", "--installed", "--type", "skill", "--json"})
+
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("vault list --installed --type skill --json failed: %v", err)
+		}
+
+		output := stdout.String()
+
+		var result map[string][]map[string]any
+		if err := json.Unmarshal([]byte(output), &result); err != nil {
+			t.Fatalf("Invalid JSON output: %v\nOutput:\n%s", err, output)
+		}
+
+		// Should only have skills key
+		skills := result["skills"]
+		if len(skills) != 2 {
+			t.Errorf("Expected 2 skills, got %d", len(skills))
+		}
+		if _, ok := result["mcps"]; ok {
+			t.Errorf("Did not expect 'mcps' key when filtering by skill")
+		}
+	})
+
+	t.Run("list installed empty type", func(t *testing.T) {
+		cmd := NewVaultCommand()
+		cmd.SetArgs([]string{"list", "--installed", "--type", "agent"})
+
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("vault list --installed --type agent failed: %v", err)
+		}
+
+		output := stdout.String()
+
+		// Should still show header with empty list
+		if !strings.Contains(output, "Installed Agent Assets") {
+			t.Errorf("Expected 'Installed Agent Assets' header, got:\n%s", output)
+		}
+		if !strings.Contains(output, "Agents") {
+			t.Errorf("Expected 'Agents' type label, got:\n%s", output)
+		}
+	})
+}
+
+// TestVaultListJsonWithTypeFilter tests JSON output with type filtering
+func TestVaultListJsonWithTypeFilter(t *testing.T) {
+	env := NewTestEnv(t)
+	vaultDir := env.SetupPathVault()
+
+	env.AddSkillToVault(vaultDir, "my-skill", "1.0.0")
+	env.WriteFile(filepath.Join(vaultDir, "assets", "my-skill", "list.txt"), "1.0.0\n")
+
+	workingDir := env.MkdirAll(filepath.Join(env.TempDir, "working"))
+	env.Chdir(workingDir)
+
+	cmd := NewVaultCommand()
+	cmd.SetArgs([]string{"list", "--type", "skill", "--json"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("vault list --type skill --json failed: %v", err)
+	}
+
+	output := stdout.String()
+
+	var result map[string][]map[string]any
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("Invalid JSON output: %v\nOutput:\n%s", err, output)
+	}
+
+	// Should only have skills key when filtering
+	if _, ok := result["skills"]; !ok {
+		t.Errorf("Expected 'skills' key in output")
+	}
+	if _, ok := result["mcps"]; ok {
+		t.Errorf("Did not expect 'mcps' key when filtering by skill")
+	}
+}
+
+// TestVaultListInvalidType tests error handling for invalid type filter
+func TestVaultListInvalidType(t *testing.T) {
+	env := NewTestEnv(t)
+	_ = env.SetupPathVault()
+
+	workingDir := env.MkdirAll(filepath.Join(env.TempDir, "working"))
+	env.Chdir(workingDir)
+
+	cmd := NewVaultCommand()
+	cmd.SetArgs([]string{"list", "--type", "invalid-type"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Expected error for invalid type, but command succeeded")
+	}
+	if !strings.Contains(err.Error(), "invalid asset type") {
+		t.Errorf("Expected 'invalid asset type' in error, got: %v", err)
+	}
+}
+
+// TestHelperFunctions tests the helper functions directly
+func TestHelperFunctions(t *testing.T) {
+	t.Run("typeFilterToJSONKey", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected string
+		}{
+			{"skill", "skills"},
+			{"mcp", "mcps"},
+			{"agent", "agents"},
+			{"command", "commands"},
+			{"hook", "hooks"},
+			{"rule", "rules"},
+			{"claude-code-plugin", "claude-code-plugins"},
+			{"unknown", "unknowns"},
+		}
+
+		for _, tc := range tests {
+			result := typeFilterToJSONKey(tc.input)
+			if result != tc.expected {
+				t.Errorf("typeFilterToJSONKey(%q) = %q, expected %q", tc.input, result, tc.expected)
+			}
+		}
+	})
+
+	t.Run("getTypeLabel", func(t *testing.T) {
+		tests := []struct {
+			key      string
+			label    string
+			expected string
+		}{
+			{"skill", "Skill", "Skill"},
+			{"mcp", "MCP Server", "MCP Server"},
+			{"custom", "", "Custom"},  // Fallback to capitalized key
+			{"", "", "Unknown"},       // Empty key and label
+		}
+
+		for _, tc := range tests {
+			assetType := asset.Type{Key: tc.key, Label: tc.label}
+			result := getTypeLabel(assetType)
+			if result != tc.expected {
+				t.Errorf("getTypeLabel({Key: %q, Label: %q}) = %q, expected %q", tc.key, tc.label, result, tc.expected)
+			}
+		}
+	})
+
+	t.Run("filterAssetsByType", func(t *testing.T) {
+		assets := []lockfile.Asset{
+			{Name: "skill1", Type: asset.TypeSkill},
+			{Name: "skill2", Type: asset.TypeSkill},
+			{Name: "hook1", Type: asset.TypeHook},
+		}
+
+		// Filter by skill
+		filtered := filterAssetsByType(assets, "skill")
+		if len(filtered) != 2 {
+			t.Errorf("Expected 2 skills, got %d", len(filtered))
+		}
+
+		// Filter by hook
+		filtered = filterAssetsByType(assets, "hook")
+		if len(filtered) != 1 {
+			t.Errorf("Expected 1 hook, got %d", len(filtered))
+		}
+
+		// No filter
+		filtered = filterAssetsByType(assets, "")
+		if len(filtered) != 3 {
+			t.Errorf("Expected 3 assets with no filter, got %d", len(filtered))
+		}
+
+		// Filter with no matches
+		filtered = filterAssetsByType(assets, "agent")
+		if len(filtered) != 0 {
+			t.Errorf("Expected 0 agents, got %d", len(filtered))
 		}
 	})
 }

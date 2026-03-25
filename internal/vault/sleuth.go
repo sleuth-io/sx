@@ -503,11 +503,13 @@ func (s *SleuthVault) RenameAsset(ctx context.Context, oldName, newName string) 
 // Returns empty string for types not supported by the backend.
 func assetTypeToGraphQL(typeKey string) string {
 	mapping := map[string]string{
-		"skill":   "SKILL",
-		"mcp":     "MCP",
-		"agent":   "AGENT",
-		"command": "COMMAND",
-		"hook":    "HOOK",
+		"skill":              "SKILL",
+		"mcp":                "MCP",
+		"agent":              "AGENT",
+		"command":            "COMMAND",
+		"hook":               "HOOK",
+		"rule":               "RULE",
+		"claude-code-plugin": "CLAUDE_CODE_PLUGIN",
 	}
 	return mapping[typeKey]
 }
@@ -630,7 +632,7 @@ func (s *SleuthVault) listAssetsByType(ctx context.Context, opts ListAssetsOptio
 	for _, node := range gqlResp.Data.Vault.Assets.Nodes {
 		result.Assets = append(result.Assets, AssetSummary{
 			Name:          node.Name,
-			Type:          asset.FromString(node.Type),
+			Type:          asset.FromString(strings.ToLower(node.Type)),
 			LatestVersion: node.LatestVersion,
 			VersionsCount: node.VersionsCount,
 			Description:   node.Description,
