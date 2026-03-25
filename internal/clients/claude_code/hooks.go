@@ -10,6 +10,7 @@ import (
 	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients/claude_code/handlers"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/utils"
 )
 
 // installBootstrap installs Claude Code infrastructure (hooks and MCP servers).
@@ -90,7 +91,7 @@ func installSessionStartHook(claudeDir string) error {
 	// Read existing settings or create new
 	var settings map[string]any
 	if data, err := os.ReadFile(settingsPath); err == nil {
-		if err := json.Unmarshal(data, &settings); err != nil {
+		if err := utils.UnmarshalJSONC(data, &settings); err != nil {
 			log.Error("failed to parse settings.json for SessionStart hook", "error", err)
 			return fmt.Errorf("failed to parse settings.json: %w", err)
 		}
@@ -218,7 +219,7 @@ func uninstallBootstrap(opts []bootstrap.Option) error {
 
 	if len(data) > 0 && (uninstallSession || uninstallAnalytics) {
 		var settings map[string]any
-		if err := json.Unmarshal(data, &settings); err != nil {
+		if err := utils.UnmarshalJSONC(data, &settings); err != nil {
 			return fmt.Errorf("failed to parse settings.json: %w", err)
 		}
 
@@ -340,7 +341,7 @@ func installUsageReportingHook(claudeDir string) error {
 	// Read existing settings or create new
 	var settings map[string]any
 	if data, err := os.ReadFile(settingsPath); err == nil {
-		if err := json.Unmarshal(data, &settings); err != nil {
+		if err := utils.UnmarshalJSONC(data, &settings); err != nil {
 			log.Error("failed to parse settings.json for PostToolUse hook", "error", err)
 			return fmt.Errorf("failed to parse settings.json: %w", err)
 		}

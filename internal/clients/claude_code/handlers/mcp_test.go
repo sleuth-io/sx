@@ -568,3 +568,92 @@ args = ["server"]
 		t.Errorf("Validate should accept mcp-remote type: %v", err)
 	}
 }
+
+func TestAddMCPServer_JSONC(t *testing.T) {
+	targetBase, projectRoot := setupTestProject(t)
+
+	// Pre-populate .mcp.json with JSONC (trailing commas + comments)
+	jsoncContent := `{
+		// existing servers
+		"mcpServers": {
+			"existing": {
+				"command": "npx",
+				"args": ["-y", "@example/server"],
+			},
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(projectRoot, ".mcp.json"), []byte(jsoncContent), 0644); err != nil {
+		t.Fatalf("Failed to write JSONC config: %v", err)
+	}
+
+	err := AddMCPServer(targetBase, "new-server", map[string]any{
+		"command": "node",
+		"args":    []string{"server.js"},
+	})
+	if err != nil {
+		t.Fatalf("AddMCPServer should handle pre-existing JSONC: %v", err)
+	}
+
+	config := readJSON(t, filepath.Join(projectRoot, ".mcp.json"))
+	servers := config["mcpServers"].(map[string]any)
+	if _, exists := servers["existing"]; !exists {
+		t.Error("Expected existing server to be preserved")
+	}
+	if _, exists := servers["new-server"]; !exists {
+		t.Error("Expected new-server to be added")
+	}
+}
+
+func TestRemoveMCPServer_JSONC(t *testing.T) {
+	targetBase, projectRoot := setupTestProject(t)
+
+	jsoncContent := `{
+		"mcpServers": {
+			"keep-me": {"command": "node", "args": ["a.js"]},
+			"remove-me": {"command": "node", "args": ["b.js"]},
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(projectRoot, ".mcp.json"), []byte(jsoncContent), 0644); err != nil {
+		t.Fatalf("Failed to write JSONC config: %v", err)
+	}
+
+	err := RemoveMCPServer(targetBase, "remove-me")
+	if err != nil {
+		t.Fatalf("RemoveMCPServer should handle JSONC: %v", err)
+	}
+
+	config := readJSON(t, filepath.Join(projectRoot, ".mcp.json"))
+	servers := config["mcpServers"].(map[string]any)
+	if _, exists := servers["keep-me"]; !exists {
+		t.Error("Expected keep-me to be preserved")
+	}
+	if _, exists := servers["remove-me"]; exists {
+		t.Error("Expected remove-me to be removed")
+	}
+}
+
+func TestVerifyMCPServerInstalled_JSONC(t *testing.T) {
+	targetBase, projectRoot := setupTestProject(t)
+
+	jsoncContent := `{
+		"mcpServers": {
+			"my-server": {
+				"command": "node",
+				"args": ["server.js"], // trailing comma in array
+			}, // trailing comma in object
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(projectRoot, ".mcp.json"), []byte(jsoncContent), 0644); err != nil {
+		t.Fatalf("Failed to write JSONC config: %v", err)
+	}
+
+	installed, msg := VerifyMCPServerInstalled(targetBase, "my-server")
+	if !installed {
+		t.Errorf("Expected my-server to be installed, got: %s", msg)
+	}
+
+	installed, _ = VerifyMCPServerInstalled(targetBase, "nonexistent")
+	if installed {
+		t.Error("Expected nonexistent to not be installed")
+	}
+}

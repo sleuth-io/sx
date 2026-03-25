@@ -196,7 +196,7 @@ func ReadHooksJSON(path string) (*HooksConfig, error) {
 		return nil, err
 	}
 
-	if err := json.Unmarshal(data, config); err != nil {
+	if err := utils.UnmarshalJSONC(data, config); err != nil {
 		return nil, err
 	}
 

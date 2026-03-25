@@ -248,7 +248,7 @@ func ReadSettingsJSON(path string) (*SettingsJSON, error) {
 
 	// First, unmarshal into a generic map to preserve unknown fields
 	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
+	if err := utils.UnmarshalJSONC(data, &raw); err != nil {
 		return nil, err
 	}
 

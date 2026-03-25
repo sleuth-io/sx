@@ -195,6 +195,43 @@ func TestCursorMCPHandler_Packaged_SubcommandArgs(t *testing.T) {
 	}
 }
 
+func TestReadMCPConfig_JSONC(t *testing.T) {
+	targetBase := t.TempDir()
+	mcpPath := filepath.Join(targetBase, "mcp.json")
+
+	// Cursor is a VS Code fork; users may have JSONC in their mcp.json
+	jsoncContent := `{
+		// My MCP servers
+		"mcpServers": {
+			"server-1": {
+				"command": "node",
+				"args": ["index.js"],
+			},
+			/* temporarily disabled
+			"server-2": {
+				"command": "npx",
+				"args": ["-y", "@example/mcp"],
+			},
+			*/
+		},
+	}`
+	if err := os.WriteFile(mcpPath, []byte(jsoncContent), 0644); err != nil {
+		t.Fatalf("Failed to write JSONC config: %v", err)
+	}
+
+	config, err := ReadMCPConfig(mcpPath)
+	if err != nil {
+		t.Fatalf("ReadMCPConfig should handle JSONC: %v", err)
+	}
+
+	if len(config.MCPServers) != 1 {
+		t.Errorf("Expected 1 server, got %d", len(config.MCPServers))
+	}
+	if _, exists := config.MCPServers["server-1"]; !exists {
+		t.Error("Expected server-1 to exist")
+	}
+}
+
 func TestCursorMCPHandler_Remove(t *testing.T) {
 	targetBase := t.TempDir()
 

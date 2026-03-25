@@ -39,7 +39,7 @@ func AddMCPServer(targetBase, serverName string, serverConfig map[string]any) er
 		if err != nil {
 			return fmt.Errorf("failed to read %s: %w", filepath.Base(configPath), err)
 		}
-		if err := json.Unmarshal(data, &config); err != nil {
+		if err := utils.UnmarshalJSONC(data, &config); err != nil {
 			return fmt.Errorf("failed to parse %s: %w", filepath.Base(configPath), err)
 		}
 	} else {
@@ -88,7 +88,7 @@ func RemoveMCPServer(targetBase, serverName string) error {
 	}
 
 	var config map[string]any
-	if err := json.Unmarshal(data, &config); err != nil {
+	if err := utils.UnmarshalJSONC(data, &config); err != nil {
 		return fmt.Errorf("failed to parse %s: %w", filepath.Base(configPath), err)
 	}
 
@@ -128,7 +128,7 @@ func VerifyMCPServerInstalled(targetBase, serverName string) (bool, string) {
 	}
 
 	var config map[string]any
-	if err := json.Unmarshal(data, &config); err != nil {
+	if err := utils.UnmarshalJSONC(data, &config); err != nil {
 		return false, "failed to parse " + filepath.Base(configPath) + ": " + err.Error()
 	}
 

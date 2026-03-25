@@ -148,7 +148,7 @@ func readMCPConfig(path string) (*mcpConfig, error) {
 		return nil, err
 	}
 
-	if err := json.Unmarshal(data, config); err != nil {
+	if err := utils.UnmarshalJSONC(data, config); err != nil {
 		return nil, err
 	}
 
@@ -302,7 +302,7 @@ func readCopilotCLIMCPConfig(path string) (*copilotCLIMCPConfig, error) {
 		return nil, err
 	}
 
-	if err := json.Unmarshal(data, config); err != nil {
+	if err := utils.UnmarshalJSONC(data, config); err != nil {
 		return nil, err
 	}
 

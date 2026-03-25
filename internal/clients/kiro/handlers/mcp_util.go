@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/sleuth-io/sx/internal/utils"
 )
 
 // MCPConfig represents Kiro's mcp.json structure
@@ -25,7 +27,7 @@ func ReadMCPConfig(path string) (*MCPConfig, error) {
 		return nil, err
 	}
 
-	if err := json.Unmarshal(data, config); err != nil {
+	if err := utils.UnmarshalJSONC(data, config); err != nil {
 		return nil, err
 	}
 

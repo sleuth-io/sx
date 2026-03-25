@@ -80,6 +80,109 @@ func TestReadMCPConfig_ExistingFile(t *testing.T) {
 	}
 }
 
+func TestReadMCPConfig_JSONC_TrailingCommas(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+
+	// Kiro/Cursor/VS Code editors allow trailing commas in JSON
+	testConfig := `{
+		"mcpServers": {
+			"server-a": {
+				"command": "node",
+				"args": ["server.js"],
+			},
+			"server-b": {
+				"command": "npx",
+				"args": ["-y", "@example/mcp"],
+			},
+		}
+	}`
+	if err := os.WriteFile(configPath, []byte(testConfig), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	config, err := ReadMCPConfig(configPath)
+	if err != nil {
+		t.Fatalf("ReadMCPConfig should handle trailing commas: %v", err)
+	}
+
+	if len(config.MCPServers) != 2 {
+		t.Errorf("Expected 2 servers, got %d", len(config.MCPServers))
+	}
+	if _, exists := config.MCPServers["server-a"]; !exists {
+		t.Error("Expected server-a to exist")
+	}
+	if _, exists := config.MCPServers["server-b"]; !exists {
+		t.Error("Expected server-b to exist")
+	}
+}
+
+func TestReadMCPConfig_JSONC_Comments(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+
+	// VS Code-based editors treat JSON as JSONC, allowing comments
+	testConfig := `{
+		// MCP server configuration
+		"mcpServers": {
+			"gitlab": {
+				"command": "npx",
+				"args": ["-y", "@zereight/mcp-gitlab"],
+				"env": {
+					"GITLAB_PERSONAL_ACCESS_TOKEN": "token",
+					"GITLAB_API_URL": "https://gitlab.com" // API URL
+				}
+			}
+			/* more servers can be added here */
+		}
+	}`
+	if err := os.WriteFile(configPath, []byte(testConfig), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	config, err := ReadMCPConfig(configPath)
+	if err != nil {
+		t.Fatalf("ReadMCPConfig should handle comments: %v", err)
+	}
+
+	if _, exists := config.MCPServers["gitlab"]; !exists {
+		t.Error("Expected gitlab to exist")
+	}
+}
+
+func TestReadMCPConfig_JSONC_CommentsAndTrailingCommas(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+
+	// Realistic file a user might create in Kiro/Cursor
+	testConfig := `{
+		"mcpServers": {
+			"gitlab": {
+				"command": "npx",
+				"args": ["-y", "@zereight/mcp-gitlab"],
+				"env": {
+					"GITLAB_PERSONAL_ACCESS_TOKEN": "token",
+					"GITLAB_API_URL": "https://gitlab.com", // API URL
+					"GITLAB_READ_ONLY_MODE": "true",
+				},
+				"autoApprove": ["get_merge_request", "list_merge_requests"],
+			},
+		}
+	}`
+	if err := os.WriteFile(configPath, []byte(testConfig), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	config, err := ReadMCPConfig(configPath)
+	if err != nil {
+		t.Fatalf("ReadMCPConfig should handle JSONC: %v", err)
+	}
+
+	if _, exists := config.MCPServers["gitlab"]; !exists {
+		t.Error("Expected gitlab to exist")
+	}
+}
+
 func TestWriteMCPConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "subdir", "config.json")
