@@ -173,8 +173,8 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	// Install assets to their appropriate locations
 	installResult := installAssets(ctx, downloadResult.Downloads, env.GitContext, env.CurrentScope, env.Clients, styledOut)
 
-	// Save new installation state (saves ALL assets from lock file, not just changed ones)
-	saveInstallationState(tracker, sortedAssets, downloadResult.Downloads, env.CurrentScope, targetClientIDs, out)
+	// Save new installation state (only for successfully installed assets)
+	saveInstallationState(tracker, sortedAssets, assetsToInstall, downloadResult.Downloads, installResult, env.CurrentScope, targetClientIDs, out)
 
 	// Ensure skills support is configured for all clients (creates local rules files, etc.)
 	ensureAssetSupport(ctx, env.Clients, buildInstallScope(env.CurrentScope, env.GitContext), out)
@@ -576,15 +576,38 @@ func ensureAssetSupport(ctx context.Context, targetClients []clients.Client, sco
 	}
 }
 
-// saveInstallationState saves the current installation state to tracker file
-func saveInstallationState(tracker *assets.Tracker, sortedAssets []*lockfile.Asset, downloads []*assets.AssetWithMetadata, currentScope *scope.Scope, targetClientIDs []string, out *outputHelper) {
+// saveInstallationState saves the current installation state to tracker file.
+// Assets that failed to download or install are skipped so they will be retried
+// on the next install run.
+func saveInstallationState(tracker *assets.Tracker, sortedAssets []*lockfile.Asset, assetsToInstall []*lockfile.Asset, downloads []*assets.AssetWithMetadata, installResult *assets.InstallResult, currentScope *scope.Scope, targetClientIDs []string, out *outputHelper) {
 	// Build metadata lookup map from downloads
 	metadataByName := make(map[string]*assets.AssetWithMetadata)
 	for _, d := range downloads {
 		metadataByName[d.Asset.Name] = d
 	}
 
+	// Build set of assets that were attempted this run
+	attemptedNames := make(map[string]bool)
+	for _, art := range assetsToInstall {
+		attemptedNames[art.Name] = true
+	}
+
+	// Build set of successfully installed asset names
+	installedNames := make(map[string]bool)
+	if installResult != nil {
+		for _, name := range installResult.Installed {
+			installedNames[name] = true
+		}
+	}
+
 	for _, art := range sortedAssets {
+		// If this asset was attempted in this run, only save it if it succeeded.
+		// Assets that failed to download or install should not be marked as installed
+		// so they will be retried on the next run.
+		if attemptedNames[art.Name] && !installedNames[art.Name] {
+			continue
+		}
+
 		key := assetKeyForInstall(art, currentScope)
 		installed := assets.InstalledAsset{
 			Name:       art.Name,

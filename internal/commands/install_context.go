@@ -253,8 +253,8 @@ func handleNothingToInstall(
 	styledOut *ui.Output,
 	out *outputHelper,
 ) error {
-	// Save state even if nothing changed (nil downloads since nothing was downloaded)
-	saveInstallationState(tracker, sortedAssets, nil, env.CurrentScope, targetClientIDs, out)
+	// Save state even if nothing changed (no assets attempted, no downloads)
+	saveInstallationState(tracker, sortedAssets, nil, nil, nil, env.CurrentScope, targetClientIDs, out)
 
 	// Install client-specific hooks
 	// env.Clients is already filtered by --client/--clients flag

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -341,6 +343,63 @@ func TestClaudeCodePluginHandler_Remove_MarketplaceSource(t *testing.T) {
 	// Verify unregistered
 	if IsPluginRegistered(targetBase, "test-plugin", "my-market") {
 		t.Error("expected plugin to be unregistered after remove")
+	}
+}
+
+func TestClaudeCodePluginHandler_Remove_MarketplaceWithoutSourceField(t *testing.T) {
+	// Test that Remove works when Marketplace is set but Source is NOT "marketplace".
+	// This happens when the tracker config has a marketplace identifier but no explicit
+	// source field (e.g., during removal of assets loaded from tracker config).
+	// The fix in 4bd6d26 ensures we check marketplace != "" (not just isMarketplaceSource)
+	// so that files are not deleted for marketplace-managed plugins.
+	ctx := t.Context()
+	targetBase := t.TempDir()
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{
+			Name:    "test-plugin",
+			Version: "1.0.0",
+			Type:    asset.TypeClaudeCodePlugin,
+		},
+		ClaudeCodePlugin: &metadata.ClaudeCodePluginConfig{
+			// Marketplace is set (from tracker config), but Source is empty
+			// (not explicitly "marketplace"). This is the tracker-config-only path.
+			Marketplace: "my-market",
+		},
+	}
+
+	// Register the plugin with the marketplace name
+	if err := RegisterPlugin(targetBase, "test-plugin", "my-market", "1.0.0", "/some/marketplace/path"); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+	if err := EnablePlugin(targetBase, "test-plugin", "my-market", "/some/marketplace/path"); err != nil {
+		t.Fatalf("failed to enable: %v", err)
+	}
+
+	// Create a fake plugin directory that should NOT be deleted
+	// (marketplace owns these files)
+	pluginDir := filepath.Join(targetBase, "plugins", "test-plugin")
+	if err := os.MkdirAll(pluginDir, 0755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+	markerFile := filepath.Join(pluginDir, "plugin.json")
+	if err := os.WriteFile(markerFile, []byte(`{}`), 0644); err != nil {
+		t.Fatalf("failed to create marker file: %v", err)
+	}
+
+	handler := NewClaudeCodePluginHandler(meta)
+	if err := handler.Remove(ctx, targetBase); err != nil {
+		t.Fatalf("Remove() failed: %v", err)
+	}
+
+	// Verify unregistered
+	if IsPluginRegistered(targetBase, "test-plugin", "my-market") {
+		t.Error("expected plugin to be unregistered after remove")
+	}
+
+	// Verify plugin directory was NOT deleted (marketplace owns it)
+	if _, err := os.Stat(markerFile); os.IsNotExist(err) {
+		t.Error("expected plugin files to be preserved for marketplace-managed plugin, but they were deleted")
 	}
 }
 
