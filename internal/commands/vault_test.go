@@ -3,6 +3,8 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1001,6 +1003,262 @@ func TestHelperFunctions(t *testing.T) {
 		filtered = filterAssetsByType(assets, "agent")
 		if len(filtered) != 0 {
 			t.Errorf("Expected 0 agents, got %d", len(filtered))
+		}
+	})
+}
+
+// mockGraphQLServerOptions configures the mock GraphQL server behavior
+type mockGraphQLServerOptions struct {
+	assetsByType map[string][]map[string]any
+	graphQLError string // If set, return this error instead of assets
+}
+
+// mockGraphQLServer creates a test server that responds to GraphQL queries for vault assets
+func mockGraphQLServer(t *testing.T, opts mockGraphQLServerOptions) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/graphql" {
+			var reqBody map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+				t.Errorf("Failed to decode GraphQL request body: %v", err)
+				http.Error(w, "Bad request", http.StatusBadRequest)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+
+			// Return error if configured
+			if opts.graphQLError != "" {
+				json.NewEncoder(w).Encode(map[string]any{
+					"data":   nil,
+					"errors": []map[string]string{{"message": opts.graphQLError}},
+				})
+				return
+			}
+
+			variables, _ := reqBody["variables"].(map[string]any)
+			assetType, _ := variables["type"].(string)
+
+			nodes := opts.assetsByType[assetType]
+			if nodes == nil {
+				nodes = []map[string]any{}
+			}
+
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"vault": map[string]any{
+						"assets": map[string]any{
+							"nodes": nodes,
+						},
+					},
+				},
+			})
+			return
+		}
+
+		// Lock file endpoint - matches sleuth.go GetLockFile path
+		if r.URL.Path == "/api/skills/sx.lock" {
+			w.Header().Set("Content-Type", "application/toml")
+			w.Write([]byte(""))
+			return
+		}
+
+		http.NotFound(w, r)
+	}))
+}
+
+// TestVaultListWithGraphQL tests vault list command with a mock GraphQL server
+func TestVaultListWithGraphQL(t *testing.T) {
+	t.Run("returns JSON with single skill from GraphQL", func(t *testing.T) {
+		server := mockGraphQLServer(t, mockGraphQLServerOptions{
+			assetsByType: map[string][]map[string]any{
+				"SKILL": {
+					{
+						"slug":          "code-review",
+						"type":          "SKILL",
+						"latestVersion": "2.0.0",
+						"versionsCount": 2,
+						"description":   "Automated code review",
+						"createdAt":     "2024-01-01T00:00:00Z",
+						"updatedAt":     "2024-01-15T00:00:00Z",
+					},
+				},
+			},
+		})
+		defer server.Close()
+
+		env := NewTestEnv(t)
+		setupSleuthConfig(t, env.HomeDir, server.URL)
+
+		cmd := NewVaultCommand()
+		cmd.SetArgs([]string{"list", "--json"})
+
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+
+		err := cmd.Execute()
+		if err != nil {
+			t.Fatalf("vault list --json failed: %v", err)
+		}
+
+		expected := `{"agents":[],"claude-code-plugins":[],"commands":[],"hooks":[],"mcps":[],"rules":[],"skills":[{"name":"code-review","version":"2.0.0"}]}` + "\n"
+		if stdout.String() != expected {
+			t.Errorf("Expected:\n%s\nGot:\n%s", expected, stdout.String())
+		}
+	})
+
+	t.Run("returns JSON with multiple asset types from GraphQL", func(t *testing.T) {
+		server := mockGraphQLServer(t, mockGraphQLServerOptions{
+			assetsByType: map[string][]map[string]any{
+				"SKILL": {
+					{
+						"slug":          "code-review",
+						"type":          "SKILL",
+						"latestVersion": "2.0.0",
+						"versionsCount": 2,
+						"description":   "Reviews code",
+						"createdAt":     "2024-01-01T00:00:00Z",
+						"updatedAt":     "2024-01-01T00:00:00Z",
+					},
+					{
+						"slug":          "test-gen",
+						"type":          "SKILL",
+						"latestVersion": "1.0.0",
+						"versionsCount": 1,
+						"description":   "Generates tests",
+						"createdAt":     "2024-01-01T00:00:00Z",
+						"updatedAt":     "2024-01-01T00:00:00Z",
+					},
+				},
+				"RULE": {
+					{
+						"slug":          "coding-standards",
+						"type":          "RULE",
+						"latestVersion": "1.0.0",
+						"versionsCount": 1,
+						"description":   "Enforces standards",
+						"createdAt":     "2024-01-01T00:00:00Z",
+						"updatedAt":     "2024-01-01T00:00:00Z",
+					},
+				},
+				"MCP": {
+					{
+						"slug":          "github-server",
+						"type":          "MCP",
+						"latestVersion": "3.0.0",
+						"versionsCount": 3,
+						"description":   "GitHub integration",
+						"createdAt":     "2024-01-01T00:00:00Z",
+						"updatedAt":     "2024-01-01T00:00:00Z",
+					},
+				},
+			},
+		})
+		defer server.Close()
+
+		env := NewTestEnv(t)
+		setupSleuthConfig(t, env.HomeDir, server.URL)
+
+		cmd := NewVaultCommand()
+		cmd.SetArgs([]string{"list", "--json"})
+
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+
+		err := cmd.Execute()
+		if err != nil {
+			t.Fatalf("vault list --json failed: %v", err)
+		}
+
+		expected := `{"agents":[],"claude-code-plugins":[],"commands":[],"hooks":[],"mcps":[{"name":"github-server","version":"3.0.0"}],"rules":[{"name":"coding-standards","version":"1.0.0"}],"skills":[{"name":"code-review","version":"2.0.0"},{"name":"test-gen","version":"1.0.0"}]}` + "\n"
+		if stdout.String() != expected {
+			t.Errorf("Expected:\n%s\nGot:\n%s", expected, stdout.String())
+		}
+	})
+
+	t.Run("returns filtered JSON with --type flag", func(t *testing.T) {
+		server := mockGraphQLServer(t, mockGraphQLServerOptions{
+			assetsByType: map[string][]map[string]any{
+				"RULE": {
+					{
+						"slug":          "my-rule",
+						"type":          "RULE",
+						"latestVersion": "1.0.0",
+						"versionsCount": 1,
+						"description":   "A test rule",
+						"createdAt":     "2024-01-01T00:00:00Z",
+						"updatedAt":     "2024-01-01T00:00:00Z",
+					},
+				},
+			},
+		})
+		defer server.Close()
+
+		env := NewTestEnv(t)
+		setupSleuthConfig(t, env.HomeDir, server.URL)
+
+		cmd := NewVaultCommand()
+		cmd.SetArgs([]string{"list", "--type", "rule", "--json"})
+
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+
+		err := cmd.Execute()
+		if err != nil {
+			t.Fatalf("vault list --type rule --json failed: %v", err)
+		}
+
+		// When filtering by type, only that type key is returned
+		expected := `{"rules":[{"name":"my-rule","version":"1.0.0"}]}` + "\n"
+		if stdout.String() != expected {
+			t.Errorf("Expected:\n%s\nGot:\n%s", expected, stdout.String())
+		}
+	})
+
+	t.Run("returns empty JSON when no assets", func(t *testing.T) {
+		server := mockGraphQLServer(t, mockGraphQLServerOptions{})
+		defer server.Close()
+
+		env := NewTestEnv(t)
+		setupSleuthConfig(t, env.HomeDir, server.URL)
+
+		cmd := NewVaultCommand()
+		cmd.SetArgs([]string{"list", "--json"})
+
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+
+		err := cmd.Execute()
+		if err != nil {
+			t.Fatalf("vault list --json failed: %v", err)
+		}
+
+		expected := `{"agents":[],"claude-code-plugins":[],"commands":[],"hooks":[],"mcps":[],"rules":[],"skills":[]}` + "\n"
+		if stdout.String() != expected {
+			t.Errorf("Expected:\n%s\nGot:\n%s", expected, stdout.String())
+		}
+	})
+
+	t.Run("returns error from GraphQL", func(t *testing.T) {
+		server := mockGraphQLServer(t, mockGraphQLServerOptions{
+			graphQLError: "Authentication required",
+		})
+		defer server.Close()
+
+		env := NewTestEnv(t)
+		setupSleuthConfig(t, env.HomeDir, server.URL)
+
+		cmd := NewVaultCommand()
+		cmd.SetArgs([]string{"list"})
+
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+
+		err := cmd.Execute()
+
+		expectedErr := "failed to list assets: GraphQL error: Authentication required"
+		if err == nil || err.Error() != expectedErr {
+			t.Errorf("Expected error %q, got: %v", expectedErr, err)
 		}
 	})
 }
