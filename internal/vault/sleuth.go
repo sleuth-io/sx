@@ -18,6 +18,7 @@ import (
 	"github.com/sleuth-io/sx/internal/cache"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/version"
 )
@@ -503,11 +504,13 @@ func (s *SleuthVault) RenameAsset(ctx context.Context, oldName, newName string) 
 // Returns empty string for types not supported by the backend.
 func assetTypeToGraphQL(typeKey string) string {
 	mapping := map[string]string{
-		"skill":   "SKILL",
-		"mcp":     "MCP",
-		"agent":   "AGENT",
-		"command": "COMMAND",
-		"hook":    "HOOK",
+		"skill":              "SKILL",
+		"mcp":                "MCP",
+		"agent":              "AGENT",
+		"command":            "COMMAND",
+		"hook":               "HOOK",
+		"rule":               "RULE",
+		"claude-code-plugin": "CLAUDE_CODE_PLUGIN",
 	}
 	return mapping[typeKey]
 }
@@ -580,7 +583,7 @@ func (s *SleuthVault) listAssetsByType(ctx context.Context, opts ListAssetsOptio
 		vault {
 			assets(%s) {
 				nodes {
-					name
+					slug
 					type
 					latestVersion
 					versionsCount
@@ -598,7 +601,7 @@ func (s *SleuthVault) listAssetsByType(ctx context.Context, opts ListAssetsOptio
 			Vault struct {
 				Assets struct {
 					Nodes []struct {
-						Name          string    `json:"name"`
+						Slug          string    `json:"slug"`
 						Type          string    `json:"type"`
 						LatestVersion string    `json:"latestVersion"`
 						VersionsCount int       `json:"versionsCount"`
@@ -628,9 +631,14 @@ func (s *SleuthVault) listAssetsByType(ctx context.Context, opts ListAssetsOptio
 	}
 
 	for _, node := range gqlResp.Data.Vault.Assets.Nodes {
+		assetType := asset.FromString(strings.ToLower(node.Type))
+		if !assetType.IsValid() {
+			log := logger.Get()
+			log.Warn("unknown asset type from GraphQL", "type", node.Type, "asset", node.Slug)
+		}
 		result.Assets = append(result.Assets, AssetSummary{
-			Name:          node.Name,
-			Type:          asset.FromString(node.Type),
+			Name:          node.Slug,
+			Type:          assetType,
 			LatestVersion: node.LatestVersion,
 			VersionsCount: node.VersionsCount,
 			Description:   node.Description,

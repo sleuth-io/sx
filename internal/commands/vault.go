@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -36,18 +39,20 @@ func NewVaultCommand() *cobra.Command {
 func newVaultListCommand() *cobra.Command {
 	var typeFilter string
 	var jsonOutput bool
+	var installedOnly bool
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all assets in the vault",
 		Long:  "Display all available assets with their types and versions.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVaultList(cmd, typeFilter, jsonOutput)
+			return runVaultList(cmd, typeFilter, jsonOutput, installedOnly)
 		},
 	}
 
-	cmd.Flags().StringVar(&typeFilter, "type", "", "Filter by asset type (skill, mcp, agent, command, hook)")
+	cmd.Flags().StringVar(&typeFilter, "type", "", "Filter by asset type (skill, mcp, agent, command, hook, rule, claude-code-plugin)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
+	cmd.Flags().BoolVar(&installedOnly, "installed", false, "List only installed assets from lock file")
 
 	return cmd
 }
@@ -70,11 +75,18 @@ func newVaultShowCommand() *cobra.Command {
 	return cmd
 }
 
-func runVaultList(cmd *cobra.Command, typeFilter string, jsonOutput bool) error {
+func runVaultList(cmd *cobra.Command, typeFilter string, jsonOutput, installedOnly bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	out := newOutputHelper(cmd)
+
+	if typeFilter != "" {
+		t := asset.FromString(typeFilter)
+		if !t.IsValid() {
+			return fmt.Errorf("invalid asset type %q. Valid types: skill, mcp, agent, command, hook, rule, claude-code-plugin", typeFilter)
+		}
+	}
 
 	// Load config and create vault
 	cfg, err := config.Load()
@@ -91,7 +103,45 @@ func runVaultList(cmd *cobra.Command, typeFilter string, jsonOutput bool) error 
 	var status *components.Status
 	if !jsonOutput {
 		status = components.NewStatus(cmd.OutOrStdout())
-		status.Start("Fetching assets from vault")
+		if installedOnly {
+			status.Start("Loading installed assets")
+		} else {
+			status.Start("Fetching assets from vault")
+		}
+	}
+
+	// Get lock file (needed for both modes)
+	var lf *lockfile.LockFile
+	lockFileData, _, _, lfErr := vault.GetLockFile(ctx, "")
+	if lfErr == nil {
+		var parseErr error
+		lf, parseErr = lockfile.Parse(lockFileData)
+		if parseErr != nil {
+			log := logger.Get()
+			log.Warn("failed to parse lock file", "error", parseErr)
+		}
+	}
+
+	// If --installed, use lock file data instead of querying vault
+	if installedOnly {
+		if status != nil {
+			status.Done("")
+		}
+
+		if lf == nil {
+			if jsonOutput {
+				return printInstalledListJSON(out, nil, typeFilter)
+			}
+			out.println("No assets installed. Run 'sx install' to install assets.")
+			return nil
+		}
+
+		// Convert lock file assets to vault result format
+		assets := filterAssetsByType(lf.Assets, typeFilter)
+		if jsonOutput {
+			return printInstalledListJSON(out, assets, typeFilter)
+		}
+		return printInstalledListText(out, assets, typeFilter)
 	}
 
 	result, err := vault.ListAssets(ctx, vaultpkg.ListAssetsOptions{
@@ -108,9 +158,9 @@ func runVaultList(cmd *cobra.Command, typeFilter string, jsonOutput bool) error 
 	}
 
 	if jsonOutput {
-		return printVaultListJSON(out, result)
+		return printVaultListJSON(out, result, typeFilter)
 	}
-	return printVaultListText(out, result, typeFilter)
+	return printVaultListText(out, result, lf, typeFilter)
 }
 
 func runVaultShow(cmd *cobra.Command, assetName string, jsonOutput bool) error {
@@ -169,27 +219,89 @@ func runVaultShow(cmd *cobra.Command, assetName string, jsonOutput bool) error {
 	return printVaultShowText(out, details, scopesFound, currentScopes)
 }
 
-func printVaultListText(out *outputHelper, result *vaultpkg.ListAssetsResult, typeFilter string) error {
+// getTypeLabel returns a display label for an asset type, with fallback for unknown types
+func getTypeLabel(t asset.Type) string {
+	if t.Label != "" {
+		return t.Label
+	}
+	// Fallback: capitalize the key
+	if t.Key != "" {
+		return strings.ToUpper(t.Key[:1]) + t.Key[1:]
+	}
+	return "Unknown"
+}
+
+func filterAssetsByType(assets []lockfile.Asset, typeFilter string) []lockfile.Asset {
+	if typeFilter == "" {
+		return assets
+	}
+
+	filterType := asset.FromString(typeFilter)
+	var filtered []lockfile.Asset
+	for _, a := range assets {
+		if a.Type.Key == filterType.Key {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered
+}
+
+func typeFilterToJSONKey(typeFilter string) string {
+	switch typeFilter {
+	case "skill":
+		return "skills"
+	case "mcp":
+		return "mcps"
+	case "agent":
+		return "agents"
+	case "command":
+		return "commands"
+	case "hook":
+		return "hooks"
+	case "rule":
+		return "rules"
+	case "claude-code-plugin":
+		return "claude-code-plugins"
+	default:
+		return typeFilter + "s"
+	}
+}
+
+func printVaultListText(out *outputHelper, result *vaultpkg.ListAssetsResult, lf *lockfile.LockFile, typeFilter string) error {
+	uiOut := ui.NewOutput(out.cmd.OutOrStdout(), out.cmd.ErrOrStderr())
+
+	if typeFilter != "" {
+		t := asset.FromString(typeFilter)
+		uiOut.Header("Vault " + getTypeLabel(t) + " Assets")
+	} else {
+		uiOut.Header("Vault Assets")
+	}
+	uiOut.Newline()
+
 	if len(result.Assets) == 0 {
-		out.println("No assets found in vault.")
-		out.println("Add skills with 'sx add' or browse skills.sh with 'sx add --browse'.")
+		if typeFilter != "" {
+			t := asset.FromString(typeFilter)
+			uiOut.Bold(getTypeLabel(t) + "s")
+			uiOut.Newline()
+		}
 		return nil
 	}
 
-	ui := ui.NewOutput(out.cmd.OutOrStdout(), out.cmd.ErrOrStderr())
-
-	ui.Newline()
-	if typeFilter != "" {
-		ui.Header(typeFilter + " Assets")
-	} else {
-		ui.Header("Vault Assets")
+	// Build a map of asset name -> scopes from lock file for quick lookup
+	scopeMap := make(map[string][]lockfile.Scope)
+	isGlobalMap := make(map[string]bool)
+	if lf != nil {
+		for _, a := range lf.Assets {
+			scopeMap[a.Name] = a.Scopes
+			isGlobalMap[a.Name] = a.IsGlobal()
+		}
 	}
-	ui.Newline()
 
-	// Group by type
+	// Group by type label
 	byType := make(map[string][]vaultpkg.AssetSummary)
 	for _, assetInfo := range result.Assets {
-		byType[assetInfo.Type.Label] = append(byType[assetInfo.Type.Label], assetInfo)
+		label := getTypeLabel(assetInfo.Type)
+		byType[label] = append(byType[label], assetInfo)
 	}
 
 	// Sort type names for consistent output
@@ -201,47 +313,211 @@ func printVaultListText(out *outputHelper, result *vaultpkg.ListAssetsResult, ty
 
 	for _, typeName := range types {
 		assets := byType[typeName]
-		ui.Bold(typeName + "s")
+		// Sort assets by name within each type
+		sort.Slice(assets, func(i, j int) bool {
+			return assets[i].Name < assets[j].Name
+		})
+		uiOut.Bold(typeName + "s")
 		for _, assetInfo := range assets {
-			// Show version info
-			versionInfo := ""
-			if assetInfo.VersionsCount > 1 {
-				versionInfo = ui.MutedText(fmt.Sprintf(" (%d versions)", assetInfo.VersionsCount))
+			scopeInfo := ""
+			if isGlobal, ok := isGlobalMap[assetInfo.Name]; ok && isGlobal {
+				scopeInfo = uiOut.MutedText(" (global)")
+			} else if scopes, ok := scopeMap[assetInfo.Name]; ok && len(scopes) > 0 {
+				scopeInfo = uiOut.MutedText(fmt.Sprintf(" (%d scopes)", len(scopes)))
 			}
 
 			assetLine := fmt.Sprintf("  %s %s%s",
-				ui.EmphasisText(assetInfo.Name),
-				ui.MutedText("v"+assetInfo.LatestVersion),
-				versionInfo,
+				uiOut.EmphasisText(assetInfo.Name),
+				uiOut.MutedText("v"+assetInfo.LatestVersion),
+				scopeInfo,
 			)
-			ui.Println(assetLine)
+			uiOut.Println(assetLine)
 
+			// Show description if available
 			if assetInfo.Description != "" {
-				ui.Muted("    " + assetInfo.Description)
+				uiOut.Println("    " + uiOut.MutedText(assetInfo.Description))
 			}
 		}
-		ui.Newline()
+		uiOut.Newline()
 	}
 
 	return nil
 }
 
-func printVaultListJSON(out *outputHelper, result *vaultpkg.ListAssetsResult) error {
-	// Create JSON-friendly output
-	output := make([]map[string]any, 0, len(result.Assets))
-	for _, assetInfo := range result.Assets {
-		output = append(output, map[string]any{
-			"name":          assetInfo.Name,
-			"type":          assetInfo.Type.Key,
-			"latestVersion": assetInfo.LatestVersion,
-			"versionsCount": assetInfo.VersionsCount,
-			"description":   assetInfo.Description,
-			"createdAt":     assetInfo.CreatedAt,
-			"updatedAt":     assetInfo.UpdatedAt,
+// jsonAssetItem represents a single asset for JSON output
+type jsonAssetItem struct {
+	Name    string
+	Version string
+	TypeKey string
+}
+
+// newGroupedJSONOutput creates an empty grouped output map with all type keys
+func newGroupedJSONOutput() map[string][]map[string]any {
+	return map[string][]map[string]any{
+		"skills":              {},
+		"mcps":                {},
+		"agents":              {},
+		"commands":            {},
+		"hooks":               {},
+		"rules":               {},
+		"claude-code-plugins": {},
+	}
+}
+
+// addItemToGroupedOutput adds an asset item to the appropriate type group
+func addItemToGroupedOutput(output map[string][]map[string]any, item jsonAssetItem) {
+	entry := map[string]any{
+		"name":    item.Name,
+		"version": item.Version,
+	}
+
+	switch item.TypeKey {
+	case "skill":
+		output["skills"] = append(output["skills"], entry)
+	case "mcp":
+		output["mcps"] = append(output["mcps"], entry)
+	case "agent":
+		output["agents"] = append(output["agents"], entry)
+	case "command":
+		output["commands"] = append(output["commands"], entry)
+	case "hook":
+		output["hooks"] = append(output["hooks"], entry)
+	case "rule":
+		output["rules"] = append(output["rules"], entry)
+	case "claude-code-plugin":
+		output["claude-code-plugins"] = append(output["claude-code-plugins"], entry)
+	}
+}
+
+func printVaultListJSON(out *outputHelper, result *vaultpkg.ListAssetsResult, typeFilter string) error {
+	// If filtering by type, return dict with just that key
+	if typeFilter != "" {
+		items := make([]map[string]any, 0, len(result.Assets))
+		for _, a := range result.Assets {
+			items = append(items, map[string]any{
+				"name":    a.Name,
+				"version": a.LatestVersion,
+			})
+		}
+		key := typeFilterToJSONKey(typeFilter)
+		output := map[string][]map[string]any{key: items}
+		data, err := json.Marshal(output)
+		if err != nil {
+			return err
+		}
+		out.printlnAlways(string(data))
+		return nil
+	}
+
+	// No filter: return full object grouped by type
+	output := newGroupedJSONOutput()
+	for _, a := range result.Assets {
+		addItemToGroupedOutput(output, jsonAssetItem{
+			Name:    a.Name,
+			Version: a.LatestVersion,
+			TypeKey: a.Type.Key,
 		})
 	}
 
-	data, err := json.MarshalIndent(output, "", "  ")
+	data, err := json.Marshal(output)
+	if err != nil {
+		return err
+	}
+	out.printlnAlways(string(data))
+	return nil
+}
+
+func printInstalledListText(out *outputHelper, assets []lockfile.Asset, typeFilter string) error {
+	uiOut := ui.NewOutput(out.cmd.OutOrStdout(), out.cmd.ErrOrStderr())
+
+	if typeFilter != "" {
+		t := asset.FromString(typeFilter)
+		uiOut.Header("Installed " + getTypeLabel(t) + " Assets")
+	} else {
+		uiOut.Header("Installed Assets")
+	}
+	uiOut.Newline()
+
+	if len(assets) == 0 {
+		if typeFilter != "" {
+			t := asset.FromString(typeFilter)
+			uiOut.Bold(getTypeLabel(t) + "s")
+			uiOut.Newline()
+		}
+		return nil
+	}
+
+	byType := make(map[string][]lockfile.Asset)
+	for _, a := range assets {
+		label := getTypeLabel(a.Type)
+		byType[label] = append(byType[label], a)
+	}
+
+	var types []string
+	for typeName := range byType {
+		types = append(types, typeName)
+	}
+	sort.Strings(types)
+
+	for _, typeName := range types {
+		typeAssets := byType[typeName]
+		// Sort assets by name within each type
+		sort.Slice(typeAssets, func(i, j int) bool {
+			return typeAssets[i].Name < typeAssets[j].Name
+		})
+		uiOut.Bold(typeName + "s")
+		for _, a := range typeAssets {
+			scopeInfo := ""
+			if a.IsGlobal() {
+				scopeInfo = uiOut.MutedText(" (global)")
+			} else if len(a.Scopes) > 0 {
+				scopeInfo = uiOut.MutedText(fmt.Sprintf(" (%d scopes)", len(a.Scopes)))
+			}
+
+			assetLine := fmt.Sprintf("  %s %s%s",
+				uiOut.EmphasisText(a.Name),
+				uiOut.MutedText("v"+a.Version),
+				scopeInfo,
+			)
+			uiOut.Println(assetLine)
+		}
+		uiOut.Newline()
+	}
+
+	return nil
+}
+
+func printInstalledListJSON(out *outputHelper, assets []lockfile.Asset, typeFilter string) error {
+	// If filtering by type, return dict with just that key
+	if typeFilter != "" {
+		items := make([]map[string]any, 0, len(assets))
+		for _, a := range assets {
+			items = append(items, map[string]any{
+				"name":    a.Name,
+				"version": a.Version,
+			})
+		}
+		key := typeFilterToJSONKey(typeFilter)
+		output := map[string][]map[string]any{key: items}
+		data, err := json.Marshal(output)
+		if err != nil {
+			return err
+		}
+		out.printlnAlways(string(data))
+		return nil
+	}
+
+	// No filter: return full object grouped by type
+	output := newGroupedJSONOutput()
+	for _, a := range assets {
+		addItemToGroupedOutput(output, jsonAssetItem{
+			Name:    a.Name,
+			Version: a.Version,
+			TypeKey: a.Type.Key,
+		})
+	}
+
+	data, err := json.Marshal(output)
 	if err != nil {
 		return err
 	}
