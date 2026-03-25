@@ -101,6 +101,8 @@ func (h *ClaudeCodePluginHandler) Install(ctx context.Context, zipData []byte, t
 			return fmt.Errorf("failed to resolve marketplace name: %w", err)
 		}
 		marketplace = resolvedName
+		// Update metadata so the resolved name gets persisted to the tracker config
+		h.metadata.ClaudeCodePlugin.Marketplace = resolvedName
 
 		// Marketplace source: resolve path from marketplace, no extraction
 		resolvedPath, err := ResolveMarketplacePluginPath(marketplace, h.metadata.Asset.Name)
@@ -153,7 +155,11 @@ func (h *ClaudeCodePluginHandler) getMarketplace() string {
 // Remove uninstalls the plugin asset
 func (h *ClaudeCodePluginHandler) Remove(ctx context.Context, targetBase string) error {
 	marketplace := h.getMarketplace()
-	if h.isMarketplaceSource() {
+	// Always try to resolve marketplace name during removal.
+	// The tracker config may store a raw identifier (e.g., "org/repo") while the plugin
+	// was registered with the resolved name (e.g., "repo"). Without resolution, the
+	// unregister/disable operations silently fail due to key mismatch.
+	if marketplace != "" {
 		resolvedName, err := ResolveMarketplaceName(marketplace)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  ⚠ Could not resolve marketplace name %q during removal, using raw identifier: %v\n", marketplace, err)
@@ -172,8 +178,10 @@ func (h *ClaudeCodePluginHandler) Remove(ctx context.Context, targetBase string)
 		return fmt.Errorf("failed to disable plugin: %w", err)
 	}
 
-	// For marketplace source, don't delete files — marketplace owns them
-	if h.isMarketplaceSource() {
+	// For marketplace-sourced plugins, don't delete files — marketplace owns them.
+	// Check both the Source field (set during install) and the presence of a marketplace
+	// identifier (set during removal from tracker config) to handle both paths.
+	if h.isMarketplaceSource() || marketplace != "" {
 		return nil
 	}
 
