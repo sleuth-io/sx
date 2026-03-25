@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tailscale/hujson"
+
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
 	"github.com/sleuth-io/sx/internal/handlers/hook"
@@ -195,6 +197,9 @@ func ReadHooksJSON(path string) (*HooksConfig, error) {
 		}
 		return nil, err
 	}
+
+	// Cursor is a VS Code fork; users may edit hooks.json with JSONC features.
+	data, _ = hujson.Standardize(data)
 
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, err

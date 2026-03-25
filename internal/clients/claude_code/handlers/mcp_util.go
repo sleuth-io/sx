@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tailscale/hujson"
+
 	"github.com/sleuth-io/sx/internal/utils"
 )
 
@@ -39,6 +41,8 @@ func AddMCPServer(targetBase, serverName string, serverConfig map[string]any) er
 		if err != nil {
 			return fmt.Errorf("failed to read %s: %w", filepath.Base(configPath), err)
 		}
+		// Users may edit .mcp.json / .claude.json in VS Code-based editors that allow JSONC.
+		data, _ = hujson.Standardize(data)
 		if err := json.Unmarshal(data, &config); err != nil {
 			return fmt.Errorf("failed to parse %s: %w", filepath.Base(configPath), err)
 		}
@@ -88,6 +92,7 @@ func RemoveMCPServer(targetBase, serverName string) error {
 	}
 
 	var config map[string]any
+	data, _ = hujson.Standardize(data)
 	if err := json.Unmarshal(data, &config); err != nil {
 		return fmt.Errorf("failed to parse %s: %w", filepath.Base(configPath), err)
 	}
@@ -128,6 +133,7 @@ func VerifyMCPServerInstalled(targetBase, serverName string) (bool, string) {
 	}
 
 	var config map[string]any
+	data, _ = hujson.Standardize(data)
 	if err := json.Unmarshal(data, &config); err != nil {
 		return false, "failed to parse " + filepath.Base(configPath) + ": " + err.Error()
 	}

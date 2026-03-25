@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/tailscale/hujson"
+
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
 	"github.com/sleuth-io/sx/internal/metadata"
@@ -248,6 +250,9 @@ func ReadMCPConfig(path string) (*MCPConfig, error) {
 		}
 		return nil, err
 	}
+
+	// Cline runs inside VS Code which treats JSON as JSONC. Sanitize before parsing.
+	data, _ = hujson.Standardize(data)
 
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, err

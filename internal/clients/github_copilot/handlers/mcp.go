@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tailscale/hujson"
+
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
 	"github.com/sleuth-io/sx/internal/metadata"
@@ -147,6 +149,9 @@ func readMCPConfig(path string) (*mcpConfig, error) {
 		}
 		return nil, err
 	}
+
+	// GitHub Copilot runs in VS Code which treats JSON as JSONC. Sanitize before parsing.
+	data, _ = hujson.Standardize(data)
 
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, err
@@ -301,6 +306,9 @@ func readCopilotCLIMCPConfig(path string) (*copilotCLIMCPConfig, error) {
 		}
 		return nil, err
 	}
+
+	// Users may edit mcp-config.json in a VS Code-based editor. Sanitize JSONC before parsing.
+	data, _ = hujson.Standardize(data)
 
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, err

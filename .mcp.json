@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "linear": {
+      "_artifact": "linear",
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp"
+    },
+    "playwright": {
+      "_artifact": "playwright",
+      "args": [
+        "@playwright/mcp@latest"
+      ],
+      "command": "npx",
+      "type": "stdio"
+    }
+  }
+}

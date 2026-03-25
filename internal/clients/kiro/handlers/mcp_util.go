@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/tailscale/hujson"
 )
 
 // MCPConfig represents Kiro's mcp.json structure
@@ -24,6 +26,10 @@ func ReadMCPConfig(path string) (*MCPConfig, error) {
 		}
 		return nil, err
 	}
+
+	// Kiro is a VS Code fork whose editor treats JSON files as JSONC,
+	// allowing comments and trailing commas. Standardize before parsing.
+	data, _ = hujson.Standardize(data)
 
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, err
