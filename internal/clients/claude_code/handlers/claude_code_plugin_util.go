@@ -438,10 +438,16 @@ func ResolveMarketplacePluginPathFromFile(knownMarketsPath, marketplaceName, plu
 				Source string `json:"source"`
 			} `json:"plugins"`
 		}
-		if err := json.Unmarshal(mjData, &mj); err == nil {
+		if err := json.Unmarshal(mjData, &mj); err != nil {
+			fmt.Fprintf(os.Stderr, "  ⚠ Failed to parse marketplace.json: %v\n", err)
+		} else {
 			for _, p := range mj.Plugins {
 				if p.Name == pluginName {
 					resolved := filepath.Join(marketplace.InstallLocation, p.Source)
+					// Ensure resolved path stays within the marketplace directory
+					if !strings.HasPrefix(resolved+string(filepath.Separator), marketplace.InstallLocation+string(filepath.Separator)) {
+						continue
+					}
 					if utils.IsDirectory(resolved) {
 						return resolved, nil
 					}

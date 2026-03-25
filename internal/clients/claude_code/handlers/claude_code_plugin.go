@@ -181,6 +181,8 @@ func (h *ClaudeCodePluginHandler) Remove(ctx context.Context, targetBase string)
 	// For marketplace-sourced plugins, don't delete files — marketplace owns them.
 	// Check both the Source field (set during install) and the presence of a marketplace
 	// identifier (set during removal from tracker config) to handle both paths.
+	// Invariant: a non-empty Marketplace field always means "don't delete files".
+	// Locally-extracted plugins must never have a Marketplace field set.
 	if h.isMarketplaceSource() || marketplace != "" {
 		return nil
 	}
