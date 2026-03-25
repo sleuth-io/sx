@@ -73,13 +73,9 @@ __debug_bin
 .air.toml
 tmp/
 
-.claude/settings.local.json
-
 pulse-client
 demo
-.claude/skills
-.claude/.claude
-.claude/settings.local.json
+.claude
 
 .cursor
 pulse
