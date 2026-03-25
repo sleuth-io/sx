@@ -161,6 +161,68 @@ func TestSkillsShToTreeURL(t *testing.T) {
 	}
 }
 
+func TestRepoAssetToGitHubURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		owner    string
+		repo     string
+		assetDir string
+		branch   string
+		want     string
+	}{
+		{
+			name:     "agent directory uses tree URL",
+			owner:    "obra",
+			repo:     "superpowers",
+			assetDir: "agents/code-reviewer",
+			branch:   "main",
+			want:     "https://github.com/obra/superpowers/tree/main/agents/code-reviewer",
+		},
+		{
+			name:     "single .md file uses blob URL",
+			owner:    "obra",
+			repo:     "superpowers",
+			assetDir: "agents/code-reviewer.md",
+			branch:   "main",
+			want:     "https://github.com/obra/superpowers/blob/main/agents/code-reviewer.md",
+		},
+		{
+			name:     "skill in skills dir",
+			owner:    "anthropics",
+			repo:     "skills",
+			assetDir: "skills/frontend-design",
+			branch:   "main",
+			want:     "https://github.com/anthropics/skills/tree/main/skills/frontend-design",
+		},
+		{
+			name:     "command asset",
+			owner:    "org",
+			repo:     "repo",
+			assetDir: "commands/deploy",
+			branch:   "master",
+			want:     "https://github.com/org/repo/tree/master/commands/deploy",
+		},
+		{
+			name:     "empty dir returns repo root",
+			owner:    "org",
+			repo:     "repo",
+			assetDir: "",
+			branch:   "main",
+			want:     "https://github.com/org/repo/tree/main",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := repoAssetToGitHubURL(tc.owner, tc.repo, tc.assetDir, tc.branch)
+			if got != tc.want {
+				t.Errorf("repoAssetToGitHubURL(%q, %q, %q, %q) = %q, want %q",
+					tc.owner, tc.repo, tc.assetDir, tc.branch, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSkillsShDoesNotConflictWithOtherInputTypes(t *testing.T) {
 	// These inputs should NOT be detected as skills.sh references
 	// because they're handled by other code paths

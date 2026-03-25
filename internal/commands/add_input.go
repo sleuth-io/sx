@@ -11,7 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/buildinfo"
+	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/github"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	"github.com/sleuth-io/sx/internal/utils"
@@ -23,9 +25,9 @@ func isURL(input string) bool {
 }
 
 // isRemoteMCPURL returns true if the input is a URL that looks like a remote MCP endpoint
-// (not a GitHub tree URL and not a .zip download URL)
+// (not a GitHub URL and not a .zip download URL)
 func isRemoteMCPURL(input string) bool {
-	return isURL(input) && !github.IsTreeURL(input) && !looksLikeZipURL(input)
+	return isURL(input) && !github.IsGitHubURL(input) && !looksLikeZipURL(input)
 }
 
 // looksLikeZipURL checks if a URL path ends in .zip
@@ -54,6 +56,18 @@ func loadZipFile(out *outputHelper, status *components.Status, zipFile string) (
 		defer cancel()
 
 		zipData, err := downloadFromGitHub(ctx, status, zipFile)
+		if err != nil {
+			return "", nil, err
+		}
+		return zipFile, zipData, nil
+	}
+
+	// Check if it's a GitHub blob URL (single file)
+	if github.IsBlobURL(zipFile) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		zipData, err := downloadSingleFileFromGitHub(ctx, status, zipFile)
 		if err != nil {
 			return "", nil, err
 		}
@@ -174,6 +188,48 @@ func downloadZipFromURL(ctx context.Context, status *components.Status, zipURL s
 
 	status.Done("")
 	return data, nil
+}
+
+// downloadSingleFileFromGitHub downloads a single file from a GitHub blob URL,
+// wraps it as a single-file asset zip, and returns the zip data.
+func downloadSingleFileFromGitHub(ctx context.Context, status *components.Status, blobURL string) ([]byte, error) {
+	parsed := github.ParseBlobURL(blobURL)
+	if parsed == nil {
+		return nil, fmt.Errorf("invalid GitHub blob URL: %s", blobURL)
+	}
+
+	status.Start(fmt.Sprintf("Downloading %s from %s/%s", filepath.Base(parsed.Path), parsed.Owner, parsed.Repo))
+
+	fetcher := github.NewFetcher()
+	content, err := fetcher.FetchFile(ctx, parsed)
+	if err != nil {
+		status.Fail("Failed to download")
+		return nil, err
+	}
+	status.Done("")
+
+	// Detect asset type and create zip using existing single-file logic.
+	// Prepend "/" so path-based detection (e.g. "/agents/") matches.
+	fileName := filepath.Base(parsed.Path)
+	detectedType := clients.DetectAssetType("/"+parsed.Path, content)
+	if detectedType == nil {
+		return nil, fmt.Errorf("unrecognized file type: %s", fileName)
+	}
+
+	switch *detectedType {
+	case asset.TypeRule:
+		// Write to temp file for rule processing
+		tmpFile := filepath.Join(os.TempDir(), fileName)
+		if err := os.WriteFile(tmpFile, content, 0o644); err != nil {
+			return nil, err
+		}
+		defer os.Remove(tmpFile)
+		return createZipFromRuleFile(tmpFile)
+	case asset.TypeAgent, asset.TypeCommand, asset.TypeSkill:
+		return createZipFromPromptFile(fileName, *detectedType, content)
+	default:
+		return nil, fmt.Errorf("unsupported asset type for single file: %s", detectedType.Label)
+	}
 }
 
 // downloadFromGitHub downloads files from a GitHub directory URL and returns them as a zip.

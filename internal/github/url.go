@@ -56,6 +56,21 @@ func IsBlobURL(url string) bool {
 	return blobURLPattern.MatchString(url)
 }
 
+// ParseBlobURL parses a GitHub blob URL into a TreeURL (reusing the same struct).
+// Returns nil if the URL is not a valid GitHub blob URL.
+func ParseBlobURL(url string) *TreeURL {
+	matches := blobURLPattern.FindStringSubmatch(url)
+	if matches == nil {
+		return nil
+	}
+	return &TreeURL{
+		Owner: matches[1],
+		Repo:  matches[2],
+		Ref:   matches[3],
+		Path:  matches[4],
+	}
+}
+
 // IsGitHubURL checks if a URL is any kind of GitHub URL we can handle.
 func IsGitHubURL(url string) bool {
 	return IsTreeURL(url) || IsBlobURL(url)

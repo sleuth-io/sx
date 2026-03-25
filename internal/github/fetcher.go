@@ -174,6 +174,13 @@ func (f *Fetcher) downloadAndZip(ctx context.Context, treeURL *TreeURL, files []
 	return buf.Bytes(), nil
 }
 
+// FetchFile downloads a single file from a GitHub blob URL and returns its content.
+func (f *Fetcher) FetchFile(ctx context.Context, parsed *TreeURL) ([]byte, error) {
+	rawURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s",
+		parsed.Owner, parsed.Repo, parsed.Ref, parsed.Path)
+	return f.downloadFile(ctx, rawURL)
+}
+
 // downloadFile downloads a single file from a URL.
 func (f *Fetcher) downloadFile(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
