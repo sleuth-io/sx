@@ -13,13 +13,10 @@ import (
 	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/clients/kiro/handlers"
-	"github.com/sleuth-io/sx/internal/handlers/dirasset"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
-
-var skillOps = dirasset.NewOperations(handlers.DirSkills, &asset.TypeSkill)
 
 // Client implements the clients.Client interface for Kiro
 type Client struct {
@@ -36,6 +33,13 @@ func NewClient() *Client {
 				asset.TypeMCP,
 				asset.TypeSkill,
 				asset.TypeRule,
+				asset.TypeCommand,
+				// Hooks are not supported: IDE hooks are UI-configured only (no
+				// distributable file format), and CLI hooks are embedded inside
+				// custom agent configs rather than being standalone assets.
+				// IDE slash commands are either manual-trigger hooks (same
+				// limitation) or steering files with inclusion:manual (already
+				// covered by rules).
 			},
 		),
 	}
@@ -114,6 +118,9 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeRule:
 			handler := handlers.NewRuleHandler(bundle.Metadata, "")
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeCommand:
+			handler := handlers.NewCommandHandler(bundle.Metadata)
+			err = handler.Install(ctx, bundle.ZipData, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + bundle.Metadata.Asset.Type.Key
@@ -171,6 +178,9 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 		case asset.TypeRule:
 			handler := handlers.NewRuleHandler(meta, "")
 			err = handler.Remove(ctx, targetBase)
+		case asset.TypeCommand:
+			handler := handlers.NewCommandHandler(meta)
+			err = handler.Remove(ctx, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + a.Type.Key
@@ -195,7 +205,10 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 // determineTargetBase returns the installation directory based on scope
 // Returns an error if a repo/path-scoped install is requested without a valid RepoRoot
 func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error) {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	}
 
 	switch scope.Type {
 	case clients.ScopeGlobal:
@@ -261,7 +274,7 @@ func (c *Client) collectAllScopeSkills(scope *clients.InstallScope) []clients.In
 	// 1. Path-scoped skills (highest precedence)
 	if scope.Type == clients.ScopePath && scope.RepoRoot != "" && scope.Path != "" {
 		pathBase := filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir)
-		if skills, err := skillOps.ScanInstalled(pathBase); err == nil {
+		if skills, err := handlers.SkillOps.ScanInstalled(pathBase); err == nil {
 			for _, s := range skills {
 				addSkills([]clients.InstalledSkill{{Name: s.Name, Description: s.Description, Version: s.Version}})
 			}
@@ -271,7 +284,7 @@ func (c *Client) collectAllScopeSkills(scope *clients.InstallScope) []clients.In
 	// 2. Repo-scoped skills
 	if scope.RepoRoot != "" {
 		repoBase := filepath.Join(scope.RepoRoot, handlers.ConfigDir)
-		if skills, err := skillOps.ScanInstalled(repoBase); err == nil {
+		if skills, err := handlers.SkillOps.ScanInstalled(repoBase); err == nil {
 			for _, s := range skills {
 				addSkills([]clients.InstalledSkill{{Name: s.Name, Description: s.Description, Version: s.Version}})
 			}
@@ -281,7 +294,7 @@ func (c *Client) collectAllScopeSkills(scope *clients.InstallScope) []clients.In
 	// 3. Global skills (lowest precedence)
 	home, _ := os.UserHomeDir()
 	globalBase := filepath.Join(home, handlers.ConfigDir)
-	if skills, err := skillOps.ScanInstalled(globalBase); err == nil {
+	if skills, err := handlers.SkillOps.ScanInstalled(globalBase); err == nil {
 		for _, s := range skills {
 			addSkills([]clients.InstalledSkill{{Name: s.Name, Description: s.Description, Version: s.Version}})
 		}
@@ -342,7 +355,7 @@ func (c *Client) generateSkillsSteeringFile(skills []clients.InstalledSkill, tar
 	for _, skill := range skills {
 		fmt.Fprintf(&skillsList,
 			"\n<skill>\n<name>%s</name>\n<description>%s</description>\n</skill>\n",
-			skill.Name, skill.Description)
+			xmlEscape(skill.Name), xmlEscape(skill.Description))
 	}
 
 	// Generate steering file with Kiro frontmatter
@@ -419,7 +432,7 @@ func (c *Client) ListAssets(ctx context.Context, scope *clients.InstallScope) ([
 		return nil, fmt.Errorf("cannot determine target directory: %w", err)
 	}
 
-	installed, err := skillOps.ScanInstalled(targetBase)
+	installed, err := handlers.SkillOps.ScanInstalled(targetBase)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan installed skills: %w", err)
 	}
@@ -443,7 +456,7 @@ func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.Inst
 		return nil, fmt.Errorf("cannot determine target directory: %w", err)
 	}
 
-	result, err := skillOps.ReadPromptContent(targetBase, name, "SKILL.md", func(m *metadata.Metadata) string { return m.Skill.PromptFile })
+	result, err := handlers.SkillOps.ReadPromptContent(targetBase, name, "SKILL.md", func(m *metadata.Metadata) string { return m.Skill.PromptFile })
 	if err != nil {
 		return nil, err
 	}
@@ -606,4 +619,13 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 func init() {
 	// Auto-register on package import
 	clients.Register(NewClient())
+}
+
+// xmlEscape escapes special XML characters in a string.
+func xmlEscape(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, "\"", "&quot;")
+	return s
 }

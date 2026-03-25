@@ -72,9 +72,6 @@ func RemoveMCPServer(targetBase, name string) error {
 
 	config, err := ReadMCPConfig(mcpConfigPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // Already doesn't exist
-		}
 		return err
 	}
 

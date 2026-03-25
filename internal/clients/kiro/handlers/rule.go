@@ -111,9 +111,6 @@ func (h *RuleHandler) buildSteeringContent(content string) string {
 				fmt.Fprintf(&sb, "  - %q\n", glob)
 			}
 		}
-	} else if h.shouldAlwaysApply() {
-		// Always apply mode
-		sb.WriteString("inclusion: always\n")
 	} else {
 		// Default to always apply if no globs
 		sb.WriteString("inclusion: always\n")
@@ -150,18 +147,6 @@ func (h *RuleHandler) getDescription() string {
 	}
 	// Fall back to asset description
 	return h.metadata.Asset.Description
-}
-
-// shouldAlwaysApply returns true if the rule should always apply
-func (h *RuleHandler) shouldAlwaysApply() bool {
-	// Check kiro-specific always-apply setting
-	if h.metadata.Rule != nil && h.metadata.Rule.Kiro != nil {
-		if alwaysApply, ok := h.metadata.Rule.Kiro["always-apply"].(bool); ok {
-			return alwaysApply
-		}
-	}
-	// If no path scope and no explicit globs, default to always apply
-	return h.pathScope == "" && len(h.getGlobs()) == 0
 }
 
 // getGlobs returns the globs for file matching

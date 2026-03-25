@@ -506,6 +506,7 @@ func TestComputeDisabledClients(t *testing.T) {
 				os.RemoveAll(filepath.Join(env.HomeDir, ".claude"))
 				os.RemoveAll(filepath.Join(env.HomeDir, ".copilot"))
 				os.RemoveAll(filepath.Join(env.HomeDir, ".gemini"))
+				os.RemoveAll(filepath.Join(env.HomeDir, ".kiro"))
 			},
 			selectedClients:  []string{"claude-code"},
 			expectedDisabled: nil,
@@ -513,18 +514,18 @@ func TestComputeDisabledClients(t *testing.T) {
 		{
 			name: "all detected clients selected returns nil",
 			setupDetected: func(env *TestEnv) {
-				// Claude, Copilot, and Gemini are detected (already setup in NewTestEnv)
+				// Claude, Copilot, Gemini, and Kiro are detected (already setup in NewTestEnv)
 			},
-			selectedClients:  []string{"claude-code", "github-copilot", "gemini"},
+			selectedClients:  []string{"claude-code", "github-copilot", "gemini", "kiro"},
 			expectedDisabled: nil,
 		},
 		{
 			name: "one detected client not selected is disabled",
 			setupDetected: func(env *TestEnv) {
-				// Claude, Copilot, and Gemini are detected
+				// Claude, Copilot, Gemini, and Kiro are detected
 			},
 			selectedClients:  []string{"claude-code"},
-			expectedDisabled: []string{"github-copilot", "gemini"},
+			expectedDisabled: []string{"github-copilot", "gemini", "kiro"},
 		},
 		{
 			name: "undetected client in selection is ignored",
@@ -532,6 +533,7 @@ func TestComputeDisabledClients(t *testing.T) {
 				// Only Claude detected
 				os.RemoveAll(filepath.Join(env.HomeDir, ".copilot"))
 				os.RemoveAll(filepath.Join(env.HomeDir, ".gemini"))
+				os.RemoveAll(filepath.Join(env.HomeDir, ".kiro"))
 			},
 			selectedClients:  []string{"claude-code", "github-copilot"}, // copilot not detected
 			expectedDisabled: nil,                                       // copilot not disabled because not detected
@@ -541,6 +543,9 @@ func TestComputeDisabledClients(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			env := NewTestEnv(t)
+			// Override PATH to prevent kiro-cli (and other binaries) from being found
+			// via exec.LookPath. Detection should rely on home directory markers only.
+			t.Setenv("PATH", env.TempDir)
 
 			if tt.setupDetected != nil {
 				tt.setupDetected(env)

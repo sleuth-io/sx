@@ -28,14 +28,15 @@ func NewTestEnv(t *testing.T) *TestEnv {
 	claudeDir := filepath.Join(homeDir, ".claude")
 	copilotDir := filepath.Join(homeDir, ".copilot")
 	geminiDir := filepath.Join(homeDir, ".gemini")
+	kiroDir := filepath.Join(homeDir, ".kiro")
 
 	// Set environment for sandboxing
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 
-	// Create directories for Claude Code, GitHub Copilot, and Gemini
-	for _, dir := range []string{homeDir, claudeDir, copilotDir, geminiDir} {
+	// Create directories for Claude Code, GitHub Copilot, Gemini, and Kiro
+	for _, dir := range []string{homeDir, claudeDir, copilotDir, geminiDir, kiroDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatalf("Failed to create directory %s: %v", dir, err)
 		}

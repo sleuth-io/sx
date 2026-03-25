@@ -70,12 +70,12 @@ func parseRuleFile(content []byte) (*clients.ParsedRule, error) {
 		// No frontmatter - just return raw content
 		return &clients.ParsedRule{
 			Content:    string(content),
-			ClientName: "kiro",
+			ClientName: clients.ClientIDKiro,
 		}, nil
 	}
 
 	result := &clients.ParsedRule{
-		ClientName:   "kiro",
+		ClientName:   clients.ClientIDKiro,
 		Content:      body,
 		ClientFields: make(map[string]any),
 	}

@@ -18,6 +18,8 @@ type Handler interface {
 // NewHandler creates a handler for the given asset type
 func NewHandler(assetType asset.Type, meta *metadata.Metadata) (Handler, error) {
 	switch assetType {
+	case asset.TypeCommand:
+		return NewCommandHandler(meta), nil
 	case asset.TypeSkill:
 		return NewSkillHandler(meta), nil
 	case asset.TypeMCP:

@@ -12,4 +12,5 @@ const (
 	DirSteering   = "steering"
 	DirSettings   = "settings"
 	DirMCPServers = "mcp-servers"
+	DirPrompts    = "prompts"
 )
