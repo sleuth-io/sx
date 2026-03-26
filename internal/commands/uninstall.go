@@ -524,6 +524,8 @@ func updateTracker(results []UninstallResult, plan UninstallPlan, out *outputHel
 	}
 
 	// Update each asset: remove uninstalled clients, or remove entire asset if no clients remain
+	// Collect keys to remove after iteration to avoid modifying the slice while iterating
+	var keysToRemove []assets.AssetKey
 	for i := range tracker.Assets {
 		key := tracker.Assets[i].Name + "|" + tracker.Assets[i].Repository + "|" + tracker.Assets[i].Path
 		clientsRemoved, found := removedClients[key]
@@ -540,12 +542,17 @@ func updateTracker(results []UninstallResult, plan UninstallPlan, out *outputHel
 		}
 
 		if len(remainingClients) == 0 {
-			// No clients left, remove the entire asset
-			tracker.RemoveAsset(tracker.Assets[i].Key())
+			// No clients left, mark for removal
+			keysToRemove = append(keysToRemove, tracker.Assets[i].Key())
 		} else {
 			// Update with remaining clients
 			tracker.Assets[i].Clients = remainingClients
 		}
+	}
+
+	// Remove assets after iteration is complete
+	for _, key := range keysToRemove {
+		tracker.RemoveAsset(key)
 	}
 
 	if len(tracker.Assets) == 0 {
