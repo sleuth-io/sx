@@ -146,7 +146,7 @@ func findGitRoot() string {
 	dir := cwd
 	for {
 		gitDir := filepath.Join(dir, ".git")
-		if stat, err := os.Stat(gitDir); err == nil {
+		if _, err := os.Stat(gitDir); err == nil {
 			// .git can be a directory (normal repo) or a file (worktree with gitdir: pointer)
 			return dir
 		}
