@@ -230,8 +230,8 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 }
 
 // EnsureAssetSupport ensures asset infrastructure is set up for the current context.
-// For Kiro, this registers the sx MCP server for the read_skill tool.
-// Kiro auto-discovers skills from .kiro/skills/ so no steering file is needed.
+// For Kiro, this registers the sx MCP server (for the query tool) and cleans up
+// legacy steering files. Kiro auto-discovers skills from .kiro/skills/ natively.
 func (c *Client) EnsureAssetSupport(ctx context.Context, scope *clients.InstallScope) error {
 	// Register skills MCP server globally (idempotent)
 	if err := c.registerSkillsMCPServer(); err != nil {

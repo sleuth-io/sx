@@ -118,7 +118,8 @@ func writeKiroHookFile(path string, hook handlers.KiroHookFile) error {
 	return nil
 }
 
-// hookFileHasCommand checks if a hook file exists and already contains the expected command prefix
+// hookFileHasCommand checks if a hook file exists and already contains the expected command prefix.
+// Returns false (triggering overwrite) if the file is missing or corrupt.
 func hookFileHasCommand(path string, commandPrefix string) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -127,6 +128,8 @@ func hookFileHasCommand(path string, commandPrefix string) bool {
 
 	var hook handlers.KiroHookFile
 	if err := json.Unmarshal(data, &hook); err != nil {
+		log := logger.Get()
+		log.Warn("corrupt hook file, will overwrite", "path", path, "error", err)
 		return false
 	}
 
