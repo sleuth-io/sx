@@ -429,9 +429,8 @@ func TestKiroBootstrapInstall(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0755); err != nil {
 		t.Fatalf("Failed to create git directory: %v", err)
 	}
-	if err := os.Chdir(repoDir); err != nil {
-		t.Fatalf("Failed to chdir to repo: %v", err)
-	}
+	// Use TestEnv.Chdir to properly handle cwd changes with cleanup
+	env.Chdir(repoDir)
 
 	agentsDir := filepath.Join(repoDir, handlers.ConfigDir, handlers.DirAgents)
 
@@ -517,9 +516,8 @@ func TestKiroBootstrapUninstall(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0755); err != nil {
 		t.Fatalf("Failed to create git directory: %v", err)
 	}
-	if err := os.Chdir(repoDir); err != nil {
-		t.Fatalf("Failed to chdir to repo: %v", err)
-	}
+	// Use TestEnv.Chdir to properly handle cwd changes with cleanup
+	env.Chdir(repoDir)
 
 	client := kiro.NewClient()
 	opts := client.GetBootstrapOptions(context.Background())

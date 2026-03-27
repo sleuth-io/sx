@@ -280,6 +280,118 @@ func TestReportUsageGeminiReadFileIgnored(t *testing.T) {
 	}
 }
 
+// TestReportUsageKiroSkillFormat tests Kiro's readFile tool format for skill usage tracking
+// Kiro reads skills via readFile tool, and we detect skill usage from the file path in the result
+// Actual Kiro format: {"toolName":"readFile","toolResult":"<file name=\".kiro/skills/my-skill.md\">..."}
+func TestReportUsageKiroSkillFormat(t *testing.T) {
+	// Kiro passes JSON via USER_PROMPT env var
+	kiroJSON := `{"toolName":"readFile","toolResult":"<file name=\".kiro/skills/fix-pr.md\">\n# Fix PR Skill\n\nThis is the skill content.\n</file>"}`
+
+	// Set USER_PROMPT env var (Kiro's input method)
+	os.Setenv("USER_PROMPT", kiroJSON)
+	defer os.Unsetenv("USER_PROMPT")
+
+	cmd := NewReportUsageCommand()
+	cmd.Flags().Set("client", "kiro")
+
+	// Should not error (parses Kiro readFile format and extracts skill name)
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Kiro readFile format should parse successfully, got error: %v", err)
+	}
+}
+
+// TestReportUsageKiroNonSkillReadFile tests that Kiro's readFile for non-skill files is ignored
+func TestReportUsageKiroNonSkillReadFile(t *testing.T) {
+	// Reading a regular file (not a skill)
+	kiroJSON := `{"toolName":"readFile","toolResult":"<file name=\"src/main.go\">\npackage main\n</file>"}`
+
+	os.Setenv("USER_PROMPT", kiroJSON)
+	defer os.Unsetenv("USER_PROMPT")
+
+	cmd := NewReportUsageCommand()
+	cmd.Flags().Set("client", "kiro")
+
+	// Should not error (just silently ignores non-skill files)
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Kiro non-skill readFile should be silently ignored, got error: %v", err)
+	}
+}
+
+// TestReportUsageKiroMultiFileSkillPath tests that multi-file skill paths extract the top-level skill name
+func TestReportUsageKiroMultiFileSkillPath(t *testing.T) {
+	// Skill with subdirectory structure (e.g., .kiro/skills/my-skill/index.md)
+	kiroJSON := `{"toolName":"readFile","toolResult":"<file name=\".kiro/skills/my-skill/index.md\">\n# My Skill\n</file>"}`
+
+	os.Setenv("USER_PROMPT", kiroJSON)
+	defer os.Unsetenv("USER_PROMPT")
+
+	cmd := NewReportUsageCommand()
+	cmd.Flags().Set("client", "kiro")
+
+	// Should not error - extracts "my-skill" from the path
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Kiro multi-file skill path should parse successfully, got error: %v", err)
+	}
+}
+
+// TestExtractKiroSkillNames tests the skill name extraction logic
+func TestExtractKiroSkillNames(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "single file skill",
+			input:    `<file name=".kiro/skills/fix-pr.md">content</file>`,
+			expected: []string{"fix-pr"},
+		},
+		{
+			name:     "multi-file skill (index.md)",
+			input:    `<file name=".kiro/skills/my-skill/index.md">content</file>`,
+			expected: []string{"my-skill"},
+		},
+		{
+			name:     "multi-file skill (other file)",
+			input:    `<file name=".kiro/skills/my-skill/utils.md">content</file>`,
+			expected: []string{"my-skill"},
+		},
+		{
+			name:     "multiple skills in result",
+			input:    `<file name=".kiro/skills/skill-a.md">a</file><file name=".kiro/skills/skill-b.md">b</file>`,
+			expected: []string{"skill-a", "skill-b"},
+		},
+		{
+			name:     "non-skill file",
+			input:    `<file name="src/main.go">package main</file>`,
+			expected: nil,
+		},
+		{
+			name:     "empty result",
+			input:    "",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractKiroSkillNames(tt.input)
+			if len(result) != len(tt.expected) {
+				t.Errorf("extractKiroSkillNames(%q) = %v, want %v", tt.input, result, tt.expected)
+				return
+			}
+			for i, name := range result {
+				if name != tt.expected[i] {
+					t.Errorf("extractKiroSkillNames(%q)[%d] = %q, want %q", tt.input, i, name, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
 func TestMain(m *testing.M) {
 	// Run tests
 	os.Exit(m.Run())

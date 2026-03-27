@@ -66,13 +66,37 @@ type KiroPostToolUseEvent struct {
 }
 
 // kiroSkillPathRegex matches skill file paths in Kiro's readFile tool result
-var kiroSkillPathRegex = regexp.MustCompile(`<file name="\.kiro/skills/([^"]+)\.md"`)
+// Captures the top-level skill name (handles both single-file and multi-file skills)
+// e.g., .kiro/skills/my-skill.md -> my-skill
+// e.g., .kiro/skills/my-skill/index.md -> my-skill
+var kiroSkillPathRegex = regexp.MustCompile(`<file name="\.kiro/skills/([^/".]+)(?:\.md|/)`)
 
-// extractKiroSkillName extracts the skill name from Kiro's readFile tool result
+// extractKiroSkillNames extracts all skill names from Kiro's readFile tool result
+// Returns all unique skill names found in the tool result
+func extractKiroSkillNames(toolResult string) []string {
+	matches := kiroSkillPathRegex.FindAllStringSubmatch(toolResult, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	// Deduplicate skill names
+	seen := make(map[string]bool)
+	var names []string
+	for _, match := range matches {
+		if len(match) >= 2 && !seen[match[1]] {
+			seen[match[1]] = true
+			names = append(names, match[1])
+		}
+	}
+	return names
+}
+
+// extractKiroSkillName extracts the first skill name from Kiro's readFile tool result
+// Kept for backwards compatibility
 func extractKiroSkillName(toolResult string) string {
-	matches := kiroSkillPathRegex.FindStringSubmatch(toolResult)
-	if len(matches) >= 2 {
-		return matches[1]
+	names := extractKiroSkillNames(toolResult)
+	if len(names) > 0 {
+		return names[0]
 	}
 	return ""
 }
@@ -103,15 +127,14 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-// uncomment for debugging
-// 	log.Debug("report-usage: received", "data", string(data), "client", clientID)
+	// uncomment for debugging
+	// 	log.Debug("report-usage: received", "data", string(data), "client", clientID)
 
 	// Empty input is not an error - just nothing to do
 	if len(data) == 0 {
 		log.Debug("report-usage: no data received, skipping")
 		return nil
 	}
-
 
 	// Try Codex format first (check for agent-turn-complete type)
 	// Codex's agent-turn-complete doesn't contain tool usage data, so skip it
@@ -223,28 +246,31 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 	// Log successful usage tracking
 	log.Info("report-usage: asset usage tracked", "name", assetName, "version", assetVersion, "type", assetType)
 
-	// Try to flush queue
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	// Try to flush queue asynchronously to avoid blocking Kiro hooks
+	// The event is already persisted to disk, so a failed flush is recoverable
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-	// Load config to get repository
-	cfg, err := config.Load()
-	if err != nil {
-		log.Error("report-usage: failed to load config", "error", err)
-		return nil
-	}
+		// Load config to get repository
+		cfg, err := config.Load()
+		if err != nil {
+			log.Error("report-usage: failed to load config", "error", err)
+			return
+		}
 
-	// Create vault instance
-	vault, err := vaultpkg.NewFromConfig(cfg)
-	if err != nil {
-		log.Error("report-usage: failed to create vault", "error", err)
-		return nil
-	}
+		// Create vault instance
+		vault, err := vaultpkg.NewFromConfig(cfg)
+		if err != nil {
+			log.Error("report-usage: failed to create vault", "error", err)
+			return
+		}
 
-	// Try to flush queue
-	if err := stats.FlushQueue(ctx, vault); err != nil {
-		log.Error("report-usage: failed to flush usage stats", "error", err)
-	}
+		// Try to flush queue
+		if err := stats.FlushQueue(ctx, vault); err != nil {
+			log.Error("report-usage: failed to flush usage stats", "error", err)
+		}
+	}()
 
 	return nil
 }

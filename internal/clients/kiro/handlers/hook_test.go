@@ -264,6 +264,10 @@ func TestHookHandler_Remove(t *testing.T) {
 	os.MkdirAll(extractedDir, 0755)
 	os.WriteFile(filepath.Join(extractedDir, "hook.sh"), []byte("#!/bin/bash\necho lint"), 0755)
 
+	// Create another hook file BEFORE Remove to verify it's preserved
+	otherHookPath := filepath.Join(hooksDir, "other-hook.kiro.hook")
+	os.WriteFile(otherHookPath, []byte(`{"name":"other"}`), 0644)
+
 	handler := NewHookHandler(meta)
 	if err := handler.Remove(context.Background(), targetBase); err != nil {
 		t.Fatalf("Remove failed: %v", err)
@@ -279,11 +283,9 @@ func TestHookHandler_Remove(t *testing.T) {
 		t.Error("Extracted directory should be removed")
 	}
 
-	// Verify other hook files are not affected
-	otherHookPath := filepath.Join(hooksDir, "other-hook.kiro.hook")
-	os.WriteFile(otherHookPath, []byte(`{"name":"other"}`), 0644)
+	// Verify other hook files are preserved (not affected by Remove)
 	if _, err := os.Stat(otherHookPath); os.IsNotExist(err) {
-		t.Error("Other hook files should not be affected")
+		t.Error("Other hook files should be preserved after Remove")
 	}
 }
 

@@ -371,8 +371,9 @@ func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	}
 }
 
-// GetBootstrapPath returns the path to Kiro's hooks directory.
-// For Kiro, this is workspace-level: .kiro/hooks/
+// GetBootstrapPath returns the path to Kiro's IDE hooks directory.
+// For Kiro, hooks are installed to both .kiro/agents/ (CLI) and .kiro/hooks/ (IDE),
+// but we report the IDE hooks path since IDE hooks work better.
 func (c *Client) GetBootstrapPath() string {
 	repoRoot := findGitRoot()
 	if repoRoot == "" {
@@ -440,6 +441,9 @@ func (c *Client) installMCPServerFromConfig(config *bootstrap.MCPServerConfig) e
 
 // UninstallBootstrap removes Kiro infrastructure (hooks and MCP servers).
 func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
+	log := logger.Get()
+	var errs []error
+
 	// Remove hooks if requested
 	uninstallSession := bootstrap.ContainsKey(opts, bootstrap.SessionHookKey)
 	uninstallAnalytics := bootstrap.ContainsKey(opts, bootstrap.AnalyticsHookKey)
@@ -448,8 +452,8 @@ func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option
 		repoRoot := findGitRoot()
 		if repoRoot != "" {
 			if err := uninstallKiroHooks(repoRoot, uninstallSession, uninstallAnalytics); err != nil {
-				log := logger.Get()
 				log.Error("failed to uninstall hooks", "error", err)
+				errs = append(errs, fmt.Errorf("failed to uninstall hooks: %w", err))
 			}
 		}
 	}
@@ -458,9 +462,13 @@ func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option
 	for _, opt := range opts {
 		if opt.MCPConfig != nil {
 			if err := c.uninstallMCPServerByName(opt.MCPConfig.Name); err != nil {
-				return err
+				errs = append(errs, err)
 			}
 		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 	return nil
 }

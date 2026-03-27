@@ -273,17 +273,32 @@ func writeAgentConfig(path string, config *CLIAgentConfig) error {
 }
 
 // hasHookCommand checks if an agent config has a hook with the given command prefix
+// The prefix must be followed by whitespace or end of string (to avoid "sx install" matching "sx install-old")
 func hasHookCommand(config *CLIAgentConfig, eventType, commandPrefix string) bool {
 	hooks, ok := config.Hooks[eventType]
 	if !ok {
 		return false
 	}
 	for _, h := range hooks {
-		if strings.HasPrefix(h.Command, commandPrefix) {
+		if matchesCommandPrefix(h.Command, commandPrefix) {
 			return true
 		}
 	}
 	return false
+}
+
+// matchesCommandPrefix checks if a command starts with the given prefix,
+// ensuring the prefix is followed by whitespace or end of string
+func matchesCommandPrefix(command, prefix string) bool {
+	if !strings.HasPrefix(command, prefix) {
+		return false
+	}
+	// Must be followed by space, tab, or end of string
+	if len(command) == len(prefix) {
+		return true
+	}
+	next := command[len(prefix)]
+	return next == ' ' || next == '\t'
 }
 
 // addHook adds a hook command to the agent config
@@ -293,6 +308,7 @@ func addHook(config *CLIAgentConfig, eventType string, hook CLIHookCommand) {
 
 // removeHook removes a hook with the given command prefix from the agent config
 // Returns true if a hook was removed
+// The prefix must be followed by whitespace or end of string (to avoid "sx install" matching "sx install-old")
 func removeHook(config *CLIAgentConfig, eventType, commandPrefix string) bool {
 	hooks, ok := config.Hooks[eventType]
 	if !ok {
@@ -302,7 +318,7 @@ func removeHook(config *CLIAgentConfig, eventType, commandPrefix string) bool {
 	newHooks := make([]CLIHookCommand, 0, len(hooks))
 	removed := false
 	for _, h := range hooks {
-		if strings.HasPrefix(h.Command, commandPrefix) {
+		if matchesCommandPrefix(h.Command, commandPrefix) {
 			removed = true
 		} else {
 			newHooks = append(newHooks, h)
