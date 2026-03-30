@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/clients/kiro"
+	"github.com/sleuth-io/sx/internal/clients/kiro/handlers"
 )
 
 func init() {
@@ -139,19 +141,11 @@ prompt-file = "SKILL.md"
 		t.Errorf("Skill file content doesn't match expected content. Got: %s", string(content))
 	}
 
-	// Verify steering file was created (Kiro uses shimming for skills)
+	// Verify steering file is NOT created (Kiro auto-discovers skills from .kiro/skills/)
 	localKiroDir := filepath.Join(workingDir, ".kiro")
 	steeringFile := filepath.Join(localKiroDir, "steering", "skills.md")
-	if _, err := os.Stat(steeringFile); os.IsNotExist(err) {
-		t.Errorf("Steering file should exist for skills shimming: %s", steeringFile)
-	} else {
-		// Verify steering file contains the skill
-		steeringContent, err := os.ReadFile(steeringFile)
-		if err != nil {
-			t.Errorf("Failed to read steering file: %v", err)
-		} else if !strings.Contains(string(steeringContent), "test-skill") {
-			t.Errorf("Steering file doesn't contain skill. Got: %s", string(steeringContent))
-		}
+	if _, err := os.Stat(steeringFile); err == nil {
+		t.Errorf("Steering file should not exist (Kiro auto-discovers skills): %s", steeringFile)
 	}
 
 	// Verify MCP server was registered in ~/.kiro/settings/mcp.json (global scope)
@@ -423,4 +417,143 @@ This is a test rule for TypeScript files.
 	}
 
 	t.Log("OK Kiro rule integration test passed!")
+}
+
+// TestKiroBootstrapInstall tests that bootstrap hooks are installed
+// as .kiro.hook files in .kiro/hooks/
+func TestKiroBootstrapInstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	// Create a git repo so findGitRoot() works
+	repoDir := filepath.Join(env.TempDir, "repo")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0755); err != nil {
+		t.Fatalf("Failed to create git directory: %v", err)
+	}
+	// Use TestEnv.Chdir to properly handle cwd changes with cleanup
+	env.Chdir(repoDir)
+
+	agentsDir := filepath.Join(repoDir, handlers.ConfigDir, handlers.DirAgents)
+
+	client := kiro.NewClient()
+	opts := client.GetBootstrapOptions(context.Background())
+
+	// Verify options include session and analytics hooks
+	hasSession := false
+	hasAnalytics := false
+	for _, opt := range opts {
+		if opt.Key == "session_hook" {
+			hasSession = true
+		}
+		if opt.Key == "analytics_hook" {
+			hasAnalytics = true
+		}
+	}
+	if !hasSession {
+		t.Error("Expected session_hook option")
+	}
+	if !hasAnalytics {
+		t.Error("Expected analytics_hook option")
+	}
+
+	// Install bootstrap
+	if err := client.InstallBootstrap(context.Background(), opts); err != nil {
+		t.Fatalf("Failed to install bootstrap: %v", err)
+	}
+
+	// Verify default.json was created in .kiro/agents/
+	agentConfigPath := filepath.Join(agentsDir, "default.json")
+	env.AssertFileExists(agentConfigPath)
+
+	content, err := os.ReadFile(agentConfigPath)
+	if err != nil {
+		t.Fatalf("Failed to read agent config file: %v", err)
+	}
+
+	var config struct {
+		Name  string                       `json:"name"`
+		Hooks map[string][]json.RawMessage `json:"hooks"`
+	}
+	if err := json.Unmarshal(content, &config); err != nil {
+		t.Fatalf("Failed to parse agent config file: %v", err)
+	}
+
+	// Verify agentSpawn hook exists
+	spawnHooks, ok := config.Hooks["agentSpawn"]
+	if !ok || len(spawnHooks) == 0 {
+		t.Error("Expected agentSpawn hook")
+	} else {
+		var hook struct{ Command string }
+		if err := json.Unmarshal(spawnHooks[0], &hook); err != nil {
+			t.Fatalf("Failed to parse agentSpawn hook: %v", err)
+		}
+		if hook.Command != "sx install --hook-mode --client=kiro" {
+			t.Errorf("agentSpawn command = %q, want %q", hook.Command, "sx install --hook-mode --client=kiro")
+		}
+	}
+
+	// Verify postToolUse hook exists
+	postToolHooks, ok := config.Hooks["postToolUse"]
+	if !ok || len(postToolHooks) == 0 {
+		t.Error("Expected postToolUse hook")
+	} else {
+		var hook struct{ Command string }
+		if err := json.Unmarshal(postToolHooks[0], &hook); err != nil {
+			t.Fatalf("Failed to parse postToolUse hook: %v", err)
+		}
+		if hook.Command != "sx report-usage --client=kiro" {
+			t.Errorf("postToolUse command = %q, want %q", hook.Command, "sx report-usage --client=kiro")
+		}
+	}
+}
+
+// TestKiroBootstrapUninstall tests that bootstrap hooks are removed
+// when uninstalled.
+func TestKiroBootstrapUninstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	// Create a git repo so findGitRoot() works
+	repoDir := filepath.Join(env.TempDir, "repo")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0755); err != nil {
+		t.Fatalf("Failed to create git directory: %v", err)
+	}
+	// Use TestEnv.Chdir to properly handle cwd changes with cleanup
+	env.Chdir(repoDir)
+
+	client := kiro.NewClient()
+	opts := client.GetBootstrapOptions(context.Background())
+
+	// Install first
+	if err := client.InstallBootstrap(context.Background(), opts); err != nil {
+		t.Fatalf("Failed to install bootstrap: %v", err)
+	}
+
+	agentsDir := filepath.Join(repoDir, handlers.ConfigDir, handlers.DirAgents)
+	agentConfigPath := filepath.Join(agentsDir, "default.json")
+
+	env.AssertFileExists(agentConfigPath)
+
+	// Now uninstall
+	if err := client.UninstallBootstrap(context.Background(), opts); err != nil {
+		t.Fatalf("Failed to uninstall bootstrap: %v", err)
+	}
+
+	// Verify hooks were removed from config (file still exists but hooks are empty)
+	content, err := os.ReadFile(agentConfigPath)
+	if err != nil {
+		t.Fatalf("Failed to read agent config after uninstall: %v", err)
+	}
+
+	var config struct {
+		Hooks map[string][]json.RawMessage `json:"hooks"`
+	}
+	if err := json.Unmarshal(content, &config); err != nil {
+		t.Fatalf("Failed to parse agent config after uninstall: %v", err)
+	}
+
+	if len(config.Hooks["agentSpawn"]) > 0 {
+		t.Error("agentSpawn hooks should be empty after uninstall")
+	}
+	if len(config.Hooks["postToolUse"]) > 0 {
+		t.Error("postToolUse hooks should be empty after uninstall")
+	}
 }

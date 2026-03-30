@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -58,6 +59,48 @@ type CodexNotifyEvent struct {
 	LastAssistantMessage string   `json:"last-assistant-message"`
 }
 
+// KiroPostToolUseEvent represents the JSON payload from Kiro postToolUse hook
+type KiroPostToolUseEvent struct {
+	ToolName   string `json:"toolName"`
+	ToolResult string `json:"toolResult"`
+}
+
+// kiroSkillPathRegex matches skill file paths in Kiro's readFile tool result
+// Captures the top-level skill name (handles both single-file and multi-file skills)
+// e.g., .kiro/skills/my-skill.md -> my-skill
+// e.g., .kiro/skills/my-skill/index.md -> my-skill
+var kiroSkillPathRegex = regexp.MustCompile(`<file name="\.kiro/skills/([^/".]+)(?:\.md|/)`)
+
+// extractKiroSkillNames extracts all skill names from Kiro's readFile tool result
+// Returns all unique skill names found in the tool result
+func extractKiroSkillNames(toolResult string) []string {
+	matches := kiroSkillPathRegex.FindAllStringSubmatch(toolResult, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	// Deduplicate skill names
+	seen := make(map[string]bool)
+	var names []string
+	for _, match := range matches {
+		if len(match) >= 2 && !seen[match[1]] {
+			seen[match[1]] = true
+			names = append(names, match[1])
+		}
+	}
+	return names
+}
+
+// extractKiroSkillName extracts the first skill name from Kiro's readFile tool result
+// Kept for backwards compatibility
+func extractKiroSkillName(toolResult string) string {
+	names := extractKiroSkillNames(toolResult)
+	if len(names) > 0 {
+		return names[0]
+	}
+	return ""
+}
+
 // runReportUsage executes the report-usage command
 func runReportUsage(cmd *cobra.Command, args []string) error {
 	// Initialize logger early to capture all errors
@@ -68,10 +111,13 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 	var data []byte
 	var err error
 
-	// Codex passes JSON as command-line argument, others use stdin
+	// Try different input methods based on client
 	if len(args) > 0 {
 		// Codex format: JSON as first argument
 		data = []byte(args[0])
+	} else if userPrompt := os.Getenv("USER_PROMPT"); userPrompt != "" {
+		// Kiro format: JSON in USER_PROMPT env var
+		data = []byte(userPrompt)
 	} else {
 		// Claude Code/Cursor format: JSON from stdin
 		data, err = io.ReadAll(os.Stdin)
@@ -80,6 +126,9 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to read stdin: %w", err)
 		}
 	}
+
+	// uncomment for debugging
+	// 	log.Debug("report-usage: received", "data", string(data), "client", clientID)
 
 	// Empty input is not an error - just nothing to do
 	if len(data) == 0 {
@@ -101,7 +150,7 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// If no tool name from Claude Code format, try Copilot format (camelCase)
+	// If no tool name from Claude Code format, try Copilot/Kiro format (camelCase)
 	if event.ToolName == "" {
 		var copilotEvent CopilotPostToolUseEvent
 		if err := json.Unmarshal(data, &copilotEvent); err == nil && copilotEvent.ToolName != "" {
@@ -113,6 +162,18 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 	// If no tool name, nothing to detect
 	if event.ToolName == "" {
 		return nil
+	}
+
+	// Kiro-specific detection: extract skill name from readFile tool result
+	if event.ToolName == "readFile" && clientID == "kiro" {
+		var kiroEvent KiroPostToolUseEvent
+		if err := json.Unmarshal(data, &kiroEvent); err == nil {
+			if skillName := extractKiroSkillName(kiroEvent.ToolResult); skillName != "" {
+				// Found a skill - set up for tracking
+				event.ToolName = "Skill"
+				event.ToolInput = map[string]any{"skill": skillName}
+			}
+		}
 	}
 
 	// Create all handlers for detection
@@ -185,28 +246,31 @@ func runReportUsage(cmd *cobra.Command, args []string) error {
 	// Log successful usage tracking
 	log.Info("report-usage: asset usage tracked", "name", assetName, "version", assetVersion, "type", assetType)
 
-	// Try to flush queue
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	// Try to flush queue asynchronously to avoid blocking Kiro hooks
+	// The event is already persisted to disk, so a failed flush is recoverable
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-	// Load config to get repository
-	cfg, err := config.Load()
-	if err != nil {
-		log.Error("report-usage: failed to load config", "error", err)
-		return nil
-	}
+		// Load config to get repository
+		cfg, err := config.Load()
+		if err != nil {
+			log.Error("report-usage: failed to load config", "error", err)
+			return
+		}
 
-	// Create vault instance
-	vault, err := vaultpkg.NewFromConfig(cfg)
-	if err != nil {
-		log.Error("report-usage: failed to create vault", "error", err)
-		return nil
-	}
+		// Create vault instance
+		vault, err := vaultpkg.NewFromConfig(cfg)
+		if err != nil {
+			log.Error("report-usage: failed to create vault", "error", err)
+			return
+		}
 
-	// Try to flush queue
-	if err := stats.FlushQueue(ctx, vault); err != nil {
-		log.Error("report-usage: failed to flush usage stats", "error", err)
-	}
+		// Try to flush queue
+		if err := stats.FlushQueue(ctx, vault); err != nil {
+			log.Error("report-usage: failed to flush usage stats", "error", err)
+		}
+	}()
 
 	return nil
 }

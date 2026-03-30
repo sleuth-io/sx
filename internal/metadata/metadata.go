@@ -73,6 +73,7 @@ type HookConfig struct {
 	Copilot    map[string]any `toml:"copilot,omitempty"`
 	Gemini     map[string]any `toml:"gemini,omitempty"`
 	Cline      map[string]any `toml:"cline,omitempty"`
+	Kiro       map[string]any `toml:"kiro,omitempty"`
 }
 
 // MCPConfig represents the [mcp] section (for both mcp and mcp-remote)

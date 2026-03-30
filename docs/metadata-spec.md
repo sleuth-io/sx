@@ -203,21 +203,22 @@ Hooks can have client-specific settings in `[hook.<client>]` sections:
 - `[hook.claude-code]`: Claude Code-specific fields (e.g., `async = true`)
 - `[hook.cursor]`: Cursor-specific fields (e.g., `loop_limit`)
 - `[hook.copilot]`: Copilot-specific fields
+- `[hook.kiro]`: Kiro-specific fields
 
 **Canonical Events**:
 
-| Canonical Event | Claude Code | Cursor | Description |
-|---|---|---|---|
-| `session-start` | SessionStart | sessionStart | Session begins |
-| `session-end` | SessionEnd | sessionEnd | Session ends |
-| `pre-tool-use` | PreToolUse | preToolUse | Before a tool is used |
-| `post-tool-use` | PostToolUse | postToolUse | After a tool is used |
-| `post-tool-use-failure` | PostToolUseFailure | postToolUseFailure | After a tool fails |
-| `user-prompt-submit` | UserPromptSubmit | beforeSubmitPrompt | User submits prompt |
-| `stop` | Stop | stop | Agent stops |
-| `subagent-start` | SubagentStart | subagentStart | Subagent starts |
-| `subagent-stop` | SubagentStop | subagentStop | Subagent stops |
-| `pre-compact` | PreCompact | preCompact | Before context compaction |
+| Canonical Event | Claude Code | Cursor | Kiro | Description |
+|---|---|---|---|---|
+| `session-start` | SessionStart | sessionStart | sessionStart | Session begins |
+| `session-end` | SessionEnd | sessionEnd | sessionEnd | Session ends |
+| `pre-tool-use` | PreToolUse | preToolUse | preToolUse | Before a tool is used |
+| `post-tool-use` | PostToolUse | postToolUse | postToolUse | After a tool is used |
+| `post-tool-use-failure` | PostToolUseFailure | postToolUseFailure | postToolUse | After a tool fails |
+| `user-prompt-submit` | UserPromptSubmit | beforeSubmitPrompt | promptSubmit | User submits prompt |
+| `stop` | Stop | stop | agentStop | Agent stops |
+| `subagent-start` | SubagentStart | subagentStart | — | Subagent starts |
+| `subagent-stop` | SubagentStop | subagentStop | — | Subagent stops |
+| `pre-compact` | PreCompact | preCompact | — | Before context compaction |
 
 **Example - Script-based hook** (packaged):
 

@@ -34,12 +34,7 @@ func NewClient() *Client {
 				asset.TypeSkill,
 				asset.TypeRule,
 				asset.TypeCommand,
-				// Hooks are not supported: IDE hooks are UI-configured only (no
-				// distributable file format), and CLI hooks are embedded inside
-				// custom agent configs rather than being standalone assets.
-				// IDE slash commands are either manual-trigger hooks (same
-				// limitation) or steering files with inclusion:manual (already
-				// covered by rules).
+				asset.TypeHook,
 			},
 		),
 	}
@@ -121,6 +116,9 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeCommand:
 			handler := handlers.NewCommandHandler(bundle.Metadata)
 			err = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeHook:
+			handler := handlers.NewHookHandler(bundle.Metadata)
+			err = handler.Install(ctx, bundle.ZipData, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + bundle.Metadata.Asset.Type.Key
@@ -181,6 +179,9 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 		case asset.TypeCommand:
 			handler := handlers.NewCommandHandler(meta)
 			err = handler.Remove(ctx, targetBase)
+		case asset.TypeHook:
+			handler := handlers.NewHookHandler(meta)
+			err = handler.Remove(ctx, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + a.Type.Key
@@ -229,160 +230,51 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 }
 
 // EnsureAssetSupport ensures asset infrastructure is set up for the current context.
-// For Kiro, this generates a steering file that lists available skills and
-// registers the sx MCP server for the read_skill tool.
+// For Kiro, this registers the sx MCP server (for the query tool) and cleans up
+// legacy steering files. Kiro auto-discovers skills from .kiro/skills/ natively.
 func (c *Client) EnsureAssetSupport(ctx context.Context, scope *clients.InstallScope) error {
-	log := logger.Get()
-
-	// 1. Register skills MCP server globally (idempotent)
+	// Register skills MCP server globally (idempotent)
 	if err := c.registerSkillsMCPServer(); err != nil {
 		return fmt.Errorf("failed to register MCP server: %w", err)
 	}
 
-	// 2. Collect skills from all applicable scopes
-	allSkills := c.collectAllScopeSkills(scope)
-	log.Debug("collected skills for steering file", "count", len(allSkills), "scope_type", scope.Type, "repo_root", scope.RepoRoot)
+	// Clean up legacy steering/skills.md if it exists (no longer needed since
+	// Kiro auto-discovers skills from .kiro/skills/)
+	c.removeLegacySteeringFile(scope)
 
-	// 3. Determine local target (current working directory context)
-	localTarget := c.determineLocalTarget(scope)
-	if localTarget == "" {
-		log.Warn("no local target for steering file", "scope_type", scope.Type, "repo_root", scope.RepoRoot)
-		return nil
-	}
-
-	log.Debug("generating steering file", "target", localTarget, "skill_count", len(allSkills))
-
-	// 4. Generate steering file with all skills
-	return c.generateSkillsSteeringFile(allSkills, localTarget)
+	return nil
 }
 
-// collectAllScopeSkills gathers skills from global, repo, and path scopes
-func (c *Client) collectAllScopeSkills(scope *clients.InstallScope) []clients.InstalledSkill {
-	var allSkills []clients.InstalledSkill
-	seen := make(map[string]bool)
+// removeLegacySteeringFile removes the old auto-generated steering/skills.md
+// that was used before Kiro had native skill discovery.
+func (c *Client) removeLegacySteeringFile(scope *clients.InstallScope) {
+	log := logger.Get()
 
-	// Helper to add skills without duplicates (path > repo > global precedence)
-	addSkills := func(skills []clients.InstalledSkill) {
-		for _, skill := range skills {
-			if !seen[skill.Name] {
-				seen[skill.Name] = true
-				allSkills = append(allSkills, skill)
-			}
-		}
-	}
+	// Check all possible locations where the file could exist
+	var targets []string
 
-	// 1. Path-scoped skills (highest precedence)
-	if scope.Type == clients.ScopePath && scope.RepoRoot != "" && scope.Path != "" {
-		pathBase := filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir)
-		if skills, err := handlers.SkillOps.ScanInstalled(pathBase); err == nil {
-			for _, s := range skills {
-				addSkills([]clients.InstalledSkill{{Name: s.Name, Description: s.Description, Version: s.Version}})
-			}
-		}
-	}
-
-	// 2. Repo-scoped skills
 	if scope.RepoRoot != "" {
-		repoBase := filepath.Join(scope.RepoRoot, handlers.ConfigDir)
-		if skills, err := handlers.SkillOps.ScanInstalled(repoBase); err == nil {
-			for _, s := range skills {
-				addSkills([]clients.InstalledSkill{{Name: s.Name, Description: s.Description, Version: s.Version}})
+		targets = append(targets, filepath.Join(scope.RepoRoot, handlers.ConfigDir))
+		if scope.Path != "" {
+			targets = append(targets, filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir))
+		}
+	}
+
+	cwd, err := os.Getwd()
+	if err == nil {
+		targets = append(targets, filepath.Join(cwd, handlers.ConfigDir))
+	}
+
+	for _, target := range targets {
+		steeringPath := filepath.Join(target, handlers.DirSteering, "skills.md")
+		if _, err := os.Stat(steeringPath); err == nil {
+			if err := os.Remove(steeringPath); err != nil {
+				log.Debug("failed to remove legacy steering file", "path", steeringPath, "error", err)
+			} else {
+				log.Info("removed legacy steering/skills.md", "path", steeringPath)
 			}
 		}
 	}
-
-	// 3. Global skills (lowest precedence)
-	home, _ := os.UserHomeDir()
-	globalBase := filepath.Join(home, handlers.ConfigDir)
-	if skills, err := handlers.SkillOps.ScanInstalled(globalBase); err == nil {
-		for _, s := range skills {
-			addSkills([]clients.InstalledSkill{{Name: s.Name, Description: s.Description, Version: s.Version}})
-		}
-	}
-
-	return allSkills
-}
-
-// determineLocalTarget returns the local .kiro directory for steering file
-func (c *Client) determineLocalTarget(scope *clients.InstallScope) string {
-	switch scope.Type {
-	case clients.ScopeGlobal:
-		// For global scope, use current working directory if in a repo
-		cwd, err := os.Getwd()
-		if err != nil {
-			return ""
-		}
-		return filepath.Join(cwd, handlers.ConfigDir)
-	case clients.ScopePath:
-		if scope.RepoRoot != "" && scope.Path != "" {
-			return filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir)
-		}
-		fallthrough
-	case clients.ScopeRepository:
-		if scope.RepoRoot != "" {
-			return filepath.Join(scope.RepoRoot, handlers.ConfigDir)
-		}
-	}
-	// Fallback: use current working directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(cwd, handlers.ConfigDir)
-}
-
-// generateSkillsSteeringFile generates a steering file that lists available skills.
-// If no skills are installed, removes the file.
-func (c *Client) generateSkillsSteeringFile(skills []clients.InstalledSkill, targetBase string) error {
-	steeringDir := filepath.Join(targetBase, handlers.DirSteering)
-	steeringPath := filepath.Join(steeringDir, "skills.md")
-
-	// If no skills, remove the steering file
-	if len(skills) == 0 {
-		if _, err := os.Stat(steeringPath); err == nil {
-			return os.Remove(steeringPath)
-		}
-		return nil
-	}
-
-	// Ensure steering directory exists
-	if err := os.MkdirAll(steeringDir, 0755); err != nil {
-		return fmt.Errorf("failed to create steering directory: %w", err)
-	}
-
-	// Build skill list
-	var skillsList strings.Builder
-	for _, skill := range skills {
-		fmt.Fprintf(&skillsList,
-			"\n<skill>\n<name>%s</name>\n<description>%s</description>\n</skill>\n",
-			xmlEscape(skill.Name), xmlEscape(skill.Description))
-	}
-
-	// Generate steering file with Kiro frontmatter
-	content := fmt.Sprintf(`---
-description: "Available skills for AI assistance"
-inclusion: always
----
-
-<!-- AUTO-GENERATED by sx - Do not edit manually -->
-<!-- Run 'sx install' to regenerate this file -->
-
-## Available Skills
-
-You have access to the following skills. When a user's task matches a skill, use the `+"`read_skill`"+` MCP tool to load full instructions.
-
-<available_skills>
-%s
-</available_skills>
-
-## Usage
-
-Invoke `+"`read_skill(name: \"skill-name\")`"+` via the MCP tool when needed.
-
-The tool returns the skill content as markdown. Any `+"`@filename`"+` references in the content are automatically resolved to absolute paths.
-`, skillsList.String())
-
-	return os.WriteFile(steeringPath, []byte(content), 0644)
 }
 
 // registerSkillsMCPServer adds skills MCP server to ~/.kiro/settings/mcp.json
@@ -471,25 +363,43 @@ func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.Inst
 }
 
 // GetBootstrapOptions returns bootstrap options for Kiro.
-// Kiro hooks are UI-configured, so we only support MCP server installation.
 func (c *Client) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	return []bootstrap.Option{
+		bootstrap.SessionHook,
+		bootstrap.AnalyticsHook,
 		bootstrap.SleuthAIQueryMCP(),
 	}
 }
 
-// GetBootstrapPath returns the path to Kiro's MCP settings file.
+// GetBootstrapPath returns the path to Kiro's IDE hooks directory.
+// For Kiro, hooks are installed to both .kiro/agents/ (CLI) and .kiro/hooks/ (IDE),
+// but we report the IDE hooks path since IDE hooks work better.
 func (c *Client) GetBootstrapPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
+	repoRoot := findGitRoot()
+	if repoRoot == "" {
+		return ".kiro/hooks/ (per repo)"
 	}
-	return filepath.Join(home, handlers.ConfigDir, handlers.DirSettings, "mcp.json")
+	return filepath.Join(repoRoot, handlers.ConfigDir, handlers.DirHooks)
 }
 
-// InstallBootstrap installs Kiro infrastructure (MCP servers).
-// Kiro hooks are UI-configured, so we only handle MCP server installation.
+// InstallBootstrap installs Kiro infrastructure (hooks and MCP servers).
 func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
+	// Install hooks to workspace .kiro/hooks/
+	installHooks := bootstrap.ContainsKey(opts, bootstrap.SessionHookKey) ||
+		bootstrap.ContainsKey(opts, bootstrap.AnalyticsHookKey)
+
+	if installHooks {
+		repoRoot := findGitRoot()
+		if repoRoot == "" {
+			log := logger.Get()
+			log.Warn("cannot install Kiro hooks: not in a git repository")
+		} else {
+			if err := installKiroHooks(repoRoot, opts); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Install MCP servers from options that have MCPConfig
 	for _, opt := range opts {
 		if opt.MCPConfig != nil {
@@ -529,14 +439,36 @@ func (c *Client) installMCPServerFromConfig(config *bootstrap.MCPServerConfig) e
 	return nil
 }
 
-// UninstallBootstrap removes Kiro infrastructure (MCP servers).
+// UninstallBootstrap removes Kiro infrastructure (hooks and MCP servers).
 func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option) error {
+	log := logger.Get()
+	var errs []error
+
+	// Remove hooks if requested
+	uninstallSession := bootstrap.ContainsKey(opts, bootstrap.SessionHookKey)
+	uninstallAnalytics := bootstrap.ContainsKey(opts, bootstrap.AnalyticsHookKey)
+
+	if uninstallSession || uninstallAnalytics {
+		repoRoot := findGitRoot()
+		if repoRoot != "" {
+			if err := uninstallKiroHooks(repoRoot, uninstallSession, uninstallAnalytics); err != nil {
+				log.Error("failed to uninstall hooks", "error", err)
+				errs = append(errs, fmt.Errorf("failed to uninstall hooks: %w", err))
+			}
+		}
+	}
+
+	// Remove MCP servers
 	for _, opt := range opts {
 		if opt.MCPConfig != nil {
 			if err := c.uninstallMCPServerByName(opt.MCPConfig.Name); err != nil {
-				return err
+				errs = append(errs, err)
 			}
 		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 	return nil
 }
@@ -559,7 +491,8 @@ func (c *Client) uninstallMCPServerByName(name string) error {
 }
 
 // ShouldInstall always returns true for Kiro.
-// Kiro hooks are UI-configured, so no deduplication is needed.
+// Kiro has a sessionStart hook that fires once per session, so no
+// deduplication is needed.
 func (c *Client) ShouldInstall(ctx context.Context) (bool, error) {
 	return true, nil
 }
@@ -619,13 +552,4 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 func init() {
 	// Auto-register on package import
 	clients.Register(NewClient())
-}
-
-// xmlEscape escapes special XML characters in a string.
-func xmlEscape(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	s = strings.ReplaceAll(s, "\"", "&quot;")
-	return s
 }
