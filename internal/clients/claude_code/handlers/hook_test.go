@@ -414,6 +414,36 @@ func TestHookHandler_VerifyInstalled_CommandMode(t *testing.T) {
 	}
 }
 
+func TestHookHandler_BuildConfig_PortabilizesCommand(t *testing.T) {
+	homeDir, _ := os.UserHomeDir()
+	targetBase := filepath.Join(homeDir, ".claude")
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "test-hook", Version: "1.0.0", Type: asset.TypeHook},
+		Hook: &metadata.HookConfig{
+			Event:      "pre-tool-use",
+			ScriptFile: "hook.sh",
+		},
+	}
+	handler := NewHookHandler(meta)
+	config := handler.buildHookConfig(targetBase)
+
+	hooksArray := config["hooks"].([]any)
+	hookHandler := hooksArray[0].(map[string]any)
+	command := hookHandler["command"].(string)
+
+	if !strings.HasPrefix(command, "$HOME/") {
+		t.Errorf("command should use $HOME prefix for portability, got: %s", command)
+	}
+	if strings.Contains(command, homeDir) {
+		t.Errorf("command should not contain absolute home dir %s, got: %s", homeDir, command)
+	}
+	expected := "$HOME/.claude/hooks/test-hook/hook.sh"
+	if command != expected {
+		t.Errorf("command = %q, want %q", command, expected)
+	}
+}
+
 func TestHookHandler_BuildConfig_WithMatcher(t *testing.T) {
 	meta := &metadata.Metadata{
 		Asset: metadata.Asset{Name: "test", Version: "1.0.0", Type: asset.TypeHook},

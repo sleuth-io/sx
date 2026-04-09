@@ -106,6 +106,31 @@ func TestEnsureDir(t *testing.T) {
 	}
 }
 
+func TestPortabilize(t *testing.T) {
+	homeDir, _ := os.UserHomeDir()
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{"path under home", filepath.Join(homeDir, ".claude", "hooks", "test"), "$HOME/.claude/hooks/test"},
+		{"path equals home", homeDir, "$HOME"},
+		{"path not under home", "/opt/other/path", "/opt/other/path"},
+		{"empty path", "", ""},
+		{"relative path", "relative/path", "relative/path"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Portabilize(tt.path)
+			if got != tt.want {
+				t.Errorf("Portabilize(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveCommand(t *testing.T) {
 	tests := []struct {
 		name        string

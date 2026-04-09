@@ -299,7 +299,7 @@ func (h *HookHandler) buildHookConfig(targetBase string) map[string]any {
 
 	installDir := filepath.Join(targetBase, h.GetInstallPath())
 	resolved := hook.ResolveCommand(h.metadata.Hook, installDir, h.zipFiles)
-	hookHandler["command"] = resolved.Command
+	hookHandler["command"] = utils.Portabilize(resolved.Command)
 
 	if h.metadata.Hook.Timeout > 0 {
 		hookHandler["timeout"] = h.metadata.Hook.Timeout

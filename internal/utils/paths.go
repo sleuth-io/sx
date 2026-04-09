@@ -100,6 +100,23 @@ func IsDirectory(path string) bool {
 	return info.IsDir()
 }
 
+// Portabilize replaces the user's home directory prefix with $HOME
+// so paths remain valid across different environments.
+func Portabilize(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	if path == home {
+		return "$HOME"
+	}
+	prefix := home + string(os.PathSeparator)
+	if after, found := strings.CutPrefix(path, prefix); found {
+		return "$HOME" + string(os.PathSeparator) + after
+	}
+	return path
+}
+
 // ResolveCommand resolves a command for a packaged MCP server.
 // Bare command names (e.g. "node", "uv", "python") are left as-is to be resolved via PATH.
 // Relative paths containing a directory separator (e.g. "./bin/server") are made absolute
