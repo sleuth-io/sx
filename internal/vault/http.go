@@ -10,6 +10,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/utils"
 )
 
@@ -91,7 +92,9 @@ func (h *HTTPSourceHandler) Fetch(ctx context.Context, asset *lockfile.Asset) ([
 // verifyHashes verifies the downloaded data against provided hashes
 func (h *HTTPSourceHandler) verifyHashes(data []byte, hashes map[string]string) error {
 	if len(hashes) == 0 {
-		return errors.New("no hashes provided for verification")
+		log := logger.Get()
+		log.Debug("skipping hash verification, no hashes provided")
+		return nil
 	}
 
 	for algo, expected := range hashes {

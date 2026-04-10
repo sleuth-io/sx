@@ -49,6 +49,48 @@ hashes = {sha256 = "abc123"}
 	}
 }
 
+func TestParseAssetWithNoHashes(t *testing.T) {
+	lockFileData := []byte(`
+lock-version = "1.0"
+version = "abc123"
+created-by = "test"
+
+[[assets]]
+name = "my-rule"
+version = "1"
+type = "rule"
+
+[assets.source-http]
+url = "https://example.com/my-rule-1.zip"
+`)
+
+	lockFile, err := Parse(lockFileData)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	if len(lockFile.Assets) != 1 {
+		t.Fatalf("Expected 1 asset, got %d", len(lockFile.Assets))
+	}
+
+	lockAsset := &lockFile.Assets[0]
+	if lockAsset.SourceHTTP == nil {
+		t.Fatal("Expected source-http to be present")
+	}
+
+	if lockAsset.SourceHTTP.URL != "https://example.com/my-rule-1.zip" {
+		t.Errorf("Expected URL https://example.com/my-rule-1.zip, got %s", lockAsset.SourceHTTP.URL)
+	}
+
+	if len(lockAsset.SourceHTTP.Hashes) != 0 {
+		t.Errorf("Expected empty hashes, got %v", lockAsset.SourceHTTP.Hashes)
+	}
+
+	if lockAsset.SourceHTTP.Size != 0 {
+		t.Errorf("Expected size 0, got %d", lockAsset.SourceHTTP.Size)
+	}
+}
+
 func TestValidateLockFile(t *testing.T) {
 	tests := []struct {
 		name     string
