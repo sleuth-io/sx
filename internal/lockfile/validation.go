@@ -148,12 +148,7 @@ func (s *SourceHTTP) Validate() error {
 		return errors.New("url is required")
 	}
 
-	// Hashes are required for HTTP sources
-	if len(s.Hashes) == 0 {
-		return errors.New("hashes are required for HTTP sources")
-	}
-
-	// Validate hash algorithms
+	// Validate hash algorithms if provided
 	for algo := range s.Hashes {
 		if algo != "sha256" && algo != "sha512" {
 			return fmt.Errorf("unsupported hash algorithm: %s (must be sha256 or sha512)", algo)
