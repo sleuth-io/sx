@@ -193,6 +193,9 @@ step "Setting up fake home and sx profile"
 
 mkdir -p "$FAKE_HOME" "$OPENCLAW_HOME/skills" "$SX_CONFIG_DIR"
 
+# Set up a nicer prompt for interactive use
+echo 'export PS1='"'"'\[\e[32m\]\u@\h\[\e[0m\]:\[\e[34m\]\w\[\e[0m\]$ '"'"'' > "$TEST_DIR/.bashrc"
+
 # Symlink so sx sees ~/.openclaw
 ln -s "$OPENCLAW_HOME" "$FAKE_HOME/.openclaw"
 
@@ -288,6 +291,7 @@ services:
       - $SX_BINARY:/usr/local/bin/sx:ro
       - $VAULT_DIR:/vault
       - $TEST_DIR/container-sx-config:/home/node/.config/sx
+      - $TEST_DIR/.bashrc:/home/node/.bashrc:ro
     environment:
       - ANTHROPIC_API_KEY
       - HOME=/home/node
