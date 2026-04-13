@@ -293,24 +293,28 @@ services:
 COMPOSE_EOF
 
 info "Pulling image: $OPENCLAW_IMAGE"
-docker pull "$OPENCLAW_IMAGE" 2>&1 | tail -3
+docker pull "$OPENCLAW_IMAGE"
 
 info "Starting gateway..."
 docker compose -f "$TEST_DIR/docker-compose.yml" up -d openclaw-gateway
 
 info "Waiting for gateway health check..."
-for i in $(seq 1 40); do
+for i in $(seq 1 120); do
     if docker compose -f "$TEST_DIR/docker-compose.yml" ps --format json 2>/dev/null | grep -q '"healthy"'; then
+        echo ""
         info "Gateway is healthy!"
         break
     fi
-    if [[ $i -eq 40 ]]; then
+    if [[ $i -eq 120 ]]; then
+        echo ""
         error "Gateway failed to become healthy"
         docker compose -f "$TEST_DIR/docker-compose.yml" logs openclaw-gateway | tail -30
         exit 1
     fi
-    sleep 3
+    printf "."
+    sleep 1
 done
+echo ""
 
 # ---------------------------------------------------------------------------
 # 5. Run onboarding (non-interactive)
@@ -331,18 +335,22 @@ openclaw_cli onboard --non-interactive \
 info "Restarting gateway to pick up skills..."
 docker compose -f "$TEST_DIR/docker-compose.yml" restart openclaw-gateway
 sleep 5
-for i in $(seq 1 30); do
+for i in $(seq 1 90); do
     if docker compose -f "$TEST_DIR/docker-compose.yml" ps --format json 2>/dev/null | grep -q '"healthy"'; then
+        echo ""
         info "Gateway restarted and healthy!"
         break
     fi
-    if [[ $i -eq 30 ]]; then
+    if [[ $i -eq 90 ]]; then
+        echo ""
         error "Gateway failed to become healthy after restart"
         docker compose -f "$TEST_DIR/docker-compose.yml" logs openclaw-gateway | tail -20
         exit 1
     fi
-    sleep 3
+    printf "."
+    sleep 1
 done
+echo ""
 
 # ---------------------------------------------------------------------------
 # 6. TEST 1: Verify first skill is discovered
