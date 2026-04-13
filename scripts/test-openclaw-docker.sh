@@ -16,8 +16,7 @@
 #   - sx binary built (make build)
 #
 # Environment variables:
-#   SX_ENV_FILE (required)  Path to a .env file containing SLEUTH_CLAUDE_API_KEY.
-#                           The key is exported as ANTHROPIC_API_KEY for the test container.
+#   SX_ENV_FILE (required)  Path to a .env file containing ANTHROPIC_API_KEY.
 #   OPENCLAW_IMAGE          Docker image to use (default: ghcr.io/openclaw/openclaw:latest)
 #
 # Usage:
@@ -150,20 +149,18 @@ if ! docker info >/dev/null 2>&1; then
 fi
 info "Docker: OK"
 
-ENV_FILE="${SX_ENV_FILE:?SX_ENV_FILE must be set to a .env file containing SLEUTH_CLAUDE_API_KEY}"
+ENV_FILE="${SX_ENV_FILE:?SX_ENV_FILE must be set to a .env file containing ANTHROPIC_API_KEY}"
 if [[ ! -f "$ENV_FILE" ]]; then
     error "API key file not found: $ENV_FILE"
     exit 1
 fi
-if ! grep -q '^SLEUTH_CLAUDE_API_KEY=' "$ENV_FILE"; then
-    error "SLEUTH_CLAUDE_API_KEY not found in $ENV_FILE"
+export ANTHROPIC_API_KEY
+ANTHROPIC_API_KEY="$(grep '^ANTHROPIC_API_KEY=' "$ENV_FILE" | cut -d= -f2-)"
+if [[ -z "$ANTHROPIC_API_KEY" ]]; then
+    error "ANTHROPIC_API_KEY not found in $ENV_FILE"
     exit 1
 fi
 info "API key source: $ENV_FILE (value not shown)"
-
-# Extract API key at runtime — never printed or stored in files we log
-export ANTHROPIC_API_KEY
-ANTHROPIC_API_KEY="$(grep '^SLEUTH_CLAUDE_API_KEY=' "$ENV_FILE" | cut -d= -f2-)"
 
 # ---------------------------------------------------------------------------
 # 1. Create vault with first skill
