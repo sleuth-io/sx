@@ -37,7 +37,7 @@ func NewInstallCommand() *cobra.Command {
 		Use:   "install",
 		Short: "Read lock file, fetch assets, and install locally",
 		Long: fmt.Sprintf(`Read the %s file, fetch assets from the configured vault,
-and install them to ~/.claude/ directory.
+and install them to LLM's directory (ie. ~/.claude/).
 
 Use --target to install as if running from a different directory. This is useful
 when you want to install assets for a project without being in that directory

@@ -14,9 +14,24 @@
 # Prerequisites:
 #   - Docker + Docker Compose v2
 #   - sx binary built (make build)
-#   - API key in /home/mrdon/dev/pulse/.env (SLEUTH_CLAUDE_API_KEY)
+#
+# Environment variables:
+#   SX_ENV_FILE (required)  Path to a .env file containing ANTHROPIC_API_KEY.
+#   OPENCLAW_IMAGE          Docker image to use (default: ghcr.io/openclaw/openclaw:latest)
+#
+# Flags:
+#   --interactive    Pause after setup so you can shell into the container
+#
+# Usage:
+#   SX_ENV_FILE=./.env ./scripts/test-openclaw-docker.sh
+#   SX_ENV_FILE=./.env ./scripts/test-openclaw-docker.sh --interactive
 #
 set -euo pipefail
+
+INTERACTIVE=false
+if [[ "${1:-}" == "--interactive" ]]; then
+    INTERACTIVE=true
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -143,20 +158,18 @@ if ! docker info >/dev/null 2>&1; then
 fi
 info "Docker: OK"
 
-ENV_FILE="/home/mrdon/dev/pulse/.env"
+ENV_FILE="${SX_ENV_FILE:?SX_ENV_FILE must be set to a .env file containing ANTHROPIC_API_KEY}"
 if [[ ! -f "$ENV_FILE" ]]; then
     error "API key file not found: $ENV_FILE"
     exit 1
 fi
-if ! grep -q '^SLEUTH_CLAUDE_API_KEY=' "$ENV_FILE"; then
-    error "SLEUTH_CLAUDE_API_KEY not found in $ENV_FILE"
+export ANTHROPIC_API_KEY
+ANTHROPIC_API_KEY="$(grep '^ANTHROPIC_API_KEY=' "$ENV_FILE" | cut -d= -f2- || true)"
+if [[ -z "$ANTHROPIC_API_KEY" ]]; then
+    error "ANTHROPIC_API_KEY not found or empty in $ENV_FILE"
     exit 1
 fi
 info "API key source: $ENV_FILE (value not shown)"
-
-# Extract API key at runtime — never printed or stored in files we log
-export ANTHROPIC_API_KEY
-ANTHROPIC_API_KEY="$(grep '^SLEUTH_CLAUDE_API_KEY=' "$ENV_FILE" | cut -d= -f2-)"
 
 # ---------------------------------------------------------------------------
 # 1. Create vault with first skill
@@ -179,6 +192,9 @@ Do not add any other text."
 step "Setting up fake home and sx profile"
 
 mkdir -p "$FAKE_HOME" "$OPENCLAW_HOME/skills" "$SX_CONFIG_DIR"
+
+# Set up a nicer prompt for interactive use
+echo 'export PS1='"'"'\[\e[32m\]\u@\h\[\e[0m\]:\[\e[34m\]\w\[\e[0m\]$ '"'"'' > "$TEST_DIR/.bashrc"
 
 # Symlink so sx sees ~/.openclaw
 ln -s "$OPENCLAW_HOME" "$FAKE_HOME/.openclaw"
@@ -232,12 +248,12 @@ services:
     volumes:
       - $OPENCLAW_HOME:/home/node/.openclaw
       - $SX_BINARY:/usr/local/bin/sx:ro
-      - $VAULT_DIR:/vault:ro
+      - $VAULT_DIR:/vault
     environment:
       - ANTHROPIC_API_KEY
       - SX_CONFIG_DIR=/home/node/.config/sx
     ports:
-      - "18789:18789"
+      - "127.0.0.1:18789:18789"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18789/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 5s
@@ -273,13 +289,14 @@ services:
     volumes:
       - $OPENCLAW_HOME:/home/node/.openclaw
       - $SX_BINARY:/usr/local/bin/sx:ro
-      - $VAULT_DIR:/vault:ro
-      - $TEST_DIR/container-sx-config:/home/node/.config/sx:ro
+      - $VAULT_DIR:/vault
+      - $TEST_DIR/container-sx-config:/home/node/.config/sx
+      - $TEST_DIR/.bashrc:/home/node/.bashrc:ro
     environment:
       - ANTHROPIC_API_KEY
       - HOME=/home/node
     ports:
-      - "18789:18789"
+      - "127.0.0.1:18789:18789"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18789/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 5s
@@ -289,24 +306,37 @@ services:
 COMPOSE_EOF
 
 info "Pulling image: $OPENCLAW_IMAGE"
-docker pull "$OPENCLAW_IMAGE" 2>&1 | tail -3
+docker pull "$OPENCLAW_IMAGE"
 
 info "Starting gateway..."
 docker compose -f "$TEST_DIR/docker-compose.yml" up -d openclaw-gateway
 
 info "Waiting for gateway health check..."
-for i in $(seq 1 40); do
+for i in $(seq 1 120); do
     if docker compose -f "$TEST_DIR/docker-compose.yml" ps --format json 2>/dev/null | grep -q '"healthy"'; then
+        echo ""
         info "Gateway is healthy!"
         break
     fi
-    if [[ $i -eq 40 ]]; then
+    if [[ $i -eq 120 ]]; then
+        echo ""
         error "Gateway failed to become healthy"
         docker compose -f "$TEST_DIR/docker-compose.yml" logs openclaw-gateway | tail -30
         exit 1
     fi
-    sleep 3
+    printf "."
+    sleep 1
 done
+echo ""
+
+if [[ "$INTERACTIVE" == true ]]; then
+    step "Interactive mode — container is running"
+    info "Shell into the container with:"
+    info "  docker compose -f $TEST_DIR/docker-compose.yml exec openclaw-gateway bash"
+    info ""
+    info "Press Enter to continue with tests, or Ctrl+C to stop..."
+    read -r
+fi
 
 # ---------------------------------------------------------------------------
 # 5. Run onboarding (non-interactive)
@@ -327,18 +357,22 @@ openclaw_cli onboard --non-interactive \
 info "Restarting gateway to pick up skills..."
 docker compose -f "$TEST_DIR/docker-compose.yml" restart openclaw-gateway
 sleep 5
-for i in $(seq 1 30); do
+for i in $(seq 1 90); do
     if docker compose -f "$TEST_DIR/docker-compose.yml" ps --format json 2>/dev/null | grep -q '"healthy"'; then
+        echo ""
         info "Gateway restarted and healthy!"
         break
     fi
-    if [[ $i -eq 30 ]]; then
+    if [[ $i -eq 90 ]]; then
+        echo ""
         error "Gateway failed to become healthy after restart"
         docker compose -f "$TEST_DIR/docker-compose.yml" logs openclaw-gateway | tail -20
         exit 1
     fi
-    sleep 3
+    printf "."
+    sleep 1
 done
+echo ""
 
 # ---------------------------------------------------------------------------
 # 6. TEST 1: Verify first skill is discovered
