@@ -112,8 +112,14 @@ func (h *RuleHandler) buildSteeringContent(content string) string {
 			}
 		}
 	} else {
-		// Default to always apply if no globs
-		sb.WriteString("inclusion: always\n")
+		// Check for client-specific inclusion override from [rule.kiro]
+		inclusion := "always"
+		if h.metadata.Rule != nil && h.metadata.Rule.Kiro != nil {
+			if inc, ok := h.metadata.Rule.Kiro["inclusion"].(string); ok {
+				inclusion = inc
+			}
+		}
+		fmt.Fprintf(&sb, "inclusion: %s\n", inclusion)
 	}
 
 	sb.WriteString("---\n\n")
