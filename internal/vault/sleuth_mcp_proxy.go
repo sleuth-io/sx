@@ -76,12 +76,25 @@ func newSleuthMCPProxy(baseURL, authToken string) *sleuthMCPProxy {
 
 // jsonrpcRequest is the subset of JSON-RPC 2.0 we emit. The `result`/`error`
 // fields live in a separate response struct below.
+//
+// On IDs: post() makes a single synchronous HTTP round-trip per call — we do
+// not pipeline multiple requests over one connection — so the ID field only
+// needs to round-trip the response back to its request. The constants below
+// (reqIDListTools, reqIDCallTool) are therefore just readable labels; any
+// non-zero int would work. They are not correlation keys across calls.
 type jsonrpcRequest struct {
 	JSONRPC string `json:"jsonrpc"`
 	ID      int    `json:"id,omitempty"`
 	Method  string `json:"method"`
 	Params  any    `json:"params,omitempty"`
 }
+
+// Static request IDs — see the note on jsonrpcRequest for why constants are
+// safe here.
+const (
+	reqIDListTools = 1
+	reqIDCallTool  = 2
+)
 
 type jsonrpcError struct {
 	Code    int    `json:"code"`
@@ -151,14 +164,16 @@ func (p *sleuthMCPProxy) post(ctx context.Context, body jsonrpcRequest) (*jsonrp
 }
 
 // ListUpstreamTools fetches the catalog from skills.new's /mcp/ endpoint and
-// returns only the tools under the mgmt__ namespace with the prefix stripped.
-// The vault__ tools (asset content read helpers) are intentionally excluded —
-// sx has its own native asset-content commands and proxying those would be
-// double-exposure.
+// returns only the tools whose names carry the mgmt__ prefix. The names are
+// returned as-is (prefix still attached) because Call needs the upstream name
+// to forward requests — RegisterManagementTools is what strips the prefix to
+// derive the local tool name. The vault__ tools (asset content read helpers)
+// are intentionally excluded — sx has its own native asset-content commands
+// and proxying those would be double-exposure.
 func (p *sleuthMCPProxy) ListUpstreamTools(ctx context.Context) ([]*mcp.Tool, error) {
 	resp, err := p.post(ctx, jsonrpcRequest{
 		JSONRPC: "2.0",
-		ID:      1,
+		ID:      reqIDListTools,
 		Method:  "tools/list",
 	})
 	if err != nil {
@@ -197,7 +212,7 @@ func (p *sleuthMCPProxy) Call(ctx context.Context, upstreamName string, argument
 	}
 	resp, err := p.post(ctx, jsonrpcRequest{
 		JSONRPC: "2.0",
-		ID:      2,
+		ID:      reqIDCallTool,
 		Method:  "tools/call",
 		Params: map[string]any{
 			"name":      upstreamName,
@@ -245,9 +260,25 @@ func (s *SleuthVault) RegisterManagementTools(mcpServer *mcp.Server) {
 		return
 	}
 
+	// Guard against two upstream tools reducing to the same local name after
+	// prefix stripping. mcpServer.AddTool would silently overwrite the first
+	// registration, which makes the collision hard to spot at runtime.
+	seen := make(map[string]string, len(upstreamTools))
+	registered := 0
 	for _, upstream := range upstreamTools {
 		upstreamName := upstream.Name
 		localName := strings.TrimPrefix(upstreamName, mgmtNamespace)
+		if prev, ok := seen[localName]; ok {
+			log.Warn(
+				"skipping management tool with duplicate local name — "+
+					"two upstream tools collapse to the same sx-visible name",
+				"local", localName,
+				"first_upstream", prev,
+				"duplicate_upstream", upstreamName,
+			)
+			continue
+		}
+		seen[localName] = upstreamName
 		local := &mcp.Tool{
 			Name:        localName,
 			Description: upstream.Description,
@@ -256,7 +287,8 @@ func (s *SleuthVault) RegisterManagementTools(mcpServer *mcp.Server) {
 		mcpServer.AddTool(local, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return proxy.Call(ctx, upstreamName, req.Params.Arguments)
 		})
+		registered++
 		log.Debug("registered management tool proxy", "local", localName, "upstream", upstreamName)
 	}
-	log.Debug("management tool proxy registration complete", "count", len(upstreamTools))
+	log.Debug("management tool proxy registration complete", "count", registered)
 }
