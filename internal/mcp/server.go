@@ -114,6 +114,14 @@ func (s *Server) registerVaultTools(ctx context.Context, mcpServer *mcp.Server) 
 			log.Debug("registered MCP tool", "name", def.Tool.Name)
 		}
 	}
+
+	// SleuthVault also exposes the agentic management tool surface (create/update/
+	// delete/publish/install assets, PQL analytics, capability discovery). These
+	// tools have heterogeneous input types and can't live in the []ToolDef list.
+	if sleuthVault, ok := vault.(*vaultpkg.SleuthVault); ok {
+		sleuthVault.RegisterManagementTools(mcpServer)
+		log.Debug("registered management MCP tools from sleuth vault")
+	}
 }
 
 // handleReadSkill handles the read_skill tool invocation
