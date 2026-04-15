@@ -98,7 +98,7 @@ type jsonrpcResponse struct {
 // post sends a single JSON-RPC request and returns the decoded response.
 // It's used for both the initialize handshake and the actual tools/list /
 // tools/call calls. skills.new's /mcp/ gateway is stateless per request
-// (see ``mcp_gateway_view`` — the DELETE handler acks without tearing down
+// (see “mcp_gateway_view“ — the DELETE handler acks without tearing down
 // anything) so a single POST round-trip is all we need once auth is set.
 func (p *sleuthMCPProxy) post(ctx context.Context, body jsonrpcRequest) (*jsonrpcResponse, error) {
 	if p.baseURL == "" {
