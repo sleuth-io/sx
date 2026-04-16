@@ -287,6 +287,11 @@ func (s *SleuthVault) RecordUsageEvents(ctx context.Context, events []mgmt.Usage
 	// Usage events go through the existing PostUsageStats HTTP path for
 	// sleuth vaults — it talks to /api/usage, not GraphQL. Marshal each
 	// event to the legacy wire format and delegate.
+	//
+	// Note: ev.Actor is intentionally dropped from the wire payload — the
+	// server always attributes events to the bearer-token holder. Any
+	// caller that sets Actor to another user will see it silently
+	// rewritten to the authenticated caller on ingestion.
 	if len(events) == 0 {
 		return nil
 	}

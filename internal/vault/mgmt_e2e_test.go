@@ -241,6 +241,30 @@ type = "rule"
 			t.Errorf("expected team install row to be cascade-deleted, still found: %+v", ins)
 		}
 	}
+
+	// 11. Cascade delete should emit install.cleared audit events per
+	// asset so auditors can reconstruct why an asset stopped installing
+	// for team members after the team itself was removed.
+	events3, err := v.QueryAuditEvents(ctx, mgmt.AuditFilter{})
+	if err != nil {
+		t.Fatalf("QueryAuditEvents after delete failed: %v", err)
+	}
+	foundCascade := false
+	for _, ev := range events3 {
+		if ev.Event != mgmt.EventInstallCleared {
+			continue
+		}
+		if ev.Target != "my-skill" {
+			continue
+		}
+		if reason, _ := ev.Data["reason"].(string); reason == "team_deleted" {
+			foundCascade = true
+			break
+		}
+	}
+	if !foundCascade {
+		t.Error("expected install.cleared audit event with reason=team_deleted for my-skill after team delete")
+	}
 }
 
 // TestPathVault_SetAssetInstallation_RejectsOtherUser verifies the
@@ -291,6 +315,59 @@ type = "skill"
 	if err := v.SetAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindUser, User: "alice@example.com"}); err != nil {
 		t.Fatalf("self-install should succeed: %v", err)
 	}
+}
+
+// TestPathVault_TeamMutationsRequireAdmin verifies that every destructive
+// team mutation enforces admin membership inside the transaction, not
+// just at the CLI pre-check. Bob is a non-admin member of the team and
+// must not be able to mutate it even by calling the common helpers
+// directly — the CLI-level fast-fail is advisory only.
+func TestPathVault_TeamMutationsRequireAdmin(t *testing.T) {
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice Admin")
+
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault failed: %v", err)
+	}
+	ctx := context.Background()
+
+	team := mgmt.Team{
+		Name:    "platform",
+		Members: []string{"alice@example.com", "bob@example.com"},
+		Admins:  []string{"alice@example.com"},
+	}
+	if err := v.CreateTeam(ctx, team); err != nil {
+		t.Fatalf("CreateTeam failed: %v", err)
+	}
+
+	// Switch the git identity to bob — the vault's CurrentActor now
+	// resolves to a non-admin. Every mutation below should reject.
+	mgmt.ResetActorCache()
+	runGit(t, dir, "config", "user.email", "bob@example.com")
+	runGit(t, dir, "config", "user.name", "Bob Notadmin")
+
+	assertNotAdmin := func(label string, err error) {
+		t.Helper()
+		if err == nil {
+			t.Errorf("%s: expected admin check to reject, got nil", label)
+			return
+		}
+		if !strings.Contains(err.Error(), "is not an admin of team") {
+			t.Errorf("%s: unexpected error: %v", label, err)
+		}
+	}
+
+	assertNotAdmin("AddTeamMember", v.AddTeamMember(ctx, "platform", "carol@example.com", false))
+	assertNotAdmin("RemoveTeamMember", v.RemoveTeamMember(ctx, "platform", "alice@example.com"))
+	assertNotAdmin("SetTeamAdmin", v.SetTeamAdmin(ctx, "platform", "bob@example.com", true))
+	assertNotAdmin("AddTeamRepository", v.AddTeamRepository(ctx, "platform", "https://github.com/acme/new.git"))
+	assertNotAdmin("RemoveTeamRepository", v.RemoveTeamRepository(ctx, "platform", "https://github.com/acme/new.git"))
+	assertNotAdmin("DeleteTeam", v.DeleteTeam(ctx, "platform"))
 }
 
 // TestPathVault_NoInstallationsFileLockFilePassthrough verifies the fast

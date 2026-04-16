@@ -185,7 +185,7 @@ func normalizeInstallations(in []Installation) []Installation {
 func normalizeInstallation(ins Installation) Installation {
 	out := Installation{
 		Asset: strings.TrimSpace(ins.Asset),
-		Kind:  ins.Kind,
+		Kind:  InstallKind(strings.ToLower(strings.TrimSpace(string(ins.Kind)))),
 		Team:  strings.TrimSpace(ins.Team),
 		User:  NormalizeEmail(ins.User),
 	}

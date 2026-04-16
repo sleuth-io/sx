@@ -273,6 +273,10 @@ func relativeTime(t time.Time) string {
 	case d < 30*24*time.Hour:
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	default:
-		return t.Format("2006-01-02")
+		// Render the absolute fallback in the user's local zone so the
+		// displayed date matches their intuition of "when was this". The
+		// relative branches above use wall-clock duration and are
+		// timezone-independent, so only this branch needed the shift.
+		return t.Local().Format("2006-01-02")
 	}
 }

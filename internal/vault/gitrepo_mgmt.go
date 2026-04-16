@@ -231,17 +231,20 @@ func parseUsageJSONL(jsonlData string) ([]mgmt.UsageEvent, error) {
 		if raw.Timestamp != "" {
 			parsed, err := time.Parse(time.RFC3339, raw.Timestamp)
 			if err != nil {
-				// Replace the unparseable timestamp with "now" rather
-				// than drop the event — we'd rather over-report than
-				// silently lose usage data when the client and server
-				// clocks disagree on format.
-				logger.Get().Warn("usage event timestamp unparseable; stamping with now",
+				// Keep the event but stamp it with the Unix epoch so it
+				// doesn't fall inside any `--since Nd` window and skew
+				// recent-usage totals. `time.Now()` here would make a
+				// month-old malformed event show up as "today"; the
+				// sentinel makes these events visible to stats queries
+				// that request all-time data and invisible to narrower
+				// windows.
+				logger.Get().Warn("usage event timestamp unparseable; stamping with epoch sentinel",
 					"timestamp", raw.Timestamp,
 					"asset_name", raw.AssetName,
 					"asset_version", raw.AssetVersion,
 					"actor", raw.Actor,
 					"error", err)
-				ev.Timestamp = time.Now().UTC()
+				ev.Timestamp = time.Unix(0, 0).UTC()
 			} else {
 				ev.Timestamp = parsed
 			}

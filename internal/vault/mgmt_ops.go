@@ -87,6 +87,22 @@ func withTeams(vaultRoot string, actor mgmt.Actor, fn func(tf *mgmt.TeamsFile) (
 	return mgmt.AppendAuditEvent(vaultRoot, *event)
 }
 
+// requireTeamAdminInTx looks up teamName in the in-transaction TeamsFile
+// and returns an error unless actor is an admin. Called at the top of
+// every admin-gated closure inside withTeams so the check happens after
+// the flock + reload — the CLI-level pre-check in team.go is only a
+// fast-fail for UX, not a security boundary.
+func requireTeamAdminInTx(tf *mgmt.TeamsFile, teamName string, actor mgmt.Actor) (*mgmt.Team, error) {
+	team, err := tf.FindTeam(teamName)
+	if err != nil {
+		return nil, err
+	}
+	if !team.IsAdmin(actor.Email) {
+		return nil, fmt.Errorf("%s is not an admin of team %s", actor.Email, teamName)
+	}
+	return team, nil
+}
+
 // commonListTeams is the shared implementation of Vault.ListTeams for
 // file-backed vaults (git, path). It reads .sx/teams.toml from the given
 // vault root.
@@ -148,7 +164,7 @@ func commonCreateTeam(vaultRoot string, actor mgmt.Actor, team mgmt.Team) error 
 // with the values from the input. Team must already exist.
 func commonUpdateTeam(vaultRoot string, actor mgmt.Actor, team mgmt.Team) error {
 	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		if _, err := tf.FindTeam(team.Name); err != nil {
+		if _, err := requireTeamAdminInTx(tf, team.Name, actor); err != nil {
 			return nil, err
 		}
 		tf.UpsertTeam(team)
@@ -160,6 +176,9 @@ func commonUpdateTeam(vaultRoot string, actor mgmt.Actor, team mgmt.Team) error 
 // targeted it.
 func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 	if err := withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
+		if _, err := requireTeamAdminInTx(tf, name, actor); err != nil {
+			return nil, err
+		}
 		if err := tf.DeleteTeam(name); err != nil {
 			return nil, err
 		}
@@ -175,8 +194,35 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 	if err != nil || !ok {
 		return err
 	}
-	if ifile.Remove(mgmt.Installation{Kind: mgmt.InstallKindTeam, Team: name}) > 0 {
-		return mgmt.SaveInstallations(vaultRoot, ifile)
+	// Snapshot the asset names that are about to be cascade-cleared so
+	// auditors can reconstruct "why did asset X stop installing for
+	// team Y" — a silent bulk delete would leave a dead-end in the log.
+	var clearedAssets []string
+	for _, ins := range ifile.Installations {
+		if ins.Kind == mgmt.InstallKindTeam && ins.Team == name {
+			clearedAssets = append(clearedAssets, ins.Asset)
+		}
+	}
+	if ifile.Remove(mgmt.Installation{Kind: mgmt.InstallKindTeam, Team: name}) == 0 {
+		return nil
+	}
+	if err := mgmt.SaveInstallations(vaultRoot, ifile); err != nil {
+		return err
+	}
+	for _, assetName := range clearedAssets {
+		if err := mgmt.AppendAuditEvent(vaultRoot, mgmt.AuditEvent{
+			Actor:      actor.Email,
+			Event:      mgmt.EventInstallCleared,
+			TargetType: mgmt.TargetTypeInstallation,
+			Target:     assetName,
+			Data: map[string]any{
+				"kind":   string(mgmt.InstallKindTeam),
+				"team":   name,
+				"reason": "team_deleted",
+			},
+		}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -185,7 +231,7 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 // true, the member is also added to the admin list.
 func commonAddTeamMember(vaultRoot string, actor mgmt.Actor, teamName, email string, admin bool) error {
 	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		team, err := tf.FindTeam(teamName)
+		team, err := requireTeamAdminInTx(tf, teamName, actor)
 		if err != nil {
 			return nil, err
 		}
@@ -212,7 +258,7 @@ func commonAddTeamMember(vaultRoot string, actor mgmt.Actor, teamName, email str
 // admins lists).
 func commonRemoveTeamMember(vaultRoot string, actor mgmt.Actor, teamName, email string) error {
 	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		team, err := tf.FindTeam(teamName)
+		team, err := requireTeamAdminInTx(tf, teamName, actor)
 		if err != nil {
 			return nil, err
 		}
@@ -231,7 +277,7 @@ func commonRemoveTeamMember(vaultRoot string, actor mgmt.Actor, teamName, email 
 // commonSetTeamAdmin grants or revokes admin privileges for a member.
 func commonSetTeamAdmin(vaultRoot string, actor mgmt.Actor, teamName, email string, admin bool) error {
 	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		team, err := tf.FindTeam(teamName)
+		team, err := requireTeamAdminInTx(tf, teamName, actor)
 		if err != nil {
 			return nil, err
 		}
@@ -260,7 +306,7 @@ func commonSetTeamAdmin(vaultRoot string, actor mgmt.Actor, teamName, email stri
 // commonAddTeamRepository adds a repository URL to a team.
 func commonAddTeamRepository(vaultRoot string, actor mgmt.Actor, teamName, repoURL string) error {
 	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		team, err := tf.FindTeam(teamName)
+		team, err := requireTeamAdminInTx(tf, teamName, actor)
 		if err != nil {
 			return nil, err
 		}
@@ -283,7 +329,7 @@ func commonAddTeamRepository(vaultRoot string, actor mgmt.Actor, teamName, repoU
 // commonRemoveTeamRepository removes a repository URL from a team.
 func commonRemoveTeamRepository(vaultRoot string, actor mgmt.Actor, teamName, repoURL string) error {
 	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		team, err := tf.FindTeam(teamName)
+		team, err := requireTeamAdminInTx(tf, teamName, actor)
 		if err != nil {
 			return nil, err
 		}
@@ -335,16 +381,12 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 		if err != nil {
 			return err
 		}
-		team, err := tf.FindTeam(target.Team)
-		if err != nil {
+		if _, err := requireTeamAdminInTx(tf, target.Team, actor); err != nil {
 			return err
-		}
-		if !team.IsAdmin(actor.Email) {
-			return fmt.Errorf("%s is not an admin of team %s", actor.Email, target.Team)
 		}
 		if err := addInstallationRow(vaultRoot, mgmt.Installation{
 			Asset: assetName,
-			Kind:  mgmt.InstallKindTeam,
+			Kind:  toMgmtInstallKind(target.Kind),
 			Team:  target.Team,
 		}); err != nil {
 			return err
@@ -363,7 +405,7 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 		}
 		if err := addInstallationRow(vaultRoot, mgmt.Installation{
 			Asset: assetName,
-			Kind:  mgmt.InstallKindUser,
+			Kind:  toMgmtInstallKind(target.Kind),
 			User:  target.User,
 		}); err != nil {
 			return err
@@ -533,6 +575,22 @@ func scopeExists(scopes []lockfile.Scope, needle lockfile.Scope) bool {
 		}
 	}
 	return false
+}
+
+// toMgmtInstallKind maps the CLI-facing vault.InstallKind (org/repo/path/
+// team/user) onto the narrower mgmt.InstallKind (team/user). The two enums
+// share string values for the overlapping cases but are distinct types —
+// this helper keeps the mapping explicit at the boundary so a future
+// renaming on either side will force a compile error rather than silently
+// mis-routing an installation row.
+func toMgmtInstallKind(k InstallKind) mgmt.InstallKind {
+	switch k {
+	case InstallKindTeam:
+		return mgmt.InstallKindTeam
+	case InstallKindUser:
+		return mgmt.InstallKindUser
+	}
+	return mgmt.InstallKind(k)
 }
 
 func removeString(list []string, needle string) []string {

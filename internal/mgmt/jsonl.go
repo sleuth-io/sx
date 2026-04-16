@@ -15,8 +15,11 @@ import (
 // appendJSONL serializes each item as JSON and appends it to the given
 // file with a trailing newline. Parent directories are not created — the
 // caller is expected to have ensured them. A single O_APPEND handle is
-// reused across items in one call to minimize syscalls; on POSIX this
-// also means concurrent process appends don't interleave within a line.
+// reused across items in one call to minimize syscalls. Cross-process
+// safety (non-interleaving between concurrent writers) is the caller's
+// responsibility — hold the vault flock — because POSIX only guarantees
+// atomic O_APPEND for writes up to PIPE_BUF (typically 4096 bytes), and
+// audit events with large Data payloads can exceed that.
 func appendJSONL[T any](path string, items []T) error {
 	if len(items) == 0 {
 		return nil

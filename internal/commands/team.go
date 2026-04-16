@@ -308,10 +308,12 @@ func runTeamMutation(cmd *cobra.Command, team string, fn func(ctx context.Contex
 	return nil
 }
 
-// requireTeamAdmin verifies the current actor is a team admin. Because
-// commonCreateTeam auto-adds the creator as admin, there is no "bootstrap"
-// escape: every team always has at least one admin. Any user who is not
-// in the admin list is rejected.
+// requireTeamAdmin verifies the current actor is a team admin. This is a
+// fast-fail UX check — the authoritative enforcement lives inside each
+// common*Team helper, which re-checks admin after the flock + reload to
+// close the TOCTOU window opened by this pre-check. Because
+// commonCreateTeam auto-adds the creator as admin, there is no
+// "bootstrap" escape: every team always has at least one admin.
 func requireTeamAdmin(ctx context.Context, v vault.Vault, teamName string) error {
 	actor, err := v.CurrentActor(ctx)
 	if err != nil {
