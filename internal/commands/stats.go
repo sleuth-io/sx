@@ -113,7 +113,12 @@ func parseSinceFlag(s string) (time.Time, error) {
 // statsReport bundles the data needed to render the stats output in either
 // text or JSON form.
 type statsReport struct {
-	Since     time.Time              `json:"since,omitzero"`
+	// Since is a pointer with omitempty so an "all-time" query (zero
+	// time) renders as absent JSON rather than "0001-01-01T00:00:00Z".
+	// Go's encoding/json does not honor the `omitzero` tag on
+	// time.Time — it only zeroes strings/numbers — so a non-pointer
+	// field would always serialize regardless of value.
+	Since     *time.Time             `json:"since,omitempty"`
 	Total     int                    `json:"total_events"`
 	Assets    []mgmt.AssetUsageCount `json:"assets"`
 	TeamStats []teamAdoption         `json:"teams"`
@@ -123,21 +128,23 @@ type statsReport struct {
 // teamAdoption is the per-team rollup: for each team, how many of its
 // members have used at least one asset in the given time range.
 type teamAdoption struct {
-	Name          string   `json:"name"`
-	MemberCount   int      `json:"member_count"`
-	ActiveMembers int      `json:"active_members"`
-	AdoptionPct   float64  `json:"adoption_pct"`
-	TopAssets     []string `json:"top_assets,omitempty"`
+	Name          string  `json:"name"`
+	MemberCount   int     `json:"member_count"`
+	ActiveMembers int     `json:"active_members"`
+	AdoptionPct   float64 `json:"adoption_pct"`
 }
 
 // buildStatsReport computes the rolled-up stats view. Asset and actor
 // lists are truncated to `limit` rows.
 func buildStatsReport(summary *mgmt.UsageSummary, teams []mgmt.Team, since time.Time, limit int) *statsReport {
 	report := &statsReport{
-		Since:     since,
 		Total:     summary.TotalEvents,
 		Assets:    summary.PerAsset,
 		TopActors: summary.PerActor,
+	}
+	if !since.IsZero() {
+		s := since
+		report.Since = &s
 	}
 	if limit > 0 && len(report.Assets) > limit {
 		report.Assets = report.Assets[:limit]
@@ -174,7 +181,7 @@ func buildStatsReport(summary *mgmt.UsageSummary, teams []mgmt.Team, since time.
 func printStatsSummary(out *ui.Output, report *statsReport) {
 	out.Newline()
 	out.Header("Usage stats")
-	if !report.Since.IsZero() {
+	if report.Since != nil {
 		out.Muted(fmt.Sprintf("Since %s (UTC)", report.Since.Format("2006-01-02")))
 	} else {
 		out.Muted("All time")

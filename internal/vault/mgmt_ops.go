@@ -64,6 +64,15 @@ func applyInstallationsOverlay(ctx context.Context, vaultRoot string, rawLockFil
 // populated from the actor argument). fn may return a sentinel error to
 // abort without saving. Every caller must provide a non-empty actor
 // email so the audit log stays attributable.
+//
+// Atomicity contract: the file write and the audit append are separate
+// operations. If SaveTeams succeeds but AppendAuditEvent fails (disk
+// full, permission error, etc.) the mutation is durable but unaudited.
+// This is intentional — an already-committed state change cannot be
+// rolled back just because its audit line failed, and the alternative
+// (roll back the mutation on audit failure) would be far more
+// disruptive. The calling flock keeps concurrent writers from racing;
+// lost audit lines are treated as an operational alarm, not a bug.
 func withTeams(vaultRoot string, actor mgmt.Actor, fn func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error)) error {
 	if actor.Email == "" {
 		return errors.New("team mutations require a non-empty actor email (set git config user.email)")
@@ -146,7 +155,9 @@ func commonCreateTeam(vaultRoot string, actor mgmt.Actor, team mgmt.Team) error 
 				team.Admins = append(team.Admins, actor.Email)
 			}
 		}
-		tf.UpsertTeam(team)
+		if _, err := tf.UpsertTeam(team); err != nil {
+			return nil, err
+		}
 		return &mgmt.AuditEvent{
 			Event:  mgmt.EventTeamCreated,
 			Target: team.Name,
@@ -167,18 +178,51 @@ func commonUpdateTeam(vaultRoot string, actor mgmt.Actor, team mgmt.Team) error 
 		if _, err := requireTeamAdminInTx(tf, team.Name, actor); err != nil {
 			return nil, err
 		}
-		tf.UpsertTeam(team)
+		if _, err := tf.UpsertTeam(team); err != nil {
+			return nil, err
+		}
 		return &mgmt.AuditEvent{Event: mgmt.EventTeamUpdated, Target: team.Name}, nil
 	})
 }
 
 // commonDeleteTeam removes a team and cleans up any installations that
-// targeted it.
+// targeted it. Both writes happen under the same vault flock held by the
+// caller (runInVaultTx on git vaults, withLock on path vaults) — no
+// concurrent writer can add a new kind=team row between the team delete
+// and the installations cascade.
+//
+// Cascade ordering matters for crash safety. We delete the installation
+// rows *before* the team itself so a crash between the two saves leaves
+// a recoverable state: the team still exists (retry the delete and the
+// same ordering will complete the cleanup), and no orphan installation
+// rows survive to be silently inherited by a future team re-created
+// under the same name. The alternative ordering would let an attacker
+// recreate "team foo" and silently inherit the old team's asset installs.
 func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
+	var clearedAssets []string
 	if err := withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
 		if _, err := requireTeamAdminInTx(tf, name, actor); err != nil {
 			return nil, err
 		}
+		// Step 1: cascade installations first so a crash doesn't leave
+		// orphan rows that would be inherited by a re-created team.
+		ifile, ok, err := mgmt.LoadInstallations(vaultRoot)
+		if err != nil {
+			return nil, err
+		}
+		if ok && ifile != nil {
+			for _, ins := range ifile.Installations {
+				if ins.Kind == mgmt.InstallKindTeam && ins.Team == name {
+					clearedAssets = append(clearedAssets, ins.Asset)
+				}
+			}
+			if ifile.Remove(mgmt.Installation{Kind: mgmt.InstallKindTeam, Team: name}) > 0 {
+				if err := mgmt.SaveInstallations(vaultRoot, ifile); err != nil {
+					return nil, err
+				}
+			}
+		}
+		// Step 2: delete the team row. withTeams will SaveTeams after.
 		if err := tf.DeleteTeam(name); err != nil {
 			return nil, err
 		}
@@ -187,28 +231,11 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 		return err
 	}
 
-	// Cascade: remove any installation rows that targeted this team. The
-	// cascade lives outside withTeams because it touches installations.toml,
-	// not teams.toml — a second file, a second audit concern.
-	ifile, ok, err := mgmt.LoadInstallations(vaultRoot)
-	if err != nil || !ok {
-		return err
-	}
-	// Snapshot the asset names that are about to be cascade-cleared so
-	// auditors can reconstruct "why did asset X stop installing for
-	// team Y" — a silent bulk delete would leave a dead-end in the log.
-	var clearedAssets []string
-	for _, ins := range ifile.Installations {
-		if ins.Kind == mgmt.InstallKindTeam && ins.Team == name {
-			clearedAssets = append(clearedAssets, ins.Asset)
-		}
-	}
-	if ifile.Remove(mgmt.Installation{Kind: mgmt.InstallKindTeam, Team: name}) == 0 {
-		return nil
-	}
-	if err := mgmt.SaveInstallations(vaultRoot, ifile); err != nil {
-		return err
-	}
+	// After the transactional writes succeed, emit per-asset
+	// install.cleared audit events so auditors can reconstruct "why did
+	// asset X stop installing for team Y". Audit emission is best-effort
+	// here — both durable mutations are already on disk, so a partial
+	// audit log is strictly better than reverting the delete.
 	for _, assetName := range clearedAssets {
 		if err := mgmt.AppendAuditEvent(vaultRoot, mgmt.AuditEvent{
 			Actor:      actor.Email,
@@ -245,7 +272,9 @@ func commonAddTeamMember(vaultRoot string, actor mgmt.Actor, teamName, email str
 		if admin && !slices.Contains(team.Admins, normalized) {
 			team.Admins = append(team.Admins, normalized)
 		}
-		tf.UpsertTeam(*team)
+		if _, err := tf.UpsertTeam(*team); err != nil {
+			return nil, err
+		}
 		return &mgmt.AuditEvent{
 			Event:  mgmt.EventTeamMemberAdded,
 			Target: teamName,
@@ -265,7 +294,12 @@ func commonRemoveTeamMember(vaultRoot string, actor mgmt.Actor, teamName, email 
 		normalized := mgmt.NormalizeEmail(email)
 		team.Members = removeString(team.Members, normalized)
 		team.Admins = removeString(team.Admins, normalized)
-		tf.UpsertTeam(*team)
+		if len(team.Admins) == 0 {
+			return nil, fmt.Errorf("%w: cannot remove %s (last admin of team %s) — add another admin first", mgmt.ErrLastAdmin, normalized, teamName)
+		}
+		if _, err := tf.UpsertTeam(*team); err != nil {
+			return nil, err
+		}
 		return &mgmt.AuditEvent{
 			Event:  mgmt.EventTeamMemberRemoved,
 			Target: teamName,
@@ -293,8 +327,13 @@ func commonSetTeamAdmin(vaultRoot string, actor mgmt.Actor, teamName, email stri
 		} else {
 			team.Admins = removeString(team.Admins, normalized)
 			event = mgmt.EventTeamAdminUnset
+			if len(team.Admins) == 0 {
+				return nil, fmt.Errorf("%w: cannot revoke admin from %s (last admin of team %s) — grant another admin first", mgmt.ErrLastAdmin, normalized, teamName)
+			}
 		}
-		tf.UpsertTeam(*team)
+		if _, err := tf.UpsertTeam(*team); err != nil {
+			return nil, err
+		}
 		return &mgmt.AuditEvent{
 			Event:  event,
 			Target: teamName,
@@ -317,7 +356,9 @@ func commonAddTeamRepository(vaultRoot string, actor mgmt.Actor, teamName, repoU
 		if !slices.Contains(team.Repositories, normalized) {
 			team.Repositories = append(team.Repositories, normalized)
 		}
-		tf.UpsertTeam(*team)
+		if _, err := tf.UpsertTeam(*team); err != nil {
+			return nil, err
+		}
 		return &mgmt.AuditEvent{
 			Event:  mgmt.EventTeamRepoAdded,
 			Target: teamName,
@@ -335,7 +376,9 @@ func commonRemoveTeamRepository(vaultRoot string, actor mgmt.Actor, teamName, re
 		}
 		normalized := scope.NormalizeRepoURL(strings.TrimSpace(repoURL))
 		team.Repositories = removeString(team.Repositories, normalized)
-		tf.UpsertTeam(*team)
+		if _, err := tf.UpsertTeam(*team); err != nil {
+			return nil, err
+		}
 		return &mgmt.AuditEvent{
 			Event:  mgmt.EventTeamRepoRemoved,
 			Target: teamName,

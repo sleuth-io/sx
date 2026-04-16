@@ -74,12 +74,16 @@ func TestLoadTeamsMissingFile(t *testing.T) {
 func TestUpsertAndDeleteTeam(t *testing.T) {
 	tf := &TeamsFile{LockVersion: TeamsLockVersion}
 
-	tf.UpsertTeam(Team{Name: "platform", Members: []string{"alice@example.com"}})
+	if _, err := tf.UpsertTeam(Team{Name: "platform", Members: []string{"alice@example.com"}}); err != nil {
+		t.Fatalf("UpsertTeam failed: %v", err)
+	}
 	if len(tf.Teams) != 1 {
 		t.Fatalf("expected 1 team after upsert, got %d", len(tf.Teams))
 	}
 
-	tf.UpsertTeam(Team{Name: "platform", Members: []string{"alice@example.com", "bob@example.com"}})
+	if _, err := tf.UpsertTeam(Team{Name: "platform", Members: []string{"alice@example.com", "bob@example.com"}}); err != nil {
+		t.Fatalf("UpsertTeam failed: %v", err)
+	}
 	if len(tf.Teams) != 1 {
 		t.Fatalf("expected 1 team after second upsert, got %d", len(tf.Teams))
 	}
@@ -87,7 +91,9 @@ func TestUpsertAndDeleteTeam(t *testing.T) {
 		t.Errorf("expected 2 members after update, got %d", len(tf.Teams[0].Members))
 	}
 
-	tf.UpsertTeam(Team{Name: "mobile"})
+	if _, err := tf.UpsertTeam(Team{Name: "mobile"}); err != nil {
+		t.Fatalf("UpsertTeam failed: %v", err)
+	}
 	if len(tf.Teams) != 2 {
 		t.Fatalf("expected 2 teams, got %d", len(tf.Teams))
 	}

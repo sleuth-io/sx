@@ -133,7 +133,7 @@ type = "rule"
 	// ClearAssetInstallations also wipes the asset's Scopes in skill.lock,
 	// so reseed one baseline scope to verify overlay math against a
 	// non-empty starting state.
-	lockfile.Write(&lockfile.LockFile{
+	if err := lockfile.Write(&lockfile.LockFile{
 		LockVersion: lf.LockVersion,
 		Version:     lf.Version,
 		CreatedBy:   lf.CreatedBy,
@@ -146,7 +146,9 @@ type = "rule"
 				Scopes:     []lockfile.Scope{{Repo: "github.com/acme/baseline"}},
 			},
 		},
-	}, filepath.Join(dir, "sx.lock"))
+	}, filepath.Join(dir, "sx.lock")); err != nil {
+		t.Fatalf("reseed lockfile.Write failed: %v", err)
+	}
 	if err := v.SetAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindTeam, Team: "platform"}); err != nil {
 		t.Fatalf("re-install team failed: %v", err)
 	}

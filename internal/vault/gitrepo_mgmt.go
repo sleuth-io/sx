@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,15 +79,45 @@ func (g *GitVault) runInVaultTx(ctx context.Context, commitMsg string, fn func(v
 		return err
 	}
 
-	if pushErr := g.gitClient.Push(ctx, g.repoPath); pushErr != nil {
-		if rebaseErr := g.gitClient.PullRebase(ctx, g.repoPath); rebaseErr != nil {
-			return fmt.Errorf("push failed: %w; rebase also failed: %w", pushErr, rebaseErr)
+	return g.pushWithRebaseRetry(ctx)
+}
+
+// pushWithRebaseRetry pushes the staged commit, rebasing and retrying on
+// non-fast-forward rejection. Under high concurrency a single retry
+// isn't enough — between our rebase and our second push, a third
+// process can push again and reject us. We retry up to 3 times with a
+// small jittered backoff; anything beyond that is probably a genuine
+// conflict or a broken remote and should surface to the caller.
+func (g *GitVault) pushWithRebaseRetry(ctx context.Context) error {
+	const maxAttempts = 3
+	var lastPushErr, lastRebaseErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		pushErr := g.gitClient.Push(ctx, g.repoPath)
+		if pushErr == nil {
+			return nil
 		}
-		if retryErr := g.gitClient.Push(ctx, g.repoPath); retryErr != nil {
-			return fmt.Errorf("push failed after rebase: %w", retryErr)
+		lastPushErr = pushErr
+		if attempt == maxAttempts {
+			break
+		}
+		if err := g.gitClient.PullRebase(ctx, g.repoPath); err != nil {
+			return fmt.Errorf("push failed: %w; rebase also failed: %w", pushErr, err)
+		}
+		lastRebaseErr = nil
+		// Jittered backoff: 50–250ms on attempt 1, 100–500ms on attempt 2.
+		// The jitter desynchronizes retry storms from other writers that
+		// lost the same race. Returns immediately if the context is done.
+		backoff := time.Duration(attempt) * (50*time.Millisecond + time.Duration(rand.Intn(200))*time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
 		}
 	}
-	return nil
+	if lastRebaseErr != nil {
+		return fmt.Errorf("push failed after %d attempts: %w; last rebase error: %w", maxAttempts, lastPushErr, lastRebaseErr)
+	}
+	return fmt.Errorf("push failed after %d attempts (last rebase succeeded): %w", maxAttempts, lastPushErr)
 }
 
 // CurrentActor resolves the caller's identity via git config.
@@ -179,14 +210,40 @@ func (g *GitVault) ClearAssetInstallations(ctx context.Context, assetName string
 	})
 }
 
+// RecordUsageEvents appends usage events to the local JSONL log without
+// committing or pushing. Under active use this can run hundreds of times
+// per hour, and a commit-per-call would spam the git history and turn a
+// background observation channel into a noisy multi-writer workload. The
+// next management mutation (team, install, etc.) runs runInVaultTx,
+// which sweeps .sx/ into its commit and picks up any queued usage files
+// on the way through. Queries on the same machine see the events
+// immediately because GetUsageStats reads the local working tree.
 func (g *GitVault) RecordUsageEvents(ctx context.Context, events []mgmt.UsageEvent) error {
 	if len(events) == 0 {
 		return nil
 	}
-	msg := fmt.Sprintf("usage: %d events", len(events))
-	return g.runInVaultTx(ctx, msg, func(root string, actor mgmt.Actor) error {
-		return commonRecordUsageEvents(root, actor, events)
-	})
+	fileLock, err := g.acquireFileLock(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	defer func() { _ = fileLock.Unlock() }()
+
+	// Ensure the working tree exists before appending; if it doesn't,
+	// fall through to a full tx so the first-ever event still gets
+	// written and pushed.
+	if _, statErr := os.Stat(g.repoPath); statErr != nil {
+		if err := g.cloneOrUpdate(ctx); err != nil {
+			return fmt.Errorf("failed to clone/update repository: %w", err)
+		}
+	}
+	if err := ensureSxDir(g.repoPath); err != nil {
+		return err
+	}
+	actor, err := mgmt.CurrentGitActor(ctx, g.repoPath)
+	if err != nil {
+		return err
+	}
+	return commonRecordUsageEvents(g.repoPath, actor, events)
 }
 
 func (g *GitVault) GetUsageStats(ctx context.Context, filter mgmt.UsageFilter) (*mgmt.UsageSummary, error) {

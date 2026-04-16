@@ -32,6 +32,16 @@ var ErrTeamNotFound = errors.New("team not found")
 // exists.
 var ErrTeamExists = errors.New("team already exists")
 
+// ErrLastAdmin is returned when a mutation would leave a team with zero
+// admins, which would render the team permanently unmanageable (no actor
+// could later recover admin rights through the admin-gated helpers).
+var ErrLastAdmin = errors.New("team would be left without an admin")
+
+// ErrEmptyTeamName is returned when a team name is blank or whitespace-
+// only. Names are the primary key of .sx/teams.toml so an empty one would
+// collide with any other empty-named team and hide from lookups.
+var ErrEmptyTeamName = errors.New("team name cannot be empty")
+
 // Team is a named grouping of members, admins, and repositories. It is the
 // unit of targeted installation for git and path vaults.
 type Team struct {
@@ -106,17 +116,21 @@ func (tf *TeamsFile) FindTeam(name string) (*Team, error) {
 }
 
 // UpsertTeam adds or replaces a team with the given team's name. Returns the
-// inserted/updated team pointer from the file's slice.
-func (tf *TeamsFile) UpsertTeam(t Team) *Team {
+// inserted/updated team pointer from the file's slice, or nil alongside
+// ErrEmptyTeamName when the normalized name is blank.
+func (tf *TeamsFile) UpsertTeam(t Team) (*Team, error) {
 	normalizeTeamInPlace(&t)
+	if t.Name == "" {
+		return nil, ErrEmptyTeamName
+	}
 	for i := range tf.Teams {
 		if tf.Teams[i].Name == t.Name {
 			tf.Teams[i] = t
-			return &tf.Teams[i]
+			return &tf.Teams[i], nil
 		}
 	}
 	tf.Teams = append(tf.Teams, t)
-	return &tf.Teams[len(tf.Teams)-1]
+	return &tf.Teams[len(tf.Teams)-1], nil
 }
 
 // DeleteTeam removes the team with the given name. Returns ErrTeamNotFound

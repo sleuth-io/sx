@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/mgmt"
 )
 
@@ -61,21 +62,32 @@ func (s *SleuthVault) ListTeams(ctx context.Context) ([]mgmt.Team, error) {
 	return out, nil
 }
 
+// sleuthTeamListPageSize caps the per-page team and per-team-member fetch
+// counts. Set high enough to cover every realistic org in a single call
+// (the Sleuth API's internal default is ~200, and the largest observed
+// deployments have well under 1000 teams). If a response saturates the
+// cap we emit a warning so we notice truncation before users do; we do
+// not silently paginate via cursor because the GraphQL schema does not
+// currently expose pageInfo for these connections and blindly paging
+// could infinite-loop against older server versions.
+const sleuthTeamListPageSize = 1000
+
 // listTeamNodes fetches the raw team nodes (including GIDs) from the
 // server. ListTeams projects these to mgmt.Team; teamGIDByName scans for
 // a single row — keeping a single query text in one place.
 func (s *SleuthVault) listTeamNodes(ctx context.Context) ([]sleuthTeamNode, error) {
-	query := `query ListTeams {
-		teams(first: 200) {
+	query := `query ListTeams($first: Int!) {
+		teams(first: $first) {
 			nodes {
 				id
 				name
 				adminMemberIds
-				members(first: 200) { nodes { id email } }
+				members(first: $first) { nodes { id email } }
 				skillsRepositories { repositoryId }
 			}
 		}
 	}`
+	vars := map[string]any{"first": sleuthTeamListPageSize}
 	var resp struct {
 		Data struct {
 			Teams struct {
@@ -84,11 +96,24 @@ func (s *SleuthVault) listTeamNodes(ctx context.Context) ([]sleuthTeamNode, erro
 		} `json:"data"`
 		Errors []sleuthGraphQLError `json:"errors"`
 	}
-	if err := s.executeGraphQLQuery(ctx, query, nil, &resp); err != nil {
+	if err := s.executeGraphQLQuery(ctx, query, vars, &resp); err != nil {
 		return nil, err
 	}
 	if err := sleuthErrorsToErr(resp.Errors); err != nil {
 		return nil, err
+	}
+	if len(resp.Data.Teams.Nodes) >= sleuthTeamListPageSize {
+		logger.Get().Warn("ListTeams result saturated page size; some teams may be truncated",
+			"page_size", sleuthTeamListPageSize,
+			"returned", len(resp.Data.Teams.Nodes))
+	}
+	for _, node := range resp.Data.Teams.Nodes {
+		if len(node.Members.Nodes) >= sleuthTeamListPageSize {
+			logger.Get().Warn("team member list saturated page size; some members may be truncated",
+				"team", node.Name,
+				"page_size", sleuthTeamListPageSize,
+				"returned", len(node.Members.Nodes))
+		}
 	}
 	return resp.Data.Teams.Nodes, nil
 }
@@ -181,6 +206,13 @@ func (s *SleuthVault) DeleteTeam(ctx context.Context, name string) error {
 	return s.runMutation(ctx, mutation, vars, "deleteTeam")
 }
 
+// AddTeamMember adds a user to a team via the UpdateTeam mutation. Known
+// limitation: this is a read-modify-write against the server's member
+// list, so two concurrent AddTeamMember calls against the same team can
+// interleave their reads and lose one of the additions. The GraphQL
+// schema does not currently expose an additive "append member" mutation;
+// when that becomes available we should switch to it. Sequential usage
+// (the typical interactive CLI case) is safe.
 func (s *SleuthVault) AddTeamMember(ctx context.Context, team, email string, admin bool) error {
 	existing, err := s.GetTeam(ctx, team)
 	if err != nil {
@@ -321,6 +353,15 @@ func (s *SleuthVault) GetUsageStats(ctx context.Context, filter mgmt.UsageFilter
 	return nil, fmt.Errorf("%w: sleuth vault usage stats (use the skills.new web UI dashboards)", ErrNotImplemented)
 }
 
+// sleuthAuditDefaultPageSize is the server-side cap we ask for when the
+// caller didn't set filter.Limit. The server-side query plus client-side
+// filtering means a small server page paired with selective filters can
+// return zero rows even though matches exist further back in the log.
+// Setting this high (1000) makes truncation very unlikely; a warning
+// fires if we saturate so operators notice when they need a higher cap
+// or server-side filter support.
+const sleuthAuditDefaultPageSize = 1000
+
 func (s *SleuthVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFilter) ([]mgmt.AuditEvent, error) {
 	query := `query AssetAuditLog($first: Int) {
 		assetAuditLog(first: $first) {
@@ -336,9 +377,13 @@ func (s *SleuthVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFil
 			}
 		}
 	}`
-	first := filter.Limit
-	if first == 0 {
-		first = 100
+	// If the caller specified a limit, honor it directly; otherwise use
+	// the wide default so client-side filters don't silently drop rows
+	// that existed just beyond a small server page.
+	userLimit := filter.Limit
+	first := userLimit
+	if first <= 0 {
+		first = sleuthAuditDefaultPageSize
 	}
 	vars := map[string]any{"first": first}
 	var resp struct {
@@ -363,6 +408,15 @@ func (s *SleuthVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFil
 	}
 	if err := sleuthErrorsToErr(resp.Errors); err != nil {
 		return nil, err
+	}
+	// Warn when the server returned exactly the page we asked for and the
+	// caller didn't choose that limit themselves — a saturation signal
+	// that older entries may have been dropped before client-side
+	// filtering ran.
+	if userLimit == 0 && len(resp.Data.AssetAuditLog.Nodes) >= first {
+		logger.Get().Warn("QueryAuditEvents result saturated page size; older events may be truncated",
+			"page_size", first,
+			"returned", len(resp.Data.AssetAuditLog.Nodes))
 	}
 	var out []mgmt.AuditEvent
 	for _, node := range resp.Data.AssetAuditLog.Nodes {

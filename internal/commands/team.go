@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -103,6 +104,10 @@ func newTeamCreateCommand() *cobra.Command {
 			// early rather than deep inside the transaction.
 			if _, err := v.CurrentActor(ctx); err != nil {
 				return err
+			}
+
+			if strings.TrimSpace(args[0]) == "" {
+				return mgmt.ErrEmptyTeamName
 			}
 
 			team := mgmt.Team{
