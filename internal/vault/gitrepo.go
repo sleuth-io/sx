@@ -114,7 +114,11 @@ func (g *GitVault) acquireFileLock(ctx context.Context) (*flock.Flock, error) {
 	return fileLock, nil
 }
 
-// GetLockFile retrieves the lock file from the Git repository
+// GetLockFile retrieves the lock file from the Git repository. If the
+// vault has any team/user installations in .sx/installations.toml, they
+// are layered onto the on-disk skill.lock before returning so the install
+// pipeline sees a flattened view. Otherwise the raw bytes are returned
+// unchanged.
 func (g *GitVault) GetLockFile(ctx context.Context, cachedETag string) (content []byte, etag string, notModified bool, err error) {
 	// Acquire file lock to prevent concurrent git operations (both in-process and cross-process)
 	fileLock, err := g.acquireFileLock(ctx)
@@ -139,9 +143,11 @@ func (g *GitVault) GetLockFile(ctx context.Context, cachedETag string) (content 
 		return nil, "", false, fmt.Errorf("failed to read lock file: %w", err)
 	}
 
-	// For Git repos, we could use the commit SHA as ETag
-	// But for simplicity, we'll just return the data without ETag caching
-	return data, "", false, nil
+	overlaid, err := applyInstallationsOverlay(ctx, g.repoPath, data)
+	if err != nil {
+		return nil, "", false, err
+	}
+	return overlaid, "", false, nil
 }
 
 // GetAsset downloads an asset using its source configuration
@@ -696,10 +702,16 @@ func (g *GitVault) updateVersionList(listPath, newVersion string) error {
 	return os.WriteFile(listPath, buf.Bytes(), 0644)
 }
 
-// PostUsageStats is a no-op for Git repositories
-// Git repositories don't support stats collection
-func (r *GitVault) PostUsageStats(ctx context.Context, jsonlData string) error {
-	return nil
+// PostUsageStats parses the JSONL payload produced by stats.FlushQueue and
+// persists it to .sx/usage/YYYY-MM.jsonl via RecordUsageEvents. This keeps
+// wire compatibility with the existing queue flush pipeline while moving
+// the real storage into the git vault.
+func (g *GitVault) PostUsageStats(ctx context.Context, jsonlData string) error {
+	events, err := parseUsageJSONL(jsonlData)
+	if err != nil {
+		return err
+	}
+	return g.RecordUsageEvents(ctx, events)
 }
 
 // SetInstallations updates the lock file with installation scopes and commits/pushes

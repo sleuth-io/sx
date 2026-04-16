@@ -4,16 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
+	"github.com/sleuth-io/sx/internal/mgmt"
 )
 
 // ErrLockFileNotFound is returned when the lock file does not exist in the vault
 var ErrLockFileNotFound = errors.New("lock file not found")
+
+// ErrNotImplemented is returned by vaults that do not support a given
+// management operation.
+var ErrNotImplemented = errors.New("operation not supported for this vault type")
 
 // ErrVersionExists is returned when attempting to add an asset version that already exists
 type ErrVersionExists struct {
@@ -104,6 +110,105 @@ type Vault interface {
 	// GetBootstrapOptions returns bootstrap options provided by this vault
 	// These are options for MCP servers or other infrastructure the vault provides
 	GetBootstrapOptions(ctx context.Context) []bootstrap.Option
+
+	// CurrentActor returns the identity of the caller as resolved by this
+	// vault. For git/path vaults this comes from `git config user.email`;
+	// for sleuth vaults it comes from the authenticated user token.
+	CurrentActor(ctx context.Context) (mgmt.Actor, error)
+
+	// Team management
+	ListTeams(ctx context.Context) ([]mgmt.Team, error)
+	GetTeam(ctx context.Context, name string) (*mgmt.Team, error)
+	CreateTeam(ctx context.Context, team mgmt.Team) error
+	UpdateTeam(ctx context.Context, team mgmt.Team) error
+	DeleteTeam(ctx context.Context, name string) error
+	AddTeamMember(ctx context.Context, team, email string, admin bool) error
+	RemoveTeamMember(ctx context.Context, team, email string) error
+	SetTeamAdmin(ctx context.Context, team, email string, admin bool) error
+	AddTeamRepository(ctx context.Context, team, repoURL string) error
+	RemoveTeamRepository(ctx context.Context, team, repoURL string) error
+
+	// SetAssetInstallation records a new installation target for an asset.
+	// For Org/Repo/Path targets, file-backed vaults update skill.lock's
+	// existing Scopes array. For Team/User targets, they write rows into
+	// .sx/installations.toml. Sleuth vaults delegate to the server.
+	SetAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error
+
+	// ClearAssetInstallations removes every installation target for the
+	// given asset (both skill.lock scopes and .sx/installations.toml rows
+	// for file-backed vaults).
+	ClearAssetInstallations(ctx context.Context, assetName string) error
+
+	// RecordUsageEvents appends usage events to the vault's persistent
+	// usage log. Replaces the string-based PostUsageStats for new code.
+	RecordUsageEvents(ctx context.Context, events []mgmt.UsageEvent) error
+
+	// GetUsageStats returns an aggregated usage summary across the vault.
+	GetUsageStats(ctx context.Context, filter mgmt.UsageFilter) (*mgmt.UsageSummary, error)
+
+	// QueryAuditEvents returns audit events matching the filter.
+	QueryAuditEvents(ctx context.Context, filter mgmt.AuditFilter) ([]mgmt.AuditEvent, error)
+}
+
+// InstallKind identifies which kind of installation a CLI command is asking
+// the vault to record. File-backed vaults route Org/Repo/Path targets into
+// skill.lock and Team/User targets into .sx/installations.toml.
+type InstallKind string
+
+const (
+	InstallKindOrg  InstallKind = "org"
+	InstallKindRepo InstallKind = "repo"
+	InstallKindPath InstallKind = "path"
+	InstallKindTeam InstallKind = "team"
+	InstallKindUser InstallKind = "user"
+)
+
+// InstallTarget describes a single installation target for an asset. Only
+// fields relevant to the chosen Kind need to be set.
+type InstallTarget struct {
+	Kind  InstallKind
+	Repo  string   // Repo and Path
+	Paths []string // Path
+	Team  string   // Team
+	User  string   // User (email)
+}
+
+// AuditData returns the payload attached to an install.set audit event
+// for this target. Single source of truth for what each kind records.
+func (t InstallTarget) AuditData() map[string]any {
+	data := map[string]any{"kind": string(t.Kind)}
+	switch t.Kind {
+	case InstallKindOrg:
+		// org-wide install carries no extra data
+	case InstallKindRepo:
+		data["repo"] = t.Repo
+	case InstallKindPath:
+		data["repo"] = t.Repo
+		data["paths"] = t.Paths
+	case InstallKindTeam:
+		data["team"] = t.Team
+	case InstallKindUser:
+		data["user"] = t.User
+	}
+	return data
+}
+
+// Describe returns a short human-readable summary of the target, suitable
+// for commit messages and CLI output.
+func (t InstallTarget) Describe() string {
+	switch t.Kind {
+	case InstallKindOrg:
+		return "org (global)"
+	case InstallKindRepo:
+		return "repo " + t.Repo
+	case InstallKindPath:
+		return fmt.Sprintf("path %s#%s", t.Repo, strings.Join(t.Paths, ","))
+	case InstallKindTeam:
+		return "team " + t.Team
+	case InstallKindUser:
+		return "user " + t.User
+	}
+	return string(t.Kind)
 }
 
 // ScopeOption represents a vault-specific scope option (e.g., "personal", "team")

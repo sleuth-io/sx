@@ -77,7 +77,11 @@ func (p *PathVault) Authenticate(ctx context.Context) (string, error) {
 	return "", nil
 }
 
-// GetLockFile retrieves the lock file from the local directory
+// GetLockFile retrieves the lock file from the local directory. If the
+// vault has any team/user installations in .sx/installations.toml, they
+// are layered onto the on-disk skill.lock before returning so the install
+// pipeline sees a flattened view. Otherwise the raw bytes are returned
+// unchanged.
 func (p *PathVault) GetLockFile(ctx context.Context, cachedETag string) (content []byte, etag string, notModified bool, err error) {
 	lockFilePath := filepath.Join(p.repoPath, constants.SkillLockFile)
 	if _, err := os.Stat(lockFilePath); os.IsNotExist(err) {
@@ -89,8 +93,11 @@ func (p *PathVault) GetLockFile(ctx context.Context, cachedETag string) (content
 		return nil, "", false, fmt.Errorf("failed to read lock file: %w", err)
 	}
 
-	// No ETag support for local files - always return the data
-	return data, "", false, nil
+	overlaid, err := applyInstallationsOverlay(ctx, p.repoPath, data)
+	if err != nil {
+		return nil, "", false, err
+	}
+	return overlaid, "", false, nil
 }
 
 // GetAsset downloads an asset using its source configuration
@@ -187,10 +194,14 @@ func (p *PathVault) VerifyIntegrity(data []byte, hashes map[string]string, size 
 	return nil
 }
 
-// PostUsageStats is a no-op for path repositories
-// Same as GitRepository
+// PostUsageStats parses the JSONL payload and persists events to
+// .sx/usage/YYYY-MM.jsonl via RecordUsageEvents.
 func (p *PathVault) PostUsageStats(ctx context.Context, jsonlData string) error {
-	return nil
+	events, err := parseUsageJSONL(jsonlData)
+	if err != nil {
+		return err
+	}
+	return p.RecordUsageEvents(ctx, events)
 }
 
 // GetLockFilePath returns the path to the lock file in the path repository

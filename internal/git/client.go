@@ -129,6 +129,27 @@ func (c *Client) Pull(ctx context.Context, repoPath string) error {
 	return nil
 }
 
+// PullRebase pulls changes from the remote repository and rebases local
+// commits on top. Used by runInVaultTx to resolve concurrent pushes from
+// multiple sx processes writing to the same management files.
+func (c *Client) PullRebase(ctx context.Context, repoPath string) error {
+	log := logger.Get()
+	start := time.Now()
+	log.Debug("git pull --rebase starting", "repoPath", repoPath)
+
+	cmd := execGitCommand(ctx, c.sshKeyPath, "pull", "--rebase", "--quiet")
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	log.Debug("git pull --rebase completed", "duration", time.Since(start), "error", err)
+
+	if err != nil {
+		return fmt.Errorf("git pull --rebase failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return nil
+}
+
 // Push pushes changes to the remote repository
 func (c *Client) Push(ctx context.Context, repoPath string) error {
 	cmd := execGitCommand(ctx, c.sshKeyPath, "push", "--quiet")

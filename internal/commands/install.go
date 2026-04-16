@@ -33,16 +33,49 @@ func NewInstallCommand() *cobra.Command {
 	var targetDir string
 	var clientsFlag string
 
+	// Installation targeting flags — when any of these is set together
+	// with a positional asset name, sx install enters "set installation
+	// target" mode instead of the default "install assets for the current
+	// context" mode.
+	var orgFlag bool
+	var repoFlag string
+	var pathFlag string
+	var teamFlag string
+	var userFlag string
+
 	cmd := &cobra.Command{
-		Use:   "install",
+		Use:   "install [asset]",
 		Short: "Read lock file, fetch assets, and install locally",
 		Long: fmt.Sprintf(`Read the %s file, fetch assets from the configured vault,
 and install them to LLM's directory (ie. ~/.claude/).
 
 Use --target to install as if running from a different directory. This is useful
 when you want to install assets for a project without being in that directory
-(e.g., Docker sandboxes, CI pipelines).`, constants.SkillLockFile),
+(e.g., Docker sandboxes, CI pipelines).
+
+To set an installation target for an existing asset, pass the asset name as a
+positional argument together with one of --org, --repo, --path, --team, or
+--user. Examples:
+
+  sx install --team platform my-skill
+  sx install --user alice@example.com my-skill
+  sx install --org my-skill
+  sx install --repo https://github.com/acme/infra.git my-skill
+  sx install --path https://github.com/acme/infra.git#services/api my-skill`, constants.SkillLockFile),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			targetFlags := installTargetFlags{
+				org:  orgFlag,
+				repo: repoFlag,
+				path: pathFlag,
+				team: teamFlag,
+				user: userFlag,
+			}
+			if targetFlags.active() {
+				if len(args) != 1 {
+					return errors.New("installation target flags require an asset name as a positional argument")
+				}
+				return runInstallSetTarget(cmd, args[0], targetFlags)
+			}
 			return runInstall(cmd, args, hookMode, clientID, fixMode, targetDir, clientsFlag)
 		},
 	}
@@ -52,9 +85,108 @@ when you want to install assets for a project without being in that directory
 	cmd.Flags().BoolVar(&fixMode, "repair", false, "Verify assets are actually installed and fix any discrepancies")
 	cmd.Flags().StringVar(&targetDir, "target", "", "Install as if running from this directory")
 	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Install to multiple clients (e.g., 'claude-code,cursor')")
+
+	cmd.Flags().BoolVar(&orgFlag, "org", false, "Set this asset to install org-wide")
+	cmd.Flags().StringVar(&repoFlag, "repo", "", "Install this asset for a specific repository URL")
+	cmd.Flags().StringVar(&pathFlag, "path", "", "Install this asset for a repo subpath (format: repo_url#path1,path2)")
+	cmd.Flags().StringVar(&teamFlag, "team", "", "Install this asset for every member of a team")
+	cmd.Flags().StringVar(&userFlag, "user", "", "Install this asset for a specific user email")
+
 	_ = cmd.Flags().MarkHidden("hook-mode") // Hide from help output since it's internal
 
 	return cmd
+}
+
+// installTargetFlags captures the scope flags that can put `sx install` into
+// "set installation target" mode.
+type installTargetFlags struct {
+	org  bool
+	repo string
+	path string
+	team string
+	user string
+}
+
+func (f installTargetFlags) active() bool {
+	return f.org || f.repo != "" || f.path != "" || f.team != "" || f.user != ""
+}
+
+func (f installTargetFlags) count() int {
+	n := 0
+	if f.org {
+		n++
+	}
+	if f.repo != "" {
+		n++
+	}
+	if f.path != "" {
+		n++
+	}
+	if f.team != "" {
+		n++
+	}
+	if f.user != "" {
+		n++
+	}
+	return n
+}
+
+// runInstallSetTarget translates one active install flag into a call to
+// Vault.SetAssetInstallation. Exactly one targeting flag must be set.
+// For --team targets, the caller must be an admin of that team (mirrors
+// skills.new's server-side permission check).
+func runInstallSetTarget(cmd *cobra.Command, assetName string, f installTargetFlags) error {
+	if f.count() != 1 {
+		return errors.New("exactly one of --org, --repo, --path, --team, --user may be set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	v, err := loadVault()
+	if err != nil {
+		return err
+	}
+
+	target, err := buildInstallTarget(f)
+	if err != nil {
+		return err
+	}
+
+	if target.Kind == vaultpkg.InstallKindTeam {
+		if err := requireTeamAdmin(ctx, v, target.Team); err != nil {
+			return err
+		}
+	}
+
+	status := components.NewStatus(cmd.OutOrStdout())
+	status.Start("Setting installation target for " + assetName)
+	if err := v.SetAssetInstallation(ctx, assetName, target); err != nil {
+		status.Fail("Failed to set installation target")
+		return err
+	}
+	status.Done("Updated installation target for " + assetName)
+	return nil
+}
+
+func buildInstallTarget(f installTargetFlags) (vaultpkg.InstallTarget, error) {
+	switch {
+	case f.org:
+		return vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindOrg}, nil
+	case f.repo != "":
+		return vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindRepo, Repo: f.repo}, nil
+	case f.path != "":
+		repo, paths := parseRepoSpec(f.path)
+		if repo == "" || len(paths) == 0 {
+			return vaultpkg.InstallTarget{}, errors.New("--path must be in the form repo_url#path1,path2")
+		}
+		return vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindPath, Repo: repo, Paths: paths}, nil
+	case f.team != "":
+		return vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindTeam, Team: f.team}, nil
+	case f.user != "":
+		return vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindUser, User: f.user}, nil
+	}
+	return vaultpkg.InstallTarget{}, errors.New("no installation target specified")
 }
 
 // runInstall executes the install command

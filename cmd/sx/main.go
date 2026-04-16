@@ -165,6 +165,9 @@ Use "{{muted (printf "%s [command] --help" .CommandPath)}}" for more information
 	rootCmd.AddCommand(commands.NewClientsCommand())
 	rootCmd.AddCommand(commands.NewVaultCommand())
 	rootCmd.AddCommand(commands.NewRoleCommand())
+	rootCmd.AddCommand(commands.NewTeamCommand())
+	rootCmd.AddCommand(commands.NewStatsCommand())
+	rootCmd.AddCommand(commands.NewAuditCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		// Print error with styling
