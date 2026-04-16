@@ -589,6 +589,11 @@ func toMgmtInstallKind(k InstallKind) mgmt.InstallKind {
 		return mgmt.InstallKindTeam
 	case InstallKindUser:
 		return mgmt.InstallKindUser
+	case InstallKindOrg, InstallKindRepo, InstallKindPath:
+		// Org/Repo/Path targets are stored as scopes in skill.lock, not
+		// installation rows, so they never reach this helper. Fall
+		// through to the string cast so an accidental caller gets the
+		// kind verbatim and Installation.Validate rejects it downstream.
 	}
 	return mgmt.InstallKind(k)
 }
