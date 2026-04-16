@@ -103,8 +103,8 @@ func parseSinceFlag(s string) (time.Time, error) {
 	if !strings.HasSuffix(s, "d") {
 		return time.Time{}, fmt.Errorf("invalid --since value %q (use 7d, 30d, 90d, or all)", s)
 	}
-	var days int
-	if _, err := fmt.Sscanf(s, "%dd", &days); err != nil || days < 0 {
+	days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+	if err != nil || days < 0 {
 		return time.Time{}, fmt.Errorf("invalid --since value %q", s)
 	}
 	return time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour), nil

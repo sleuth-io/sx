@@ -353,6 +353,14 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 		if target.User == "" {
 			return errors.New("user installation missing email")
 		}
+		// User-scoped installs may only target the caller. Any write-access
+		// holder (git push, shared filesystem) could otherwise force an
+		// asset to be "global" in another user's scope via the overlay
+		// rule that matches on email. Mirrors the sleuth vault check in
+		// sleuth_mgmt.go to avoid a silent privilege escalation.
+		if mgmt.NormalizeEmail(target.User) != actor.Email {
+			return fmt.Errorf("user-scoped installs may only target the authenticated caller (got %q, actor %q)", target.User, actor.Email)
+		}
 		if err := addInstallationRow(vaultRoot, mgmt.Installation{
 			Asset: assetName,
 			Kind:  mgmt.InstallKindUser,
@@ -380,9 +388,11 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 // or user rows (or an asset that doesn't exist anymore) must succeed so
 // admins can clean up orphaned installation rows.
 func commonClearAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName string) error {
-	if err := clearAssetScopesIfPresent(vaultRoot, assetName); err != nil {
+	scopesCleared, err := clearAssetScopesIfPresent(vaultRoot, assetName)
+	if err != nil {
 		return err
 	}
+	mutated := scopesCleared
 	ifile, ok, err := mgmt.LoadInstallations(vaultRoot)
 	if err != nil {
 		return err
@@ -391,6 +401,10 @@ func commonClearAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName
 		if err := mgmt.SaveInstallations(vaultRoot, ifile); err != nil {
 			return err
 		}
+		mutated = true
+	}
+	if !mutated {
+		return nil
 	}
 	return mgmt.AppendAuditEvent(vaultRoot, mgmt.AuditEvent{
 		Actor:      actor.Email,
@@ -403,15 +417,16 @@ func commonClearAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName
 // clearAssetScopesIfPresent clears an asset's Scopes in skill.lock if the
 // asset is present, and is a no-op if the lock file doesn't exist or
 // doesn't contain the asset. The stricter setAssetScopesInLockFile is
-// used for install-set paths that need the asset to exist.
-func clearAssetScopesIfPresent(vaultRoot, assetName string) error {
+// used for install-set paths that need the asset to exist. Returns
+// whether a write occurred so callers can suppress no-op audit entries.
+func clearAssetScopesIfPresent(vaultRoot, assetName string) (bool, error) {
 	lockPath := lockFilePathForRoot(vaultRoot)
 	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
-		return nil
+		return false, nil
 	}
 	lf, err := lockfile.ParseFile(lockPath)
 	if err != nil {
-		return fmt.Errorf("failed to read lock file: %w", err)
+		return false, fmt.Errorf("failed to read lock file: %w", err)
 	}
 	mutated := false
 	for i := range lf.Assets {
@@ -421,9 +436,12 @@ func clearAssetScopesIfPresent(vaultRoot, assetName string) error {
 		}
 	}
 	if !mutated {
-		return nil
+		return false, nil
 	}
-	return lockfile.Write(lf, lockPath)
+	if err := lockfile.Write(lf, lockPath); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // commonRecordUsageEvents persists a batch of usage events to
@@ -518,7 +536,7 @@ func scopeExists(scopes []lockfile.Scope, needle lockfile.Scope) bool {
 }
 
 func removeString(list []string, needle string) []string {
-	out := list[:0]
+	out := make([]string, 0, len(list))
 	for _, s := range list {
 		if s != needle {
 			out = append(out, s)

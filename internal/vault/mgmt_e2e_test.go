@@ -48,7 +48,7 @@ name = "other-skill"
 version = "1.0.0"
 type = "rule"
 
-  [other.source-http]
+  [assets.source-http]
   url = "https://example.com/other.zip"
 `)
 	if err := writeFile(filepath.Join(dir, "sx.lock"), seedLock); err != nil {
@@ -240,6 +240,56 @@ type = "rule"
 		if ins.Kind == mgmt.InstallKindTeam && ins.Team == "platform" {
 			t.Errorf("expected team install row to be cascade-deleted, still found: %+v", ins)
 		}
+	}
+}
+
+// TestPathVault_SetAssetInstallation_RejectsOtherUser verifies the
+// user-scoped install guard: only the authenticated caller may be the
+// target. Any write-access holder (push, shared filesystem) could
+// otherwise force an asset to be "global" in another teammate's scope
+// via the overlay rule that matches on email.
+func TestPathVault_SetAssetInstallation_RejectsOtherUser(t *testing.T) {
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice Admin")
+
+	seedLock := []byte(`lock-version = "1.0"
+version = "test"
+created-by = "test"
+
+[[assets]]
+name = "my-skill"
+version = "1.0.0"
+type = "skill"
+
+  [assets.source-http]
+  url = "https://example.com/my-skill.zip"
+`)
+	if err := writeFile(filepath.Join(dir, "sx.lock"), seedLock); err != nil {
+		t.Fatalf("write seed lock: %v", err)
+	}
+
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault failed: %v", err)
+	}
+
+	ctx := context.Background()
+
+	err = v.SetAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindUser, User: "bob@example.com"})
+	if err == nil {
+		t.Fatal("expected user-scoped install for a non-caller to be rejected, got nil error")
+	}
+	if !strings.Contains(err.Error(), "user-scoped installs may only target the authenticated caller") {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Self-install must still succeed.
+	if err := v.SetAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindUser, User: "alice@example.com"}); err != nil {
+		t.Fatalf("self-install should succeed: %v", err)
 	}
 }
 

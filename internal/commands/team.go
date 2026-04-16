@@ -189,7 +189,9 @@ func newTeamMemberCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTeamMutation(cmd, args[0], func(ctx context.Context, v vault.Vault) error {
 				return v.AddTeamMember(ctx, args[0], args[1], admin)
-			}, fmt.Sprintf("Added %s to team %s", args[1], args[0]))
+			},
+				fmt.Sprintf("Adding %s to team %s", args[1], args[0]),
+				fmt.Sprintf("Added %s to team %s", args[1], args[0]))
 		},
 	}
 	addCmd.Flags().BoolVar(&admin, "admin", false, "Grant admin rights to the new member")
@@ -201,7 +203,9 @@ func newTeamMemberCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTeamMutation(cmd, args[0], func(ctx context.Context, v vault.Vault) error {
 				return v.RemoveTeamMember(ctx, args[0], args[1])
-			}, fmt.Sprintf("Removed %s from team %s", args[1], args[0]))
+			},
+				fmt.Sprintf("Removing %s from team %s", args[1], args[0]),
+				fmt.Sprintf("Removed %s from team %s", args[1], args[0]))
 		},
 	}
 
@@ -222,7 +226,9 @@ func newTeamAdminCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTeamMutation(cmd, args[0], func(ctx context.Context, v vault.Vault) error {
 				return v.SetTeamAdmin(ctx, args[0], args[1], true)
-			}, fmt.Sprintf("Granted admin to %s on team %s", args[1], args[0]))
+			},
+				fmt.Sprintf("Granting admin to %s on team %s", args[1], args[0]),
+				fmt.Sprintf("Granted admin to %s on team %s", args[1], args[0]))
 		},
 	}
 	unsetCmd := &cobra.Command{
@@ -232,7 +238,9 @@ func newTeamAdminCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTeamMutation(cmd, args[0], func(ctx context.Context, v vault.Vault) error {
 				return v.SetTeamAdmin(ctx, args[0], args[1], false)
-			}, fmt.Sprintf("Revoked admin from %s on team %s", args[1], args[0]))
+			},
+				fmt.Sprintf("Revoking admin from %s on team %s", args[1], args[0]),
+				fmt.Sprintf("Revoked admin from %s on team %s", args[1], args[0]))
 		},
 	}
 
@@ -253,7 +261,9 @@ func newTeamRepoCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTeamMutation(cmd, args[0], func(ctx context.Context, v vault.Vault) error {
 				return v.AddTeamRepository(ctx, args[0], args[1])
-			}, "Added repo to team "+args[0])
+			},
+				"Adding repo to team "+args[0],
+				"Added repo to team "+args[0])
 		},
 	}
 	removeCmd := &cobra.Command{
@@ -263,7 +273,9 @@ func newTeamRepoCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTeamMutation(cmd, args[0], func(ctx context.Context, v vault.Vault) error {
 				return v.RemoveTeamRepository(ctx, args[0], args[1])
-			}, "Removed repo from team "+args[0])
+			},
+				"Removing repo from team "+args[0],
+				"Removed repo from team "+args[0])
 		},
 	}
 
@@ -273,8 +285,9 @@ func newTeamRepoCommand() *cobra.Command {
 
 // runTeamMutation wraps a mutation that needs the admin guard. It resolves
 // the vault, checks that the caller is a team admin, and runs fn with a
-// fresh context + status spinner.
-func runTeamMutation(cmd *cobra.Command, team string, fn func(ctx context.Context, v vault.Vault) error, doneMsg string) error {
+// fresh context + status spinner. progressMsg is shown while fn runs (e.g.
+// "Adding alice to team platform") and doneMsg replaces it on success.
+func runTeamMutation(cmd *cobra.Command, team string, fn func(ctx context.Context, v vault.Vault) error, progressMsg, doneMsg string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -286,7 +299,7 @@ func runTeamMutation(cmd *cobra.Command, team string, fn func(ctx context.Contex
 		return err
 	}
 	status := components.NewStatus(cmd.OutOrStdout())
-	status.Start(doneMsg)
+	status.Start(progressMsg)
 	if err := fn(ctx, v); err != nil {
 		status.Fail(err.Error())
 		return err
