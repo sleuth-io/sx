@@ -94,10 +94,7 @@ func SaveInstallations(vaultRoot string, ifile *InstallationsFile) error {
 	if err := toml.NewEncoder(buf).Encode(ifile); err != nil {
 		return fmt.Errorf("failed to encode installations file: %w", err)
 	}
-	if err := os.WriteFile(path, buf.Bytes(), 0644); err != nil {
-		return fmt.Errorf("failed to write installations file: %w", err)
-	}
-	return nil
+	return writeFileAtomic(path, buf.Bytes(), 0644)
 }
 
 // Validate checks that each installation has a legal kind and the matching

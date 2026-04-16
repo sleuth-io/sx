@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -52,8 +54,14 @@ func (g *GitVault) runInVaultTx(ctx context.Context, commitMsg string, fn func(v
 
 	// Stage only the management files this function is allowed to touch.
 	// Using explicit paths (not `git add .`) means a concurrent partial
-	// asset write won't be swept into a management commit.
+	// asset write won't be swept into a management commit. A path is
+	// skipped when it doesn't exist yet — critical for empty vaults,
+	// where the very first `sx team create` happens before any sx.lock
+	// has been written.
 	for _, rel := range []string{constants.SkillLockFile, ".sx"} {
+		if _, statErr := os.Stat(filepath.Join(g.repoPath, rel)); os.IsNotExist(statErr) {
+			continue
+		}
 		if err := g.gitClient.Add(ctx, g.repoPath, rel); err != nil {
 			return err
 		}
@@ -223,11 +231,20 @@ func parseUsageJSONL(jsonlData string) ([]mgmt.UsageEvent, error) {
 		if raw.Timestamp != "" {
 			parsed, err := time.Parse(time.RFC3339, raw.Timestamp)
 			if err != nil {
-				logger.Get().Warn("skipping usage event with malformed timestamp",
-					"timestamp", raw.Timestamp, "error", err)
-				continue
+				// Replace the unparseable timestamp with "now" rather
+				// than drop the event — we'd rather over-report than
+				// silently lose usage data when the client and server
+				// clocks disagree on format.
+				logger.Get().Warn("usage event timestamp unparseable; stamping with now",
+					"timestamp", raw.Timestamp,
+					"asset_name", raw.AssetName,
+					"asset_version", raw.AssetVersion,
+					"actor", raw.Actor,
+					"error", err)
+				ev.Timestamp = time.Now().UTC()
+			} else {
+				ev.Timestamp = parsed
 			}
-			ev.Timestamp = parsed
 		}
 		events = append(events, ev)
 	}

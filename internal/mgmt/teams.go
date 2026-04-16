@@ -91,10 +91,7 @@ func SaveTeams(vaultRoot string, tf *TeamsFile) error {
 	if err := toml.NewEncoder(buf).Encode(tf); err != nil {
 		return fmt.Errorf("failed to encode teams file: %w", err)
 	}
-	if err := os.WriteFile(path, buf.Bytes(), 0644); err != nil {
-		return fmt.Errorf("failed to write teams file: %w", err)
-	}
-	return nil
+	return writeFileAtomic(path, buf.Bytes(), 0644)
 }
 
 // FindTeam returns the team with the given name, or ErrTeamNotFound if no

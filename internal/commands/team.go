@@ -94,10 +94,13 @@ func newTeamCreateCommand() *cobra.Command {
 				return err
 			}
 
-			// Ensure the caller is authorized to create a team — for
-			// file-backed vaults this means anyone with write access to
-			// the vault; we still resolve the actor to surface "set up
-			// git user.email" errors early.
+			// CreateTeam has no team-admin check — there's no existing
+			// team to check against. Authorization falls to the vault
+			// backend: for git vaults, the remote's write-access
+			// control is the real gate (no push = no team). For Sleuth
+			// vaults, the server enforces org-admin. We resolve the
+			// actor up-front to surface "set git user.email" errors
+			// early rather than deep inside the transaction.
 			if _, err := v.CurrentActor(ctx); err != nil {
 				return err
 			}

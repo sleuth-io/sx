@@ -253,12 +253,20 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 	case InstallKindPath:
 		return s.setAssetInstallationsGraphQL(ctx, assetName, []map[string]any{{"url": target.Repo, "paths": target.Paths}}, false)
 	case InstallKindUser:
+		// Sleuth's setAssetInstallations GraphQL mutation supports exactly
+		// one user-scoped shape: personalOnly=true with empty repositories,
+		// which installs the asset for the authenticated caller ONLY.
+		// See sleuth/apps/skills/graphql/mutations.py:SetAssetInstallationsMutation.
+		// We must never pass repositories=[] with personalOnly=false — that
+		// would be interpreted as an org-wide install on the server, which
+		// is a silent privilege escalation. Reject if the target user does
+		// not match the caller so the intent is unambiguous.
 		actor, err := s.CurrentActor(ctx)
 		if err != nil {
 			return err
 		}
 		if mgmt.NormalizeEmail(target.User) != actor.Email {
-			return errors.New("user-scoped installs on sleuth vaults can only target the authenticated caller (personalOnly)")
+			return fmt.Errorf("%w: user-scoped installs on sleuth vaults can only target the authenticated caller (personalOnly)", ErrNotImplemented)
 		}
 		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, true)
 	case InstallKindTeam:
@@ -546,7 +554,16 @@ func (s *SleuthVault) resolveUserGIDs(ctx context.Context, emails []string) ([]s
 }
 
 // setAssetInstallationsGraphQL calls the existing setAssetInstallations
-// mutation with org/repo/path semantics.
+// mutation. The server interprets inputs like this:
+//   - personalOnly=true, repositories=[]  → USER (current caller only)
+//   - personalOnly=false, repositories=[] → ORGANIZATION (global)
+//   - personalOnly=false, repositories=[…] → REPOSITORY (scoped)
+//
+// WARNING: do not accidentally pass {repositories: [], personalOnly:
+// false} from a caller that means "repo-scoped install but the slice is
+// empty". Callers must route through SetAssetInstallation, which picks
+// the right arguments per InstallKind and never collapses an intended
+// repo/path/user install into the empty-empty shape.
 func (s *SleuthVault) setAssetInstallationsGraphQL(ctx context.Context, assetName string, repositories []map[string]any, personalOnly bool) error {
 	mutation := `mutation SetAssetInstallations($input: SetAssetInstallationsInput!) {
 		setAssetInstallations(input: $input) {

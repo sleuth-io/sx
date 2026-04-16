@@ -62,8 +62,12 @@ func applyInstallationsOverlay(ctx context.Context, vaultRoot string, rawLockFil
 // and append a single audit event on success. The audit event's fields
 // are filled in by fn via the returned *mgmt.AuditEvent (Actor is pre-
 // populated from the actor argument). fn may return a sentinel error to
-// abort without saving.
+// abort without saving. Every caller must provide a non-empty actor
+// email so the audit log stays attributable.
 func withTeams(vaultRoot string, actor mgmt.Actor, fn func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error)) error {
+	if actor.Email == "" {
+		return errors.New("team mutations require a non-empty actor email (set git config user.email)")
+	}
 	tf, err := mgmt.LoadTeams(vaultRoot)
 	if err != nil {
 		return err
@@ -323,12 +327,20 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 		if target.Team == "" {
 			return errors.New("team installation missing team name")
 		}
+		// Re-check admin membership inside the transaction (after the
+		// clone/pull) so we close the TOCTOU window that opens if the
+		// CLI's pre-flock pre-check and the actual mutation observed
+		// different team states.
 		tf, err := mgmt.LoadTeams(vaultRoot)
 		if err != nil {
 			return err
 		}
-		if _, err := tf.FindTeam(target.Team); err != nil {
+		team, err := tf.FindTeam(target.Team)
+		if err != nil {
 			return err
+		}
+		if !team.IsAdmin(actor.Email) {
+			return fmt.Errorf("%s is not an admin of team %s", actor.Email, target.Team)
 		}
 		if err := addInstallationRow(vaultRoot, mgmt.Installation{
 			Asset: assetName,
@@ -362,20 +374,22 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 }
 
 // commonClearAssetInstallations removes every installation for an asset
-// from both skill.lock scopes and .sx/installations.toml rows.
+// from both skill.lock scopes and .sx/installations.toml rows. Missing
+// lock file, missing asset entry, and missing installations file are all
+// soft no-ops — calling this for an asset that's only installed via team
+// or user rows (or an asset that doesn't exist anymore) must succeed so
+// admins can clean up orphaned installation rows.
 func commonClearAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName string) error {
-	if err := setAssetScopesInLockFile(vaultRoot, assetName, nil); err != nil {
+	if err := clearAssetScopesIfPresent(vaultRoot, assetName); err != nil {
 		return err
 	}
 	ifile, ok, err := mgmt.LoadInstallations(vaultRoot)
 	if err != nil {
 		return err
 	}
-	if ok {
-		if ifile.RemoveForAsset(assetName) > 0 {
-			if err := mgmt.SaveInstallations(vaultRoot, ifile); err != nil {
-				return err
-			}
+	if ok && ifile.RemoveForAsset(assetName) > 0 {
+		if err := mgmt.SaveInstallations(vaultRoot, ifile); err != nil {
+			return err
 		}
 	}
 	return mgmt.AppendAuditEvent(vaultRoot, mgmt.AuditEvent{
@@ -384,6 +398,32 @@ func commonClearAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName
 		TargetType: mgmt.TargetTypeInstallation,
 		Target:     assetName,
 	})
+}
+
+// clearAssetScopesIfPresent clears an asset's Scopes in skill.lock if the
+// asset is present, and is a no-op if the lock file doesn't exist or
+// doesn't contain the asset. The stricter setAssetScopesInLockFile is
+// used for install-set paths that need the asset to exist.
+func clearAssetScopesIfPresent(vaultRoot, assetName string) error {
+	lockPath := lockFilePathForRoot(vaultRoot)
+	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
+		return nil
+	}
+	lf, err := lockfile.ParseFile(lockPath)
+	if err != nil {
+		return fmt.Errorf("failed to read lock file: %w", err)
+	}
+	mutated := false
+	for i := range lf.Assets {
+		if lf.Assets[i].Name == assetName && len(lf.Assets[i].Scopes) > 0 {
+			lf.Assets[i].Scopes = nil
+			mutated = true
+		}
+	}
+	if !mutated {
+		return nil
+	}
+	return lockfile.Write(lf, lockPath)
 }
 
 // commonRecordUsageEvents persists a batch of usage events to

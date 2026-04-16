@@ -35,6 +35,10 @@ adoption percentages. Use --assets to see a detailed breakdown per asset, or
 
 Time range is controlled with --since (7d, 30d, 90d, or all). Default is 30d.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if assetsOnly && teamsOnly {
+				return errors.New("cannot combine --assets and --teams")
+			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 
@@ -241,8 +245,6 @@ func printStatsTeams(out *ui.Output, report *statsReport) {
 func emitStatsJSON(cmd *cobra.Command, report *statsReport, assetsOnly, teamsOnly bool) error {
 	var payload any = report
 	switch {
-	case assetsOnly && teamsOnly:
-		return errors.New("cannot combine --assets and --teams")
 	case assetsOnly:
 		payload = report.Assets
 	case teamsOnly:
