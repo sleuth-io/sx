@@ -9,7 +9,14 @@ make build          # Build binary to ./dist/sx
 make test           # Run tests
 make format         # Format code
 make lint           # Run linter
+make prepush        # Format + lint + test + build (run before claiming done)
 ```
+
+## Before Reporting Work Complete
+
+**ALWAYS run `make prepush` before claiming a task is finished.** CI runs
+format, lint, tests, and build — if any of those fail locally, don't
+tell the user the work is done.
 
 ## Testing Local Changes
 

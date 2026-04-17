@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -171,9 +172,7 @@ func (e *TestEnv) WriteLockFile(vaultDir, content string) {
 				dst.SourceHTTP = &manifest.SourceHTTP{URL: a.SourceHTTP.URL, Size: a.SourceHTTP.Size}
 				if a.SourceHTTP.Hashes != nil {
 					dst.SourceHTTP.Hashes = make(map[string]string, len(a.SourceHTTP.Hashes))
-					for k, v := range a.SourceHTTP.Hashes {
-						dst.SourceHTTP.Hashes[k] = v
-					}
+					maps.Copy(dst.SourceHTTP.Hashes, a.SourceHTTP.Hashes)
 				}
 			}
 			if a.SourcePath != nil {
@@ -228,9 +227,7 @@ func (e *TestEnv) ReadVaultAssets(vaultDir string) (*lockfile.LockFile, bool) {
 			dst.SourceHTTP = &lockfile.SourceHTTP{URL: a.SourceHTTP.URL, Size: a.SourceHTTP.Size}
 			if a.SourceHTTP.Hashes != nil {
 				dst.SourceHTTP.Hashes = make(map[string]string, len(a.SourceHTTP.Hashes))
-				for k, v := range a.SourceHTTP.Hashes {
-					dst.SourceHTTP.Hashes[k] = v
-				}
+				maps.Copy(dst.SourceHTTP.Hashes, a.SourceHTTP.Hashes)
 			}
 		}
 		if a.SourcePath != nil {
