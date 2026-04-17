@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/manifest"
 )
 
 // TestEnv provides an isolated test environment with common setup utilities.
@@ -139,10 +142,128 @@ prompt-file = "SKILL.md"
 	return skillDir
 }
 
-// WriteLockFile writes a lock file to the vault directory.
+// WriteLockFile seeds the vault's asset list from legacy lockfile-style
+// TOML content. It parses the content via the lockfile package and
+// persists the resulting assets directly into sx.toml so subsequent
+// vault reads see them — including later calls to WriteLockFile that
+// rewrite the seed between sub-tests. Tests continue to write in the
+// legacy lockfile shape they were originally written against.
 func (e *TestEnv) WriteLockFile(vaultDir, content string) {
 	e.t.Helper()
-	e.WriteFile(filepath.Join(vaultDir, "sx.lock"), content)
+	lf, err := lockfile.Parse([]byte(content))
+	if err != nil {
+		e.t.Fatalf("parse seed lockfile: %v", err)
+	}
+	m := &manifest.Manifest{
+		SchemaVersion: manifest.CurrentSchemaVersion,
+		CreatedBy:     "test",
+	}
+	if len(lf.Assets) > 0 {
+		m.Assets = make([]manifest.Asset, 0, len(lf.Assets))
+		for _, a := range lf.Assets {
+			dst := manifest.Asset{
+				Name:    a.Name,
+				Version: a.Version,
+				Type:    a.Type,
+				Clients: append([]string(nil), a.Clients...),
+			}
+			if a.SourceHTTP != nil {
+				dst.SourceHTTP = &manifest.SourceHTTP{URL: a.SourceHTTP.URL, Size: a.SourceHTTP.Size}
+				if a.SourceHTTP.Hashes != nil {
+					dst.SourceHTTP.Hashes = make(map[string]string, len(a.SourceHTTP.Hashes))
+					for k, v := range a.SourceHTTP.Hashes {
+						dst.SourceHTTP.Hashes[k] = v
+					}
+				}
+			}
+			if a.SourcePath != nil {
+				dst.SourcePath = &manifest.SourcePath{Path: a.SourcePath.Path}
+			}
+			if a.SourceGit != nil {
+				dst.SourceGit = &manifest.SourceGit{URL: a.SourceGit.URL, Ref: a.SourceGit.Ref, Subdirectory: a.SourceGit.Subdirectory}
+			}
+			for _, s := range a.Scopes {
+				if len(s.Paths) == 0 {
+					dst.Scopes = append(dst.Scopes, manifest.Scope{Kind: manifest.ScopeKindRepo, Repo: s.Repo})
+				} else {
+					dst.Scopes = append(dst.Scopes, manifest.Scope{
+						Kind:  manifest.ScopeKindPath,
+						Repo:  s.Repo,
+						Paths: append([]string(nil), s.Paths...),
+					})
+				}
+			}
+			m.Assets = append(m.Assets, dst)
+		}
+	}
+	if err := manifest.Save(vaultDir, m); err != nil {
+		e.t.Fatalf("save seeded manifest: %v", err)
+	}
+}
+
+// ReadVaultAssets returns the vault's current state as a
+// lockfile.LockFile. Tests that previously read $vaultDir/sx.lock and
+// parsed it should call this instead — it reads sx.toml (the source of
+// truth) and converts to the lockfile shape. Identity-dependent scopes
+// (team, user) are projected as-is into lockfile.Scope entries so
+// tests that assert on scope counts still work.
+func (e *TestEnv) ReadVaultAssets(vaultDir string) (*lockfile.LockFile, bool) {
+	e.t.Helper()
+	m, ok, err := manifest.Load(vaultDir)
+	if err != nil {
+		e.t.Fatalf("read vault manifest at %s: %v", vaultDir, err)
+	}
+	if !ok || m == nil {
+		return nil, false
+	}
+	lf := &lockfile.LockFile{}
+	for _, a := range m.Assets {
+		dst := lockfile.Asset{
+			Name:    a.Name,
+			Version: a.Version,
+			Type:    a.Type,
+			Clients: append([]string(nil), a.Clients...),
+		}
+		if a.SourceHTTP != nil {
+			dst.SourceHTTP = &lockfile.SourceHTTP{URL: a.SourceHTTP.URL, Size: a.SourceHTTP.Size}
+			if a.SourceHTTP.Hashes != nil {
+				dst.SourceHTTP.Hashes = make(map[string]string, len(a.SourceHTTP.Hashes))
+				for k, v := range a.SourceHTTP.Hashes {
+					dst.SourceHTTP.Hashes[k] = v
+				}
+			}
+		}
+		if a.SourcePath != nil {
+			dst.SourcePath = &lockfile.SourcePath{Path: a.SourcePath.Path}
+		}
+		if a.SourceGit != nil {
+			dst.SourceGit = &lockfile.SourceGit{URL: a.SourceGit.URL, Ref: a.SourceGit.Ref, Subdirectory: a.SourceGit.Subdirectory}
+		}
+		for _, s := range a.Scopes {
+			switch s.Kind {
+			case manifest.ScopeKindRepo:
+				dst.Scopes = append(dst.Scopes, lockfile.Scope{Repo: s.Repo})
+			case manifest.ScopeKindPath:
+				dst.Scopes = append(dst.Scopes, lockfile.Scope{Repo: s.Repo, Paths: append([]string(nil), s.Paths...)})
+			case manifest.ScopeKindOrg, manifest.ScopeKindTeam, manifest.ScopeKindUser:
+				// Identity-dependent scopes do not translate to the
+				// lockfile.Scope shape. Tests that need to assert on
+				// them should read the manifest directly.
+			}
+		}
+		lf.Assets = append(lf.Assets, dst)
+	}
+	return lf, true
+}
+
+// ResetVaultAssets removes the vault's manifest so the next operation
+// starts from an empty state. Replaces the old pattern of
+// `os.Remove(filepath.Join(vaultDir, "sx.lock"))` between subtests.
+func (e *TestEnv) ResetVaultAssets(vaultDir string) {
+	e.t.Helper()
+	for _, name := range []string{"sx.toml", "sx.lock", "sx.lock.migrated"} {
+		_ = os.Remove(filepath.Join(vaultDir, name))
+	}
 }
 
 // SetupGitRepo initializes a git repo with a remote URL.

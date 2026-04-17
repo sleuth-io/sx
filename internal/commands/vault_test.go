@@ -311,13 +311,14 @@ type = "global"
 	// Verify asset files still exist in vault (not deleted)
 	env.AssertFileExists(filepath.Join(vaultDir, "assets", "my-skill", "1.0.0", "metadata.toml"))
 
-	// Verify lock file no longer has the asset
-	lockData, err := os.ReadFile(filepath.Join(vaultDir, "sx.lock"))
-	if err != nil {
-		t.Fatalf("Failed to read lock file: %v", err)
-	}
-	if strings.Contains(string(lockData), "my-skill") {
-		t.Errorf("Expected lock file to not contain 'my-skill', got:\n%s", string(lockData))
+	// Verify the manifest no longer has the asset.
+	lf, _ := env.ReadVaultAssets(vaultDir)
+	if lf != nil {
+		for _, a := range lf.Assets {
+			if a.Name == "my-skill" {
+				t.Errorf("Expected manifest to not contain 'my-skill', still found %+v", a)
+			}
+		}
 	}
 }
 
@@ -428,17 +429,29 @@ type = "global"
 		t.Errorf("Expected list.txt to still contain '2.0.0', got:\n%s", string(listData))
 	}
 
-	// Verify lock file still has v2.0.0 but not v1.0.0
-	lockData, err := os.ReadFile(filepath.Join(vaultDir, "sx.lock"))
-	if err != nil {
-		t.Fatalf("Failed to read lock file: %v", err)
+	// Verify the manifest still has v2.0.0 but not v1.0.0.
+	lf, _ := env.ReadVaultAssets(vaultDir)
+	if lf == nil {
+		t.Fatal("vault manifest not found after remove")
+		return
 	}
-	lockStr := string(lockData)
-	if strings.Contains(lockStr, `version = "1.0.0"`) {
-		t.Errorf("Expected lock file to not contain version 1.0.0")
+	var have1, have2 bool
+	for _, a := range lf.Assets {
+		if a.Name != "multi-ver" {
+			continue
+		}
+		if a.Version == "1.0.0" {
+			have1 = true
+		}
+		if a.Version == "2.0.0" {
+			have2 = true
+		}
 	}
-	if !strings.Contains(lockStr, `version = "2.0.0"`) {
-		t.Errorf("Expected lock file to still contain version 2.0.0")
+	if have1 {
+		t.Error("Expected manifest to not contain multi-ver@1.0.0")
+	}
+	if !have2 {
+		t.Error("Expected manifest to still contain multi-ver@2.0.0")
 	}
 }
 
@@ -544,17 +557,26 @@ type = "global"
 		t.Errorf("Expected metadata to contain 'name = \"new-name\"', got:\n%s", string(metaData))
 	}
 
-	// Verify lock file was updated
-	lockData, err := os.ReadFile(filepath.Join(vaultDir, "sx.lock"))
-	if err != nil {
-		t.Fatalf("Failed to read lock file: %v", err)
+	// Verify the manifest was updated.
+	lf, _ := env.ReadVaultAssets(vaultDir)
+	if lf == nil {
+		t.Fatal("vault manifest not found after rename")
+		return
 	}
-	lockStr := string(lockData)
-	if strings.Contains(lockStr, `name = "old-name"`) {
-		t.Errorf("Expected lock file to not contain 'name = \"old-name\"', got:\n%s", lockStr)
+	var haveOld, haveNew bool
+	for _, a := range lf.Assets {
+		if a.Name == "old-name" {
+			haveOld = true
+		}
+		if a.Name == "new-name" {
+			haveNew = true
+		}
 	}
-	if !strings.Contains(lockStr, `name = "new-name"`) {
-		t.Errorf("Expected lock file to contain 'name = \"new-name\"', got:\n%s", lockStr)
+	if haveOld {
+		t.Error("Expected manifest to not contain 'old-name'")
+	}
+	if !haveNew {
+		t.Error("Expected manifest to contain 'new-name'")
 	}
 }
 

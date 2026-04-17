@@ -98,10 +98,10 @@ prompt-file = "SKILL.md"
 		t.Fatalf("Assets directory was not created: %s", assetsDir)
 	}
 
-	// Verify sx.lock was created in repo
-	lockPath := filepath.Join(repoDir, "sx.lock")
+	// Verify sx.toml was created in repo
+	lockPath := filepath.Join(repoDir, "sx.toml")
 	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
-		t.Fatalf("sx.lock was not created: %s", lockPath)
+		t.Fatalf("sx.toml was not created: %s", lockPath)
 	}
 
 	// Step 3: Install from the repository

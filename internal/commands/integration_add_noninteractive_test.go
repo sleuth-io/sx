@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/sleuth-io/sx/internal/lockfile"
 )
 
 // TestAddNonInteractiveIntegration tests non-interactive add command variants
@@ -42,14 +40,9 @@ prompt-file = "SKILL.md"
 		env.AssertFileExists(assetsDir)
 
 		// Verify lock file has global scope (empty scopes)
-		lockData, err := os.ReadFile(filepath.Join(vaultDir, "sx.lock"))
-		if err != nil {
-			t.Fatalf("Failed to read lock file: %v", err)
-		}
-
-		lf, err := lockfile.Parse(lockData)
-		if err != nil {
-			t.Fatalf("Failed to parse lock file: %v", err)
+		lf, ok := env.ReadVaultAssets(vaultDir)
+		if !ok {
+			t.Fatal("vault manifest not found")
 		}
 
 		if len(lf.Assets) == 0 {
@@ -64,7 +57,7 @@ prompt-file = "SKILL.md"
 
 	t.Run("add with --scope-global sets global scope explicitly", func(t *testing.T) {
 		// Clean up previous lock file
-		os.Remove(filepath.Join(vaultDir, "sx.lock"))
+		env.ResetVaultAssets(vaultDir)
 
 		addCmd := NewAddCommand()
 		addCmd.SetArgs([]string{sourceDir, "--yes", "--scope-global"})
@@ -73,8 +66,7 @@ prompt-file = "SKILL.md"
 			t.Fatalf("Failed to add skill: %v", err)
 		}
 
-		lockData, _ := os.ReadFile(filepath.Join(vaultDir, "sx.lock"))
-		lf, _ := lockfile.Parse(lockData)
+		lf, _ := env.ReadVaultAssets(vaultDir)
 
 		if len(lf.Assets) == 0 {
 			t.Fatal("Expected at least one asset in lock file")
@@ -87,7 +79,7 @@ prompt-file = "SKILL.md"
 
 	t.Run("add with --scope-repo sets repository scope", func(t *testing.T) {
 		// Clean up previous lock file
-		os.Remove(filepath.Join(vaultDir, "sx.lock"))
+		env.ResetVaultAssets(vaultDir)
 
 		addCmd := NewAddCommand()
 		addCmd.SetArgs([]string{sourceDir, "--yes", "--scope-repo", "git@github.com:org/repo.git"})
@@ -96,8 +88,7 @@ prompt-file = "SKILL.md"
 			t.Fatalf("Failed to add skill: %v", err)
 		}
 
-		lockData, _ := os.ReadFile(filepath.Join(vaultDir, "sx.lock"))
-		lf, _ := lockfile.Parse(lockData)
+		lf, _ := env.ReadVaultAssets(vaultDir)
 
 		if len(lf.Assets) == 0 {
 			t.Fatal("Expected at least one asset in lock file")
@@ -119,7 +110,7 @@ prompt-file = "SKILL.md"
 
 	t.Run("add with --scope-repo and path fragment", func(t *testing.T) {
 		// Clean up previous lock file
-		os.Remove(filepath.Join(vaultDir, "sx.lock"))
+		env.ResetVaultAssets(vaultDir)
 
 		addCmd := NewAddCommand()
 		addCmd.SetArgs([]string{sourceDir, "--yes", "--scope-repo", "git@github.com:org/repo.git#backend/services"})
@@ -128,8 +119,7 @@ prompt-file = "SKILL.md"
 			t.Fatalf("Failed to add skill: %v", err)
 		}
 
-		lockData, _ := os.ReadFile(filepath.Join(vaultDir, "sx.lock"))
-		lf, _ := lockfile.Parse(lockData)
+		lf, _ := env.ReadVaultAssets(vaultDir)
 
 		if len(lf.Assets) == 0 {
 			t.Fatal("Expected at least one asset in lock file")
@@ -151,7 +141,7 @@ prompt-file = "SKILL.md"
 
 	t.Run("add with --scope-repo and multiple paths", func(t *testing.T) {
 		// Clean up previous lock file
-		os.Remove(filepath.Join(vaultDir, "sx.lock"))
+		env.ResetVaultAssets(vaultDir)
 
 		addCmd := NewAddCommand()
 		addCmd.SetArgs([]string{sourceDir, "--yes", "--scope-repo", "git@github.com:org/repo.git#backend,frontend"})
@@ -160,8 +150,7 @@ prompt-file = "SKILL.md"
 			t.Fatalf("Failed to add skill: %v", err)
 		}
 
-		lockData, _ := os.ReadFile(filepath.Join(vaultDir, "sx.lock"))
-		lf, _ := lockfile.Parse(lockData)
+		lf, _ := env.ReadVaultAssets(vaultDir)
 
 		if len(lf.Assets) == 0 {
 			t.Fatal("Expected at least one asset in lock file")
@@ -178,7 +167,7 @@ prompt-file = "SKILL.md"
 
 	t.Run("add with multiple --scope-repo flags", func(t *testing.T) {
 		// Clean up previous lock file
-		os.Remove(filepath.Join(vaultDir, "sx.lock"))
+		env.ResetVaultAssets(vaultDir)
 
 		addCmd := NewAddCommand()
 		addCmd.SetArgs([]string{
@@ -191,8 +180,7 @@ prompt-file = "SKILL.md"
 			t.Fatalf("Failed to add skill: %v", err)
 		}
 
-		lockData, _ := os.ReadFile(filepath.Join(vaultDir, "sx.lock"))
-		lf, _ := lockfile.Parse(lockData)
+		lf, _ := env.ReadVaultAssets(vaultDir)
 
 		if len(lf.Assets) == 0 {
 			t.Fatal("Expected at least one asset in lock file")
@@ -222,7 +210,7 @@ prompt-file = "SKILL.md"
 
 	t.Run("add with --scope personal sets scope entity", func(t *testing.T) {
 		// Clean up previous lock file
-		os.Remove(filepath.Join(vaultDir, "sx.lock"))
+		env.ResetVaultAssets(vaultDir)
 
 		addCmd := NewAddCommand()
 		addCmd.SetArgs([]string{sourceDir, "--yes", "--scope", "personal"})
@@ -231,8 +219,7 @@ prompt-file = "SKILL.md"
 			t.Fatalf("Failed to add skill: %v", err)
 		}
 
-		lockData, _ := os.ReadFile(filepath.Join(vaultDir, "sx.lock"))
-		lf, _ := lockfile.Parse(lockData)
+		lf, _ := env.ReadVaultAssets(vaultDir)
 
 		if len(lf.Assets) == 0 {
 			t.Fatal("Expected at least one asset in lock file")
@@ -247,7 +234,7 @@ prompt-file = "SKILL.md"
 
 	t.Run("add with --no-install writes lock file but skips install", func(t *testing.T) {
 		// Clean up previous lock file
-		os.Remove(filepath.Join(vaultDir, "sx.lock"))
+		env.ResetVaultAssets(vaultDir)
 
 		addCmd := NewAddCommand()
 		addCmd.SetArgs([]string{sourceDir, "--yes", "--no-install"})
@@ -260,20 +247,14 @@ prompt-file = "SKILL.md"
 		assetsDir := filepath.Join(vaultDir, "assets", "test-skill")
 		env.AssertFileExists(assetsDir)
 
-		// Verify lock file WAS created with global scope (--no-install skips install, not lock file)
-		lockPath := filepath.Join(vaultDir, "sx.lock")
-		lockData, err := os.ReadFile(lockPath)
-		if err != nil {
-			t.Fatalf("Lock file should exist with --no-install, got error: %v", err)
+		// Verify the manifest was written with the asset (--no-install
+		// skips installing to clients but still persists the asset).
+		lf, ok := env.ReadVaultAssets(vaultDir)
+		if !ok {
+			t.Fatal("vault manifest not found after --no-install")
 		}
-
-		lf, err := lockfile.Parse(lockData)
-		if err != nil {
-			t.Fatalf("Failed to parse lock file: %v", err)
-		}
-
 		if len(lf.Assets) == 0 {
-			t.Fatal("Expected at least one asset in lock file")
+			t.Fatal("Expected at least one asset in manifest")
 		}
 
 		asset := lf.Assets[0]
@@ -284,7 +265,7 @@ prompt-file = "SKILL.md"
 
 	t.Run("add with explicit --name and --type overrides", func(t *testing.T) {
 		// Clean up previous lock file and assets
-		os.Remove(filepath.Join(vaultDir, "sx.lock"))
+		env.ResetVaultAssets(vaultDir)
 		os.RemoveAll(filepath.Join(vaultDir, "assets", "custom-name"))
 
 		addCmd := NewAddCommand()
@@ -299,8 +280,7 @@ prompt-file = "SKILL.md"
 		env.AssertFileExists(assetsDir)
 
 		// Verify lock file has custom name and type
-		lockData, _ := os.ReadFile(filepath.Join(vaultDir, "sx.lock"))
-		lf, _ := lockfile.Parse(lockData)
+		lf, _ := env.ReadVaultAssets(vaultDir)
 
 		if len(lf.Assets) == 0 {
 			t.Fatal("Expected at least one asset in lock file")

@@ -12,12 +12,17 @@ import (
 // resolveLockBytesForActor loads the vault's manifest and returns the
 // resolved lock file bytes for the caller identified by vaultRoot's git
 // config. Every file-backed vault's GetLockFile delegates here.
+//
+// Returns ErrLockFileNotFound only when the vault has never been
+// initialized (no manifest on disk). An initialized vault with zero
+// assets returns a valid empty lock file so the install pipeline can
+// still detect tracker deltas and clean up previously-installed assets.
 func resolveLockBytesForActor(ctx context.Context, vaultRoot string) ([]byte, error) {
 	m, err := loadManifest(vaultRoot)
 	if err != nil {
 		return nil, err
 	}
-	if m == nil || len(m.Assets) == 0 {
+	if m == nil {
 		return nil, ErrLockFileNotFound
 	}
 	actor, err := mgmt.CurrentGitActor(ctx, vaultRoot)
