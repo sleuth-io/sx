@@ -29,6 +29,15 @@ resolved lock is compared with the existing active file; if the content
 hash differs, the old file is renamed to include a timestamp so prior
 installs remain available for diffing and rollback.
 
+### Previewing without materializing
+
+`sx install --dry-run` runs the resolution but writes nothing — not
+the active lock, not a rotated copy, not any client directory. Use
+it as a `pip freeze` analogue to see what the next install would
+produce. The output is one line per resolved asset in
+`name==version  # type; scope=...` form. See
+[scoping.md](scoping.md) for an annotated example.
+
 Every lock file starts with a comment header:
 
 ```toml

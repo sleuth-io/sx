@@ -74,6 +74,32 @@ only what belongs in your current location:
   ✓ alice-tools      → ~/.claude/              (user-scoped to you)
 ```
 
+### Previewing what will install
+
+`sx install --dry-run` runs the same resolution — manifest + git
+identity + current scope + active clients — and prints the result
+without downloading anything or writing to any client directory.
+It's the `pip freeze` analogue for this vault: use it to verify
+scope wiring before committing a scope change, or to see which
+assets you'd get in a different directory via `--target`.
+
+```
+~/myapp $ sx install --dry-run
+# sx install --dry-run
+# Resolved for: claude-code,cursor
+# Current scope: github.com/acme/myapp
+
+coding-standards==2.1.0  # skill; scope=global
+api-patterns==1.4.0      # skill; scope=github.com/acme/myapp
+grpc-skill==0.8.0        # skill; scope=github.com/acme/myapp#services
+platform-helper==1.0.0   # skill; scope=github.com/acme/infra
+alice-tools==0.2.0       # skill; scope=global
+```
+
+The output is a comment-prefixed header plus one line per asset in
+`name==version  # type; scope=...` form so it's self-describing when
+piped to a file or diffed across runs.
+
 This happens automatically via the Claude Code hook — each new session gets exactly the assets it needs, nothing more.
 
 ## How clients use scoped assets
