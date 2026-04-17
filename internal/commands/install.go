@@ -14,7 +14,6 @@ import (
 	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/config"
-	"github.com/sleuth-io/sx/internal/constants"
 	"github.com/sleuth-io/sx/internal/gitutil"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
@@ -45,23 +44,25 @@ func NewInstallCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "install [asset]",
-		Short: "Read lock file, fetch assets, and install locally",
-		Long: fmt.Sprintf(`Read the %s file, fetch assets from the configured vault,
-and install them to LLM's directory (ie. ~/.claude/).
+		Short: "Fetch assets from the configured vault and install them locally",
+		Long: `Resolve the vault's manifest for the calling user, fetch every applicable
+asset, and install it into the active client's directory (e.g. ~/.claude/).
+The resolved lock file is cached under the sx cache directory; older
+lock files are rotated with a timestamp so prior installs remain on disk.
 
-Use --target to install as if running from a different directory. This is useful
-when you want to install assets for a project without being in that directory
-(e.g., Docker sandboxes, CI pipelines).
+Use --target to install as if running from a different directory. This is
+useful when you want to install assets for a project without being in
+that directory (e.g., Docker sandboxes, CI pipelines).
 
-To set an installation target for an existing asset, pass the asset name as a
-positional argument together with one of --org, --repo, --path, --team, or
---user. Examples:
+To set an installation target for an existing asset, pass the asset name
+as a positional argument together with one of --org, --repo, --path,
+--team, or --user. Examples:
 
   sx install --team platform my-skill
   sx install --user alice@example.com my-skill
   sx install --org my-skill
   sx install --repo https://github.com/acme/infra.git my-skill
-  sx install --path https://github.com/acme/infra.git#services/api my-skill`, constants.SkillLockFile),
+  sx install --path https://github.com/acme/infra.git#services/api my-skill`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			targetFlags := installTargetFlags{
 				org:  orgFlag,

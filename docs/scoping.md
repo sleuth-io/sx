@@ -4,16 +4,26 @@ Assets don't have to be everywhere. You can choose where each one is installed, 
 
 ## Scopes
 
-| Scope | Installs to | Available when |
-|-------|------------|-------------|
-| Global | `~/.claude/` | Every project |
-| Project | `myapp/.claude/` | Only in `myapp/` |
-| Path | `myapp/services/api/.claude/` | Only in that directory |
+| Scope | Target | Available when |
+|-------|--------|----------------|
+| `org` (global) | every caller in the vault | always — installs to `~/.claude/` |
+| `repo` | one git repository | running in a clone of that repo — installs to `myapp/.claude/` |
+| `path` | specific paths within a repo | running under one of those paths — installs to `myapp/services/api/.claude/` |
+| `team` | every member of a named team | caller is a team member; expands to the team's repositories |
+| `user` | a single user (email) | caller's git identity matches the email; the asset becomes global for that user |
 
-## Setting scope with `sx add`
+The first three are structural and apply to every caller. `team` and
+`user` are identity-dependent and resolved against `git config
+user.email` when `sx install` runs.
+
+## Setting scope with `sx add` / `sx install`
+
+`sx add` configures scope at the time an asset is published. `sx
+install <name>` with scope flags modifies an existing asset's scope in
+the vault.
 
 ```bash
-# Installed in all projects (default)
+# Installed in all projects (default on add)
 sx add my-skill --scope-global
 
 # Installed only in a specific project
@@ -29,21 +39,39 @@ sx add my-skill --scope-repo "git@github.com:myorg/myapp.git#services/api,servic
 sx add my-skill \
   --scope-repo git@github.com:myorg/app-a.git \
   --scope-repo git@github.com:myorg/app-b.git
+
+# Install for every member of a team (git + path vaults)
+sx install my-skill --team platform
+
+# Install for yourself only — cannot target someone else
+sx install my-skill --user alice@acme.com
+
+# Org-wide (clears all scopes)
+sx install my-skill --org
 ```
 
-> **Vault vs project:** The repo URL in `--scope-repo` is your *project's* git remote — the codebase where you want the asset installed — not your sx vault where assets are stored.
+> **Vault vs project:** The repo URL in `--scope-repo` / `--repo` is
+> your *project's* git remote — the codebase where you want the asset
+> installed — not your sx vault where assets are stored.
 
-Already added an asset and want to change its scope? Run `sx add <name>` again to reconfigure it interactively.
+Already added an asset and want to change its scope? Run `sx install
+<name>` with one of the scope flags, or re-run `sx add <name>` for an
+interactive prompt.
 
 ## How `sx install` uses scopes
 
-When you run `sx install` from your project directory, sx matches your current location and installs only what belongs there:
+When you run `sx install` from your project directory, sx reads the
+vault's `sx.toml`, resolves every team and user scope against your git
+identity, writes a per-user lock file to the sx cache, and installs
+only what belongs in your current location:
 
 ```
 ~/myapp $ sx install
-  ✓ coding-standards → ~/.claude/              (global)
+  ✓ coding-standards → ~/.claude/              (org — everyone)
   ✓ api-patterns     → ~/myapp/.claude/        (this project only)
   ✓ grpc-skill       → ~/myapp/services/.claude/ (path-scoped)
+  ✓ platform-helper  → ~/myapp/.claude/        (team platform, you're a member)
+  ✓ alice-tools      → ~/.claude/              (user-scoped to you)
 ```
 
 This happens automatically via the Claude Code hook — each new session gets exactly the assets it needs, nothing more.

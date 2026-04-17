@@ -128,15 +128,13 @@ type Vault interface {
 	AddTeamRepository(ctx context.Context, team, repoURL string) error
 	RemoveTeamRepository(ctx context.Context, team, repoURL string) error
 
-	// SetAssetInstallation records a new installation target for an asset.
-	// For Org/Repo/Path targets, file-backed vaults update skill.lock's
-	// existing Scopes array. For Team/User targets, they write rows into
-	// .sx/installations.toml. Sleuth vaults delegate to the server.
+	// SetAssetInstallation records a new installation target for an
+	// asset. File-backed vaults append the target to the asset's scope
+	// list in sx.toml; Sleuth vaults delegate to the server.
 	SetAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error
 
-	// ClearAssetInstallations removes every installation target for the
-	// given asset (both skill.lock scopes and .sx/installations.toml rows
-	// for file-backed vaults).
+	// ClearAssetInstallations removes every installation target from an
+	// asset. Soft no-op if the asset is absent from the vault.
 	ClearAssetInstallations(ctx context.Context, assetName string) error
 
 	// RecordUsageEvents appends usage events to the vault's persistent
@@ -151,8 +149,7 @@ type Vault interface {
 }
 
 // InstallKind identifies which kind of installation a CLI command is asking
-// the vault to record. File-backed vaults route Org/Repo/Path targets into
-// skill.lock and Team/User targets into .sx/installations.toml.
+// the vault to record.
 type InstallKind string
 
 const (

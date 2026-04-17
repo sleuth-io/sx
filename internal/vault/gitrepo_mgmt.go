@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sleuth-io/sx/internal/constants"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
 )
 
@@ -22,14 +22,18 @@ import (
 //  2. Clones or syncs the vault repo.
 //  3. Resolves the caller's actor via git config user.email.
 //  4. Runs fn against the locked working tree. fn must only write to
-//     .sx/ files (teams/installations/audit/usage) and sx.lock, and must
-//     not commit or push; this wrapper handles that.
-//  5. Stages .sx/ and sx.lock specifically (not the whole tree) so stale
+//     sx.toml and .sx/ files (audit/usage JSONL streams), and must not
+//     commit or push; this wrapper handles that.
+//  5. Stages sx.toml and .sx/ specifically (not the whole tree) so stale
 //     install.sh/README.md or partial asset writes don't ride along.
 //  6. Commits with commitMsg and pushes. On push rejection (another
 //     process raced us), rebases local commits onto the new remote head
 //     and retries once. Both errors are wrapped so troubleshooting
 //     shows which leg failed.
+//
+// Any path in the staging list that doesn't exist yet is skipped —
+// critical for empty vaults, where the very first `sx team create`
+// runs before sx.toml has been written.
 func (g *GitVault) runInVaultTx(ctx context.Context, commitMsg string, fn func(vaultRoot string, actor mgmt.Actor) error) error {
 	fileLock, err := g.acquireFileLock(ctx)
 	if err != nil {
@@ -53,13 +57,7 @@ func (g *GitVault) runInVaultTx(ctx context.Context, commitMsg string, fn func(v
 		return err
 	}
 
-	// Stage only the management files this function is allowed to touch.
-	// Using explicit paths (not `git add .`) means a concurrent partial
-	// asset write won't be swept into a management commit. A path is
-	// skipped when it doesn't exist yet — critical for empty vaults,
-	// where the very first `sx team create` happens before any sx.lock
-	// has been written.
-	for _, rel := range []string{constants.SkillLockFile, ".sx"} {
+	for _, rel := range []string{manifest.FileName, ".sx"} {
 		if _, statErr := os.Stat(filepath.Join(g.repoPath, rel)); os.IsNotExist(statErr) {
 			continue
 		}
@@ -83,14 +81,16 @@ func (g *GitVault) runInVaultTx(ctx context.Context, commitMsg string, fn func(v
 }
 
 // pushWithRebaseRetry pushes the staged commit, rebasing and retrying on
-// non-fast-forward rejection. Under high concurrency a single retry
-// isn't enough — between our rebase and our second push, a third
-// process can push again and reject us. We retry up to 3 times with a
-// small jittered backoff; anything beyond that is probably a genuine
-// conflict or a broken remote and should surface to the caller.
+// non-fast-forward rejection. Each iteration is: push; on failure, rebase
+// onto the remote head and try again. Under high concurrency a single
+// retry isn't enough — between our rebase and our next push, a third
+// process can push again and reject us — so the loop runs up to
+// maxAttempts full push attempts with maxAttempts-1 rebases between
+// them. Anything beyond that is probably a genuine conflict or a broken
+// remote and surfaces to the caller.
 func (g *GitVault) pushWithRebaseRetry(ctx context.Context) error {
 	const maxAttempts = 3
-	var lastPushErr, lastRebaseErr error
+	var lastPushErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		pushErr := g.gitClient.Push(ctx, g.repoPath)
 		if pushErr == nil {
@@ -103,10 +103,10 @@ func (g *GitVault) pushWithRebaseRetry(ctx context.Context) error {
 		if err := g.gitClient.PullRebase(ctx, g.repoPath); err != nil {
 			return fmt.Errorf("push failed: %w; rebase also failed: %w", pushErr, err)
 		}
-		lastRebaseErr = nil
-		// Jittered backoff: 50–250ms on attempt 1, 100–500ms on attempt 2.
-		// The jitter desynchronizes retry storms from other writers that
-		// lost the same race. Returns immediately if the context is done.
+		// Jittered backoff: 50–250ms after attempt 1, 100–500ms after
+		// attempt 2. The jitter desynchronizes retry storms from other
+		// writers that lost the same race. Returns immediately if the
+		// context is done.
 		backoff := time.Duration(attempt) * (50*time.Millisecond + time.Duration(rand.Intn(200))*time.Millisecond)
 		select {
 		case <-ctx.Done():
@@ -114,10 +114,7 @@ func (g *GitVault) pushWithRebaseRetry(ctx context.Context) error {
 		case <-time.After(backoff):
 		}
 	}
-	if lastRebaseErr != nil {
-		return fmt.Errorf("push failed after %d attempts: %w; last rebase error: %w", maxAttempts, lastPushErr, lastRebaseErr)
-	}
-	return fmt.Errorf("push failed after %d attempts (last rebase succeeded): %w", maxAttempts, lastPushErr)
+	return fmt.Errorf("push failed after %d attempts: %w", maxAttempts, lastPushErr)
 }
 
 // CurrentActor resolves the caller's identity via git config.
@@ -261,7 +258,9 @@ func (g *GitVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFilter
 }
 
 // parseUsageJSONL converts a JSONL payload produced by stats.FlushQueue
-// into the new mgmt.UsageEvent type.
+// into the new mgmt.UsageEvent type. A malformed line is logged and
+// skipped; the rest of the batch still flushes so one bad event never
+// drops a whole queue of good ones.
 func parseUsageJSONL(jsonlData string) ([]mgmt.UsageEvent, error) {
 	var events []mgmt.UsageEvent
 	for i, line := range strings.Split(jsonlData, "\n") {
@@ -277,7 +276,11 @@ func parseUsageJSONL(jsonlData string) ([]mgmt.UsageEvent, error) {
 			Actor        string `json:"actor"`
 		}
 		if err := json.Unmarshal([]byte(line), &raw); err != nil {
-			return nil, fmt.Errorf("malformed usage line %d: %w", i+1, err)
+			logger.Get().Warn("usage line malformed; dropping",
+				"line_number", i+1,
+				"error", err,
+				"line", truncateForLog(line, 200))
+			continue
 		}
 		ev := mgmt.UsageEvent{
 			Actor:        raw.Actor,
@@ -309,4 +312,13 @@ func parseUsageJSONL(jsonlData string) ([]mgmt.UsageEvent, error) {
 		events = append(events, ev)
 	}
 	return events, nil
+}
+
+// truncateForLog bounds the amount of potentially-untrusted payload that
+// ends up in a log line.
+func truncateForLog(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "…"
 }

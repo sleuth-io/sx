@@ -90,6 +90,13 @@ func newTeamCreateCommand() *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 
+			// Reject obviously-invalid input before any network or
+			// actor-resolution work — both are wasted effort if the
+			// name is blank.
+			if strings.TrimSpace(args[0]) == "" {
+				return mgmt.ErrEmptyTeamName
+			}
+
 			v, err := loadVault()
 			if err != nil {
 				return err
@@ -104,10 +111,6 @@ func newTeamCreateCommand() *cobra.Command {
 			// early rather than deep inside the transaction.
 			if _, err := v.CurrentActor(ctx); err != nil {
 				return err
-			}
-
-			if strings.TrimSpace(args[0]) == "" {
-				return mgmt.ErrEmptyTeamName
 			}
 
 			team := mgmt.Team{

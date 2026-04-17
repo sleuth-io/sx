@@ -163,21 +163,10 @@ func handleNewAssetFromVault(ctx context.Context, cmd *cobra.Command, out *outpu
 	return nil
 }
 
-// handleAssetRemoval removes an asset from the lock file
+// handleAssetRemoval removes an asset from the vault
 func handleAssetRemoval(ctx context.Context, cmd *cobra.Command, out *outputHelper, vault vaultpkg.Vault, foundAsset *lockfile.Asset, promptInstall bool) error {
-	if pathVault, ok := vault.(*vaultpkg.PathVault); ok {
-		lockFilePath := pathVault.GetLockFilePath()
-		if err := lockfile.RemoveAsset(lockFilePath, foundAsset.Name, foundAsset.Version); err != nil {
-			return fmt.Errorf("failed to remove asset from lock file: %w", err)
-		}
-	} else if gitVault, ok := vault.(*vaultpkg.GitVault); ok {
-		lockFilePath := gitVault.GetLockFilePath()
-		if err := lockfile.RemoveAsset(lockFilePath, foundAsset.Name, foundAsset.Version); err != nil {
-			return fmt.Errorf("failed to remove asset from lock file: %w", err)
-		}
-		if err := gitVault.CommitAndPush(ctx, foundAsset); err != nil {
-			return fmt.Errorf("failed to push removal: %w", err)
-		}
+	if err := vault.RemoveAsset(ctx, foundAsset.Name, foundAsset.Version, false); err != nil {
+		return fmt.Errorf("failed to remove asset from vault: %w", err)
 	}
 
 	if promptInstall {

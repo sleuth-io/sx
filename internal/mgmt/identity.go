@@ -20,6 +20,12 @@ var ErrIdentityNotSet = errors.New("identity not set: run 'git config --global u
 type Actor struct {
 	Email string
 	Name  string
+
+	// Synthetic is true when Email was derived from $USER@host instead of
+	// a real git config value. Synthetic actors cannot pass mgmt
+	// mutations because their identity can be spoofed by flipping $USER;
+	// see RequireRealIdentity.
+	Synthetic bool
 }
 
 // String returns "name <email>" if both are set, just the email otherwise.
@@ -28,6 +34,18 @@ func (a Actor) String() string {
 		return fmt.Sprintf("%s <%s>", a.Name, a.Email)
 	}
 	return a.Email
+}
+
+// RequireRealIdentity returns ErrIdentityNotSet if the actor is
+// synthetic. Call this at the top of any mgmt mutation helper that
+// writes to shared vault state (teams, installations, scopes) — a
+// synthetic identity is fine for reads but cannot be trusted as the
+// authoritative actor behind a persisted change.
+func (a Actor) RequireRealIdentity() error {
+	if a.Email == "" || a.Synthetic {
+		return ErrIdentityNotSet
+	}
+	return nil
 }
 
 // actorCache caches the result of CurrentGitActor per repoPath for the
@@ -53,14 +71,20 @@ func CurrentGitActor(ctx context.Context, repoPath string) (Actor, error) {
 	email := readGitConfig(ctx, repoPath, "user.email")
 	name := readGitConfig(ctx, repoPath, "user.name")
 
+	synthetic := false
 	if email == "" {
 		email = fallbackEmail()
+		synthetic = email != ""
 	}
 	if email == "" {
 		return Actor{}, ErrIdentityNotSet
 	}
 
-	actor := Actor{Email: NormalizeEmail(email), Name: strings.TrimSpace(name)}
+	actor := Actor{
+		Email:     NormalizeEmail(email),
+		Name:      strings.TrimSpace(name),
+		Synthetic: synthetic,
+	}
 
 	actorCacheMu.Lock()
 	actorCache[repoPath] = actor
@@ -88,9 +112,11 @@ func readGitConfig(ctx context.Context, repoPath, key string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// fallbackEmail synthesizes an email-like identifier from $USER@<hostname>.
-// Used when git is unconfigured — lets path vaults on developer workstations
-// still produce non-anonymous audit entries.
+// fallbackEmail synthesizes an identifier from `$USER` and the machine
+// hostname, prefixed with `local:` so it can never collide with a real
+// email in a team's admin or member list. Only used for read-side actor
+// resolution on unconfigured workstations; RequireRealIdentity rejects
+// these values for any mutation.
 func fallbackEmail() string {
 	username := os.Getenv("USER")
 	if username == "" {
@@ -103,7 +129,7 @@ func fallbackEmail() string {
 	}
 	host, err := os.Hostname()
 	if err != nil || host == "" {
-		return username
+		return "local:" + username
 	}
-	return username + "@" + host
+	return "local:" + username + "@" + host
 }

@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/bootstrap"
-	"github.com/sleuth-io/sx/internal/constants"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
@@ -77,27 +77,27 @@ func (p *PathVault) Authenticate(ctx context.Context) (string, error) {
 	return "", nil
 }
 
-// GetLockFile retrieves the lock file from the local directory. If the
-// vault has any team/user installations in .sx/installations.toml, they
-// are layered onto the on-disk skill.lock before returning so the install
-// pipeline sees a flattened view. Otherwise the raw bytes are returned
-// unchanged.
+// GetLockFile loads the vault's manifest and returns a lock file resolved
+// for the caller's identity. Team/user scopes in the manifest are
+// flattened to repo-scoped entries based on team membership and the
+// caller's email so the install pipeline sees a concrete, identity-
+// specific view. A shared read lock is held for the duration of the
+// read so concurrent mgmt writes can't commit a manifest without its
+// audit trail between the two IO operations.
 func (p *PathVault) GetLockFile(ctx context.Context, cachedETag string) (content []byte, etag string, notModified bool, err error) {
-	lockFilePath := filepath.Join(p.repoPath, constants.SkillLockFile)
-	if _, err := os.Stat(lockFilePath); os.IsNotExist(err) {
-		return nil, "", false, ErrLockFileNotFound
-	}
-
-	data, err := os.ReadFile(lockFilePath)
-	if err != nil {
-		return nil, "", false, fmt.Errorf("failed to read lock file: %w", err)
-	}
-
-	overlaid, err := applyInstallationsOverlay(ctx, p.repoPath, data)
+	var data []byte
+	err = p.withReadLock(ctx, func() error {
+		bytes, err := resolveLockBytesForActor(ctx, p.repoPath)
+		if err != nil {
+			return err
+		}
+		data = bytes
+		return nil
+	})
 	if err != nil {
 		return nil, "", false, err
 	}
-	return overlaid, "", false, nil
+	return data, "", false, nil
 }
 
 // GetAsset downloads an asset using its source configuration
@@ -204,31 +204,31 @@ func (p *PathVault) PostUsageStats(ctx context.Context, jsonlData string) error 
 	return p.RecordUsageEvents(ctx, events)
 }
 
-// GetLockFilePath returns the path to the lock file in the path repository
-func (p *PathVault) GetLockFilePath() string {
-	return filepath.Join(p.repoPath, constants.SkillLockFile)
+// ManifestPath returns the absolute path to the vault's manifest file.
+func (p *PathVault) ManifestPath() string {
+	return filepath.Join(p.repoPath, manifest.FileName)
 }
 
-// SetInstallations updates the lock file with installation scopes
+// SetInstallations upserts an asset into the vault's manifest. Scopes on
+// the incoming asset are preserved verbatim.
 func (p *PathVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, scopeEntity string) error {
-	lockFilePath := p.GetLockFilePath()
-	return lockfile.AddOrUpdateAsset(lockFilePath, asset)
+	return upsertAssetInManifest(p.repoPath, asset)
 }
 
-// InheritInstallations preserves existing scopes when adding a new version.
-// Reads the lock file, finds any existing version of the asset, and copies its scopes.
+// InheritInstallations copies scopes from any existing entry of this
+// asset in the manifest, then upserts. Used when adding a new version of
+// an asset so its install scopes are preserved.
 func (p *PathVault) InheritInstallations(ctx context.Context, asset *lockfile.Asset) error {
-	lockFilePath := p.GetLockFilePath()
-	if existing, exists := lockfile.FindAsset(lockFilePath, asset.Name); exists {
-		asset.Scopes = existing.Scopes
+	if err := inheritAssetScopesFromManifest(p.repoPath, asset); err != nil {
+		return err
 	}
-	return lockfile.AddOrUpdateAsset(lockFilePath, asset)
+	return upsertAssetInManifest(p.repoPath, asset)
 }
 
-// RemoveAsset removes an asset from the lock file.
-// If delete is true, also permanently removes the asset files from the vault.
+// RemoveAsset removes an asset from the manifest. If delete is true, the
+// asset's files are also removed from the vault's storage directory.
 func (p *PathVault) RemoveAsset(ctx context.Context, assetName, version string, delete bool) error {
-	if err := lockfile.RemoveAsset(p.GetLockFilePath(), assetName, version); err != nil {
+	if err := removeAssetFromManifest(p.repoPath, assetName, version); err != nil {
 		return err
 	}
 
@@ -289,16 +289,15 @@ func (p *PathVault) removeFromVersionList(listPath, version string) error {
 	}
 
 	if len(filtered) == 0 {
-		return os.WriteFile(listPath, []byte(""), 0644)
+		return utils.WriteFileAtomic(listPath, []byte(""), 0644)
 	}
 
 	content := strings.Join(filtered, "\n") + "\n"
-	return os.WriteFile(listPath, []byte(content), 0644)
+	return utils.WriteFileAtomic(listPath, []byte(content), 0644)
 }
 
 // RenameAsset renames an asset in the vault.
 func (p *PathVault) RenameAsset(ctx context.Context, oldName, newName string) error {
-	// Rename asset directory
 	oldDir := filepath.Join(p.repoPath, "assets", oldName)
 	newDir := filepath.Join(p.repoPath, "assets", newName)
 	if _, err := os.Stat(newDir); err == nil {
@@ -308,7 +307,6 @@ func (p *PathVault) RenameAsset(ctx context.Context, oldName, newName string) er
 		return fmt.Errorf("failed to rename asset directory: %w", err)
 	}
 
-	// Update metadata.toml in each version dir
 	versions, err := p.GetVersionList(ctx, newName)
 	if err == nil {
 		for _, v := range versions {
@@ -319,9 +317,7 @@ func (p *PathVault) RenameAsset(ctx context.Context, oldName, newName string) er
 		}
 	}
 
-	// Update lock file
-	lockFilePath := p.GetLockFilePath()
-	return lockfile.RenameAsset(lockFilePath, oldName, newName)
+	return renameAssetInManifest(p.repoPath, oldName, newName)
 }
 
 // updateVersionList updates the list.txt file with a new version
@@ -342,9 +338,10 @@ func (p *PathVault) updateVersionList(listPath, newVersion string) error {
 	// Add new version
 	versions = append(versions, newVersion)
 
-	// Write back to file
+	// Write back to file atomically so concurrent readers never observe a
+	// truncated or partially-written list.
 	content := strings.Join(versions, "\n") + "\n"
-	return os.WriteFile(listPath, []byte(content), 0644)
+	return utils.WriteFileAtomic(listPath, []byte(content), 0644)
 }
 
 // ListAssets returns a list of all assets in the vault by reading the assets/ directory

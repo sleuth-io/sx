@@ -646,7 +646,8 @@ This section is ignored by the core SX tooling but available for custom tools an
 
 ## Integration with Lock File
 
-The lock file (`sx.lock`) references assets with their resolved metadata:
+The per-user resolved lock file (see [lock-spec.md](lock-spec.md))
+references assets with their resolved metadata:
 
 ```toml
 [[assets]]

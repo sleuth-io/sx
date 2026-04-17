@@ -28,9 +28,10 @@ make build && ./dist/sx <command>
 ## Key Specifications
 
 - [Vault Spec](docs/vault-spec.md) - Vault structure and management
+- [Manifest Spec](docs/manifest-spec.md) - sx.toml format (source of truth)
+- [Lock Spec](docs/lock-spec.md) - Per-user resolved lock file format
+- [Teams & installs](docs/teams.md) - Team management, targeted installs, audit, stats
 - [Metadata Spec](docs/metadata-spec.md) - Asset metadata format and fields
-- [Requirements Spec](docs/requirements-spec.md) - Dependency requirements syntax
-- [Lock Spec](docs/lock-spec.md) - Lock file format for resolved dependencies
 - [MCP Spec](docs/mcp-spec.md) - MCP server tools (query)
 
 ## Development

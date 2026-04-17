@@ -8,51 +8,45 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
 )
 
-// TestPathVault_TeamUserLifecycleE2E exercises the full management flow on
-// a path vault: create a team, add members, install an asset to both a
-// team and a user, record usage events, then assert the queried state.
-// This mirrors the real-world CLI flow without actually spawning `sx`.
+// TestPathVault_TeamUserLifecycleE2E exercises the full management flow
+// on a path vault: seed sx.toml, create a team, add members, install an
+// asset to both a team and a user, record usage events, then assert the
+// queried state. Mirrors the real-world CLI flow without spawning `sx`.
 func TestPathVault_TeamUserLifecycleE2E(t *testing.T) {
 	mgmt.ResetActorCache()
 	dir := t.TempDir()
 
-	// Initialize a real git repo so mgmt.CurrentGitActor can resolve the
-	// caller identity via `git config user.email`.
 	runGit(t, dir, "init")
 	runGit(t, dir, "config", "user.email", "alice@example.com")
 	runGit(t, dir, "config", "user.name", "Alice Admin")
 
-	// Seed the vault with a bare skill.lock so AddAsset-style flows are
-	// not required. The fields match the minimum schema the parser needs.
-	seedLock := []byte(`lock-version = "1.0"
-version = "test"
-created-by = "test"
-
-[[assets]]
-name = "my-skill"
-version = "1.0.0"
-type = "skill"
-
-  [assets.source-http]
-  url = "https://example.com/my-skill.zip"
-
-  [[assets.scopes]]
-  repo = "github.com/acme/baseline"
-
-[[assets]]
-name = "other-skill"
-version = "1.0.0"
-type = "rule"
-
-  [assets.source-http]
-  url = "https://example.com/other.zip"
-`)
-	if err := writeFile(filepath.Join(dir, "sx.lock"), seedLock); err != nil {
-		t.Fatalf("write seed lock: %v", err)
+	if err := manifest.Save(dir, &manifest.Manifest{
+		SchemaVersion: manifest.CurrentSchemaVersion,
+		Assets: []manifest.Asset{
+			{
+				Name:       "my-skill",
+				Version:    "1.0.0",
+				Type:       asset.TypeSkill,
+				SourceHTTP: &manifest.SourceHTTP{URL: "https://example.com/my-skill.zip"},
+				Scopes: []manifest.Scope{
+					{Kind: manifest.ScopeKindRepo, Repo: "github.com/acme/baseline"},
+				},
+			},
+			{
+				Name:       "other-skill",
+				Version:    "1.0.0",
+				Type:       asset.TypeRule,
+				SourceHTTP: &manifest.SourceHTTP{URL: "https://example.com/other.zip"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed manifest: %v", err)
 	}
 
 	v, err := NewPathVault("file://" + dir)
@@ -74,7 +68,7 @@ type = "rule"
 		t.Fatalf("CreateTeam failed: %v", err)
 	}
 
-	// 2. List teams and verify it comes back.
+	// 2. List teams and verify.
 	teams, err := v.ListTeams(ctx)
 	if err != nil {
 		t.Fatalf("ListTeams failed: %v", err)
@@ -99,10 +93,9 @@ type = "rule"
 		t.Fatalf("SetAssetInstallation (user) failed: %v", err)
 	}
 
-	// 5. Fetch the lock file and verify overlay: alice is a member of
-	// platform, so she should see the team's repos merged with her base
-	// repo scope. Alice is also the user-scoped target, which marks the
-	// asset global (empty Scopes wins over team expansion).
+	// 5. Fetch the lock file and verify resolution: alice is the user-
+	// scoped target, which marks the asset global (empty Scopes wins
+	// over team expansion).
 	raw, _, _, err := v.GetLockFile(ctx, "")
 	if err != nil {
 		t.Fatalf("GetLockFile failed: %v", err)
@@ -111,17 +104,9 @@ type = "rule"
 	if err != nil {
 		t.Fatalf("parse lock: %v", err)
 	}
-	var mySkill *lockfile.Asset
-	for i := range lf.Assets {
-		if lf.Assets[i].Name == "my-skill" {
-			mySkill = &lf.Assets[i]
-		}
-	}
-	if mySkill == nil {
-		t.Fatal("my-skill not found in overlaid lock file")
-		return
-	}
-	if len(mySkill.Scopes) != 0 {
+	if mySkill := findLockAsset(lf, "my-skill"); mySkill == nil {
+		t.Fatal("my-skill not found in resolved lock file")
+	} else if len(mySkill.Scopes) != 0 {
 		t.Errorf("expected my-skill to be global (user scope wins), got scopes %+v", mySkill.Scopes)
 	}
 
@@ -130,24 +115,19 @@ type = "rule"
 	if err := v.ClearAssetInstallations(ctx, "my-skill"); err != nil {
 		t.Fatalf("ClearAssetInstallations failed: %v", err)
 	}
-	// ClearAssetInstallations also wipes the asset's Scopes in skill.lock,
-	// so reseed one baseline scope to verify overlay math against a
-	// non-empty starting state.
-	if err := lockfile.Write(&lockfile.LockFile{
-		LockVersion: lf.LockVersion,
-		Version:     lf.Version,
-		CreatedBy:   lf.CreatedBy,
-		Assets: []lockfile.Asset{
-			{
-				Name:       "my-skill",
-				Version:    "1.0.0",
-				Type:       lf.Assets[0].Type,
-				SourceHTTP: &lockfile.SourceHTTP{URL: "https://example.com/my-skill.zip"},
-				Scopes:     []lockfile.Scope{{Repo: "github.com/acme/baseline"}},
-			},
-		},
-	}, filepath.Join(dir, "sx.lock")); err != nil {
-		t.Fatalf("reseed lockfile.Write failed: %v", err)
+	// Restore a baseline repo scope so the team overlay lands on top of
+	// an existing non-empty scope list.
+	m, _, err := manifest.LoadOrMigrate(dir)
+	if err != nil {
+		t.Fatalf("reload manifest: %v", err)
+	}
+	if asset := m.FindAsset("my-skill"); asset != nil {
+		asset.Scopes = []manifest.Scope{
+			{Kind: manifest.ScopeKindRepo, Repo: "github.com/acme/baseline"},
+		}
+	}
+	if err := manifest.Save(dir, m); err != nil {
+		t.Fatalf("save manifest after reseed: %v", err)
 	}
 	if err := v.SetAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindTeam, Team: "platform"}); err != nil {
 		t.Fatalf("re-install team failed: %v", err)
@@ -161,17 +141,13 @@ type = "rule"
 	if err != nil {
 		t.Fatalf("parse lock: %v", err)
 	}
-	for i := range lf.Assets {
-		if lf.Assets[i].Name == "my-skill" {
-			mySkill = &lf.Assets[i]
-		}
-	}
-	if mySkill == nil || len(mySkill.Scopes) < 2 {
-		t.Fatalf("expected overlay to add team repos, got %+v", mySkill)
+	if mySkill := findLockAsset(lf, "my-skill"); mySkill == nil {
+		t.Fatal("my-skill missing from re-installed lock")
+	} else if len(mySkill.Scopes) < 2 {
+		t.Errorf("expected resolved scopes to include team repos, got %+v", mySkill.Scopes)
 	}
 
-	// 7. Record usage events for both alice and bob against my-skill, and
-	// one for a third user against a different asset.
+	// 7. Record usage events.
 	events := []mgmt.UsageEvent{
 		{Actor: "alice@example.com", AssetName: "my-skill", AssetVersion: "1.0.0", AssetType: "skill"},
 		{Actor: "bob@example.com", AssetName: "my-skill", AssetVersion: "1.0.0", AssetType: "skill"},
@@ -181,7 +157,6 @@ type = "rule"
 		t.Fatalf("RecordUsageEvents failed: %v", err)
 	}
 
-	// 8. Query stats: my-skill should be the top asset.
 	summary, err := v.GetUsageStats(ctx, mgmt.UsageFilter{})
 	if err != nil {
 		t.Fatalf("GetUsageStats failed: %v", err)
@@ -196,8 +171,8 @@ type = "rule"
 		t.Errorf("expected 2 unique actors for my-skill, got %d", summary.PerAsset[0].UniqueActors)
 	}
 
-	// 9. Audit events should include team create, repo add, install set,
-	// and install cleared — at least these five.
+	// 8. Audit events should include team create, repo add, install set,
+	// and install cleared.
 	events2, err := v.QueryAuditEvents(ctx, mgmt.AuditFilter{})
 	if err != nil {
 		t.Fatalf("QueryAuditEvents failed: %v", err)
@@ -209,19 +184,13 @@ type = "rule"
 		mgmt.EventTeamCreated,
 	}
 	for _, want := range wantEvents {
-		found := false
-		for _, ev := range events2 {
-			if ev.Event == want {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !anyAuditEvent(events2, want) {
 			t.Errorf("expected audit event %q not found", want)
 		}
 	}
 
-	// 10. Delete the team and verify cascade removal of installations.
+	// 9. Delete the team and verify cascade removal of team-scoped
+	// installs from the manifest.
 	if err := v.DeleteTeam(ctx, "platform"); err != nil {
 		t.Fatalf("DeleteTeam failed: %v", err)
 	}
@@ -233,20 +202,20 @@ type = "rule"
 		t.Errorf("expected no teams, got %d", len(teams))
 	}
 
-	// Installations row for the deleted team should be gone.
-	ifile, _, err := mgmt.LoadInstallations(dir)
+	m, _, err = manifest.LoadOrMigrate(dir)
 	if err != nil {
-		t.Fatalf("LoadInstallations failed: %v", err)
+		t.Fatalf("reload manifest after delete: %v", err)
 	}
-	for _, ins := range ifile.Installations {
-		if ins.Kind == mgmt.InstallKindTeam && ins.Team == "platform" {
-			t.Errorf("expected team install row to be cascade-deleted, still found: %+v", ins)
+	for _, asset := range m.Assets {
+		for _, s := range asset.Scopes {
+			if s.Kind == manifest.ScopeKindTeam && s.Team == "platform" {
+				t.Errorf("expected team scope to be cascade-deleted from %s, still found: %+v", asset.Name, s)
+			}
 		}
 	}
 
-	// 11. Cascade delete should emit install.cleared audit events per
-	// asset so auditors can reconstruct why an asset stopped installing
-	// for team members after the team itself was removed.
+	// 10. Cascade delete should emit install.cleared audit events per
+	// asset so auditors can reconstruct why an asset stopped installing.
 	events3, err := v.QueryAuditEvents(ctx, mgmt.AuditFilter{})
 	if err != nil {
 		t.Fatalf("QueryAuditEvents after delete failed: %v", err)
@@ -269,11 +238,10 @@ type = "rule"
 	}
 }
 
-// TestPathVault_SetAssetInstallation_RejectsOtherUser verifies the
-// user-scoped install guard: only the authenticated caller may be the
-// target. Any write-access holder (push, shared filesystem) could
-// otherwise force an asset to be "global" in another teammate's scope
-// via the overlay rule that matches on email.
+// TestPathVault_SetAssetInstallation_RejectsOtherUser verifies the user-
+// scoped install guard: only the authenticated caller may be the target.
+// Any write-access holder could otherwise force an asset to be "global"
+// in another user's resolved lock via the user-match rule.
 func TestPathVault_SetAssetInstallation_RejectsOtherUser(t *testing.T) {
 	mgmt.ResetActorCache()
 	dir := t.TempDir()
@@ -282,27 +250,24 @@ func TestPathVault_SetAssetInstallation_RejectsOtherUser(t *testing.T) {
 	runGit(t, dir, "config", "user.email", "alice@example.com")
 	runGit(t, dir, "config", "user.name", "Alice Admin")
 
-	seedLock := []byte(`lock-version = "1.0"
-version = "test"
-created-by = "test"
-
-[[assets]]
-name = "my-skill"
-version = "1.0.0"
-type = "skill"
-
-  [assets.source-http]
-  url = "https://example.com/my-skill.zip"
-`)
-	if err := writeFile(filepath.Join(dir, "sx.lock"), seedLock); err != nil {
-		t.Fatalf("write seed lock: %v", err)
+	if err := manifest.Save(dir, &manifest.Manifest{
+		SchemaVersion: manifest.CurrentSchemaVersion,
+		Assets: []manifest.Asset{
+			{
+				Name:       "my-skill",
+				Version:    "1.0.0",
+				Type:       asset.TypeSkill,
+				SourceHTTP: &manifest.SourceHTTP{URL: "https://example.com/my-skill.zip"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed manifest: %v", err)
 	}
 
 	v, err := NewPathVault("file://" + dir)
 	if err != nil {
 		t.Fatalf("NewPathVault failed: %v", err)
 	}
-
 	ctx := context.Background()
 
 	err = v.SetAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindUser, User: "bob@example.com"})
@@ -313,7 +278,6 @@ type = "skill"
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	// Self-install must still succeed.
 	if err := v.SetAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindUser, User: "alice@example.com"}); err != nil {
 		t.Fatalf("self-install should succeed: %v", err)
 	}
@@ -321,9 +285,7 @@ type = "skill"
 
 // TestPathVault_TeamMutationsRequireAdmin verifies that every destructive
 // team mutation enforces admin membership inside the transaction, not
-// just at the CLI pre-check. Bob is a non-admin member of the team and
-// must not be able to mutate it even by calling the common helpers
-// directly — the CLI-level fast-fail is advisory only.
+// just at the CLI pre-check.
 func TestPathVault_TeamMutationsRequireAdmin(t *testing.T) {
 	mgmt.ResetActorCache()
 	dir := t.TempDir()
@@ -347,8 +309,6 @@ func TestPathVault_TeamMutationsRequireAdmin(t *testing.T) {
 		t.Fatalf("CreateTeam failed: %v", err)
 	}
 
-	// Switch the git identity to bob — the vault's CurrentActor now
-	// resolves to a non-admin. Every mutation below should reject.
 	mgmt.ResetActorCache()
 	runGit(t, dir, "config", "user.email", "bob@example.com")
 	runGit(t, dir, "config", "user.name", "Bob Notadmin")
@@ -372,23 +332,34 @@ func TestPathVault_TeamMutationsRequireAdmin(t *testing.T) {
 	assertNotAdmin("DeleteTeam", v.DeleteTeam(ctx, "platform"))
 }
 
-// TestPathVault_NoInstallationsFileLockFilePassthrough verifies the fast
-// path: when .sx/installations.toml does not exist, GetLockFile returns
-// the raw skill.lock bytes unchanged so legacy vaults have zero overhead.
-func TestPathVault_NoInstallationsFileLockFilePassthrough(t *testing.T) {
+// TestPathVault_LockFileMigration seeds a pre-manifest sx.lock and
+// asserts that the first vault read synthesizes an equivalent sx.toml
+// and archives the legacy lock file with a .migrated suffix.
+func TestPathVault_LockFileMigration(t *testing.T) {
 	mgmt.ResetActorCache()
 	dir := t.TempDir()
-	raw := []byte(`lock-version = "1.0"
-version = "test"
+
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice Admin")
+
+	seedLock := []byte(`lock-version = "1.0"
+version = "legacy"
 created-by = "test"
 
 [[assets]]
-name = "foo"
+name = "legacy-skill"
 version = "1.0.0"
 type = "skill"
+
+  [assets.source-http]
+  url = "https://example.com/legacy.zip"
+
+  [[assets.scopes]]
+  repo = "github.com/acme/legacy"
 `)
-	if err := writeFile(filepath.Join(dir, "sx.lock"), raw); err != nil {
-		t.Fatalf("write: %v", err)
+	if err := writeFile(filepath.Join(dir, "sx.lock"), seedLock); err != nil {
+		t.Fatalf("write seed lock: %v", err)
 	}
 
 	v, err := NewPathVault("file://" + dir)
@@ -396,13 +367,51 @@ type = "skill"
 		t.Fatalf("NewPathVault failed: %v", err)
 	}
 
-	got, _, _, err := v.GetLockFile(context.Background(), "")
+	// Any read-side call triggers LoadOrMigrate.
+	if _, err := v.ListTeams(context.Background()); err != nil {
+		t.Fatalf("ListTeams (triggers migration) failed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, manifest.FileName)); err != nil {
+		t.Errorf("sx.toml not written: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "sx.lock")); !os.IsNotExist(err) {
+		t.Errorf("sx.lock should have been renamed, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "sx.lock.migrated")); err != nil {
+		t.Errorf("sx.lock.migrated not created: %v", err)
+	}
+
+	m, _, err := manifest.LoadOrMigrate(dir)
 	if err != nil {
-		t.Fatalf("GetLockFile failed: %v", err)
+		t.Fatalf("load manifest: %v", err)
 	}
-	if string(got) != string(raw) {
-		t.Errorf("expected raw passthrough, got modified bytes:\nwant=%q\ngot=%q", raw, got)
+	skill := m.FindAsset("legacy-skill")
+	if skill == nil {
+		t.Fatal("legacy-skill missing from migrated manifest")
+		return
 	}
+	if len(skill.Scopes) != 1 || skill.Scopes[0].Kind != manifest.ScopeKindRepo {
+		t.Errorf("expected one repo scope after migration; got %+v", skill.Scopes)
+	}
+}
+
+func findLockAsset(lf *lockfile.LockFile, name string) *lockfile.Asset {
+	for i := range lf.Assets {
+		if lf.Assets[i].Name == name {
+			return &lf.Assets[i]
+		}
+	}
+	return nil
+}
+
+func anyAuditEvent(events []mgmt.AuditEvent, name string) bool {
+	for _, ev := range events {
+		if ev.Event == name {
+			return true
+		}
+	}
+	return false
 }
 
 // writeFile is a tiny helper that creates missing parent dirs.

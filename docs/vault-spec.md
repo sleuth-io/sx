@@ -23,13 +23,21 @@ Both use identical directory structure.
 ## Directory Structure
 
 ```
-{vault-base}/
-  {asset-name}/
-    list.txt                              # Version listing
-    {version}/
-      metadata.toml                       # Asset metadata
-      {asset-name}-{version}.zip          # Asset package
+{vault-root}/
+  sx.toml                                 # Manifest (source of truth) — see manifest-spec.md
+  .sx/
+    audit/YYYY-MM.jsonl                   # Audit event stream (append-only)
+    usage/YYYY-MM.jsonl                   # Usage event stream (append-only)
+  assets/
+    {asset-name}/
+      list.txt                            # Version listing
+      {version}/
+        metadata.toml                     # Asset metadata
+        {asset-name}-{version}.zip        # Asset package
 ```
+
+`sx.toml` holds the assets list, install scopes, and team definitions.
+See [manifest-spec.md](manifest-spec.md) for the full schema.
 
 ### Example: Filesystem Vault
 
@@ -185,12 +193,12 @@ type = "path"
 base = "./assets"
 ```
 
-Or relative to requirements file:
+Or relative to the vault config file:
 
 ```toml
 [default-source]
 type = "path"
-base = "."  # Same directory as sx.txt
+base = "."
 ```
 
 ### HTTP Vault
@@ -363,12 +371,6 @@ rsync -avz ./assets/ user@server:/var/www/assets/
 
 **Directory**: `./my-project/assets/`
 
-**sx.txt**:
-
-```txt
-my-skill>=1.0.0
-```
-
 **config.toml**:
 
 ```toml
@@ -393,13 +395,6 @@ base = "./assets"
 
 ### Example 2: Company Internal Vault
 
-**sx.txt**:
-
-```txt
-github-mcp==1.2.3
-code-reviewer>=3.0.0
-```
-
 **config.toml**:
 
 ```toml
@@ -421,22 +416,6 @@ GET https://vault.company.com/assets/code-reviewer/3.0.0/code-reviewer-3.0.0.zip
 ```
 
 ### Example 3: Mixed Sources
-
-**sx.txt**:
-
-```txt
-# From default vault
-github-mcp==1.2.3
-
-# Explicit HTTP source
-https://cdn.example.com/skills/formatter-2.0.0.zip
-
-# Local development
-./local-skills/debug-skill.zip
-
-# Git source
-git+https://github.com/company/tools.git@main#name=api-helper
-```
 
 **config.toml**:
 

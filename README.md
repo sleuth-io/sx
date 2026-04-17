@@ -71,6 +71,43 @@ sx profile use work        # Switch to it
 sx profile list            # See all profiles
 ```
 
+**Targeted installs** — pick who sees which asset:
+
+```bash
+sx install my-skill --org                         # everyone in the vault
+sx install my-skill --repo github.com/acme/infra  # only installs when run in that repo
+sx install my-skill --path github.com/acme/infra#docs/  # only for a path in a repo
+sx install my-skill --team platform               # everyone on a team
+sx install my-skill --user alice@acme.com         # a single user (must be the caller)
+```
+
+**Teams** (git + path vaults):
+
+```bash
+sx team create platform --member alice@acme.com --admin alice@acme.com \
+                        --repo github.com/acme/infra
+sx team member add platform bob@acme.com
+sx team admin set platform bob@acme.com       # promote bob
+sx team repo add platform github.com/acme/tools
+sx team show platform
+sx team list
+sx team delete platform --yes
+```
+
+Teams have at least one admin at all times; mutations that would leave a
+team admin-less are rejected. User-scoped installs can only target the
+caller (prevents write-access holders from silently promoting an asset
+for teammates).
+
+**Usage analytics & audit**:
+
+```bash
+sx stats                                   # adoption dashboard
+sx stats --since 7d --json                 # machine-readable
+sx audit                                   # recent team/install mutations
+sx audit --actor alice@acme.com --since 30d --event install.set
+```
+
 ### Already using Claude Code?
 
 If you've built up skills, plugins, or MCP configs in your `.claude` directory, `sx` helps you version, sync across machines, and share with teammates.
@@ -134,13 +171,26 @@ sx init --type sleuth
 
 ## How it works
 
-sx uses a lock file (like package-lock.json) for deterministic installations across your team:
+sx follows the manifest-and-lock pattern used by npm, cargo, and uv:
 
-1. **Create** assets with metadata (name, version, dependencies)
-2. **Share** to your vault
-3. **Install** [globally, per project, or even per path](docs/scoping.md) (monorepo support!)
-4. **Auto-install** on new Claude Code sessions
-5. **Stay synchronized** - everyone gets the same tools automatically
+1. **Manifest (`sx.toml`)** — the vault's source of truth. Lists every
+   managed asset, its install scopes (`org`, `repo`, `path`, `team`,
+   `user`), and team definitions (members, admins, repositories).
+   Committed to git / path vaults. See [docs/manifest-spec.md](docs/manifest-spec.md).
+2. **Lock file** — a per-user resolved artifact. `sx install` reads the
+   manifest, resolves team and user scopes against the caller's git
+   identity, and writes the result to the user's cache directory
+   (`~/<cache>/sx/lockfiles/`). When the resolved lock changes, the
+   previous file is rotated with a timestamp so old installs stay
+   reproducible.
+3. **Audit + usage streams** — every team/install mutation appends an
+   audit entry to `.sx/audit/YYYY-MM.jsonl`; usage events append to
+   `.sx/usage/YYYY-MM.jsonl`. Query them with `sx audit` / `sx stats`.
+
+High level: **create** assets with metadata, **share** to your vault,
+**install** [globally, per project, per path, per team, or per user](docs/scoping.md),
+**auto-install** on new Claude Code sessions, **stay synchronized** —
+everyone gets the same tools automatically.
 
 ## Supported Clients
 
@@ -182,11 +232,13 @@ See LICENSE file for details.
 
 ### Documentation
 
-- [Vault Spec](docs/vault-spec.md) - Skills vault structure
-- [Metadata Spec](docs/metadata-spec.md) - Skill metadata format
-- [Lock Spec](docs/lock-spec.md) - Lock file format
-- [MCP Spec](docs/mcp-spec.md) - MCP server and query tool
+- [Vault Spec](docs/vault-spec.md) - Vault directory structure
+- [Manifest Spec](docs/manifest-spec.md) - sx.toml source-of-truth format (assets, scopes, teams)
+- [Lock Spec](docs/lock-spec.md) - Per-user resolved lock file
+- [Teams, installs, audit, stats](docs/teams.md) - CLI surface for team and install management
 - [Scoping](docs/scoping.md) - Controlling where assets are installed
+- [Metadata Spec](docs/metadata-spec.md) - Asset metadata format
+- [MCP Spec](docs/mcp-spec.md) - MCP server and query tool
 - [Profiles](docs/profiles.md) - Multiple configuration profiles
 - [Clients](docs/clients.md) - Client support model and IDE vs CLI limitations
 

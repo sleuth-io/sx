@@ -1,21 +1,19 @@
 package commands
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 
-	"github.com/sleuth-io/sx/internal/constants"
+	"github.com/sleuth-io/sx/internal/config"
 )
 
-// RunDefaultCommand runs the default command (install if lock file exists)
+// RunDefaultCommand runs `sx install` when the current directory is
+// already configured for a vault, and otherwise shows help. "Configured"
+// means the sx config file resolves — not that any lock file exists in
+// the working directory, because in the current layout the per-user lock
+// lives in the cache directory, not the project.
 func RunDefaultCommand(cmd *cobra.Command, args []string) error {
-	// Check if sx.lock exists in current directory
-	if _, err := os.Stat(constants.SkillLockFile); err == nil {
-		// Lock file exists, run install (not in hook mode, no specific client)
+	if _, err := config.Load(); err == nil {
 		return runInstall(cmd, args, false, "", false, "", "")
 	}
-
-	// No lock file, just show help
 	return cmd.Help()
 }

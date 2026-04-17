@@ -528,6 +528,10 @@ func sleuthMutationErrorsToErr(errs []sleuthMutationError) error {
 
 // runMutation executes a mutation that has a {errors { field messages }}
 // payload under the named root field, decoding and surfacing errors.
+// A payload shape that no longer matches the expected schema (e.g. the
+// server renamed the errors field) is propagated as an error rather
+// than silently swallowed — silently dropping schema drift here would
+// turn a failed mutation into an apparent success.
 func (s *SleuthVault) runMutation(ctx context.Context, mutation string, vars map[string]any, rootField string) error {
 	raw := json.RawMessage{}
 	resp := struct {
@@ -548,7 +552,7 @@ func (s *SleuthVault) runMutation(ctx context.Context, mutation string, vars map
 		Errors []sleuthMutationError `json:"errors"`
 	}
 	if err := json.Unmarshal(payload, &errEnv); err != nil {
-		return nil
+		return fmt.Errorf("unexpected %s mutation response shape: %w", rootField, err)
 	}
 	return sleuthMutationErrorsToErr(errEnv.Errors)
 }

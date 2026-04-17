@@ -20,10 +20,10 @@ import (
 
 	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/cache"
-	"github.com/sleuth-io/sx/internal/constants"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
@@ -114,40 +114,26 @@ func (g *GitVault) acquireFileLock(ctx context.Context) (*flock.Flock, error) {
 	return fileLock, nil
 }
 
-// GetLockFile retrieves the lock file from the Git repository. If the
-// vault has any team/user installations in .sx/installations.toml, they
-// are layered onto the on-disk skill.lock before returning so the install
-// pipeline sees a flattened view. Otherwise the raw bytes are returned
-// unchanged.
+// GetLockFile clones or syncs the Git vault, then returns a lock file
+// resolved from the vault's manifest for the caller's identity. Team and
+// user scopes are flattened to repo-scoped entries based on team
+// membership and the caller's git config email.
 func (g *GitVault) GetLockFile(ctx context.Context, cachedETag string) (content []byte, etag string, notModified bool, err error) {
-	// Acquire file lock to prevent concurrent git operations (both in-process and cross-process)
 	fileLock, err := g.acquireFileLock(ctx)
 	if err != nil {
 		return nil, "", false, fmt.Errorf("failed to acquire lock: %w", err)
 	}
 	defer func() { _ = fileLock.Unlock() }()
 
-	// Clone or update repository
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return nil, "", false, fmt.Errorf("failed to clone/update repository: %w", err)
 	}
 
-	// Read skill.lock from repository root
-	lockFilePath := filepath.Join(g.repoPath, constants.SkillLockFile)
-	if _, err := os.Stat(lockFilePath); os.IsNotExist(err) {
-		return nil, "", false, ErrLockFileNotFound
-	}
-
-	data, err := os.ReadFile(lockFilePath)
-	if err != nil {
-		return nil, "", false, fmt.Errorf("failed to read lock file: %w", err)
-	}
-
-	overlaid, err := applyInstallationsOverlay(ctx, g.repoPath, data)
+	data, err := resolveLockBytesForActor(ctx, g.repoPath)
 	if err != nil {
 		return nil, "", false, err
 	}
-	return overlaid, "", false, nil
+	return data, "", false, nil
 }
 
 // GetAsset downloads an asset using its source configuration
@@ -217,9 +203,9 @@ func (g *GitVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipData 
 	return nil
 }
 
-// GetLockFilePath returns the path to the lock file in the git repository
-func (g *GitVault) GetLockFilePath() string {
-	return filepath.Join(g.repoPath, constants.SkillLockFile)
+// ManifestPath returns the absolute path to the vault's manifest file.
+func (g *GitVault) ManifestPath() string {
+	return filepath.Join(g.repoPath, manifest.FileName)
 }
 
 // CommitAndPush commits all changes and pushes to remote
@@ -692,14 +678,15 @@ func (g *GitVault) updateVersionList(listPath, newVersion string) error {
 	// Add new version
 	versions = append(versions, newVersion)
 
-	// Write back to file
+	// Write back to file atomically so a concurrent reader never
+	// observes a truncated or partially-written list.
 	var buf bytes.Buffer
 	for _, v := range versions {
 		buf.WriteString(v)
 		buf.WriteByte('\n')
 	}
 
-	return os.WriteFile(listPath, buf.Bytes(), 0644)
+	return utils.WriteFileAtomic(listPath, buf.Bytes(), 0644)
 }
 
 // PostUsageStats parses the JSONL payload produced by stats.FlushQueue and
@@ -714,27 +701,22 @@ func (g *GitVault) PostUsageStats(ctx context.Context, jsonlData string) error {
 	return g.RecordUsageEvents(ctx, events)
 }
 
-// SetInstallations updates the lock file with installation scopes and commits/pushes
+// SetInstallations upserts the asset into the vault's manifest and pushes.
 func (g *GitVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, scopeEntity string) error {
-	// Acquire file lock to prevent concurrent git operations
 	fileLock, err := g.acquireFileLock(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to acquire lock: %w", err)
 	}
 	defer func() { _ = fileLock.Unlock() }()
 
-	// Clone or update repository
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
 
-	// Update lock file with asset and scopes
-	lockFilePath := g.GetLockFilePath()
-	if err := lockfile.AddOrUpdateAsset(lockFilePath, asset); err != nil {
-		return fmt.Errorf("failed to update lock file: %w", err)
+	if err := upsertAssetInManifest(g.repoPath, asset); err != nil {
+		return fmt.Errorf("failed to update manifest: %w", err)
 	}
 
-	// Commit and push changes
 	if err := g.commitAndPush(ctx, asset); err != nil {
 		return fmt.Errorf("failed to commit and push: %w", err)
 	}
@@ -742,34 +724,27 @@ func (g *GitVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, 
 	return nil
 }
 
-// InheritInstallations preserves existing scopes when adding a new version.
-// Reads the lock file, finds any existing version of the asset, copies its scopes,
-// then commits and pushes.
+// InheritInstallations copies scopes from any existing entry of this
+// asset in the manifest, upserts the asset with those scopes, and
+// commits/pushes.
 func (g *GitVault) InheritInstallations(ctx context.Context, asset *lockfile.Asset) error {
-	// Acquire file lock to prevent concurrent git operations
 	fileLock, err := g.acquireFileLock(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to acquire lock: %w", err)
 	}
 	defer func() { _ = fileLock.Unlock() }()
 
-	// Clone or update repository
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
 
-	// Copy scopes from existing asset if found
-	lockFilePath := g.GetLockFilePath()
-	if existing, exists := lockfile.FindAsset(lockFilePath, asset.Name); exists {
-		asset.Scopes = existing.Scopes
+	if err := inheritAssetScopesFromManifest(g.repoPath, asset); err != nil {
+		return fmt.Errorf("failed to inherit scopes: %w", err)
+	}
+	if err := upsertAssetInManifest(g.repoPath, asset); err != nil {
+		return fmt.Errorf("failed to update manifest: %w", err)
 	}
 
-	// Update lock file with asset
-	if err := lockfile.AddOrUpdateAsset(lockFilePath, asset); err != nil {
-		return fmt.Errorf("failed to update lock file: %w", err)
-	}
-
-	// Commit and push changes
 	if err := g.commitAndPush(ctx, asset); err != nil {
 		return fmt.Errorf("failed to commit and push: %w", err)
 	}
@@ -792,9 +767,8 @@ func (g *GitVault) RemoveAsset(ctx context.Context, assetName, version string, d
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
 
-	// Remove from lock file
-	if err := lockfile.RemoveAsset(g.GetLockFilePath(), assetName, version); err != nil {
-		return fmt.Errorf("failed to remove asset from lock file: %w", err)
+	if err := removeAssetFromManifest(g.repoPath, assetName, version); err != nil {
+		return fmt.Errorf("failed to remove asset from manifest: %w", err)
 	}
 
 	// If delete, also remove asset files from the vault
@@ -888,7 +862,7 @@ func (g *GitVault) removeFromVersionList(listPath, version string) error {
 	}
 
 	if len(filtered) == 0 {
-		return os.WriteFile(listPath, []byte(""), 0644)
+		return utils.WriteFileAtomic(listPath, []byte(""), 0644)
 	}
 
 	var buf bytes.Buffer
@@ -896,7 +870,7 @@ func (g *GitVault) removeFromVersionList(listPath, version string) error {
 		buf.WriteString(v)
 		buf.WriteByte('\n')
 	}
-	return os.WriteFile(listPath, buf.Bytes(), 0644)
+	return utils.WriteFileAtomic(listPath, buf.Bytes(), 0644)
 }
 
 // RenameAsset renames an asset in the vault.
@@ -936,10 +910,8 @@ func (g *GitVault) RenameAsset(ctx context.Context, oldName, newName string) err
 		}
 	}
 
-	// Update lock file: rename all entries with old name to new name
-	lockFilePath := g.GetLockFilePath()
-	if err := lockfile.RenameAsset(lockFilePath, oldName, newName); err != nil {
-		return fmt.Errorf("failed to update lock file: %w", err)
+	if err := renameAssetInManifest(g.repoPath, oldName, newName); err != nil {
+		return fmt.Errorf("failed to update manifest: %w", err)
 	}
 
 	// Stage, commit and push

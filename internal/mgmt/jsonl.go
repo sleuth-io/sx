@@ -72,37 +72,6 @@ func readJSONL[T any](path string) ([]T, error) {
 	return out, nil
 }
 
-// writeFileAtomic writes data to path via a tmp + rename, which is atomic
-// on POSIX filesystems. Readers never observe a partial write — they see
-// either the old file or the new file. Used by TOML writers in the mgmt
-// package so that concurrent read/write on path vaults can't race to a
-// truncated file.
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".tmp-"+filepath.Base(path)+"-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	tmpPath := tmp.Name()
-	defer func() { _ = os.Remove(tmpPath) }()
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("failed to write temp file: %w", err)
-	}
-	if err := tmp.Chmod(perm); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("failed to chmod temp file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("failed to close temp file: %w", err)
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("failed to rename temp file: %w", err)
-	}
-	return nil
-}
-
 // readMonthlyJSONLDir reads every *.jsonl file in dir (in lexical order,
 // which is monotonically increasing month order given the YYYY-MM naming)
 // and returns the concatenated events. A non-existent directory returns

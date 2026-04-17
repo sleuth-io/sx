@@ -1,7 +1,6 @@
 package vault
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,100 +8,66 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/sleuth-io/sx/internal/constants"
-	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/scope"
 )
 
-// lockFilePathForRoot returns the skill.lock path for a vault root.
-func lockFilePathForRoot(vaultRoot string) string {
-	return filepath.Join(vaultRoot, constants.SkillLockFile)
-}
-
 // ensureSxDir creates the .sx/ directory under the vault root if needed.
-// File locks placed inside .sx/ require the directory to exist.
+// File locks and the append-only usage/audit JSONL streams live there.
 func ensureSxDir(vaultRoot string) error {
 	return os.MkdirAll(filepath.Join(vaultRoot, ".sx"), 0755)
 }
 
-// applyInstallationsOverlay flattens team/user installations from
-// .sx/installations.toml onto the given raw skill.lock bytes. If the
-// installations file is missing or empty, the raw bytes are returned
-// unchanged (fast path — zero overhead for vaults that never use the new
-// management features).
-func applyInstallationsOverlay(ctx context.Context, vaultRoot string, rawLockFile []byte) ([]byte, error) {
-	ifile, ok, err := mgmt.LoadInstallations(vaultRoot)
-	if err != nil {
-		return nil, err
-	}
-	if !ok || ifile == nil || len(ifile.Installations) == 0 {
-		return rawLockFile, nil
-	}
-
-	teams, err := mgmt.LoadTeams(vaultRoot)
-	if err != nil {
-		return nil, err
-	}
-	actor, err := mgmt.CurrentGitActor(ctx, vaultRoot)
-	if err != nil {
-		return nil, err
-	}
-
-	lf, err := lockfile.Parse(rawLockFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse lock file for overlay: %w", err)
-	}
-	overlaid := mgmt.OverlayInstallations(lf, teams, ifile, actor)
-	return lockfile.Marshal(overlaid)
+// loadManifest reads sx.toml at vaultRoot. If only legacy files exist it
+// migrates them once, writes sx.toml, and returns the result.
+func loadManifest(vaultRoot string) (*manifest.Manifest, error) {
+	m, _, err := manifest.LoadOrMigrate(vaultRoot)
+	return m, err
 }
 
-// withTeams is the transactional wrapper shared by every team mutation:
-// load teams.toml, run fn (which may mutate the file in place), save,
-// and append a single audit event on success. The audit event's fields
-// are filled in by fn via the returned *mgmt.AuditEvent (Actor is pre-
-// populated from the actor argument). fn may return a sentinel error to
-// abort without saving. Every caller must provide a non-empty actor
-// email so the audit log stays attributable.
+// withManifest is the transactional wrapper for every manifest mutation.
+// fn mutates the manifest in place; the wrapper saves it and appends a
+// single audit event on success. A nil *mgmt.AuditEvent from fn means
+// "skip audit" (used by no-op paths). fn may return an error to abort.
 //
-// Atomicity contract: the file write and the audit append are separate
-// operations. If SaveTeams succeeds but AppendAuditEvent fails (disk
+// Atomicity contract: the manifest write and the audit append are
+// separate operations. If Save succeeds but AppendAuditEvent fails (disk
 // full, permission error, etc.) the mutation is durable but unaudited.
 // This is intentional — an already-committed state change cannot be
-// rolled back just because its audit line failed, and the alternative
-// (roll back the mutation on audit failure) would be far more
-// disruptive. The calling flock keeps concurrent writers from racing;
-// lost audit lines are treated as an operational alarm, not a bug.
-func withTeams(vaultRoot string, actor mgmt.Actor, fn func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error)) error {
-	if actor.Email == "" {
-		return errors.New("team mutations require a non-empty actor email (set git config user.email)")
+// rolled back because its audit line failed, and the alternative (roll
+// back on audit failure) would be far more disruptive. The vault flock
+// keeps concurrent writers from racing; lost audit lines are treated as
+// an operational alarm, not a bug.
+func withManifest(vaultRoot string, actor mgmt.Actor, fn func(*manifest.Manifest) (*mgmt.AuditEvent, error)) error {
+	if err := actor.RequireRealIdentity(); err != nil {
+		return fmt.Errorf("vault mutations require a real git identity (set git config user.email): %w", err)
 	}
-	tf, err := mgmt.LoadTeams(vaultRoot)
+	m, err := loadManifest(vaultRoot)
 	if err != nil {
 		return err
 	}
-	event, err := fn(tf)
+	event, err := fn(m)
 	if err != nil {
 		return err
 	}
-	if err := mgmt.SaveTeams(vaultRoot, tf); err != nil {
+	if err := manifest.Save(vaultRoot, m); err != nil {
 		return err
 	}
 	if event == nil {
 		return nil
 	}
 	event.Actor = actor.Email
-	event.TargetType = mgmt.TargetTypeTeam
 	return mgmt.AppendAuditEvent(vaultRoot, *event)
 }
 
-// requireTeamAdminInTx looks up teamName in the in-transaction TeamsFile
+// requireTeamAdminInTx looks up teamName in the in-transaction manifest
 // and returns an error unless actor is an admin. Called at the top of
-// every admin-gated closure inside withTeams so the check happens after
-// the flock + reload — the CLI-level pre-check in team.go is only a
-// fast-fail for UX, not a security boundary.
-func requireTeamAdminInTx(tf *mgmt.TeamsFile, teamName string, actor mgmt.Actor) (*mgmt.Team, error) {
-	team, err := tf.FindTeam(teamName)
+// every admin-gated closure so the check happens after the flock + reload
+// — the CLI-level pre-check in team.go is only a fast-fail for UX, not a
+// security boundary.
+func requireTeamAdminInTx(m *manifest.Manifest, teamName string, actor mgmt.Actor) (*manifest.Team, error) {
+	team, err := m.FindTeam(teamName)
 	if err != nil {
 		return nil, err
 	}
@@ -112,30 +77,30 @@ func requireTeamAdminInTx(tf *mgmt.TeamsFile, teamName string, actor mgmt.Actor)
 	return team, nil
 }
 
-// commonListTeams is the shared implementation of Vault.ListTeams for
-// file-backed vaults (git, path). It reads .sx/teams.toml from the given
-// vault root.
+// commonListTeams returns a copy of every team in the vault's manifest.
 func commonListTeams(vaultRoot string) ([]mgmt.Team, error) {
-	tf, err := mgmt.LoadTeams(vaultRoot)
+	m, err := loadManifest(vaultRoot)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]mgmt.Team, len(tf.Teams))
-	copy(out, tf.Teams)
+	out := make([]mgmt.Team, len(m.Teams))
+	for i, t := range m.Teams {
+		out[i] = manifestTeamToMgmt(t)
+	}
 	return out, nil
 }
 
-// commonGetTeam returns a single team by name from the file-backed vault.
+// commonGetTeam returns a single team by name.
 func commonGetTeam(vaultRoot, name string) (*mgmt.Team, error) {
-	tf, err := mgmt.LoadTeams(vaultRoot)
+	m, err := loadManifest(vaultRoot)
 	if err != nil {
 		return nil, err
 	}
-	team, err := tf.FindTeam(name)
+	team, err := m.FindTeam(name)
 	if err != nil {
 		return nil, err
 	}
-	out := *team
+	out := manifestTeamToMgmt(*team)
 	return &out, nil
 }
 
@@ -143,99 +108,97 @@ func commonGetTeam(vaultRoot, name string) (*mgmt.Team, error) {
 // Members and Admins so every team has at least one admin — prevents the
 // "delete all admins then take over" attack.
 func commonCreateTeam(vaultRoot string, actor mgmt.Actor, team mgmt.Team) error {
-	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		if _, err := tf.FindTeam(team.Name); err == nil {
-			return nil, fmt.Errorf("%w: %s", mgmt.ErrTeamExists, team.Name)
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		if _, err := m.FindTeam(team.Name); err == nil {
+			return nil, fmt.Errorf("%w: %s", manifest.ErrTeamExists, team.Name)
 		}
-		if actor.Email != "" {
-			if !slices.Contains(team.Members, actor.Email) {
-				team.Members = append(team.Members, actor.Email)
-			}
-			if !slices.Contains(team.Admins, actor.Email) {
-				team.Admins = append(team.Admins, actor.Email)
-			}
+		mt := mgmtTeamToManifest(team)
+		if !slices.Contains(mt.Members, actor.Email) {
+			mt.Members = append(mt.Members, actor.Email)
 		}
-		if _, err := tf.UpsertTeam(team); err != nil {
+		if !slices.Contains(mt.Admins, actor.Email) {
+			mt.Admins = append(mt.Admins, actor.Email)
+		}
+		if _, err := m.UpsertTeam(mt); err != nil {
 			return nil, err
 		}
 		return &mgmt.AuditEvent{
-			Event:  mgmt.EventTeamCreated,
-			Target: team.Name,
+			Event:      mgmt.EventTeamCreated,
+			TargetType: mgmt.TargetTypeTeam,
+			Target:     team.Name,
 			Data: map[string]any{
-				"description":  team.Description,
-				"members":      team.Members,
-				"admins":       team.Admins,
-				"repositories": team.Repositories,
+				"description":  mt.Description,
+				"members":      mt.Members,
+				"admins":       mt.Admins,
+				"repositories": mt.Repositories,
 			},
 		}, nil
 	})
 }
 
-// commonUpdateTeam replaces a team's description/name/members/admins/repos
-// with the values from the input. Team must already exist.
+// commonUpdateTeam replaces a team's description/members/admins/repos with
+// the values from the input. Team must already exist.
 func commonUpdateTeam(vaultRoot string, actor mgmt.Actor, team mgmt.Team) error {
-	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		if _, err := requireTeamAdminInTx(tf, team.Name, actor); err != nil {
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		if _, err := requireTeamAdminInTx(m, team.Name, actor); err != nil {
 			return nil, err
 		}
-		if _, err := tf.UpsertTeam(team); err != nil {
+		if _, err := m.UpsertTeam(mgmtTeamToManifest(team)); err != nil {
 			return nil, err
 		}
-		return &mgmt.AuditEvent{Event: mgmt.EventTeamUpdated, Target: team.Name}, nil
+		return &mgmt.AuditEvent{
+			Event:      mgmt.EventTeamUpdated,
+			TargetType: mgmt.TargetTypeTeam,
+			Target:     team.Name,
+		}, nil
 	})
 }
 
-// commonDeleteTeam removes a team and cleans up any installations that
-// targeted it. Both writes happen under the same vault flock held by the
-// caller (runInVaultTx on git vaults, withLock on path vaults) — no
-// concurrent writer can add a new kind=team row between the team delete
-// and the installations cascade.
-//
-// Cascade ordering matters for crash safety. We delete the installation
-// rows *before* the team itself so a crash between the two saves leaves
-// a recoverable state: the team still exists (retry the delete and the
-// same ordering will complete the cleanup), and no orphan installation
-// rows survive to be silently inherited by a future team re-created
-// under the same name. The alternative ordering would let an attacker
-// recreate "team foo" and silently inherit the old team's asset installs.
+// commonDeleteTeam removes a team and cascades to drop any team-scoped
+// asset installations that targeted it. Cascade happens before the team
+// deletion so a crash between the two writes leaves a recoverable state:
+// the team still exists (retry the delete and the same ordering will
+// complete the cleanup), and no orphan team-scoped entries survive to be
+// silently inherited by a future team re-created under the same name.
+// Since both writes go to the same sx.toml file they are actually atomic
+// here, but ordering is kept for defense in depth.
 func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 	var clearedAssets []string
-	if err := withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		if _, err := requireTeamAdminInTx(tf, name, actor); err != nil {
+	if err := withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		if _, err := requireTeamAdminInTx(m, name, actor); err != nil {
 			return nil, err
 		}
-		// Step 1: cascade installations first so a crash doesn't leave
-		// orphan rows that would be inherited by a re-created team.
-		ifile, ok, err := mgmt.LoadInstallations(vaultRoot)
-		if err != nil {
-			return nil, err
-		}
-		if ok && ifile != nil {
-			for _, ins := range ifile.Installations {
-				if ins.Kind == mgmt.InstallKindTeam && ins.Team == name {
-					clearedAssets = append(clearedAssets, ins.Asset)
+		for i := range m.Assets {
+			asset := &m.Assets[i]
+			kept := asset.Scopes[:0]
+			removed := false
+			for _, s := range asset.Scopes {
+				if s.Kind == manifest.ScopeKindTeam && s.Team == name {
+					removed = true
+					continue
 				}
+				kept = append(kept, s)
 			}
-			if ifile.Remove(mgmt.Installation{Kind: mgmt.InstallKindTeam, Team: name}) > 0 {
-				if err := mgmt.SaveInstallations(vaultRoot, ifile); err != nil {
-					return nil, err
-				}
+			if removed {
+				asset.Scopes = kept
+				clearedAssets = append(clearedAssets, asset.Name)
 			}
 		}
-		// Step 2: delete the team row. withTeams will SaveTeams after.
-		if err := tf.DeleteTeam(name); err != nil {
+		if err := m.DeleteTeam(name); err != nil {
 			return nil, err
 		}
-		return &mgmt.AuditEvent{Event: mgmt.EventTeamDeleted, Target: name}, nil
+		return &mgmt.AuditEvent{
+			Event:      mgmt.EventTeamDeleted,
+			TargetType: mgmt.TargetTypeTeam,
+			Target:     name,
+		}, nil
 	}); err != nil {
 		return err
 	}
 
-	// After the transactional writes succeed, emit per-asset
-	// install.cleared audit events so auditors can reconstruct "why did
-	// asset X stop installing for team Y". Audit emission is best-effort
-	// here — both durable mutations are already on disk, so a partial
-	// audit log is strictly better than reverting the delete.
+	// Emit per-asset install.cleared audit events so auditors can
+	// reconstruct "why did asset X stop installing for team Y". Best
+	// effort: the durable mutation is already on disk.
 	for _, assetName := range clearedAssets {
 		if err := mgmt.AppendAuditEvent(vaultRoot, mgmt.AuditEvent{
 			Actor:      actor.Email,
@@ -243,7 +206,7 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 			TargetType: mgmt.TargetTypeInstallation,
 			Target:     assetName,
 			Data: map[string]any{
-				"kind":   string(mgmt.InstallKindTeam),
+				"kind":   string(manifest.ScopeKindTeam),
 				"team":   name,
 				"reason": "team_deleted",
 			},
@@ -255,97 +218,120 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 }
 
 // commonAddTeamMember adds an email to a team's member list. If admin is
-// true, the member is also added to the admin list.
+// true, the member is also added to the admin list. A no-op call
+// (member and admin flags already match the current state) returns
+// without mutating the manifest or emitting an audit event so repeated
+// idempotent retries don't pollute the audit log.
 func commonAddTeamMember(vaultRoot string, actor mgmt.Actor, teamName, email string, admin bool) error {
-	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		team, err := requireTeamAdminInTx(tf, teamName, actor)
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		team, err := requireTeamAdminInTx(m, teamName, actor)
 		if err != nil {
 			return nil, err
 		}
-		normalized := mgmt.NormalizeEmail(email)
+		normalized := manifest.NormalizeEmail(email)
 		if normalized == "" {
 			return nil, errors.New("cannot add empty email")
 		}
+		memberAdded := false
 		if !slices.Contains(team.Members, normalized) {
 			team.Members = append(team.Members, normalized)
+			memberAdded = true
 		}
+		adminAdded := false
 		if admin && !slices.Contains(team.Admins, normalized) {
 			team.Admins = append(team.Admins, normalized)
+			adminAdded = true
 		}
-		if _, err := tf.UpsertTeam(*team); err != nil {
+		if !memberAdded && !adminAdded {
+			return nil, nil
+		}
+		if _, err := m.UpsertTeam(*team); err != nil {
 			return nil, err
 		}
 		return &mgmt.AuditEvent{
-			Event:  mgmt.EventTeamMemberAdded,
-			Target: teamName,
-			Data:   map[string]any{"member": normalized, "admin": admin},
+			Event:      mgmt.EventTeamMemberAdded,
+			TargetType: mgmt.TargetTypeTeam,
+			Target:     teamName,
+			Data:       map[string]any{"member": normalized, "admin": admin},
 		}, nil
 	})
 }
 
 // commonRemoveTeamMember removes an email from a team (both members and
-// admins lists).
+// admins lists). Errors if removal would leave the team without any
+// admin.
 func commonRemoveTeamMember(vaultRoot string, actor mgmt.Actor, teamName, email string) error {
-	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		team, err := requireTeamAdminInTx(tf, teamName, actor)
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		team, err := requireTeamAdminInTx(m, teamName, actor)
 		if err != nil {
 			return nil, err
 		}
-		normalized := mgmt.NormalizeEmail(email)
+		normalized := manifest.NormalizeEmail(email)
 		team.Members = removeString(team.Members, normalized)
 		team.Admins = removeString(team.Admins, normalized)
 		if len(team.Admins) == 0 {
 			return nil, fmt.Errorf("%w: cannot remove %s (last admin of team %s) — add another admin first", mgmt.ErrLastAdmin, normalized, teamName)
 		}
-		if _, err := tf.UpsertTeam(*team); err != nil {
+		if _, err := m.UpsertTeam(*team); err != nil {
 			return nil, err
 		}
 		return &mgmt.AuditEvent{
-			Event:  mgmt.EventTeamMemberRemoved,
-			Target: teamName,
-			Data:   map[string]any{"member": normalized},
+			Event:      mgmt.EventTeamMemberRemoved,
+			TargetType: mgmt.TargetTypeTeam,
+			Target:     teamName,
+			Data:       map[string]any{"member": normalized},
 		}, nil
 	})
 }
 
 // commonSetTeamAdmin grants or revokes admin privileges for a member.
+// Returns without mutating or emitting an audit event when the request
+// matches the current state.
 func commonSetTeamAdmin(vaultRoot string, actor mgmt.Actor, teamName, email string, admin bool) error {
-	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		team, err := requireTeamAdminInTx(tf, teamName, actor)
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		team, err := requireTeamAdminInTx(m, teamName, actor)
 		if err != nil {
 			return nil, err
 		}
-		normalized := mgmt.NormalizeEmail(email)
+		normalized := manifest.NormalizeEmail(email)
 		if !team.IsMember(normalized) {
 			return nil, fmt.Errorf("%s is not a member of team %s", normalized, teamName)
 		}
 		event := mgmt.EventTeamAdminSet
+		alreadyAdmin := slices.Contains(team.Admins, normalized)
 		if admin {
-			if !slices.Contains(team.Admins, normalized) {
-				team.Admins = append(team.Admins, normalized)
+			if alreadyAdmin {
+				return nil, nil
 			}
+			team.Admins = append(team.Admins, normalized)
 		} else {
+			if !alreadyAdmin {
+				return nil, nil
+			}
 			team.Admins = removeString(team.Admins, normalized)
 			event = mgmt.EventTeamAdminUnset
 			if len(team.Admins) == 0 {
 				return nil, fmt.Errorf("%w: cannot revoke admin from %s (last admin of team %s) — grant another admin first", mgmt.ErrLastAdmin, normalized, teamName)
 			}
 		}
-		if _, err := tf.UpsertTeam(*team); err != nil {
+		if _, err := m.UpsertTeam(*team); err != nil {
 			return nil, err
 		}
 		return &mgmt.AuditEvent{
-			Event:  event,
-			Target: teamName,
-			Data:   map[string]any{"member": normalized},
+			Event:      event,
+			TargetType: mgmt.TargetTypeTeam,
+			Target:     teamName,
+			Data:       map[string]any{"member": normalized},
 		}, nil
 	})
 }
 
-// commonAddTeamRepository adds a repository URL to a team.
+// commonAddTeamRepository adds a repository URL to a team. A no-op
+// (URL already present) returns without mutating or emitting an audit
+// event.
 func commonAddTeamRepository(vaultRoot string, actor mgmt.Actor, teamName, repoURL string) error {
-	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		team, err := requireTeamAdminInTx(tf, teamName, actor)
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		team, err := requireTeamAdminInTx(m, teamName, actor)
 		if err != nil {
 			return nil, err
 		}
@@ -353,180 +339,134 @@ func commonAddTeamRepository(vaultRoot string, actor mgmt.Actor, teamName, repoU
 		if normalized == "" {
 			return nil, errors.New("cannot add empty repository URL")
 		}
-		if !slices.Contains(team.Repositories, normalized) {
-			team.Repositories = append(team.Repositories, normalized)
+		if slices.Contains(team.Repositories, normalized) {
+			return nil, nil
 		}
-		if _, err := tf.UpsertTeam(*team); err != nil {
+		team.Repositories = append(team.Repositories, normalized)
+		if _, err := m.UpsertTeam(*team); err != nil {
 			return nil, err
 		}
 		return &mgmt.AuditEvent{
-			Event:  mgmt.EventTeamRepoAdded,
-			Target: teamName,
-			Data:   map[string]any{"repository": normalized},
+			Event:      mgmt.EventTeamRepoAdded,
+			TargetType: mgmt.TargetTypeTeam,
+			Target:     teamName,
+			Data:       map[string]any{"repository": normalized},
 		}, nil
 	})
 }
 
 // commonRemoveTeamRepository removes a repository URL from a team.
 func commonRemoveTeamRepository(vaultRoot string, actor mgmt.Actor, teamName, repoURL string) error {
-	return withTeams(vaultRoot, actor, func(tf *mgmt.TeamsFile) (*mgmt.AuditEvent, error) {
-		team, err := requireTeamAdminInTx(tf, teamName, actor)
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		team, err := requireTeamAdminInTx(m, teamName, actor)
 		if err != nil {
 			return nil, err
 		}
 		normalized := scope.NormalizeRepoURL(strings.TrimSpace(repoURL))
 		team.Repositories = removeString(team.Repositories, normalized)
-		if _, err := tf.UpsertTeam(*team); err != nil {
+		if _, err := m.UpsertTeam(*team); err != nil {
 			return nil, err
 		}
 		return &mgmt.AuditEvent{
-			Event:  mgmt.EventTeamRepoRemoved,
-			Target: teamName,
-			Data:   map[string]any{"repository": normalized},
+			Event:      mgmt.EventTeamRepoRemoved,
+			TargetType: mgmt.TargetTypeTeam,
+			Target:     teamName,
+			Data:       map[string]any{"repository": normalized},
 		}, nil
 	})
 }
 
-// commonSetAssetInstallation routes an installation target to the right
-// storage: Org/Repo/Path go into skill.lock as Scopes; Team/User go into
-// .sx/installations.toml.
+// commonSetAssetInstallation appends or replaces an install scope on the
+// named asset. Org kind clears all existing scopes (asset becomes global);
+// every other kind appends a scope row, deduped against existing entries.
 func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName string, target InstallTarget) error {
+	var s manifest.Scope
+
 	switch target.Kind {
 	case InstallKindOrg:
-		if err := setAssetScopesInLockFile(vaultRoot, assetName, nil); err != nil {
-			return err
-		}
+		// Org install clears all scopes on the asset — the asset becomes
+		// globally visible. Handled below by the fn directly.
 	case InstallKindRepo:
 		if target.Repo == "" {
 			return errors.New("repo installation missing repo URL")
 		}
-		normalized := scope.NormalizeRepoURL(target.Repo)
-		if err := addScopeToLockFile(vaultRoot, assetName, lockfile.Scope{Repo: normalized}); err != nil {
-			return err
+		s = manifest.Scope{
+			Kind: manifest.ScopeKindRepo,
+			Repo: scope.NormalizeRepoURL(target.Repo),
 		}
 	case InstallKindPath:
 		if target.Repo == "" || len(target.Paths) == 0 {
 			return errors.New("path installation requires repo URL and at least one path")
 		}
-		normalized := scope.NormalizeRepoURL(target.Repo)
-		if err := addScopeToLockFile(vaultRoot, assetName, lockfile.Scope{Repo: normalized, Paths: target.Paths}); err != nil {
-			return err
+		s = manifest.Scope{
+			Kind:  manifest.ScopeKindPath,
+			Repo:  scope.NormalizeRepoURL(target.Repo),
+			Paths: target.Paths,
 		}
 	case InstallKindTeam:
 		if target.Team == "" {
 			return errors.New("team installation missing team name")
 		}
-		// Re-check admin membership inside the transaction (after the
-		// clone/pull) so we close the TOCTOU window that opens if the
-		// CLI's pre-flock pre-check and the actual mutation observed
-		// different team states.
-		tf, err := mgmt.LoadTeams(vaultRoot)
-		if err != nil {
-			return err
-		}
-		if _, err := requireTeamAdminInTx(tf, target.Team, actor); err != nil {
-			return err
-		}
-		if err := addInstallationRow(vaultRoot, mgmt.Installation{
-			Asset: assetName,
-			Kind:  toMgmtInstallKind(target.Kind),
-			Team:  target.Team,
-		}); err != nil {
-			return err
-		}
+		s = manifest.Scope{Kind: manifest.ScopeKindTeam, Team: target.Team}
 	case InstallKindUser:
 		if target.User == "" {
 			return errors.New("user installation missing email")
 		}
-		// User-scoped installs may only target the caller. Any write-access
-		// holder (git push, shared filesystem) could otherwise force an
-		// asset to be "global" in another user's scope via the overlay
-		// rule that matches on email. Mirrors the sleuth vault check in
-		// sleuth_mgmt.go to avoid a silent privilege escalation.
-		if mgmt.NormalizeEmail(target.User) != actor.Email {
+		// User-scoped installs may only target the caller. Any write-
+		// access holder could otherwise force an asset to be "global" in
+		// another user's resolved lock file via the user-match rule.
+		// Mirrors the sleuth vault check in sleuth_mgmt.go to avoid a
+		// silent privilege escalation.
+		if manifest.NormalizeEmail(target.User) != actor.Email {
 			return fmt.Errorf("user-scoped installs may only target the authenticated caller (got %q, actor %q)", target.User, actor.Email)
 		}
-		if err := addInstallationRow(vaultRoot, mgmt.Installation{
-			Asset: assetName,
-			Kind:  toMgmtInstallKind(target.Kind),
-			User:  target.User,
-		}); err != nil {
-			return err
-		}
+		s = manifest.Scope{Kind: manifest.ScopeKindUser, User: target.User}
 	default:
 		return fmt.Errorf("unknown installation kind: %q", target.Kind)
 	}
 
-	return mgmt.AppendAuditEvent(vaultRoot, mgmt.AuditEvent{
-		Actor:      actor.Email,
-		Event:      mgmt.EventInstallSet,
-		TargetType: mgmt.TargetTypeInstallation,
-		Target:     assetName,
-		Data:       target.AuditData(),
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		asset := m.FindAsset(assetName)
+		if asset == nil {
+			return nil, fmt.Errorf("asset %q not found", assetName)
+		}
+		// Re-check team admin membership inside the transaction to close
+		// the TOCTOU window between CLI pre-check and commit.
+		if target.Kind == InstallKindTeam {
+			if _, err := requireTeamAdminInTx(m, target.Team, actor); err != nil {
+				return nil, err
+			}
+		}
+		if target.Kind == InstallKindOrg {
+			asset.Scopes = nil
+		} else if !scopeExistsOnAsset(asset.Scopes, s) {
+			asset.Scopes = append(asset.Scopes, s)
+		}
+		return &mgmt.AuditEvent{
+			Event:      mgmt.EventInstallSet,
+			TargetType: mgmt.TargetTypeInstallation,
+			Target:     assetName,
+			Data:       target.AuditData(),
+		}, nil
 	})
 }
 
-// commonClearAssetInstallations removes every installation for an asset
-// from both skill.lock scopes and .sx/installations.toml rows. Missing
-// lock file, missing asset entry, and missing installations file are all
-// soft no-ops — calling this for an asset that's only installed via team
-// or user rows (or an asset that doesn't exist anymore) must succeed so
-// admins can clean up orphaned installation rows.
+// commonClearAssetInstallations removes every scope from the named asset.
+// Missing asset is a soft no-op so admins can clean up orphaned entries
+// safely.
 func commonClearAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName string) error {
-	scopesCleared, err := clearAssetScopesIfPresent(vaultRoot, assetName)
-	if err != nil {
-		return err
-	}
-	mutated := scopesCleared
-	ifile, ok, err := mgmt.LoadInstallations(vaultRoot)
-	if err != nil {
-		return err
-	}
-	if ok && ifile.RemoveForAsset(assetName) > 0 {
-		if err := mgmt.SaveInstallations(vaultRoot, ifile); err != nil {
-			return err
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		asset := m.FindAsset(assetName)
+		if asset == nil || len(asset.Scopes) == 0 {
+			return nil, nil
 		}
-		mutated = true
-	}
-	if !mutated {
-		return nil
-	}
-	return mgmt.AppendAuditEvent(vaultRoot, mgmt.AuditEvent{
-		Actor:      actor.Email,
-		Event:      mgmt.EventInstallCleared,
-		TargetType: mgmt.TargetTypeInstallation,
-		Target:     assetName,
+		asset.Scopes = nil
+		return &mgmt.AuditEvent{
+			Event:      mgmt.EventInstallCleared,
+			TargetType: mgmt.TargetTypeInstallation,
+			Target:     assetName,
+		}, nil
 	})
-}
-
-// clearAssetScopesIfPresent clears an asset's Scopes in skill.lock if the
-// asset is present, and is a no-op if the lock file doesn't exist or
-// doesn't contain the asset. The stricter setAssetScopesInLockFile is
-// used for install-set paths that need the asset to exist. Returns
-// whether a write occurred so callers can suppress no-op audit entries.
-func clearAssetScopesIfPresent(vaultRoot, assetName string) (bool, error) {
-	lockPath := lockFilePathForRoot(vaultRoot)
-	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
-		return false, nil
-	}
-	lf, err := lockfile.ParseFile(lockPath)
-	if err != nil {
-		return false, fmt.Errorf("failed to read lock file: %w", err)
-	}
-	mutated := false
-	for i := range lf.Assets {
-		if lf.Assets[i].Name == assetName && len(lf.Assets[i].Scopes) > 0 {
-			lf.Assets[i].Scopes = nil
-			mutated = true
-		}
-	}
-	if !mutated {
-		return false, nil
-	}
-	if err := lockfile.Write(lf, lockPath); err != nil {
-		return false, err
-	}
-	return true, nil
 }
 
 // commonRecordUsageEvents persists a batch of usage events to
@@ -544,101 +484,60 @@ func commonRecordUsageEvents(vaultRoot string, actor mgmt.Actor, events []mgmt.U
 	return mgmt.AppendUsageEvents(vaultRoot, events)
 }
 
-// addInstallationRow loads, upserts, and saves a single installation row.
-func addInstallationRow(vaultRoot string, ins mgmt.Installation) error {
-	ifile, _, err := mgmt.LoadInstallations(vaultRoot)
-	if err != nil {
-		return err
-	}
-	if ifile == nil {
-		ifile = &mgmt.InstallationsFile{}
-	}
-	if err := ins.Validate(); err != nil {
-		return err
-	}
-	ifile.Upsert(ins)
-	return mgmt.SaveInstallations(vaultRoot, ifile)
-}
-
-// setAssetScopesInLockFile replaces the Scopes slice for the named asset in
-// skill.lock. A nil scopes slice clears the field (org-wide).
-func setAssetScopesInLockFile(vaultRoot, assetName string, scopes []lockfile.Scope) error {
-	lockPath := lockFilePathForRoot(vaultRoot)
-	lf, err := lockfile.ParseFile(lockPath)
-	if err != nil {
-		return fmt.Errorf("failed to read lock file: %w", err)
-	}
-	found := false
-	for i := range lf.Assets {
-		if lf.Assets[i].Name == assetName {
-			lf.Assets[i].Scopes = scopes
-			found = true
-		}
-	}
-	if !found {
-		return fmt.Errorf("asset %q not found in lock file", assetName)
-	}
-	return lockfile.Write(lf, lockPath)
-}
-
-// addScopeToLockFile appends a single scope entry to the named asset in
-// skill.lock, deduping by repo URL + paths tuple.
-func addScopeToLockFile(vaultRoot, assetName string, newScope lockfile.Scope) error {
-	lockPath := lockFilePathForRoot(vaultRoot)
-	lf, err := lockfile.ParseFile(lockPath)
-	if err != nil {
-		return fmt.Errorf("failed to read lock file: %w", err)
-	}
-	found := false
-	for i := range lf.Assets {
-		if lf.Assets[i].Name != assetName {
-			continue
-		}
-		found = true
-		a := &lf.Assets[i]
-		if scopeExists(a.Scopes, newScope) {
-			return nil
-		}
-		a.Scopes = append(a.Scopes, newScope)
-	}
-	if !found {
-		return fmt.Errorf("asset %q not found in lock file", assetName)
-	}
-	return lockfile.Write(lf, lockPath)
-}
-
-func scopeExists(scopes []lockfile.Scope, needle lockfile.Scope) bool {
+// scopeExistsOnAsset returns true when needle is already among scopes,
+// after normalizing the repo URL for repo/path kinds.
+func scopeExistsOnAsset(scopes []manifest.Scope, needle manifest.Scope) bool {
 	needleRepo := scope.NormalizeRepoURL(needle.Repo)
 	for _, s := range scopes {
-		if scope.NormalizeRepoURL(s.Repo) != needleRepo {
+		if s.Kind != needle.Kind {
 			continue
 		}
-		if slices.Equal(s.Paths, needle.Paths) {
+		switch s.Kind {
+		case manifest.ScopeKindOrg:
 			return true
+		case manifest.ScopeKindRepo:
+			if scope.NormalizeRepoURL(s.Repo) == needleRepo {
+				return true
+			}
+		case manifest.ScopeKindPath:
+			if scope.NormalizeRepoURL(s.Repo) == needleRepo && slices.Equal(s.Paths, needle.Paths) {
+				return true
+			}
+		case manifest.ScopeKindTeam:
+			if s.Team == needle.Team {
+				return true
+			}
+		case manifest.ScopeKindUser:
+			if manifest.NormalizeEmail(s.User) == manifest.NormalizeEmail(needle.User) {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-// toMgmtInstallKind maps the CLI-facing vault.InstallKind (org/repo/path/
-// team/user) onto the narrower mgmt.InstallKind (team/user). The two enums
-// share string values for the overlapping cases but are distinct types —
-// this helper keeps the mapping explicit at the boundary so a future
-// renaming on either side will force a compile error rather than silently
-// mis-routing an installation row.
-func toMgmtInstallKind(k InstallKind) mgmt.InstallKind {
-	switch k {
-	case InstallKindTeam:
-		return mgmt.InstallKindTeam
-	case InstallKindUser:
-		return mgmt.InstallKindUser
-	case InstallKindOrg, InstallKindRepo, InstallKindPath:
-		// Org/Repo/Path targets are stored as scopes in skill.lock, not
-		// installation rows, so they never reach this helper. Fall
-		// through to the string cast so an accidental caller gets the
-		// kind verbatim and Installation.Validate rejects it downstream.
+// manifestTeamToMgmt converts a manifest.Team to the mgmt.Team view used
+// by the Vault interface. The two types carry the same fields; the helper
+// keeps the boundary explicit so a future rename on either side breaks
+// compilation.
+func manifestTeamToMgmt(t manifest.Team) mgmt.Team {
+	return mgmt.Team{
+		Name:         t.Name,
+		Description:  t.Description,
+		Members:      append([]string(nil), t.Members...),
+		Admins:       append([]string(nil), t.Admins...),
+		Repositories: append([]string(nil), t.Repositories...),
 	}
-	return mgmt.InstallKind(k)
+}
+
+func mgmtTeamToManifest(t mgmt.Team) manifest.Team {
+	return manifest.Team{
+		Name:         t.Name,
+		Description:  t.Description,
+		Members:      append([]string(nil), t.Members...),
+		Admins:       append([]string(nil), t.Admins...),
+		Repositories: append([]string(nil), t.Repositories...),
+	}
 }
 
 func removeString(list []string, needle string) []string {
