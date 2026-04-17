@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ func NewInstallCommand() *cobra.Command {
 	var fixMode bool
 	var targetDir string
 	var clientsFlag string
+	var dryRun bool
 
 	// Installation targeting flags — when any of these is set together
 	// with a positional asset name, sx install enters "set installation
@@ -62,7 +64,11 @@ as a positional argument together with one of --org, --repo, --path,
   sx install --user alice@example.com my-skill
   sx install --org my-skill
   sx install --repo https://github.com/acme/infra.git my-skill
-  sx install --path https://github.com/acme/infra.git#services/api my-skill`,
+  sx install --path https://github.com/acme/infra.git#services/api my-skill
+
+Use --dry-run to preview the resolved asset list for the current
+context without downloading or touching client directories — the
+equivalent of 'pip freeze' against the vault's manifest.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			targetFlags := installTargetFlags{
 				org:  orgFlag,
@@ -75,9 +81,12 @@ as a positional argument together with one of --org, --repo, --path,
 				if len(args) != 1 {
 					return errors.New("installation target flags require an asset name as a positional argument")
 				}
+				if dryRun {
+					return errors.New("--dry-run cannot be combined with install-target flags")
+				}
 				return runInstallSetTarget(cmd, args[0], targetFlags)
 			}
-			return runInstall(cmd, args, hookMode, clientID, fixMode, targetDir, clientsFlag)
+			return runInstall(cmd, args, hookMode, clientID, fixMode, targetDir, clientsFlag, dryRun)
 		},
 	}
 
@@ -86,6 +95,7 @@ as a positional argument together with one of --org, --repo, --path,
 	cmd.Flags().BoolVar(&fixMode, "repair", false, "Verify assets are actually installed and fix any discrepancies")
 	cmd.Flags().StringVar(&targetDir, "target", "", "Install as if running from this directory")
 	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Install to multiple clients (e.g., 'claude-code,cursor')")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the resolved asset list for the current context and exit without downloading or installing")
 
 	cmd.Flags().BoolVar(&orgFlag, "org", false, "Set this asset to install org-wide")
 	cmd.Flags().StringVar(&repoFlag, "repo", "", "Install this asset for a specific repository URL")
@@ -190,8 +200,73 @@ func buildInstallTarget(f installTargetFlags) (vaultpkg.InstallTarget, error) {
 	return vaultpkg.InstallTarget{}, errors.New("no installation target specified")
 }
 
+// printDryRunPreview writes the resolved asset list for the current
+// install context (scope, clients) without any side effects. Format
+// mirrors `pip freeze` — one line per asset with name, version, and
+// the matched scope — plus a header so the output is self-explanatory
+// when piped.
+func printDryRunPreview(w io.Writer, assets []*lockfile.Asset, env *installEnvironment) {
+	if len(assets) == 0 {
+		fmt.Fprintln(w, "# No assets resolved for this context.")
+		fmt.Fprintln(w, "# Checked clients:", strings.Join(getTargetClientIDs(env.Clients), ", "))
+		return
+	}
+
+	fmt.Fprintln(w, "# sx install --dry-run")
+	fmt.Fprintln(w, "# Resolved for:", strings.Join(getTargetClientIDs(env.Clients), ", "))
+	if s := describeCurrentScope(env.CurrentScope); s != "" {
+		fmt.Fprintln(w, "# Current scope:", s)
+	}
+	fmt.Fprintln(w)
+
+	for _, a := range assets {
+		scopeDesc := describeAssetScopeForDryRun(a)
+		fmt.Fprintf(w, "%s==%s  # %s; scope=%s\n", a.Name, a.Version, a.Type, scopeDesc)
+	}
+}
+
+// describeCurrentScope renders a short label for the caller's current
+// install context (global, a repo URL, or a path within a repo). Empty
+// string when the environment has no scope information (rare: happens
+// when sx is invoked outside any detected project).
+func describeCurrentScope(s *scope.Scope) string {
+	if s == nil {
+		return ""
+	}
+	switch s.Type {
+	case lockfile.ScopeGlobal:
+		return "global"
+	case lockfile.ScopeRepo:
+		return s.RepoURL
+	case lockfile.ScopePath:
+		if s.RepoPath != "" {
+			return s.RepoURL + "#" + s.RepoPath
+		}
+		return s.RepoURL
+	}
+	return ""
+}
+
+// describeAssetScopeForDryRun returns a short human-readable scope
+// summary for a single asset. "global" means no scope restrictions;
+// otherwise the matched repos or path-restricted repos are listed.
+func describeAssetScopeForDryRun(a *lockfile.Asset) string {
+	if len(a.Scopes) == 0 {
+		return "global"
+	}
+	parts := make([]string, 0, len(a.Scopes))
+	for _, s := range a.Scopes {
+		if len(s.Paths) == 0 {
+			parts = append(parts, s.Repo)
+			continue
+		}
+		parts = append(parts, s.Repo+"#"+strings.Join(s.Paths, ","))
+	}
+	return strings.Join(parts, ",")
+}
+
 // runInstall executes the install command
-func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID string, repairMode bool, targetDir string, clientsFlag string) error {
+func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID string, repairMode bool, targetDir string, clientsFlag string, dryRun bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
@@ -276,6 +351,13 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	sortedAssets, err := resolveAssetDependencies(lockFile, applicableAssets)
 	if err != nil {
 		return err
+	}
+
+	// --dry-run: print the resolved asset list and exit before we touch
+	// the tracker, download anything, or write to client directories.
+	if dryRun {
+		printDryRunPreview(cmd.OutOrStdout(), sortedAssets, env)
+		return nil
 	}
 
 	// Load tracker

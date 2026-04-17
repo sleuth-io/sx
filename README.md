@@ -81,6 +81,13 @@ sx install my-skill --team platform               # everyone on a team
 sx install my-skill --user alice@acme.com         # a single user (must be the caller)
 ```
 
+**Preview** — see what `sx install` would resolve for you, the `pip
+freeze` analogue, without downloading or writing anything:
+
+```bash
+sx install --dry-run
+```
+
 **Teams** (git + path vaults):
 
 ```bash
@@ -235,7 +242,9 @@ See LICENSE file for details.
 - [Vault Spec](docs/vault-spec.md) - Vault directory structure
 - [Manifest Spec](docs/manifest-spec.md) - sx.toml source-of-truth format (assets, scopes, teams)
 - [Lock Spec](docs/lock-spec.md) - Per-user resolved lock file
-- [Teams, installs, audit, stats](docs/teams.md) - CLI surface for team and install management
+- [Teams & targeted installs](docs/teams.md) - Team CRUD, per-team/user/repo installs, dry-run preview
+- [Audit log](docs/audit.md) - Event catalog, `sx audit` filters, storage format
+- [Usage analytics](docs/stats.md) - `sx stats` dashboard, JSON output, event format
 - [Scoping](docs/scoping.md) - Controlling where assets are installed
 - [Metadata Spec](docs/metadata-spec.md) - Asset metadata format
 - [MCP Spec](docs/mcp-spec.md) - MCP server and query tool

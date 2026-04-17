@@ -1,10 +1,13 @@
-# Teams, targeted installs, audit, and usage
+# Teams and targeted installs
 
-Git and path vaults support first-class team management, per-team and
-per-user installs, an audit log of every mutation, and usage analytics.
-This document covers the CLI surface and the data model. The schema is
-defined in [manifest-spec.md](manifest-spec.md); the lock file produced
-at install time is described in [lock-spec.md](lock-spec.md).
+Git and path vaults support first-class team management plus targeted
+installs that route assets to specific repositories, paths, teams, or
+individual users. This document covers the CLI surface and the data
+model. The schema is defined in [manifest-spec.md](manifest-spec.md);
+the lock file produced at install time is described in
+[lock-spec.md](lock-spec.md). For the audit log and usage analytics
+generated alongside these mutations, see [audit.md](audit.md) and
+[stats.md](stats.md).
 
 ## Teams
 
@@ -47,6 +50,10 @@ demotion can't race past the pre-check.
 A mutation that would leave the team with zero admins is rejected; you
 must promote another admin before removing or demoting the last one.
 
+Repeating an idempotent mutation (adding an existing member, granting
+admin to someone who already has it, etc.) is a silent no-op that does
+not rewrite the manifest or emit an audit event.
+
 ### Repositories
 
 Team repositories drive scope resolution: if an asset is installed with
@@ -82,6 +89,13 @@ sx install code-reviewer --team platform                # team members
 sx install code-reviewer --user alice@acme.com          # a single user
 ```
 
+### Previewing a resolved install
+
+`sx install --dry-run` prints the assets that would be installed for
+the current user without downloading anything or touching client
+directories — the equivalent of `pip freeze` against the vault's
+manifest. See `sx install --help` for details.
+
 ### User-scope self-only
 
 `--user <email>` is allowed only when `<email>` matches the caller's
@@ -95,51 +109,6 @@ not just in the CLI.
 `--team <name>` requires the caller to be an admin of the named team,
 re-checked inside the transaction against the freshly-loaded team list.
 
-## Audit log
-
-Every mutation — team create/update/delete, admin grant/revoke, member
-add/remove, repository add/remove, install set/cleared — appends a
-structured JSONL event to `.sx/audit/YYYY-MM.jsonl`.
-
-```bash
-sx audit                                    # recent events
-sx audit --actor alice@acme.com --since 30d
-sx audit --event install.set --target code-reviewer
-sx audit --since 7d --json
-```
-
-Filters are AND-combined. `--since` accepts `Nd` (days) or `all`.
-
-### No-op skipping
-
-Repeating a mutation that matches the current state (e.g. re-adding an
-email that's already a team member, granting admin to someone who
-already has it, or re-installing with an identical scope) is a silent
-no-op: the manifest is not rewritten and no audit event is emitted.
-This keeps the audit log free of noise from idempotent retries.
-
-## Usage analytics
-
-Usage events are appended to `.sx/usage/YYYY-MM.jsonl` as JSONL (one
-event per line). The stats command renders an adoption dashboard:
-
-```bash
-sx stats                               # recent window
-sx stats --since 7d
-sx stats --since 30d --json            # machine-readable
-sx stats --assets                      # per-asset view only
-sx stats --teams                       # per-team view only
-```
-
-Fields: total events in window, top assets (unique actors, total uses),
-per-team adoption (percentage of members who used any vault asset), top
-actors.
-
-A malformed JSONL line is logged and skipped at flush time so one bad
-event never drops a whole batch of good ones; an event with an
-unparseable timestamp is stamped with `time.Unix(0, 0)` so it falls
-outside any `--since Nd` window rather than skewing "recent" totals.
-
 ## Identity model
 
 Team membership, admin checks, and user-scope install gating all use
@@ -150,16 +119,16 @@ If git is unconfigured, sx synthesizes a read-only identity of the form
 `local:$USER@$HOST`. The `local:` prefix guarantees it cannot collide
 with a real email in a team admin list — any mutation using this
 identity is rejected with a clear "set git config user.email" message.
-Read-only commands (`sx team list`, `sx install`, `sx stats`,
-`sx audit`) still work.
+Read-only commands (`sx team list`, `sx install --dry-run`,
+`sx stats`, `sx audit`) still work.
 
 ## Where state lives
 
 | State | Location | Who writes |
 |-------|----------|-----------|
 | Manifest (assets, scopes, teams) | `<vault>/sx.toml` | Vault admins via `sx team *`, `sx add`, `sx install --scope` |
-| Audit events | `<vault>/.sx/audit/YYYY-MM.jsonl` | Every mutation |
-| Usage events | `<vault>/.sx/usage/YYYY-MM.jsonl` | Every `sx install` (lazy-flushed on git vaults) |
+| Audit events | `<vault>/.sx/audit/YYYY-MM.jsonl` | Every mutation (see [audit.md](audit.md)) |
+| Usage events | `<vault>/.sx/usage/YYYY-MM.jsonl` | Every `sx install` (see [stats.md](stats.md)) |
 | Per-user resolved lock | `~/<cache>/sx/lockfiles/<vault-id>.lock` | `sx install` |
 | Rotated lock history | `~/<cache>/sx/lockfiles/<vault-id>-<ts>.lock` | Every install whose resolved content differs from the previous |
 
