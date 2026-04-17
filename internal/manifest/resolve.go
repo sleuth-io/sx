@@ -72,10 +72,11 @@ func Resolve(m *Manifest, actor mgmt.Actor) *lockfile.LockFile {
 	return out
 }
 
-// resolveScopes applies the rules above to a single asset's scopes. The
-// drop return is currently always false — no rule in the current spec
-// excludes an asset entirely. It exists as a future hook if we add a
-// "visible only to these users" rule later.
+// resolveScopes applies the rules above to a single asset's scopes. It
+// returns drop=true when the asset declares scopes but none apply to
+// the current caller (e.g. team-scoped asset and the caller is not a
+// member of any listed team). Callers drop the asset from the resolved
+// lock so it isn't installed for users outside its scope.
 func resolveScopes(in []Scope, m *Manifest, actorEmail string) (_ []lockfile.Scope, drop bool) {
 	if len(in) == 0 {
 		return nil, false

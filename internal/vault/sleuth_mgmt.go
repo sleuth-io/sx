@@ -167,15 +167,10 @@ func (s *SleuthVault) CreateTeam(ctx context.Context, team mgmt.Team) error {
 }
 
 func (s *SleuthVault) UpdateTeam(ctx context.Context, team mgmt.Team) error {
-	existing, err := s.GetTeam(ctx, team.Name)
-	if err != nil {
-		return err
-	}
-	// We need to look up the Team by GID; the existing team has the GID as
-	// the literal ID stored in mgmt.Team via lookups. Since mgmt.Team only
-	// carries a name, not a GID, we fetch it via a second query that
-	// returns the full node.
-	gid, err := s.teamGIDByName(ctx, existing.Name)
+	// teamGIDByName already returns mgmt.ErrTeamNotFound if the team is
+	// absent, so a preliminary GetTeam check is redundant — one round
+	// trip is enough to both verify existence and capture the GID.
+	gid, err := s.teamGIDByName(ctx, team.Name)
 	if err != nil {
 		return err
 	}

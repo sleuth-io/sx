@@ -28,10 +28,11 @@ func findManifestAsset(t *testing.T, vaultRoot, name string) (*lockfile.Asset, b
 	}
 
 	out := &lockfile.Asset{
-		Name:    a.Name,
-		Version: a.Version,
-		Type:    a.Type,
-		Clients: append([]string(nil), a.Clients...),
+		Name:         a.Name,
+		Version:      a.Version,
+		Type:         a.Type,
+		Clients:      append([]string(nil), a.Clients...),
+		Dependencies: copyDependenciesManifestToLockfile(a.Dependencies),
 	}
 	if a.SourceHTTP != nil {
 		out.SourceHTTP = &lockfile.SourceHTTP{URL: a.SourceHTTP.URL, Size: a.SourceHTTP.Size}
@@ -93,10 +94,11 @@ func allManifestAssets(t *testing.T, vaultRoot string) []lockfile.Asset {
 	out := make([]lockfile.Asset, 0, len(m.Assets))
 	for _, a := range m.Assets {
 		lf := lockfile.Asset{
-			Name:    a.Name,
-			Version: a.Version,
-			Type:    a.Type,
-			Clients: append([]string(nil), a.Clients...),
+			Name:         a.Name,
+			Version:      a.Version,
+			Type:         a.Type,
+			Clients:      append([]string(nil), a.Clients...),
+			Dependencies: copyDependenciesManifestToLockfile(a.Dependencies),
 		}
 		for _, s := range a.Scopes {
 			switch s.Kind {

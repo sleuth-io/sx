@@ -163,10 +163,11 @@ func (e *TestEnv) WriteLockFile(vaultDir, content string) {
 		m.Assets = make([]manifest.Asset, 0, len(lf.Assets))
 		for _, a := range lf.Assets {
 			dst := manifest.Asset{
-				Name:    a.Name,
-				Version: a.Version,
-				Type:    a.Type,
-				Clients: append([]string(nil), a.Clients...),
+				Name:         a.Name,
+				Version:      a.Version,
+				Type:         a.Type,
+				Clients:      append([]string(nil), a.Clients...),
+				Dependencies: copyDependenciesLockfileToManifest(a.Dependencies),
 			}
 			if a.SourceHTTP != nil {
 				dst.SourceHTTP = &manifest.SourceHTTP{URL: a.SourceHTTP.URL, Size: a.SourceHTTP.Size}
@@ -218,10 +219,11 @@ func (e *TestEnv) ReadVaultAssets(vaultDir string) (*lockfile.LockFile, bool) {
 	lf := &lockfile.LockFile{}
 	for _, a := range m.Assets {
 		dst := lockfile.Asset{
-			Name:    a.Name,
-			Version: a.Version,
-			Type:    a.Type,
-			Clients: append([]string(nil), a.Clients...),
+			Name:         a.Name,
+			Version:      a.Version,
+			Type:         a.Type,
+			Clients:      append([]string(nil), a.Clients...),
+			Dependencies: copyDependenciesManifestToLockfile(a.Dependencies),
 		}
 		if a.SourceHTTP != nil {
 			dst.SourceHTTP = &lockfile.SourceHTTP{URL: a.SourceHTTP.URL, Size: a.SourceHTTP.Size}
@@ -261,6 +263,28 @@ func (e *TestEnv) ResetVaultAssets(vaultDir string) {
 	for _, name := range []string{"sx.toml", "sx.lock", "sx.lock.migrated"} {
 		_ = os.Remove(filepath.Join(vaultDir, name))
 	}
+}
+
+func copyDependenciesLockfileToManifest(in []lockfile.Dependency) []manifest.Dependency {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]manifest.Dependency, len(in))
+	for i, d := range in {
+		out[i] = manifest.Dependency{Name: d.Name, Version: d.Version}
+	}
+	return out
+}
+
+func copyDependenciesManifestToLockfile(in []manifest.Dependency) []lockfile.Dependency {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]lockfile.Dependency, len(in))
+	for i, d := range in {
+		out[i] = lockfile.Dependency{Name: d.Name, Version: d.Version}
+	}
+	return out
 }
 
 // SetupGitRepo initializes a git repo with a remote URL.
