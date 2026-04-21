@@ -31,6 +31,8 @@ func TestKiroIntegration(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 	kiroDir := filepath.Join(homeDir, ".kiro")
 
 	// Create home and working directories
@@ -187,6 +189,8 @@ func TestKiroMCPIntegration(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 	kiroDir := filepath.Join(homeDir, ".kiro")
 
 	// Create directories
@@ -315,6 +319,8 @@ func TestKiroRuleIntegration(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 	kiroDir := filepath.Join(homeDir, ".kiro")
 
 	// Create directories

@@ -4,15 +4,31 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/clients"
+	"github.com/sleuth-io/sx/internal/clients/gemini/handlers"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
+
+// jetbrainsBaseForTest returns the per-platform JetBrains base path under home.
+// IsJetBrainsInstalled picks the path based on runtime.GOOS, so tests must
+// write fixtures to that same location.
+func jetbrainsBaseForTest(home string) string {
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join(home, handlers.JetBrainsConfigMacOS)
+	case "windows":
+		return filepath.Join(home, handlers.JetBrainsConfigWindows)
+	default:
+		return filepath.Join(home, handlers.JetBrainsConfigLinux)
+	}
+}
 
 func TestNewClient(t *testing.T) {
 	client := NewClient()
@@ -120,7 +136,7 @@ func TestIsInstalled_JetBrains(t *testing.T) {
 	}
 
 	// Create JetBrains config directory with mcp.json (indicates Gemini is configured)
-	jetbrainsDir := filepath.Join(tempDir, ".config/JetBrains/IntelliJIdea2025.1")
+	jetbrainsDir := filepath.Join(jetbrainsBaseForTest(tempDir), "IntelliJIdea2025.1")
 	if err := os.MkdirAll(jetbrainsDir, 0755); err != nil {
 		t.Fatalf("Failed to create JetBrains dir: %v", err)
 	}
@@ -145,7 +161,7 @@ func TestIsInstalled_AndroidStudio(t *testing.T) {
 	client := NewClient()
 
 	// Create Android Studio config directory with mcp.json
-	androidStudioDir := filepath.Join(tempDir, ".config/JetBrains/AndroidStudio2024.2")
+	androidStudioDir := filepath.Join(jetbrainsBaseForTest(tempDir), "AndroidStudio2024.2")
 	if err := os.MkdirAll(androidStudioDir, 0755); err != nil {
 		t.Fatalf("Failed to create Android Studio dir: %v", err)
 	}
