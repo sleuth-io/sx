@@ -29,6 +29,8 @@ func TestCursorIntegration(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 	cursorDir := filepath.Join(homeDir, ".cursor")
 
 	// Create home and working directories
@@ -213,6 +215,8 @@ func TestCursorMCPIntegration(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 	cursorDir := filepath.Join(homeDir, ".cursor")
 
 	// Create directories
@@ -341,6 +345,8 @@ func TestCursorHookIntegration(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 	cursorDir := filepath.Join(homeDir, ".cursor")
 
 	// Create directories
@@ -497,6 +503,8 @@ func TestCursorAutoInstallDeduplication(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 	cursorDir := filepath.Join(homeDir, ".cursor")
 	cacheDir := filepath.Join(homeDir, ".cache", "skills")
 

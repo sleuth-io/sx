@@ -30,10 +30,15 @@ func NewTestEnv(t *testing.T) *TestEnv {
 	geminiDir := filepath.Join(homeDir, ".gemini")
 	kiroDir := filepath.Join(homeDir, ".kiro")
 
-	// Set environment for sandboxing
+	// Set environment for sandboxing.
+	// XDG_* only works on Linux; macOS os.UserConfigDir/UserCacheDir ignore them
+	// and return ~/Library/..., so we also set the SX-specific overrides which
+	// GetConfigDir/GetCacheDir check first on every platform.
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 
 	// Create directories for Claude Code, GitHub Copilot, Gemini, and Kiro
 	for _, dir := range []string{homeDir, claudeDir, copilotDir, geminiDir, kiroDir} {
