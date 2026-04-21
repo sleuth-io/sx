@@ -24,6 +24,8 @@ func TestClineIntegration(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 	clineDir := filepath.Join(homeDir, ".cline")
 
 	// Create home and working directories
@@ -150,6 +152,8 @@ func TestClineRuleIntegration(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 	clineDir := filepath.Join(homeDir, ".cline")
 
 	// Create directories
@@ -261,6 +265,8 @@ func TestClineMCPIntegration(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 	clineDir := filepath.Join(homeDir, ".cline")
 
 	// Create VS Code globalStorage path for Cline MCP config
@@ -401,6 +407,8 @@ func TestClineMultipleSkillsInstallation(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 	clineDir := filepath.Join(homeDir, ".cline")
 
 	// Create directories
@@ -536,6 +544,8 @@ func TestClineNoHookSystem(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 	clineDir := filepath.Join(homeDir, ".cline")
 
 	// Create directories

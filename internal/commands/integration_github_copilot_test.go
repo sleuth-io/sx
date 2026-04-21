@@ -32,6 +32,8 @@ func TestGitHubCopilotIntegration(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
+	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
 
 	// Create home and working directories
 	// Create .copilot directory so IsInstalled() returns true for GitHub Copilot

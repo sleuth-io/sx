@@ -1,6 +1,7 @@
 package assets
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,14 +14,12 @@ func TestGetTrackerPath(t *testing.T) {
 		t.Fatalf("GetTrackerPath() error = %v", err)
 	}
 
-	// Verify it's in the cache directory
-	if !strings.Contains(got, ".cache/sx/installed.json") {
-		t.Errorf("GetTrackerPath() = %q, want path containing '.cache/sx/installed.json'", got)
-	}
-
-	// Verify it ends with .json
-	if !strings.HasSuffix(got, ".json") {
-		t.Errorf("GetTrackerPath() = %q, want path ending with .json", got)
+	// Verify it ends with sx/installed.json. The parent cache dir is platform-
+	// specific (.cache on Linux, Library/Caches on macOS, LocalAppData on
+	// Windows) so assert only the suffix we always control.
+	wantSuffix := filepath.Join("sx", "installed.json")
+	if !strings.HasSuffix(got, wantSuffix) {
+		t.Errorf("GetTrackerPath() = %q, want path ending with %q", got, wantSuffix)
 	}
 }
 

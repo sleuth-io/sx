@@ -3,8 +3,23 @@ package handlers
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+// jetbrainsBaseForTest returns the per-platform JetBrains base path under home.
+// FindJetBrainsConfigDirs picks the path based on runtime.GOOS, so tests must
+// write fixtures to that same location.
+func jetbrainsBaseForTest(home string) string {
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join(home, JetBrainsConfigMacOS)
+	case "windows":
+		return filepath.Join(home, JetBrainsConfigWindows)
+	default:
+		return filepath.Join(home, JetBrainsConfigLinux)
+	}
+}
 
 func TestFindJetBrainsConfigDirs(t *testing.T) {
 	origHome := os.Getenv("HOME")
@@ -23,7 +38,7 @@ func TestFindJetBrainsConfigDirs(t *testing.T) {
 	}
 
 	// Create JetBrains config directory
-	jetbrainsBase := filepath.Join(tempDir, ".config/JetBrains")
+	jetbrainsBase := jetbrainsBaseForTest(tempDir)
 	if err := os.MkdirAll(jetbrainsBase, 0755); err != nil {
 		t.Fatalf("Failed to create JetBrains dir: %v", err)
 	}
@@ -65,7 +80,7 @@ func TestFindJetBrainsConfigDirs_MultipleProducts(t *testing.T) {
 	tempDir := t.TempDir()
 	os.Setenv("HOME", tempDir)
 
-	jetbrainsBase := filepath.Join(tempDir, ".config/JetBrains")
+	jetbrainsBase := jetbrainsBaseForTest(tempDir)
 
 	// Create multiple products
 	products := []string{
@@ -137,7 +152,7 @@ func TestIsJetBrainsInstalled(t *testing.T) {
 	}
 
 	// Create JetBrains directory without mcp.json
-	jetbrainsDir := filepath.Join(tempDir, ".config/JetBrains/IntelliJIdea2025.1")
+	jetbrainsDir := filepath.Join(jetbrainsBaseForTest(tempDir), "IntelliJIdea2025.1")
 	if err := os.MkdirAll(jetbrainsDir, 0755); err != nil {
 		t.Fatalf("Failed to create JetBrains dir: %v", err)
 	}
@@ -167,7 +182,7 @@ func TestIsJetBrainsInstalled_GeminiPlugin(t *testing.T) {
 	os.Setenv("HOME", tempDir)
 
 	// Create JetBrains directory with Gemini plugin folder
-	jetbrainsDir := filepath.Join(tempDir, ".config/JetBrains/IntelliJIdea2025.1")
+	jetbrainsDir := filepath.Join(jetbrainsBaseForTest(tempDir), "IntelliJIdea2025.1")
 	pluginsDir := filepath.Join(jetbrainsDir, "plugins/gemini-code-assist")
 	if err := os.MkdirAll(pluginsDir, 0755); err != nil {
 		t.Fatalf("Failed to create plugins dir: %v", err)
@@ -187,7 +202,7 @@ func TestAddRemoveJetBrainsMCPServer(t *testing.T) {
 	os.Setenv("HOME", tempDir)
 
 	// Create JetBrains directory
-	jetbrainsDir := filepath.Join(tempDir, ".config/JetBrains/IntelliJIdea2025.1")
+	jetbrainsDir := filepath.Join(jetbrainsBaseForTest(tempDir), "IntelliJIdea2025.1")
 	if err := os.MkdirAll(jetbrainsDir, 0755); err != nil {
 		t.Fatalf("Failed to create JetBrains dir: %v", err)
 	}
