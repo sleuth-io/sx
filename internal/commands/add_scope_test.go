@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/sleuth-io/sx/internal/lockfile"
 )
 
 // TestAddScopeModification tests modifying an existing asset's scope
@@ -92,8 +90,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify skill was added globally
-	lockFilePath := filepath.Join(repoDir, "sx.lock")
-	asset, exists := lockfile.FindAsset(lockFilePath, "test-skill")
+	asset, exists := findManifestAsset(t, repoDir, "test-skill")
 	if !exists {
 		t.Fatalf("Asset not found in lock file")
 	}
@@ -125,7 +122,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify scope changed to repository-specific
-	asset2, exists := lockfile.FindAsset(lockFilePath, "test-skill")
+	asset2, exists := findManifestAsset(t, repoDir, "test-skill")
 	if !exists {
 		t.Fatalf("Asset not found in lock file after reconfiguration")
 	}
@@ -230,8 +227,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Get initial state
-	lockFilePath := filepath.Join(repoDir, "sx.lock")
-	asset, exists := lockfile.FindAsset(lockFilePath, "test-skill")
+	asset, exists := findManifestAsset(t, repoDir, "test-skill")
 	if !exists {
 		t.Fatalf("Asset not found in lock file")
 	}
@@ -252,7 +248,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify configuration unchanged
-	asset2, exists := lockfile.FindAsset(lockFilePath, "test-skill")
+	asset2, exists := findManifestAsset(t, repoDir, "test-skill")
 	if !exists {
 		t.Fatalf("Asset not found in lock file after reconfiguration")
 	}
@@ -347,8 +343,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify skill was added
-	lockFilePath := filepath.Join(repoDir, "sx.lock")
-	_, exists := lockfile.FindAsset(lockFilePath, "test-skill")
+	_, exists := findManifestAsset(t, repoDir, "test-skill")
 	if !exists {
 		t.Fatalf("Asset not found in lock file")
 	}
@@ -368,7 +363,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify asset removed from lock file
-	_, exists = lockfile.FindAsset(lockFilePath, "test-skill")
+	_, exists = findManifestAsset(t, repoDir, "test-skill")
 	if exists {
 		t.Fatalf("Asset should have been removed from lock file")
 	}
@@ -465,8 +460,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify asset NOT in lock file
-	lockFilePath := filepath.Join(repoDir, "sx.lock")
-	_, exists := lockfile.FindAsset(lockFilePath, "test-skill")
+	_, exists := findManifestAsset(t, repoDir, "test-skill")
 	if exists {
 		t.Fatalf("Asset should not be in lock file")
 	}
@@ -493,7 +487,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify asset now in lock file as global
-	asset, exists := lockfile.FindAsset(lockFilePath, "test-skill")
+	asset, exists := findManifestAsset(t, repoDir, "test-skill")
 	if !exists {
 		t.Fatalf("Asset not found in lock file after installation")
 	}

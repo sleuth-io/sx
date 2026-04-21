@@ -25,6 +25,12 @@ go.work
 # Dependency directories
 /vendor/
 
+# Override the `MANIFEST` rule from common global gitignores so our
+# internal/manifest package isn't silently skipped on case-insensitive
+# filesystems (macOS/Windows).
+!internal/manifest/
+!internal/manifest/*
+
 # IDE and editor files
 .vscode/
 .idea/

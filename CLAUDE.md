@@ -9,7 +9,14 @@ make build          # Build binary to ./dist/sx
 make test           # Run tests
 make format         # Format code
 make lint           # Run linter
+make prepush        # Format + lint + test + build (run before claiming done)
 ```
+
+## Before Reporting Work Complete
+
+**ALWAYS run `make prepush` before claiming a task is finished.** CI runs
+format, lint, tests, and build — if any of those fail locally, don't
+tell the user the work is done.
 
 ## Testing Local Changes
 
@@ -28,9 +35,12 @@ make build && ./dist/sx <command>
 ## Key Specifications
 
 - [Vault Spec](docs/vault-spec.md) - Vault structure and management
+- [Manifest Spec](docs/manifest-spec.md) - sx.toml format (source of truth)
+- [Lock Spec](docs/lock-spec.md) - Per-user resolved lock file format
+- [Teams & installs](docs/teams.md) - Team management, targeted installs
+- [Audit log](docs/audit.md) - Mutation audit trail format and queries
+- [Usage analytics](docs/stats.md) - `sx stats` dashboard and event format
 - [Metadata Spec](docs/metadata-spec.md) - Asset metadata format and fields
-- [Requirements Spec](docs/requirements-spec.md) - Dependency requirements syntax
-- [Lock Spec](docs/lock-spec.md) - Lock file format for resolved dependencies
 - [MCP Spec](docs/mcp-spec.md) - MCP server tools (query)
 
 ## Development

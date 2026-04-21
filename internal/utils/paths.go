@@ -43,6 +43,36 @@ func EnsureDir(path string) error {
 	return os.MkdirAll(path, 0755)
 }
 
+// WriteFileAtomic writes data to path via a tmp file in the same
+// directory plus rename. On POSIX filesystems the rename is atomic —
+// readers never see a partial write. Used for any file that concurrent
+// readers might slurp while a writer is midway through replacing it.
+func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".tmp-"+filepath.Base(path)+"-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("failed to chmod temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("failed to rename temp file: %w", err)
+	}
+	return nil
+}
+
 // GetClaudeDir returns the path to the .claude directory for asset installation
 // This is where global assets are installed
 func GetClaudeDir() (string, error) {

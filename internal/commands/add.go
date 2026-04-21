@@ -12,7 +12,6 @@ import (
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/config"
-	"github.com/sleuth-io/sx/internal/constants"
 	"github.com/sleuth-io/sx/internal/github"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/ui"
@@ -245,7 +244,7 @@ func addFromZipSource(ctx context.Context, cmd *cobra.Command, out *outputHelper
 	// Handle install: auto-run if --yes, prompt if interactive, skip if --no-install
 	if opts.Yes && !opts.NoInstall {
 		out.println()
-		if err := runInstall(cmd, nil, false, "", false, "", ""); err != nil {
+		if err := runInstall(cmd, nil, false, "", false, "", "", false); err != nil {
 			out.printfErr("Install failed: %v\n", err)
 		}
 	} else if !opts.NoInstall && !opts.isNonInteractive() {
@@ -373,7 +372,7 @@ func promptRunInstall(cmd *cobra.Command, ctx context.Context, out *outputHelper
 	}
 
 	out.println()
-	if err := runInstall(cmd, nil, false, "", false, "", ""); err != nil {
+	if err := runInstall(cmd, nil, false, "", false, "", "", false); err != nil {
 		out.printfErr("Install failed: %v\n", err)
 	}
 }
@@ -439,11 +438,7 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 			return err
 		}
 	} else {
-		var currentScopes []lockfile.Scope
-		lockFilePath := constants.SkillLockFile
-		if existingArt, exists := lockfile.FindAsset(lockFilePath, name); exists {
-			currentScopes = existingArt.Scopes
-		}
+		currentScopes := existingAssetScopes(vault, name)
 		result, err = promptForRepositories(out, name, version, currentScopes, vault)
 		if err != nil {
 			return fmt.Errorf("failed to configure repositories: %w", err)
@@ -534,11 +529,7 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 			return err
 		}
 	} else {
-		var currentScopes []lockfile.Scope
-		lockFilePath := constants.SkillLockFile
-		if existingArt, exists := lockfile.FindAsset(lockFilePath, lockAsset.Name); exists {
-			currentScopes = existingArt.Scopes
-		}
+		currentScopes := existingAssetScopes(vault, lockAsset.Name)
 		result, err = promptForRepositories(out, lockAsset.Name, lockAsset.Version, currentScopes, vault)
 		if err != nil {
 			return fmt.Errorf("failed to configure scopes: %w", err)

@@ -92,8 +92,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify skill was added with repo scope
-	lockFilePath := filepath.Join(repoDir, "sx.lock")
-	asset, exists := lockfile.FindAsset(lockFilePath, "test-skill")
+	asset, exists := findManifestAsset(t, repoDir, "test-skill")
 	if !exists {
 		t.Fatalf("Asset not found in lock file")
 	}
@@ -115,7 +114,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify scopes are preserved (not overwritten to global)
-	asset2, exists := lockfile.FindAsset(lockFilePath, "test-skill")
+	asset2, exists := findManifestAsset(t, repoDir, "test-skill")
 	if !exists {
 		t.Fatalf("Asset not found in lock file after re-add")
 	}
@@ -207,8 +206,7 @@ prompt-file = "SKILL.md"
 		t.Fatalf("Failed to add skill: %v", err)
 	}
 
-	lockFilePath := filepath.Join(repoDir, "sx.lock")
-	asset, exists := lockfile.FindAsset(lockFilePath, "test-skill")
+	asset, exists := findManifestAsset(t, repoDir, "test-skill")
 	if !exists || asset.IsGlobal() {
 		t.Fatalf("Expected repo-specific scope after initial add")
 	}
@@ -221,7 +219,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Parse full lock file and find the latest version
-	lf, err := lockfile.ParseFile(lockFilePath)
+	lf, err := fakeLockFromManifest(t, repoDir)
 	if err != nil {
 		t.Fatalf("Failed to parse lock file: %v", err)
 	}
@@ -309,8 +307,7 @@ prompt-file = "SKILL.md"
 		t.Fatalf("Failed to add new skill with --yes: %v", err)
 	}
 
-	lockFilePath := filepath.Join(repoDir, "sx.lock")
-	asset, exists := lockfile.FindAsset(lockFilePath, "brand-new-skill")
+	asset, exists := findManifestAsset(t, repoDir, "brand-new-skill")
 	if !exists {
 		t.Fatalf("New asset not found in lock file")
 	}
