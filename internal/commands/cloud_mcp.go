@@ -21,6 +21,13 @@ import (
 // tool-less server — a relay that connects but serves nothing is
 // indistinguishable from a healthy empty vault and leaves the operator
 // without a signal that something is wrong.
+//
+// Vaults can supply tools in two shapes:
+//   - “[]vaultpkg.ToolDef“ — explicit tool list (used by SleuthVault).
+//   - “*vaultpkg.AssetShimRegistrar“ — a registrar that wires the standard
+//     asset listing/loading toolset onto a server (used by PathVault and
+//     GitVault, which have no bespoke per-vault tools but want claude.ai /
+//     chatgpt.com to see real list_my_assets / load_my_asset surfaces).
 func buildCloudServeMCPServer() (*mcp.Server, error) {
 	log := logger.Get()
 
@@ -42,23 +49,24 @@ func buildCloudServeMCPServer() (*mcp.Server, error) {
 
 	tools := vault.GetMCPTools()
 	if tools == nil {
-		// A vault with no MCP tools is legitimate (e.g. PathVault) —
-		// we return the empty server without error. The operator sees
-		// "connected, no tools" and knows that's expected for this
-		// vault type.
 		log.Debug("cloud serve: vault provides no MCP tools")
 		return server, nil
 	}
-	defs, ok := tools.([]vaultpkg.ToolDef)
-	if !ok {
+
+	switch t := tools.(type) {
+	case *vaultpkg.AssetShimRegistrar:
+		t.Register(server)
+		return server, nil
+	case []vaultpkg.ToolDef:
+		if len(t) == 0 {
+			return nil, errors.New("cloud serve: vault returned empty tool list")
+		}
+		for _, def := range t {
+			mcp.AddTool(server, def.Tool, def.Handler)
+			log.Debug("cloud serve: registered MCP tool", "name", def.Tool.Name)
+		}
+		return server, nil
+	default:
 		return nil, fmt.Errorf("cloud serve: vault returned unexpected MCP tools type %T", tools)
 	}
-	if len(defs) == 0 {
-		return nil, errors.New("cloud serve: vault returned empty tool list")
-	}
-	for _, def := range defs {
-		mcp.AddTool(server, def.Tool, def.Handler)
-		log.Debug("cloud serve: registered MCP tool", "name", def.Tool.Name)
-	}
-	return server, nil
 }

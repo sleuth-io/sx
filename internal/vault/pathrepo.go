@@ -480,9 +480,12 @@ func (p *PathVault) GetAssetDetails(ctx context.Context, name string) (*AssetDet
 	return details, nil
 }
 
-// GetMCPTools returns no additional MCP tools for PathVault
+// GetMCPTools returns the asset-shim registrar so callers (notably the cloud
+// serve MCP builder) can publish list_my_assets / load_my_asset / … on top of
+// the path-backed vault. Without this, claude.ai connects to the relay and
+// reports "no tools available" because PathVault has no native MCP surface.
 func (p *PathVault) GetMCPTools() any {
-	return nil
+	return &AssetShimRegistrar{Repo: p}
 }
 
 // GetBootstrapOptions returns no bootstrap options for PathVault

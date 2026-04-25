@@ -99,10 +99,49 @@ func (osKeyring) Set(account, token string) error {
 
 func (osKeyring) Get(account string) (string, error) {
 	v, err := keyring.Get(keyringService, account)
+	if err == nil {
+		return v, nil
+	}
 	if errors.Is(err, keyring.ErrNotFound) {
 		return "", ErrTokenNotFound
 	}
+	if isKeyringUnavailable(err) {
+		// Headless Linux (no dbus, no org.freedesktop.secrets) returns a
+		// raw ``exec`` / ``dbus`` error here rather than ``ErrNotFound``.
+		// Treat that the same as "not found" so ``Load`` can fall back to
+		// the inline TOML token written by ``Save``'s fallback path.
+		// Without this, sx is unusable in containers / CI / minimal dev
+		// environments even though ``Save`` already handles the write-side.
+		return "", ErrTokenNotFound
+	}
 	return v, err
+}
+
+// isKeyringUnavailable returns true for the "no secret-service backend
+// installed" class of errors. Kept conservative on purpose — real
+// keyring failures (corrupt entry, permission denied on an existing
+// entry) still bubble up so operators notice.
+func isKeyringUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	markers := []string{
+		// Secret-service D-Bus name not registered (no gnome-keyring /
+		// KWallet / secret-service daemon running).
+		"org.freedesktop.secrets",
+		// go-keyring's Linux backend shells out to ``dbus-launch`` when
+		// no session bus is present. Missing binary → this error.
+		"dbus-launch",
+		// No session bus at all (container / minimal image).
+		"DBUS_SESSION_BUS_ADDRESS",
+	}
+	for _, m := range markers {
+		if strings.Contains(msg, m) {
+			return true
+		}
+	}
+	return false
 }
 
 func (osKeyring) Delete(account string) error {

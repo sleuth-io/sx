@@ -1088,9 +1088,12 @@ func (g *GitVault) GetAssetDetails(ctx context.Context, name string) (*AssetDeta
 	return details, nil
 }
 
-// GetMCPTools returns no additional MCP tools for GitVault
+// GetMCPTools returns the asset-shim registrar so callers (notably the cloud
+// serve MCP builder) can publish list_my_assets / load_my_asset / … on top of
+// the git-backed vault. Without this, claude.ai connects to the relay and
+// reports "no tools available" because GitVault has no native MCP surface.
 func (g *GitVault) GetMCPTools() any {
-	return nil
+	return &AssetShimRegistrar{Repo: g}
 }
 
 // GetBootstrapOptions returns no bootstrap options for GitVault
