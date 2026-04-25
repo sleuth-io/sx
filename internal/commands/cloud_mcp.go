@@ -11,9 +11,12 @@ import (
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
-// buildCloudServeMCPServer constructs a fresh MCP server with the
-// vault's tools registered. Invoked once per cloud serve reconnect to
-// avoid leaking session state across connections.
+// buildCloudServeMCPServerFromConfig constructs a fresh MCP server with the
+// vault's tools registered, using a pre-loaded config snapshot. Invoked once
+// per cloud serve reconnect to avoid leaking session state across
+// connections; the caller passes the same ``cfg`` it loaded once at startup
+// so the disk isn't re-read on every reconnect (and the startup log line
+// describes the same vault the factory will instantiate).
 //
 // Parallel to “mcpserver.Server.registerVaultTools“ but returns a
 // standalone “*mcp.Server“ that can be driven by an in-memory
@@ -28,7 +31,7 @@ import (
 //     asset listing/loading toolset onto a server (used by PathVault and
 //     GitVault, which have no bespoke per-vault tools but want claude.ai /
 //     chatgpt.com to see real list_my_assets / load_my_asset surfaces).
-func buildCloudServeMCPServer() (*mcp.Server, error) {
+func buildCloudServeMCPServerFromConfig(cfg *config.Config) (*mcp.Server, error) {
 	log := logger.Get()
 
 	impl := &mcp.Implementation{
@@ -36,11 +39,6 @@ func buildCloudServeMCPServer() (*mcp.Server, error) {
 		Version: "1.0.0",
 	}
 	server := mcp.NewServer(impl, nil)
-
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, fmt.Errorf("cloud serve: load sx config: %w", err)
-	}
 
 	vault, err := vaultpkg.NewFromConfig(cfg)
 	if err != nil {

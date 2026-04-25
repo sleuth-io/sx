@@ -517,3 +517,47 @@ var (
 	_ = mustPath
 	_ = ensureTempConfig
 )
+
+func TestIsKeyringUnavailable(t *testing.T) {
+	// Lock in every error-message marker the function recognizes. The
+	// upstream library (``zalando/go-keyring``) doesn't expose typed
+	// sentinels for "no backend available", so this matcher is the only
+	// thing keeping the on-disk fallback path alive on headless Linux.
+	// A library upgrade that reworded any of these would silently break
+	// containerized cloud serve — these test cases turn that into a
+	// loud regression instead.
+	cases := []struct {
+		name  string
+		err   error
+		match bool
+	}{
+		{name: "nil_error", err: nil, match: false},
+		{
+			name:  "secret_service_dbus_name_missing",
+			err:   errors.New("The name org.freedesktop.secrets was not provided by any .service files"),
+			match: true,
+		},
+		{
+			name:  "dbus_launch_binary_missing",
+			err:   errors.New("exec: \"dbus-launch\": executable file not found in $PATH"),
+			match: true,
+		},
+		{
+			name:  "no_session_bus",
+			err:   errors.New("DBUS_SESSION_BUS_ADDRESS is not set"),
+			match: true,
+		},
+		{
+			name:  "real_failure_passes_through",
+			err:   errors.New("permission denied"),
+			match: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isKeyringUnavailable(tc.err); got != tc.match {
+				t.Fatalf("isKeyringUnavailable(%v) = %v, want %v", tc.err, got, tc.match)
+			}
+		})
+	}
+}

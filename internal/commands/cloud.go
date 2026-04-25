@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 
@@ -338,9 +339,16 @@ func runCloudServe(cmd *cobra.Command) error {
 	out.Info(fmt.Sprintf("Serving relay %s via %s", cred.RelayGID, cred.RelayBaseURL))
 	out.Printf("%s", "Press Ctrl+C to stop.\n")
 
+	// Capture cfg in the factory closure rather than reloading from disk on
+	// every reconnect. The original wiring did two things wrong: it read the
+	// disk twice on startup (once here, once in the factory) and silently
+	// discarded the value of the first load — making the log line above
+	// drift from what the factory actually used.
 	err = cloud.Serve(ctx, cloud.ServeOptions{
-		Credential:       cred,
-		MCPServerFactory: buildCloudServeMCPServer,
+		Credential: cred,
+		MCPServerFactory: func() (*mcp.Server, error) {
+			return buildCloudServeMCPServerFromConfig(cfg)
+		},
 	})
 	if errors.Is(err, context.Canceled) {
 		return nil
@@ -419,7 +427,10 @@ func newCloudRevokeCommand() *cobra.Command {
 			"revoked on the server side — skills.new still considers it active\n" +
 			"until someone re-runs `sx cloud connect` (which rotates the token)\n" +
 			"or an admin explicitly revokes it. To regain access from this machine,\n" +
-			"run `sx cloud connect` again.",
+			"run `sx cloud connect` again.\n\n" +
+			"To fully revoke access server-side (e.g. before sharing this machine\n" +
+			"or rotating secrets), visit https://app.skills.new/relay to invalidate\n" +
+			"the token immediately.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
 			if err := cloud.Delete(); err != nil {

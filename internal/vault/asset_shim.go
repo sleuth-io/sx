@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -27,6 +28,17 @@ import (
 // client's perspective. Diverging would mean prompt-tuning has to happen twice.
 type AssetShimRegistrar struct {
 	Repo assetReader
+
+	// zipCacheMu + zipCache memoize the latest zip bytes for a single
+	// ``slug@version``. The typical claude.ai workflow is
+	// ``load_my_asset`` followed by one or more ``load_my_asset_file``
+	// calls on the same asset; without a cache, GitVault re-walks the
+	// exploded repo and re-builds the zip from scratch on every call.
+	// One slot is enough — different assets bust each other, which keeps
+	// the bound on memory at the size of a single asset's zip.
+	zipCacheMu  sync.Mutex
+	zipCacheKey string
+	zipCache    []byte
 }
 
 // assetReader is the slice of the Vault interface needed to back the shim.
@@ -207,7 +219,7 @@ func (r *AssetShimRegistrar) handleLoadAsset(
 	}
 
 	latest := details.Versions[len(details.Versions)-1].Version
-	zipData, err := r.Repo.GetAssetByVersion(ctx, slug, latest)
+	zipData, err := r.fetchZip(ctx, slug, latest)
 	if err != nil {
 		return nil, nil, fmt.Errorf("download asset %s@%s: %w", slug, latest, err)
 	}
@@ -264,7 +276,7 @@ func (r *AssetShimRegistrar) handleLoadAssetFile(
 	}
 	latest := details.Versions[len(details.Versions)-1].Version
 
-	zipData, err := r.Repo.GetAssetByVersion(ctx, slug, latest)
+	zipData, err := r.fetchZip(ctx, slug, latest)
 	if err != nil {
 		return nil, nil, fmt.Errorf("download asset %s@%s: %w", slug, latest, err)
 	}
@@ -281,6 +293,29 @@ func (r *AssetShimRegistrar) handleLoadAssetFile(
 		return errorContent(fmt.Sprintf("File not found in asset %s: %s", slug, path))
 	}
 	return textContent(string(contentBytes))
+}
+
+// fetchZip returns the asset's zip bytes, reusing the last fetch when the
+// caller asks for the same ``slug@version``. The cache holds at most one
+// asset's zip at a time — different assets bust each other — so memory is
+// bounded by the largest asset accessed in a session, not by the catalog
+// size. The lock is held across the underlying ``GetAssetByVersion`` so a
+// burst of concurrent requests for the same slug doesn't trigger a thundering
+// herd of git pulls / zip builds.
+func (r *AssetShimRegistrar) fetchZip(ctx context.Context, slug, version string) ([]byte, error) {
+	key := slug + "@" + version
+	r.zipCacheMu.Lock()
+	defer r.zipCacheMu.Unlock()
+	if r.zipCacheKey == key && r.zipCache != nil {
+		return r.zipCache, nil
+	}
+	zipData, err := r.Repo.GetAssetByVersion(ctx, slug, version)
+	if err != nil {
+		return nil, err
+	}
+	r.zipCacheKey = key
+	r.zipCache = zipData
+	return zipData, nil
 }
 
 func filterByTypeKeys(in []AssetSummary, keys []string) []AssetSummary {
@@ -368,34 +403,33 @@ func splitZipContents(zipData []byte, primaryFile string) (string, []map[string]
 	if !utils.IsZipFile(zipData) {
 		return "", nil, errors.New("invalid zip data")
 	}
-	files, err := utils.ListZipFiles(zipData)
+	entries, err := utils.ListZipEntries(zipData)
 	if err != nil {
 		return "", nil, err
 	}
 	var primary string
-	bundled := make([]map[string]any, 0, len(files))
-	for _, name := range files {
-		if strings.HasSuffix(name, "/") {
+	bundled := make([]map[string]any, 0, len(entries))
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name, "/") {
 			continue
 		}
-		if name == "metadata.toml" {
+		if entry.Name == "metadata.toml" {
 			continue
 		}
-		if primaryFile != "" && name == primaryFile {
-			body, err := utils.ReadZipFile(zipData, name)
+		if primaryFile != "" && entry.Name == primaryFile {
+			body, err := utils.ReadZipFile(zipData, entry.Name)
 			if err != nil {
 				return "", nil, err
 			}
 			primary = string(body)
 			continue
 		}
-		body, err := utils.ReadZipFile(zipData, name)
-		if err != nil {
-			return "", nil, err
-		}
+		// Use the central-directory size rather than decompressing each
+		// bundled file. The MCP shim only needs ``size_bytes`` for the
+		// inventory; the body is fetched on demand via load_my_asset_file.
 		bundled = append(bundled, map[string]any{
-			"path":       name,
-			"size_bytes": len(body),
+			"path":       entry.Name,
+			"size_bytes": entry.Size,
 		})
 	}
 	return primary, bundled, nil

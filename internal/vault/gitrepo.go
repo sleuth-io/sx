@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -52,7 +53,17 @@ type GitVault struct {
 	httpHandler *HTTPSourceHandler
 	pathHandler *PathSourceHandler
 	gitHandler  *GitSourceHandler
-	hasSynced   bool // Track if we've synced in this CLI execution
+
+	// hasSynced + syncMu guard cloneOrUpdate against concurrent MCP tool
+	// goroutines (one per inbound JSON-RPC frame in cloud serve). A plain
+	// bool was a data race that ``go test -race`` would catch and that
+	// could manifest as duplicate ``git pull`` invocations in production.
+	// Using a mutex + bool (instead of ``sync.Once``) preserves the
+	// original "retry on next call after a cancelled clone" semantics —
+	// ``sync.Once`` would permanently latch the cancellation error onto
+	// every subsequent caller.
+	syncMu    sync.Mutex
+	hasSynced bool
 }
 
 // NewGitVault creates a new Git repository
@@ -272,10 +283,14 @@ func (g *GitVault) VerifyIntegrity(data []byte, hashes map[string]string, size i
 	return nil
 }
 
-// cloneOrUpdate clones the repository if it doesn't exist, or pulls updates if it does
-// Only performs the operation once per CLI execution to avoid redundant network calls
+// cloneOrUpdate clones the repository if it doesn't exist, or pulls updates if it does.
+// Only performs the operation once per CLI execution to avoid redundant network calls.
+// The mutex is held for the duration of the clone/pull so concurrent MCP tool
+// goroutines wait for the first caller's network I/O instead of racing into a
+// duplicate clone.
 func (g *GitVault) cloneOrUpdate(ctx context.Context) error {
-	// Skip if we've already synced in this execution
+	g.syncMu.Lock()
+	defer g.syncMu.Unlock()
 	if g.hasSynced {
 		return nil
 	}
@@ -298,7 +313,6 @@ func (g *GitVault) cloneOrUpdate(ctx context.Context) error {
 		}
 	}
 
-	// Mark as synced for this execution
 	g.hasSynced = true
 	return nil
 }

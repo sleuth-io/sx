@@ -121,6 +121,14 @@ func (osKeyring) Get(account string) (string, error) {
 // installed" class of errors. Kept conservative on purpose — real
 // keyring failures (corrupt entry, permission denied on an existing
 // entry) still bubble up so operators notice.
+//
+// String matching is unfortunate but unavoidable: ``go-keyring``'s Linux
+// backend (``zalando/go-keyring``) doesn't expose a typed sentinel for "no
+// backend available" — it just returns whatever D-Bus surfaces. A library
+// or OS upgrade that reworded these messages would silently break the
+// fallback to on-disk storage; the unit tests for this function pin each
+// expected substring so we get a regression failure instead. If you add a
+// new marker, add a matching test case in credential_test.go.
 func isKeyringUnavailable(err error) bool {
 	if err == nil {
 		return false
