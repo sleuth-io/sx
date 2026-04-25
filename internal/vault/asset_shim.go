@@ -296,10 +296,10 @@ func (r *AssetShimRegistrar) handleLoadAssetFile(
 }
 
 // fetchZip returns the asset's zip bytes, reusing the last fetch when the
-// caller asks for the same ``slug@version``. The cache holds at most one
+// caller asks for the same “slug@version“. The cache holds at most one
 // asset's zip at a time — different assets bust each other — so memory is
 // bounded by the largest asset accessed in a session, not by the catalog
-// size. The lock is held across the underlying ``GetAssetByVersion`` so a
+// size. The lock is held across the underlying “GetAssetByVersion“ so a
 // burst of concurrent requests for the same slug doesn't trigger a thundering
 // herd of git pulls / zip builds.
 func (r *AssetShimRegistrar) fetchZip(ctx context.Context, slug, version string) ([]byte, error) {

@@ -14,7 +14,7 @@ import (
 // buildCloudServeMCPServerFromConfig constructs a fresh MCP server with the
 // vault's tools registered, using a pre-loaded config snapshot. Invoked once
 // per cloud serve reconnect to avoid leaking session state across
-// connections; the caller passes the same ``cfg`` it loaded once at startup
+// connections; the caller passes the same “cfg“ it loaded once at startup
 // so the disk isn't re-read on every reconnect (and the startup log line
 // describes the same vault the factory will instantiate).
 //

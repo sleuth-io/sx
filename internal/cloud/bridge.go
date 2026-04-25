@@ -464,13 +464,13 @@ func writeError(ctx context.Context, ws *websocket.Conn, env inboundEnvelope, co
 
 // sendEnvelope writes an envelope on the WebSocket with a fresh timeout.
 //
-// The outer context is intentionally discarded (named ``_outerCtx`` to make
-// that obvious at the call site) and replaced with ``context.Background``.
+// The outer context is intentionally discarded (named “_outerCtx“ to make
+// that obvious at the call site) and replaced with “context.Background“.
 // The reason: this function is the last write that tells pulse a request
-// failed or completed, and the most common reason ``_outerCtx`` is cancelled
+// failed or completed, and the most common reason “_outerCtx“ is cancelled
 // at this point is that we're tearing down the connection or just received
 // an interrupt — exactly the moments when we still need to flush a final
-// frame to the server. A short ``writeEnvelopeTimeout`` is plenty to bound
+// frame to the server. A short “writeEnvelopeTimeout“ is plenty to bound
 // the write itself, so we don't risk hanging shutdown.
 func sendEnvelope(_outerCtx context.Context, ws *websocket.Conn, env outboundEnvelope) error {
 	_ = _outerCtx

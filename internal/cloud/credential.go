@@ -122,8 +122,8 @@ func (osKeyring) Get(account string) (string, error) {
 // keyring failures (corrupt entry, permission denied on an existing
 // entry) still bubble up so operators notice.
 //
-// String matching is unfortunate but unavoidable: ``go-keyring``'s Linux
-// backend (``zalando/go-keyring``) doesn't expose a typed sentinel for "no
+// String matching is unfortunate but unavoidable: “go-keyring“'s Linux
+// backend (“zalando/go-keyring“) doesn't expose a typed sentinel for "no
 // backend available" — it just returns whatever D-Bus surfaces. A library
 // or OS upgrade that reworded these messages would silently break the
 // fallback to on-disk storage; the unit tests for this function pin each

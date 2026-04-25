@@ -139,7 +139,7 @@ func ListZipFiles(zipData []byte) ([]string, error) {
 }
 
 // ZipEntry summarizes one file in a zip archive without decompressing it.
-// ``Size`` is the uncompressed size as recorded in the local file header,
+// “Size“ is the uncompressed size as recorded in the local file header,
 // suitable for inventory listings that don't need to read the body.
 type ZipEntry struct {
 	Name string
@@ -148,7 +148,7 @@ type ZipEntry struct {
 
 // ListZipEntries returns name + uncompressed size for every file in the
 // archive, reading only the central directory. Lets callers build an
-// inventory (e.g. an MCP ``bundled_files`` payload) without paying the cost
+// inventory (e.g. an MCP “bundled_files“ payload) without paying the cost
 // of decompressing every entry.
 func ListZipEntries(zipData []byte) ([]ZipEntry, error) {
 	if !IsZipFile(zipData) {
