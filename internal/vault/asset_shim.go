@@ -200,10 +200,10 @@ func (r *AssetShimRegistrar) handleLoadAsset(
 
 	details, err := r.Repo.GetAssetDetails(ctx, slug)
 	if err != nil {
-		return errorContent(fmt.Sprintf("Asset not found: %s", slug))
+		return errorContent("Asset not found: " + slug)
 	}
 	if len(details.Versions) == 0 {
-		return errorContent(fmt.Sprintf("Asset has no versions: %s", slug))
+		return errorContent("Asset has no versions: " + slug)
 	}
 
 	latest := details.Versions[len(details.Versions)-1].Version
@@ -223,7 +223,7 @@ func (r *AssetShimRegistrar) handleLoadAsset(
 		// can decide whether to ``load_my_asset_file``, so we return the
 		// envelope with an empty primary_content rather than erroring.
 	} else if primaryContent == "" && len(bundled) == 0 {
-		return errorContent(fmt.Sprintf("Asset has no content: %s", slug))
+		return errorContent("Asset has no content: " + slug)
 	}
 
 	out := map[string]any{
@@ -257,10 +257,10 @@ func (r *AssetShimRegistrar) handleLoadAssetFile(
 
 	details, err := r.Repo.GetAssetDetails(ctx, slug)
 	if err != nil {
-		return errorContent(fmt.Sprintf("Asset not found: %s", slug))
+		return errorContent("Asset not found: " + slug)
 	}
 	if len(details.Versions) == 0 {
-		return errorContent(fmt.Sprintf("Asset has no versions: %s", slug))
+		return errorContent("Asset has no versions: " + slug)
 	}
 	latest := details.Versions[len(details.Versions)-1].Version
 
