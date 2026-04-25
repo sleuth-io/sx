@@ -42,7 +42,7 @@ const shimMaxListAssets = 100
 const shimMaxListDescriptionLen = 200
 
 // chatDefaultTypeKeys is the chat-usable subset returned when no explicit
-// ``type`` filter is provided. Hooks, MCP configs, and Claude Code plugins
+// “type“ filter is provided. Hooks, MCP configs, and Claude Code plugins
 // are CLI-only lifecycle primitives and confuse a web-chat client, so the
 // caller has to opt in by name.
 var chatDefaultTypeKeys = []string{
@@ -133,8 +133,8 @@ func (r *AssetShimRegistrar) handleListAssets(
 // single asset type. Used by list_my_skills / list_my_rules / etc. — those
 // aliases exist because chatgpt.com / claude.ai dispatchers match heavily on
 // tool *name*, and a user asking "what skills do I have" lands more reliably
-// on a tool literally named ``list_my_skills`` than on a generic
-// ``list_my_assets`` call with an inferred filter.
+// on a tool literally named “list_my_skills“ than on a generic
+// “list_my_assets“ call with an inferred filter.
 func (r *AssetShimRegistrar) handleListByType(
 	typeKey string,
 ) func(context.Context, *mcp.CallToolRequest, ListByTypeArgs) (*mcp.CallToolResult, any, error) {
@@ -188,7 +188,7 @@ func (r *AssetShimRegistrar) listAssets(
 
 // handleLoadAsset implements load_my_asset. It downloads the latest version
 // zip, splits primary prompt content from bundled files, and returns both —
-// matching the Pulse shim's ``AssetDetails`` shape so cloud clients can rely
+// matching the Pulse shim's “AssetDetails“ shape so cloud clients can rely
 // on a single payload schema regardless of vault type.
 func (r *AssetShimRegistrar) handleLoadAsset(
 	ctx context.Context, _ *mcp.CallToolRequest, args LoadAssetArgs,
