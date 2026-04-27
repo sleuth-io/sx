@@ -33,7 +33,7 @@ Your best developers have figured out how to make AI assistants incredibly produ
 - **Instant onboarding** - New devs inherit the team's AI playbook on day one
 - **Central updates** - Change once in your vault, everyone gets the update
 - **Scoped installation** - Right assets for each repo, no context bloat
-- **Works with any AI client** - Claude Code, Cursor, GitHub Copilot, Gemini, Kiro, and more
+- **Works with any AI client** - Claude Code, Cursor, GitHub Copilot, Gemini, Kiro, and more, plus claude.ai and chatgpt.com via the cloud relay
 
 ## Quickstart
 
@@ -105,6 +105,18 @@ Teams have at least one admin at all times; mutations that would leave a
 team admin-less are rejected. User-scoped installs can only target the
 caller (prevents write-access holders from silently promoting an asset
 for teammates).
+
+**Use your vault from claude.ai or chatgpt.com** — expose it as an MCP
+endpoint via the skills.new relay:
+
+```bash
+sx cloud connect       # opens skills.new, paste back the attach line
+sx cloud serve         # keep this running — Ctrl+C exits
+sx cloud status        # prints the MCP URL to paste into claude.ai / chatgpt.com
+```
+
+The relay forwards requests over a WebSocket your machine opens — vault
+content stays local. See [docs/cloud-relay.md](docs/cloud-relay.md).
 
 **Usage analytics & audit**:
 
@@ -212,6 +224,8 @@ everyone gets the same tools automatically.
 | Gemini (JetBrains)      | ✅ Supported   | Rules, MCP servers only (no commands/hooks)               |
 | Gemini (Android Studio) | ✅ Supported   | Rules, MCP-remote only (HTTP, no stdio)                   |
 | Kiro                    | ✅ Supported   | Skills, rules, commands, MCP servers                      |
+| claude.ai (web)         | ✅ Supported   | Via the [skills.new cloud relay](docs/cloud-relay.md)     |
+| chatgpt.com (web)       | ✅ Supported   | Via the [skills.new cloud relay](docs/cloud-relay.md)     |
 
 
 ## Roadmap
@@ -223,6 +237,7 @@ everyone gets the same tools automatically.
 - ✅ Gemini support
 - ✅ Codex support
 - ✅ Kiro support
+- ✅ claude.ai and chatgpt.com support via the skills.new cloud relay
 - ✅ Skill discovery - Use Skills.new to discover relevant skills from your code and architecture
 - **Analytics** - Track skill usage and impact
 
@@ -250,6 +265,7 @@ See LICENSE file for details.
 - [MCP Spec](docs/mcp-spec.md) - MCP server and query tool
 - [Profiles](docs/profiles.md) - Multiple configuration profiles
 - [Clients](docs/clients.md) - Client support model and IDE vs CLI limitations
+- [Cloud relay](docs/cloud-relay.md) - Expose your vault to claude.ai and chatgpt.com via skills.new
 
 
 ### Prerequisites

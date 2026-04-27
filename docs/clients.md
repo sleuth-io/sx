@@ -1,8 +1,13 @@
 # Client Support
 
-sx works by writing asset files into well-known directories that AI clients read from (e.g. `.claude/`, `.kiro/`, `.cursor/`). This means sx support is inherently tied to the **file-based layer** of each client.
+sx supports two kinds of AI clients:
 
-## How sx installs assets
+1. **File-based clients** (Claude Code, Cursor, Codex, Copilot, Gemini, Kiro, Cline) — sx writes asset files into well-known directories the client reads on startup. This is the default `sx install` flow.
+2. **Web clients** (claude.ai, chatgpt.com) — sx exposes the vault as an MCP endpoint through the skills.new cloud relay. See [cloud-relay.md](cloud-relay.md).
+
+The two paths are independent. A vault can serve both; the same assets are reachable from a CLI tool reading `.claude/skills/` and from claude.ai talking to the relay.
+
+## How sx installs assets (file-based clients)
 
 sx writes files to disk. The client then reads those files when it starts or when it scans its config directories. sx does not interact with any client's UI, plugin system, or internal database.
 
@@ -19,6 +24,17 @@ Many AI tools ship in two forms: a **desktop IDE** and a **CLI**. These often ha
 | Gemini         | CLI/IDE | Full support for CLI/VS Code; rules and MCP only (JetBrains); MCP-remote only (Android Studio) |
 | GitHub Copilot | IDE ext | Full support                                                                                   |
 | Kiro           | CLI+IDE | Full support. See [Kiro-specific docs](kiro.md) for hook setup.                                |
+
+## Web clients (cloud relay)
+
+claude.ai and chatgpt.com can't read your filesystem, so sx exposes the vault as a custom MCP connector through a relay hosted at skills.new. The relay forwards JSON-RPC over a WebSocket your local `sx cloud serve` process opens — vault content stays on your machine.
+
+| Client      | Form | Notes                                                                                          |
+|-------------|------|------------------------------------------------------------------------------------------------|
+| claude.ai   | Web  | Via skills.new relay. Exposes `list_my_assets` / `load_my_asset` / `load_my_asset_file` tools. |
+| chatgpt.com | Web  | Via skills.new relay. Exposes `list_my_assets` / `load_my_asset` / `load_my_asset_file` tools. |
+
+See [cloud-relay.md](cloud-relay.md) for setup, security model, and troubleshooting.
 
 ## What "Experimental" means
 
