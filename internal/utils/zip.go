@@ -314,12 +314,16 @@ func copyZipFile(writer *zip.Writer, file *zip.File) error {
 		return err
 	}
 
-	// Create a new header based on the original, but let the writer compute checksums
+	// Create a new header based on the original, but let the writer compute checksums.
+	// SetMode preserves the Unix file mode (including the executable bit) by writing it
+	// into ExternalAttrs and tagging CreatorVersion as Unix — without this, copied files
+	// land in the new archive with mode 0 (extracted as 0644), stripping +x from scripts.
 	header := &zip.FileHeader{
 		Name:     file.Name,
 		Method:   file.Method,
 		Modified: file.Modified,
 	}
+	header.SetMode(file.Mode())
 
 	// If it's a directory, ensure trailing slash
 	if file.FileInfo().IsDir() {
