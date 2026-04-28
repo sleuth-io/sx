@@ -709,7 +709,7 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 			}
 		}
 		if target.Kind == InstallKindBot {
-			if _, err := m.FindBot(target.Bot); err != nil {
+			if _, err := findBotForMgmt(m, target.Bot); err != nil {
 				return nil, err
 			}
 		}
