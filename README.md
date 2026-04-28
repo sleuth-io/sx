@@ -91,9 +91,7 @@ sx install my-skill --bot python-backend          # a bot identity (CI runner, a
 | `--bot` | A bot identity, resolved when `SX_BOT=<name>` is set |
 
 See [docs/scoping.md](docs/scoping.md) for the full overview and
-links to per-scope docs: [teams.md](docs/teams.md) for team
-management, [bots.md](docs/bots.md) for bots, and
-[manifest-spec.md](docs/manifest-spec.md) for the on-disk format.
+links to a per-scope doc for each install target.
 
 **Preview** — see what `sx install` would resolve for you, the `pip
 freeze` analogue, without downloading or writing anything:
@@ -257,10 +255,9 @@ See LICENSE file for details.
 - [Vault Spec](docs/vault-spec.md) - Vault directory structure
 - [Manifest Spec](docs/manifest-spec.md) - sx.toml source-of-truth format (assets, scopes, teams)
 - [Lock Spec](docs/lock-spec.md) - Per-user resolved lock file
-- [Teams & targeted installs](docs/teams.md) - Team CRUD, per-team/user/repo installs, dry-run preview
+- [Scoping](docs/scoping.md) - Install targets and links to per-scope docs (orgs, repos, teams, users, bots)
 - [Audit log](docs/audit.md) - Event catalog, `sx audit` filters, storage format
 - [Usage analytics](docs/stats.md) - `sx stats` dashboard, JSON output, event format
-- [Scoping](docs/scoping.md) - Controlling where assets are installed
 - [Metadata Spec](docs/metadata-spec.md) - Asset metadata format
 - [MCP Spec](docs/mcp-spec.md) - MCP server and query tool
 - [Profiles](docs/profiles.md) - Multiple configuration profiles

@@ -430,18 +430,27 @@ func commonGetBot(vaultRoot, name string) (*mgmt.Bot, error) {
 	if err != nil {
 		return nil, err
 	}
+	bot, err := findBotForMgmt(m, name)
+	if err != nil {
+		return nil, err
+	}
+	out := manifestBotToMgmt(*bot)
+	return &out, nil
+}
+
+// findBotForMgmt wraps manifest.FindBot and translates manifest's
+// not-found sentinel into mgmt.ErrBotNotFound so callers in any vault
+// implementation give the same answer to errors.Is regardless of
+// backend (file-based vs Sleuth).
+func findBotForMgmt(m *manifest.Manifest, name string) (*manifest.Bot, error) {
 	bot, err := m.FindBot(name)
 	if err != nil {
-		// Translate manifest's not-found sentinel to the mgmt-package
-		// equivalent so callers using errors.Is get a single answer
-		// regardless of vault backend (file-based vs Sleuth).
 		if errors.Is(err, manifest.ErrBotNotFound) {
 			return nil, mgmt.ErrBotNotFound
 		}
 		return nil, err
 	}
-	out := manifestBotToMgmt(*bot)
-	return &out, nil
+	return bot, nil
 }
 
 // commonCreateBot adds a new bot. Bot creation does not require team
@@ -450,7 +459,7 @@ func commonGetBot(vaultRoot, name string) (*mgmt.Bot, error) {
 func commonCreateBot(vaultRoot string, actor mgmt.Actor, bot mgmt.Bot) error {
 	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
 		if _, err := m.FindBot(bot.Name); err == nil {
-			return nil, fmt.Errorf("%w: %s", manifest.ErrBotExists, bot.Name)
+			return nil, fmt.Errorf("%w: %s", mgmt.ErrBotExists, bot.Name)
 		}
 		mb := mgmtBotToManifest(bot)
 		// Validate every team listed exists. Mirrors the way teams
@@ -485,7 +494,7 @@ func commonCreateBot(vaultRoot string, actor mgmt.Actor, bot mgmt.Bot) error {
 // the row in full.
 func commonUpdateBot(vaultRoot string, actor mgmt.Actor, bot mgmt.Bot) error {
 	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
-		existing, err := m.FindBot(bot.Name)
+		existing, err := findBotForMgmt(m, bot.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -518,7 +527,7 @@ func commonUpdateBot(vaultRoot string, actor mgmt.Actor, bot mgmt.Bot) error {
 func commonDeleteBot(vaultRoot string, actor mgmt.Actor, name string) error {
 	var clearedAssets []string
 	if err := withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
-		if _, err := m.FindBot(name); err != nil {
+		if _, err := findBotForMgmt(m, name); err != nil {
 			return nil, err
 		}
 		for i := range m.Assets {
@@ -581,7 +590,7 @@ func commonDeleteBot(vaultRoot string, actor mgmt.Actor, name string) error {
 // no-op.
 func commonAddBotTeam(vaultRoot string, actor mgmt.Actor, botName, teamName string) error {
 	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
-		bot, err := m.FindBot(botName)
+		bot, err := findBotForMgmt(m, botName)
 		if err != nil {
 			return nil, err
 		}
@@ -612,7 +621,7 @@ func commonAddBotTeam(vaultRoot string, actor mgmt.Actor, botName, teamName stri
 // an absent team is a silent no-op.
 func commonRemoveBotTeam(vaultRoot string, actor mgmt.Actor, botName, teamName string) error {
 	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
-		bot, err := m.FindBot(botName)
+		bot, err := findBotForMgmt(m, botName)
 		if err != nil {
 			return nil, err
 		}

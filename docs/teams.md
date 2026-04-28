@@ -1,15 +1,19 @@
-# Teams and targeted installs
+# Team-scoped installs
 
-Git and path vaults support first-class team management plus targeted
-installs that route assets to specific repositories, paths, teams, or
-individual users. This document covers the CLI surface and the data
-model. The schema is defined in [manifest-spec.md](manifest-spec.md);
-the lock file produced at install time is described in
-[lock-spec.md](lock-spec.md). For the audit log and usage analytics
-generated alongside these mutations, see [audit.md](audit.md) and
-[stats.md](stats.md).
+`--team <name>` installs an asset for every member of a named team.
+Teams are first-class objects in the vault — they have members,
+admins, and a list of repositories the team owns. Team-scoped installs
+flatten to the team's repositories at resolve time, so a team install
+both targets the people in the team and the codebases they work on.
 
-## Teams
+This document covers the team CRUD surface and team-scoped installs.
+For the manifest schema, see
+[manifest-spec.md](manifest-spec.md#assetsscopes--install-targets).
+For the audit log generated alongside team mutations, see
+[audit.md](audit.md). For the broader scope picker, see
+[scoping.md](scoping.md).
+
+## Lifecycle
 
 ### Creating a team
 
@@ -71,60 +75,33 @@ sx team repo remove platform github.com/acme/tools
 sx team delete platform --yes
 ```
 
-Deleting a team cascades: every `kind = "team"` scope referencing it is
-removed from its asset, and an `install.cleared` audit event is emitted
-per asset with `reason = "team_deleted"` so auditors can reconstruct
-why an asset stopped installing.
+Deleting a team cascades:
+
+* every `kind = "team"` scope referencing it is removed from its
+  asset, and an `install.cleared` audit event is emitted per asset
+  with `reason = "team_deleted"`
+* every bot whose `teams` list referenced it has the team stripped,
+  and a `bot.team_removed` audit event is emitted per bot with
+  `reason = "team_deleted"`
+
+Both cascades happen inside the same transaction, so a future team
+re-created under the same name does not silently inherit orphaned
+asset scopes or bot memberships.
 
 ## Targeted installs
 
-`sx install <asset>` with a scope flag rewrites an asset's install
-scopes in the vault's `sx.toml`:
-
 ```bash
-sx install code-reviewer --org                          # everyone
-sx install code-reviewer --repo github.com/acme/infra   # one repo
-sx install code-reviewer --path github.com/acme/infra#docs/  # path in a repo
-sx install code-reviewer --team platform                # team members
-sx install code-reviewer --user alice@acme.com          # a single user
-sx install code-reviewer --bot python-backend           # a bot identity
+sx install code-reviewer --team platform
 ```
 
-For the `--bot` scope, bot lifecycle, and SX_BOT identity, see
-[bots.md](bots.md).
-
-### Previewing a resolved install
-
-`sx install --dry-run` prints the assets that would be installed for
-the current user without downloading anything or touching client
-directories — the equivalent of `pip freeze` against the vault's
-manifest. See `sx install --help` for details.
-
-### User-scope self-only
-
-`--user <email>` is allowed only when `<email>` matches the caller's
-git identity. This stops someone with write access to the vault from
-silently flipping an asset to "global" in a teammate's resolved lock
-file. The check is enforced inside the vault mutation transaction,
-not just in the CLI.
-
-### Team scope admin requirement
+Adds a `kind = "team"` scope row to the asset in the vault's `sx.toml`.
+At resolve time the row expands to "every team member running inside
+one of the team's repositories" — so the asset reaches the right
+people in the right codebases without you listing every repo
+separately.
 
 `--team <name>` requires the caller to be an admin of the named team,
 re-checked inside the transaction against the freshly-loaded team list.
-
-## Identity model
-
-Team membership, admin checks, and user-scope install gating all use
-the email from `git config user.email` (cached per vault root for the
-CLI's lifetime).
-
-If git is unconfigured, sx synthesizes a read-only identity of the form
-`local:$USER@$HOST`. The `local:` prefix guarantees it cannot collide
-with a real email in a team admin list — any mutation using this
-identity is rejected with a clear "set git config user.email" message.
-Read-only commands (`sx team list`, `sx install --dry-run`,
-`sx stats`, `sx audit`) still work.
 
 ## Where state lives
 

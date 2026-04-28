@@ -23,8 +23,14 @@ address.
 
 ### Per-scope deep dives
 
+* [orgs.md](orgs.md) — org-wide installs, when to switch to a
+  narrower scope
+* [repos.md](repos.md) — repo and path scope, monorepo patterns,
+  URL normalization
 * [teams.md](teams.md) — creating teams, member/admin lifecycle,
-  team-scoped installs, identity model
+  team-scoped installs
+* [users.md](users.md) — single-user installs, self-only restriction,
+  identity model
 * [bots.md](bots.md) — bot lifecycle, SX_BOT/SX_BOT_KEY auth,
   bot-mode resolution, trust boundaries
 * [manifest-spec.md](manifest-spec.md#assetsscopes--install-targets) —
