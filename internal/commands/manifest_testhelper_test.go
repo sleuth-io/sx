@@ -53,7 +53,7 @@ func findManifestAsset(t *testing.T, vaultRoot, name string) (*lockfile.Asset, b
 			out.Scopes = append(out.Scopes, lockfile.Scope{Repo: s.Repo})
 		case manifest.ScopeKindPath:
 			out.Scopes = append(out.Scopes, lockfile.Scope{Repo: s.Repo, Paths: append([]string(nil), s.Paths...)})
-		case manifest.ScopeKindOrg, manifest.ScopeKindTeam, manifest.ScopeKindUser:
+		case manifest.ScopeKindOrg, manifest.ScopeKindTeam, manifest.ScopeKindUser, manifest.ScopeKindBot:
 			// Identity-dependent scopes are not expressible in the
 			// lockfile.Scope shape; tests that need them read the
 			// manifest directly.
@@ -106,7 +106,7 @@ func allManifestAssets(t *testing.T, vaultRoot string) []lockfile.Asset {
 				lf.Scopes = append(lf.Scopes, lockfile.Scope{Repo: s.Repo})
 			case manifest.ScopeKindPath:
 				lf.Scopes = append(lf.Scopes, lockfile.Scope{Repo: s.Repo, Paths: append([]string(nil), s.Paths...)})
-			case manifest.ScopeKindOrg, manifest.ScopeKindTeam, manifest.ScopeKindUser:
+			case manifest.ScopeKindOrg, manifest.ScopeKindTeam, manifest.ScopeKindUser, manifest.ScopeKindBot:
 				// See findManifestAsset: identity-dependent scopes
 				// are omitted from the lockfile shape.
 			}

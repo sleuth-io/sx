@@ -87,7 +87,11 @@ sx install code-reviewer --repo github.com/acme/infra   # one repo
 sx install code-reviewer --path github.com/acme/infra#docs/  # path in a repo
 sx install code-reviewer --team platform                # team members
 sx install code-reviewer --user alice@acme.com          # a single user
+sx install code-reviewer --bot python-backend           # a bot identity
 ```
+
+For the `--bot` scope, bot lifecycle, and SX_BOT identity, see
+[bots.md](bots.md).
 
 ### Previewing a resolved install
 

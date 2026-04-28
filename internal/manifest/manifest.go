@@ -52,6 +52,16 @@ var (
 	// ErrTeamExists is returned when CreateTeam finds the team already
 	// exists.
 	ErrTeamExists = errors.New("team already exists")
+
+	// ErrEmptyBotName is returned by bot mutators when the normalized bot
+	// name is blank.
+	ErrEmptyBotName = errors.New("bot name cannot be empty")
+
+	// ErrBotNotFound is returned when a bot lookup fails.
+	ErrBotNotFound = errors.New("bot not found")
+
+	// ErrBotExists is returned when CreateBot finds the bot already exists.
+	ErrBotExists = errors.New("bot already exists")
 )
 
 // Manifest is the on-disk structure of sx.toml.
@@ -72,6 +82,12 @@ type Manifest struct {
 	// Teams are group definitions (members, admins, repositories)
 	// referenced by team-scoped installs.
 	Teams []Team `toml:"teams,omitempty"`
+
+	// Bots are non-human service identities. A bot can be a member of one
+	// or more teams (gaining repo context the same way a human team
+	// member does) and can also be a direct install target via
+	// ScopeKindBot.
+	Bots []Bot `toml:"bots,omitempty"`
 }
 
 // Asset is one managed asset: its identity, source, and install scopes.
@@ -145,6 +161,12 @@ const (
 	// ScopeKindUser means the asset is available to a single user,
 	// identified by email.
 	ScopeKindUser ScopeKind = "user"
+
+	// ScopeKindBot means the asset is available to a single bot identity,
+	// identified by name. The bot is defined in Manifest.Bots; the vault
+	// layer resolves it against the caller's identity (typically SX_BOT)
+	// when producing a lock file.
+	ScopeKindBot ScopeKind = "bot"
 )
 
 // Scope is one install target. Which fields are significant depends on Kind;
@@ -155,6 +177,7 @@ type Scope struct {
 	Paths []string  `toml:"paths,omitempty"`
 	Team  string    `toml:"team,omitempty"`
 	User  string    `toml:"user,omitempty"`
+	Bot   string    `toml:"bot,omitempty"`
 }
 
 // Validate returns nil if this scope row has the fields required by its Kind.
@@ -180,6 +203,10 @@ func (s *Scope) Validate() error {
 	case ScopeKindUser:
 		if strings.TrimSpace(s.User) == "" {
 			return errors.New("user scope requires user field")
+		}
+	case ScopeKindBot:
+		if strings.TrimSpace(s.Bot) == "" {
+			return errors.New("bot scope requires bot field")
 		}
 	default:
 		return fmt.Errorf("%w: %q", ErrInvalidScopeKind, string(s.Kind))
@@ -264,6 +291,62 @@ func (m *Manifest) TeamsForMember(email string) []*Team {
 	return out
 }
 
+// Bot is a non-human service identity. Bots gain repository context by
+// being members of one or more teams; assets can also be installed
+// directly to a bot via ScopeKindBot. File-based vaults treat bots as
+// identity-only — the trust boundary is "vault read access ⇒ asset
+// access", so anyone with vault access can claim any bot identity.
+type Bot struct {
+	Name        string   `toml:"name"`
+	Description string   `toml:"description,omitempty"`
+	Teams       []string `toml:"teams,omitempty"`
+}
+
+// IsOnTeam returns true if the bot lists the given team in its Teams
+// slice.
+func (b *Bot) IsOnTeam(name string) bool {
+	return slices.Contains(b.Teams, strings.TrimSpace(name))
+}
+
+// FindBot returns the bot with the given name, or ErrBotNotFound.
+func (m *Manifest) FindBot(name string) (*Bot, error) {
+	for i := range m.Bots {
+		if m.Bots[i].Name == name {
+			return &m.Bots[i], nil
+		}
+	}
+	return nil, ErrBotNotFound
+}
+
+// UpsertBot inserts or replaces a bot keyed by name. Returns the pointer
+// into the manifest's own slice, or ErrEmptyBotName if the normalized
+// name is blank.
+func (m *Manifest) UpsertBot(b Bot) (*Bot, error) {
+	normalizeBotInPlace(&b)
+	if b.Name == "" {
+		return nil, ErrEmptyBotName
+	}
+	for i := range m.Bots {
+		if m.Bots[i].Name == b.Name {
+			m.Bots[i] = b
+			return &m.Bots[i], nil
+		}
+	}
+	m.Bots = append(m.Bots, b)
+	return &m.Bots[len(m.Bots)-1], nil
+}
+
+// DeleteBot removes the bot by name, returning ErrBotNotFound if missing.
+func (m *Manifest) DeleteBot(name string) error {
+	for i := range m.Bots {
+		if m.Bots[i].Name == name {
+			m.Bots = append(m.Bots[:i], m.Bots[i+1:]...)
+			return nil
+		}
+	}
+	return ErrBotNotFound
+}
+
 // FindAsset returns the first asset with the given name, or nil.
 func (m *Manifest) FindAsset(name string) *Asset {
 	for i := range m.Assets {
@@ -320,11 +403,27 @@ func normalizeTeamInPlace(t *Team) {
 	t.Repositories = dedupeSorted(normalizeRepos(t.Repositories))
 }
 
+// normalizeBotInPlace trims a bot's name and description and normalizes
+// its team list (trimmed, deduped, sorted) so the on-disk encoding is
+// deterministic regardless of insertion order.
+func normalizeBotInPlace(b *Bot) {
+	b.Name = strings.TrimSpace(b.Name)
+	b.Description = strings.TrimSpace(b.Description)
+	teams := make([]string, 0, len(b.Teams))
+	for _, t := range b.Teams {
+		if t = strings.TrimSpace(t); t != "" {
+			teams = append(teams, t)
+		}
+	}
+	b.Teams = dedupeSorted(teams)
+}
+
 func normalizeScopeInPlace(s *Scope) {
 	s.Kind = ScopeKind(strings.ToLower(strings.TrimSpace(string(s.Kind))))
 	s.Repo = strings.TrimSpace(s.Repo)
 	s.Team = strings.TrimSpace(s.Team)
 	s.User = NormalizeEmail(s.User)
+	s.Bot = strings.TrimSpace(s.Bot)
 
 	if len(s.Paths) > 0 {
 		cleaned := make([]string, 0, len(s.Paths))
@@ -509,6 +608,14 @@ func normalized(m *Manifest) *Manifest {
 		}
 	}
 
+	if len(m.Bots) > 0 {
+		out.Bots = make([]Bot, len(m.Bots))
+		copy(out.Bots, m.Bots)
+		for i := range out.Bots {
+			normalizeBotInPlace(&out.Bots[i])
+		}
+	}
+
 	return &out
 }
 
@@ -518,9 +625,9 @@ func normalizeAssetInPlace(a *Asset) {
 	if len(a.Scopes) > 0 {
 		scopes := make([]Scope, 0, len(a.Scopes))
 		type scopeKey struct {
-			kind            ScopeKind
-			repo, team, usr string
-			paths           string
+			kind                 ScopeKind
+			repo, team, usr, bot string
+			paths                string
 		}
 		seen := make(map[scopeKey]struct{}, len(a.Scopes))
 		for _, s := range a.Scopes {
@@ -533,6 +640,7 @@ func normalizeAssetInPlace(a *Asset) {
 				repo:  s.Repo,
 				team:  s.Team,
 				usr:   s.User,
+				bot:   s.Bot,
 				paths: strings.Join(s.Paths, "\x00"),
 			}
 			if _, ok := seen[key]; ok {

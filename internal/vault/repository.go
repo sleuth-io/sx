@@ -128,6 +128,22 @@ type Vault interface {
 	AddTeamRepository(ctx context.Context, team, repoURL string) error
 	RemoveTeamRepository(ctx context.Context, team, repoURL string) error
 
+	// Bot management. Bots are non-human service identities. They gain
+	// repo context through teams (the same way human team members do)
+	// and can also be a direct install target via InstallKindBot.
+	ListBots(ctx context.Context) ([]mgmt.Bot, error)
+	GetBot(ctx context.Context, name string) (*mgmt.Bot, error)
+	// CreateBot creates a new bot. The returned rawToken is non-empty
+	// only on Sleuth vaults, which auto-issue a default API key as part
+	// of bot creation; file-based vaults treat bots as identity-only and
+	// always return "". Callers print the token (shown once) when
+	// non-empty so the auto-issued key is not silently wasted.
+	CreateBot(ctx context.Context, bot mgmt.Bot) (rawToken string, err error)
+	UpdateBot(ctx context.Context, bot mgmt.Bot) error
+	DeleteBot(ctx context.Context, name string) error
+	AddBotTeam(ctx context.Context, bot, team string) error
+	RemoveBotTeam(ctx context.Context, bot, team string) error
+
 	// SetAssetInstallation records a new installation target for an
 	// asset. File-backed vaults append the target to the asset's scope
 	// list in sx.toml; Sleuth vaults delegate to the server.
@@ -158,6 +174,7 @@ const (
 	InstallKindPath InstallKind = "path"
 	InstallKindTeam InstallKind = "team"
 	InstallKindUser InstallKind = "user"
+	InstallKindBot  InstallKind = "bot"
 )
 
 // InstallTarget describes a single installation target for an asset. Only
@@ -168,6 +185,7 @@ type InstallTarget struct {
 	Paths []string // Path
 	Team  string   // Team
 	User  string   // User (email)
+	Bot   string   // Bot (name)
 }
 
 // AuditData returns the payload attached to an install.set audit event
@@ -186,6 +204,8 @@ func (t InstallTarget) AuditData() map[string]any {
 		data["team"] = t.Team
 	case InstallKindUser:
 		data["user"] = t.User
+	case InstallKindBot:
+		data["bot"] = t.Bot
 	}
 	return data
 }
@@ -204,8 +224,21 @@ func (t InstallTarget) Describe() string {
 		return "team " + t.Team
 	case InstallKindUser:
 		return "user " + t.User
+	case InstallKindBot:
+		return "bot " + t.Bot
 	}
 	return string(t.Kind)
+}
+
+// BotApiKeyManager is implemented by vaults that issue API tokens for
+// bot identities. File-based vaults (path/git) do not implement this —
+// their trust model is "vault read access ⇒ asset access" so bots are
+// identity-only there. Sleuth vaults issue real OAuth tokens via the
+// existing skills.new createBotApiKey mutation.
+type BotApiKeyManager interface {
+	CreateBotApiKey(ctx context.Context, botName, label string) (rawToken string, key mgmt.BotApiKey, err error)
+	ListBotApiKeys(ctx context.Context, botName string) ([]mgmt.BotApiKey, error)
+	DeleteBotApiKey(ctx context.Context, botName, keyID string) error
 }
 
 // ScopeOption represents a vault-specific scope option (e.g., "personal", "team")

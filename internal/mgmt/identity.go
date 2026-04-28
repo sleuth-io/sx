@@ -26,7 +26,33 @@ type Actor struct {
 	// mutations because their identity can be spoofed by flipping $USER;
 	// see RequireRealIdentity.
 	Synthetic bool
+
+	// Bot is non-empty when the caller is acting as a bot (typically via
+	// SX_BOT=<name>). Email is then "bot:<name>" so audit attribution
+	// stays unique and never collides with a human email. See IsBot.
+	Bot string
 }
+
+// IsBot returns true when the actor is a bot identity (e.g. resolved
+// from SX_BOT). Used by resolution code to switch to the bot scope rule
+// instead of the human one.
+func (a Actor) IsBot() bool {
+	return a.Bot != ""
+}
+
+// SXBotEnv is the environment variable that, when set, makes
+// CurrentGitActor return a bot actor instead of the git-email actor.
+// File-based vaults treat the named bot as identity-only — anyone with
+// vault read access can claim any bot — and Sleuth vaults expect the
+// caller to also be authenticated via a bot API key.
+const SXBotEnv = "SX_BOT"
+
+// SXBotKeyEnv is the environment variable that holds the raw bot API
+// key for Sleuth vaults. When set, the Sleuth vault constructor uses
+// it as the bearer token, overriding the user OAuth token saved by
+// `sx cloud connect`. File-based vaults ignore this — bots are
+// identity-only there.
+const SXBotKeyEnv = "SX_BOT_KEY" //nolint:gosec // env var name, not a credential
 
 // String returns "name <email>" if both are set, just the email otherwise.
 func (a Actor) String() string {
@@ -40,8 +66,13 @@ func (a Actor) String() string {
 // synthetic. Call this at the top of any mgmt mutation helper that
 // writes to shared vault state (teams, installations, scopes) — a
 // synthetic identity is fine for reads but cannot be trusted as the
-// authoritative actor behind a persisted change.
+// authoritative actor behind a persisted change. Bot actors are
+// rejected: bot identities are read-only by design (they fetch
+// installed assets but never mutate vault state).
 func (a Actor) RequireRealIdentity() error {
+	if a.IsBot() {
+		return fmt.Errorf("%w: bot identities cannot mutate vault state — switch to a real git user.email", ErrIdentityNotSet)
+	}
 	if a.Email == "" || a.Synthetic {
 		return ErrIdentityNotSet
 	}
@@ -55,11 +86,14 @@ var (
 	actorCache   = make(map[string]Actor)
 )
 
-// CurrentGitActor resolves the caller's identity via `git config user.email`
-// (scoped to the given repoPath if non-empty, falling back to global git
-// config). If git is unconfigured or unavailable, it tries to synthesize an
-// identity from $USER and the hostname. Returns ErrIdentityNotSet only when
-// every source fails.
+// CurrentGitActor resolves the caller's identity. SX_BOT short-circuits
+// the resolution: if set, the actor is a bot identity, with Email
+// "bot:<name>" so audit log entries are attributed unambiguously and
+// never collide with a human email. Otherwise resolution proceeds via
+// `git config user.email` (scoped to the given repoPath if non-empty,
+// falling back to global git config), with a $USER@host fallback for
+// unconfigured workstations. Returns ErrIdentityNotSet only when every
+// source fails.
 func CurrentGitActor(ctx context.Context, repoPath string) (Actor, error) {
 	actorCacheMu.Lock()
 	if cached, ok := actorCache[repoPath]; ok {
@@ -67,6 +101,18 @@ func CurrentGitActor(ctx context.Context, repoPath string) (Actor, error) {
 		return cached, nil
 	}
 	actorCacheMu.Unlock()
+
+	if botName := strings.TrimSpace(os.Getenv(SXBotEnv)); botName != "" {
+		actor := Actor{
+			Email: "bot:" + botName,
+			Name:  botName,
+			Bot:   botName,
+		}
+		actorCacheMu.Lock()
+		actorCache[repoPath] = actor
+		actorCacheMu.Unlock()
+		return actor, nil
+	}
 
 	email := readGitConfig(ctx, repoPath, "user.email")
 	name := readGitConfig(ctx, repoPath, "user.name")

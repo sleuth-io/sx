@@ -25,17 +25,29 @@ const (
 	EventTeamAdminUnset    = "team.admin_unset"
 	EventTeamRepoAdded     = "team.repo_added"
 	EventTeamRepoRemoved   = "team.repo_removed"
-	EventAssetCreated      = "asset.created"
-	EventAssetUpdated      = "asset.updated"
-	EventAssetRemoved      = "asset.removed"
-	EventAssetRenamed      = "asset.renamed"
-	EventInstallSet        = "install.set"
-	EventInstallCleared    = "install.cleared"
+	EventBotCreated        = "bot.created"
+	EventBotUpdated        = "bot.updated"
+	EventBotDeleted        = "bot.deleted"
+	EventBotTeamAdded      = "bot.team_added"
+	EventBotTeamRemoved    = "bot.team_removed"
+	// Bot API key lifecycle events live on the Sleuth server's audit
+	// stream, not the local .sx/audit JSONL log: file-based vaults
+	// reject bot key operations entirely (BotApiKeyManager is
+	// Sleuth-only), and Sleuth's audit is captured server-side. No
+	// local constants are defined for those events to avoid implying
+	// audit coverage that the local log doesn't have. See docs/bots.md.
+	EventAssetCreated   = "asset.created"
+	EventAssetUpdated   = "asset.updated"
+	EventAssetRemoved   = "asset.removed"
+	EventAssetRenamed   = "asset.renamed"
+	EventInstallSet     = "install.set"
+	EventInstallCleared = "install.cleared"
 )
 
 // Audit target type constants.
 const (
 	TargetTypeTeam         = "team"
+	TargetTypeBot          = "bot"
 	TargetTypeAsset        = "asset"
 	TargetTypeInstallation = "installation"
 )

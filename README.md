@@ -32,7 +32,7 @@ Your best developers have figured out how to make AI assistants incredibly produ
 - **Sharing expertise** - Turn individual discoveries into team assets
 - **Instant onboarding** - New devs inherit the team's AI playbook on day one
 - **Central updates** - Change once in your vault, everyone gets the update
-- **Scoped installation** - Right assets for each repo, no context bloat
+- **Scoped installation** - Right assets for each org, team, bot, repo or person, no context bloat
 - **Works with any AI client** - Claude Code, Cursor, GitHub Copilot, Gemini, Kiro, and more, plus claude.ai and chatgpt.com via the cloud relay
 
 ## Quickstart
@@ -71,15 +71,29 @@ sx profile use work        # Switch to it
 sx profile list            # See all profiles
 ```
 
-**Targeted installs** — pick who sees which asset:
+**Install targets** — pick who sees which asset:
 
 ```bash
 sx install my-skill --org                         # everyone in the vault
-sx install my-skill --repo github.com/acme/infra  # only installs when run in that repo
-sx install my-skill --path github.com/acme/infra#docs/  # only for a path in a repo
-sx install my-skill --team platform               # everyone on a team
+sx install my-skill --repo github.com/acme/infra  # only inside that repo
+sx install my-skill --path github.com/acme/infra#docs/  # one path in a repo
+sx install my-skill --team platform               # every member of a team
 sx install my-skill --user alice@acme.com         # a single user (must be the caller)
+sx install my-skill --bot python-backend          # a bot identity (CI runner, agent)
 ```
+
+| Scope | Who gets it |
+|-------|-------------|
+| `--org` | Everyone — the default if no flag is set |
+| `--repo` / `--path` | Callers working inside the named repo or subpath |
+| `--team` | Team members; admin-gated |
+| `--user` | A single human, must match caller's git identity |
+| `--bot` | A bot identity, resolved when `SX_BOT=<name>` is set |
+
+See [docs/scoping.md](docs/scoping.md) for the full overview and
+links to per-scope docs: [teams.md](docs/teams.md) for team
+management, [bots.md](docs/bots.md) for bots, and
+[manifest-spec.md](docs/manifest-spec.md) for the on-disk format.
 
 **Preview** — see what `sx install` would resolve for you, the `pip
 freeze` analogue, without downloading or writing anything:
@@ -87,24 +101,6 @@ freeze` analogue, without downloading or writing anything:
 ```bash
 sx install --dry-run
 ```
-
-**Teams** (git + path vaults):
-
-```bash
-sx team create platform --member alice@acme.com --admin alice@acme.com \
-                        --repo github.com/acme/infra
-sx team member add platform bob@acme.com
-sx team admin set platform bob@acme.com       # promote bob
-sx team repo add platform github.com/acme/tools
-sx team show platform
-sx team list
-sx team delete platform --yes
-```
-
-Teams have at least one admin at all times; mutations that would leave a
-team admin-less are rejected. User-scoped installs can only target the
-caller (prevents write-access holders from silently promoting an asset
-for teammates).
 
 **Use your vault from claude.ai or chatgpt.com** — expose it as an MCP
 endpoint via the skills.new relay:
@@ -194,7 +190,7 @@ sx follows the manifest-and-lock pattern used by npm, cargo, and uv:
 
 1. **Manifest (`sx.toml`)** — the vault's source of truth. Lists every
    managed asset, its install scopes (`org`, `repo`, `path`, `team`,
-   `user`), and team definitions (members, admins, repositories).
+   `bot`, `user`), and team definitions (members, admins, repositories).
    Committed to git / path vaults. See [docs/manifest-spec.md](docs/manifest-spec.md).
 2. **Lock file** — a per-user resolved artifact. `sx install` reads the
    manifest, resolves team and user scopes against the caller's git
@@ -207,7 +203,7 @@ sx follows the manifest-and-lock pattern used by npm, cargo, and uv:
    `.sx/usage/YYYY-MM.jsonl`. Query them with `sx audit` / `sx stats`.
 
 High level: **create** assets with metadata, **share** to your vault,
-**install** [globally, per project, per path, per team, or per user](docs/scoping.md),
+**install** [globally, per repo, per path, per team, per bot, or per user](docs/scoping.md),
 **auto-install** on new Claude Code sessions, **stay synchronized** —
 everyone gets the same tools automatically.
 
@@ -224,6 +220,7 @@ everyone gets the same tools automatically.
 | Gemini (JetBrains)      | ✅ Supported   | Rules, MCP servers only (no commands/hooks)               |
 | Gemini (Android Studio) | ✅ Supported   | Rules, MCP-remote only (HTTP, no stdio)                   |
 | Kiro                    | ✅ Supported   | Skills, rules, commands, MCP servers                      |
+| Openclaw                | ✅ Supported   | Skills, rules, commands                      |
 | claude.ai (web)         | ✅ Supported   | Via the [skills.new cloud relay](docs/cloud-relay.md)     |
 | chatgpt.com (web)       | ✅ Supported   | Via the [skills.new cloud relay](docs/cloud-relay.md)     |
 
@@ -237,9 +234,12 @@ everyone gets the same tools automatically.
 - ✅ Gemini support
 - ✅ Codex support
 - ✅ Kiro support
+- ✅ Openclaw support
 - ✅ claude.ai and chatgpt.com support via the skills.new cloud relay
+- ✅ Org, Team, Bot, Repository & Personal installation targets for all vault types
 - ✅ Skill discovery - Use Skills.new to discover relevant skills from your code and architecture
-- **Analytics** - Track skill usage and impact
+- ✅ Analytics - Track skill usage and impact
+- **RBAC and change request flow** - Support a gated skill update flow
 
 ## License
 

@@ -164,6 +164,7 @@ func commonUpdateTeam(vaultRoot string, actor mgmt.Actor, team mgmt.Team) error 
 // here, but ordering is kept for defense in depth.
 func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 	var clearedAssets []string
+	var unlinkedBots []string
 	if err := withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
 		if _, err := requireTeamAdminInTx(m, name, actor); err != nil {
 			return nil, err
@@ -184,6 +185,20 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 				clearedAssets = append(clearedAssets, asset.Name)
 			}
 		}
+		// Cascade to bot team memberships: every bot that referenced
+		// the deleted team must drop it from its Teams slice. Without
+		// this, the data invariant "every entry in Bot.Teams references
+		// an existing team" would break — and a future team re-created
+		// under the same name would silently inherit the orphaned bot
+		// memberships, a surprising re-attachment path.
+		for i := range m.Bots {
+			bot := &m.Bots[i]
+			if !slices.Contains(bot.Teams, name) {
+				continue
+			}
+			bot.Teams = removeString(bot.Teams, name)
+			unlinkedBots = append(unlinkedBots, bot.Name)
+		}
 		if err := m.DeleteTeam(name); err != nil {
 			return nil, err
 		}
@@ -191,14 +206,34 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 			Event:      mgmt.EventTeamDeleted,
 			TargetType: mgmt.TargetTypeTeam,
 			Target:     name,
+			Data:       map[string]any{"unlinked_bots": unlinkedBots},
 		}, nil
 	}); err != nil {
 		return err
 	}
 
+	// Per-bot audit for the cascade, mirroring the per-asset
+	// install.cleared events emitted further down. Best effort: the
+	// durable mutation is already on disk, so we collect rather than
+	// fail-fast — a single audit-disk-full shouldn't suppress every
+	// remaining cascade row.
+	var auditErrs []error
+	for _, botName := range unlinkedBots {
+		if err := mgmt.AppendAuditEvent(vaultRoot, mgmt.AuditEvent{
+			Actor:      actor.Email,
+			Event:      mgmt.EventBotTeamRemoved,
+			TargetType: mgmt.TargetTypeBot,
+			Target:     botName,
+			Data:       map[string]any{"team": name, "reason": "team_deleted"},
+		}); err != nil {
+			auditErrs = append(auditErrs, fmt.Errorf("bot %s: %w", botName, err))
+		}
+	}
+
 	// Emit per-asset install.cleared audit events so auditors can
 	// reconstruct "why did asset X stop installing for team Y". Best
-	// effort: the durable mutation is already on disk.
+	// effort: the durable mutation is already on disk, so we collect
+	// errors and join rather than abort on the first failure.
 	for _, assetName := range clearedAssets {
 		if err := mgmt.AppendAuditEvent(vaultRoot, mgmt.AuditEvent{
 			Actor:      actor.Email,
@@ -211,10 +246,10 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 				"reason": "team_deleted",
 			},
 		}); err != nil {
-			return err
+			auditErrs = append(auditErrs, fmt.Errorf("asset %s: %w", assetName, err))
 		}
 	}
-	return nil
+	return errors.Join(auditErrs...)
 }
 
 // commonAddTeamMember adds an email to a team's member list. If admin is
@@ -376,6 +411,222 @@ func commonRemoveTeamRepository(vaultRoot string, actor mgmt.Actor, teamName, re
 	})
 }
 
+// commonListBots returns a copy of every bot in the vault's manifest.
+func commonListBots(vaultRoot string) ([]mgmt.Bot, error) {
+	m, err := loadManifest(vaultRoot)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]mgmt.Bot, len(m.Bots))
+	for i, b := range m.Bots {
+		out[i] = manifestBotToMgmt(b)
+	}
+	return out, nil
+}
+
+// commonGetBot returns a single bot by name.
+func commonGetBot(vaultRoot, name string) (*mgmt.Bot, error) {
+	m, err := loadManifest(vaultRoot)
+	if err != nil {
+		return nil, err
+	}
+	bot, err := m.FindBot(name)
+	if err != nil {
+		return nil, err
+	}
+	out := manifestBotToMgmt(*bot)
+	return &out, nil
+}
+
+// commonCreateBot adds a new bot. Bot creation does not require team
+// admin rights; the vault's outer write-access control (git push, file
+// system permissions) is the gate. Any team listed must already exist.
+func commonCreateBot(vaultRoot string, actor mgmt.Actor, bot mgmt.Bot) error {
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		if _, err := m.FindBot(bot.Name); err == nil {
+			return nil, fmt.Errorf("%w: %s", manifest.ErrBotExists, bot.Name)
+		}
+		mb := mgmtBotToManifest(bot)
+		// Validate every team listed exists. Mirrors the way teams
+		// validate before persisting.
+		for _, t := range mb.Teams {
+			if _, err := m.FindTeam(t); err != nil {
+				return nil, fmt.Errorf("team %q: %w", t, err)
+			}
+		}
+		if _, err := m.UpsertBot(mb); err != nil {
+			return nil, err
+		}
+		return &mgmt.AuditEvent{
+			Event:      mgmt.EventBotCreated,
+			TargetType: mgmt.TargetTypeBot,
+			Target:     bot.Name,
+			Data: map[string]any{
+				"description": mb.Description,
+				"teams":       mb.Teams,
+			},
+		}, nil
+	})
+}
+
+// commonUpdateBot replaces a bot's description and (optionally) team
+// list. A nil `bot.Teams` slice means "leave existing memberships
+// unchanged" — the same semantic the Sleuth UpdateBot uses to skip
+// the `teamIds` GraphQL input. Without this distinction, a description-
+// only CLI edit (which clears Teams to nil to avoid the read-modify-
+// write race documented in newBotUpdateCommand) would wipe every team
+// membership the bot had on a path/git vault, since UpsertBot rewrites
+// the row in full.
+func commonUpdateBot(vaultRoot string, actor mgmt.Actor, bot mgmt.Bot) error {
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		existing, err := m.FindBot(bot.Name)
+		if err != nil {
+			return nil, err
+		}
+		mb := mgmtBotToManifest(bot)
+		if bot.Teams == nil {
+			// Preserve existing memberships when caller indicated
+			// "don't touch teams". Cloning the slice avoids aliasing
+			// the manifest's storage in the new row.
+			mb.Teams = append([]string(nil), existing.Teams...)
+		}
+		for _, t := range mb.Teams {
+			if _, err := m.FindTeam(t); err != nil {
+				return nil, fmt.Errorf("team %q: %w", t, err)
+			}
+		}
+		if _, err := m.UpsertBot(mb); err != nil {
+			return nil, err
+		}
+		return &mgmt.AuditEvent{
+			Event:      mgmt.EventBotUpdated,
+			TargetType: mgmt.TargetTypeBot,
+			Target:     bot.Name,
+		}, nil
+	})
+}
+
+// commonDeleteBot removes a bot and cascades to drop any bot-scoped
+// asset installations targeting it. Cascade ordering mirrors
+// commonDeleteTeam.
+func commonDeleteBot(vaultRoot string, actor mgmt.Actor, name string) error {
+	var clearedAssets []string
+	if err := withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		if _, err := m.FindBot(name); err != nil {
+			return nil, err
+		}
+		for i := range m.Assets {
+			asset := &m.Assets[i]
+			kept := asset.Scopes[:0]
+			removed := false
+			for _, s := range asset.Scopes {
+				if s.Kind == manifest.ScopeKindBot && s.Bot == name {
+					removed = true
+					continue
+				}
+				kept = append(kept, s)
+			}
+			if removed {
+				asset.Scopes = kept
+				clearedAssets = append(clearedAssets, asset.Name)
+			}
+		}
+		if err := m.DeleteBot(name); err != nil {
+			return nil, err
+		}
+		// Include cleared_assets on the bot.deleted event so a single
+		// audit row tells the full cascade story — symmetric with
+		// team.deleted (unlinked_bots) and removes the cross-reference
+		// step for auditors querying just bot.* events.
+		return &mgmt.AuditEvent{
+			Event:      mgmt.EventBotDeleted,
+			TargetType: mgmt.TargetTypeBot,
+			Target:     name,
+			Data:       map[string]any{"cleared_assets": clearedAssets},
+		}, nil
+	}); err != nil {
+		return err
+	}
+
+	// Best-effort cascade audit, same pattern as commonDeleteTeam:
+	// collect failures and join, since the durable mutation is already
+	// on disk.
+	var auditErrs []error
+	for _, assetName := range clearedAssets {
+		if err := mgmt.AppendAuditEvent(vaultRoot, mgmt.AuditEvent{
+			Actor:      actor.Email,
+			Event:      mgmt.EventInstallCleared,
+			TargetType: mgmt.TargetTypeInstallation,
+			Target:     assetName,
+			Data: map[string]any{
+				"kind":   string(manifest.ScopeKindBot),
+				"bot":    name,
+				"reason": "bot_deleted",
+			},
+		}); err != nil {
+			auditErrs = append(auditErrs, fmt.Errorf("asset %s: %w", assetName, err))
+		}
+	}
+	return errors.Join(auditErrs...)
+}
+
+// commonAddBotTeam adds a team to a bot's team list. Both the team and
+// bot must exist. Idempotent: an already-present team is a silent
+// no-op.
+func commonAddBotTeam(vaultRoot string, actor mgmt.Actor, botName, teamName string) error {
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		bot, err := m.FindBot(botName)
+		if err != nil {
+			return nil, err
+		}
+		teamName = strings.TrimSpace(teamName)
+		if teamName == "" {
+			return nil, errors.New("cannot add empty team name")
+		}
+		if _, err := m.FindTeam(teamName); err != nil {
+			return nil, err
+		}
+		if slices.Contains(bot.Teams, teamName) {
+			return nil, nil
+		}
+		bot.Teams = append(bot.Teams, teamName)
+		if _, err := m.UpsertBot(*bot); err != nil {
+			return nil, err
+		}
+		return &mgmt.AuditEvent{
+			Event:      mgmt.EventBotTeamAdded,
+			TargetType: mgmt.TargetTypeBot,
+			Target:     botName,
+			Data:       map[string]any{"team": teamName},
+		}, nil
+	})
+}
+
+// commonRemoveBotTeam strips a team from a bot's team list. Idempotent:
+// an absent team is a silent no-op.
+func commonRemoveBotTeam(vaultRoot string, actor mgmt.Actor, botName, teamName string) error {
+	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		bot, err := m.FindBot(botName)
+		if err != nil {
+			return nil, err
+		}
+		teamName = strings.TrimSpace(teamName)
+		if !slices.Contains(bot.Teams, teamName) {
+			return nil, nil
+		}
+		bot.Teams = removeString(bot.Teams, teamName)
+		if _, err := m.UpsertBot(*bot); err != nil {
+			return nil, err
+		}
+		return &mgmt.AuditEvent{
+			Event:      mgmt.EventBotTeamRemoved,
+			TargetType: mgmt.TargetTypeBot,
+			Target:     botName,
+			Data:       map[string]any{"team": teamName},
+		}, nil
+	})
+}
+
 // commonSetAssetInstallation appends or replaces an install scope on the
 // named asset. Org kind clears all existing scopes (asset becomes global);
 // every other kind appends a scope row, deduped against existing entries.
@@ -421,6 +672,11 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 			return fmt.Errorf("user-scoped installs may only target the authenticated caller (got %q, actor %q)", target.User, actor.Email)
 		}
 		s = manifest.Scope{Kind: manifest.ScopeKindUser, User: target.User}
+	case InstallKindBot:
+		if target.Bot == "" {
+			return errors.New("bot installation missing bot name")
+		}
+		s = manifest.Scope{Kind: manifest.ScopeKindBot, Bot: target.Bot}
 	default:
 		return fmt.Errorf("unknown installation kind: %q", target.Kind)
 	}
@@ -434,6 +690,11 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 		// the TOCTOU window between CLI pre-check and commit.
 		if target.Kind == InstallKindTeam {
 			if _, err := requireTeamAdminInTx(m, target.Team, actor); err != nil {
+				return nil, err
+			}
+		}
+		if target.Kind == InstallKindBot {
+			if _, err := m.FindBot(target.Bot); err != nil {
 				return nil, err
 			}
 		}
@@ -511,6 +772,10 @@ func scopeExistsOnAsset(scopes []manifest.Scope, needle manifest.Scope) bool {
 			if manifest.NormalizeEmail(s.User) == manifest.NormalizeEmail(needle.User) {
 				return true
 			}
+		case manifest.ScopeKindBot:
+			if s.Bot == needle.Bot {
+				return true
+			}
 		}
 	}
 	return false
@@ -537,6 +802,22 @@ func mgmtTeamToManifest(t mgmt.Team) manifest.Team {
 		Members:      append([]string(nil), t.Members...),
 		Admins:       append([]string(nil), t.Admins...),
 		Repositories: append([]string(nil), t.Repositories...),
+	}
+}
+
+func manifestBotToMgmt(b manifest.Bot) mgmt.Bot {
+	return mgmt.Bot{
+		Name:        b.Name,
+		Description: b.Description,
+		Teams:       append([]string(nil), b.Teams...),
+	}
+}
+
+func mgmtBotToManifest(b mgmt.Bot) manifest.Bot {
+	return manifest.Bot{
+		Name:        b.Name,
+		Description: b.Description,
+		Teams:       append([]string(nil), b.Teams...),
 	}
 }
 

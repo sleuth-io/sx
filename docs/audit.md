@@ -37,13 +37,28 @@ conditions hold. `--since` accepts `Nd` (days) or `all`.
 | `team.admin_unset` | `team` | team name | `member` |
 | `team.repo_added` | `team` | team name | `repository` |
 | `team.repo_removed` | `team` | team name | `repository` |
-| `install.set` | `installation` | asset name | `kind`, plus one of `repo`/`paths`/`team`/`user` |
-| `install.cleared` | `installation` | asset name | `kind`, `reason` (e.g. `team_deleted`) |
+| `bot.created` | `bot` | bot name | `description`, `teams` |
+| `bot.updated` | `bot` | bot name | _(none — replaces whole bot body)_ |
+| `bot.deleted` | `bot` | bot name | `cleared_assets` (asset names whose `kind = "bot"` scopes were cascaded) |
+| `bot.team_added` | `bot` | bot name | `team` |
+| `bot.team_removed` | `bot` | bot name | `team`, optional `reason` (e.g. `team_deleted`) |
+| `install.set` | `installation` | asset name | `kind`, plus one of `repo`/`paths`/`team`/`user`/`bot` |
+| `install.cleared` | `installation` | asset name | `kind`, `reason` (e.g. `team_deleted`, `bot_deleted`) |
 
-Cascade events are emitted automatically when a team delete removes
-team-scoped installs — one `install.cleared` per affected asset with
-`reason = "team_deleted"` so auditors can reconstruct why assets
-stopped installing for team members.
+Cascade events are emitted automatically:
+
+* `team.deleted` cascades to `install.cleared` (one per asset that had a
+  `kind = "team"` scope on the deleted team, with `reason =
+  "team_deleted"`) and to `bot.team_removed` (one per bot that was on
+  the deleted team, with `reason = "team_deleted"`).
+* `bot.deleted` cascades to `install.cleared` (one per asset that had a
+  `kind = "bot"` scope on the deleted bot, with `reason =
+  "bot_deleted"`).
+
+Bot API key creation and deletion are audited only for Sleuth vaults,
+on the server-side audit stream — file-based vaults reject bot key
+operations entirely, so no local audit constants exist for those
+events.
 
 ## No-op skipping
 
