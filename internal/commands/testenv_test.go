@@ -249,7 +249,7 @@ func (e *TestEnv) ReadVaultAssets(vaultDir string) (*lockfile.LockFile, bool) {
 				dst.Scopes = append(dst.Scopes, lockfile.Scope{Repo: s.Repo})
 			case manifest.ScopeKindPath:
 				dst.Scopes = append(dst.Scopes, lockfile.Scope{Repo: s.Repo, Paths: append([]string(nil), s.Paths...)})
-			case manifest.ScopeKindOrg, manifest.ScopeKindTeam, manifest.ScopeKindUser:
+			case manifest.ScopeKindOrg, manifest.ScopeKindTeam, manifest.ScopeKindUser, manifest.ScopeKindBot:
 				// Identity-dependent scopes do not translate to the
 				// lockfile.Scope shape. Tests that need to assert on
 				// them should read the manifest directly.

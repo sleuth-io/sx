@@ -10,6 +10,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/metadata"
+	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/version"
 )
 
@@ -50,8 +52,16 @@ func (s *SleuthVault) refreshLockFileCache() {
 	_ = cache.SaveLockFile(s.serverURL, data)
 }
 
-// NewSleuthVault creates a new Sleuth repository
+// NewSleuthVault creates a new Sleuth repository. If SX_BOT_KEY is set
+// in the environment, it overrides authToken — the bot's API key
+// becomes the bearer for every request, so the same Sleuth vault wired
+// to a CI runner authenticates as the bot rather than the user who ran
+// `sx cloud connect` on a different machine. The user-token path stays
+// untouched when SX_BOT_KEY is empty so interactive use is unchanged.
 func NewSleuthVault(serverURL, authToken string) *SleuthVault {
+	if botKey := strings.TrimSpace(os.Getenv(mgmt.SXBotKeyEnv)); botKey != "" {
+		authToken = botKey
+	}
 	gitClient := git.NewClient()
 	return &SleuthVault{
 		serverURL:       serverURL,

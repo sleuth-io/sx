@@ -89,6 +89,83 @@ func TestRoundTrip_AllScopeKinds(t *testing.T) {
 	}
 }
 
+func TestRoundTrip_Bots(t *testing.T) {
+	m := &Manifest{
+		SchemaVersion: CurrentSchemaVersion,
+		Teams: []Team{
+			{Name: "platform", Members: []string{"alice@acme.com"}, Admins: []string{"alice@acme.com"}},
+		},
+		Bots: []Bot{
+			{Name: "python-backend", Description: "Backend CI bot", Teams: []string{"platform"}},
+			{Name: "frontend-bot"},
+		},
+		Assets: []Asset{
+			{
+				Name: "deploy", Version: "1.0.0", Type: asset.TypeSkill,
+				SourceHTTP: &SourceHTTP{URL: "https://example.com/d.zip", Hashes: map[string]string{"sha256": "x"}},
+				Scopes: []Scope{
+					{Kind: ScopeKindBot, Bot: "python-backend"},
+					{Kind: ScopeKindOrg},
+				},
+			},
+		},
+	}
+
+	data, err := Marshal(m)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	parsed, err := Parse(data)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	if len(parsed.Bots) != 2 {
+		t.Fatalf("bots: got %d want 2", len(parsed.Bots))
+	}
+	bot, err := parsed.FindBot("python-backend")
+	if err != nil {
+		t.Fatalf("FindBot: %v", err)
+	}
+	if !bot.IsOnTeam("platform") {
+		t.Error("expected python-backend on platform team")
+	}
+	if got := parsed.Assets[0].Scopes; len(got) != 2 {
+		t.Fatalf("scopes: got %d want 2", len(got))
+	}
+	if parsed.Assets[0].Scopes[0].Kind != ScopeKindBot || parsed.Assets[0].Scopes[0].Bot != "python-backend" {
+		t.Errorf("bot scope round-trip: %+v", parsed.Assets[0].Scopes[0])
+	}
+}
+
+func TestBotUpsertDelete(t *testing.T) {
+	m := &Manifest{SchemaVersion: CurrentSchemaVersion}
+
+	if _, err := m.UpsertBot(Bot{Name: "  "}); !errors.Is(err, ErrEmptyBotName) {
+		t.Errorf("empty name: got %v want ErrEmptyBotName", err)
+	}
+
+	if _, err := m.UpsertBot(Bot{Name: "ci", Teams: []string{"platform"}}); err != nil {
+		t.Fatalf("upsert create: %v", err)
+	}
+	if len(m.Bots) != 1 {
+		t.Fatalf("bots after create: got %d want 1", len(m.Bots))
+	}
+	// Replace
+	if _, err := m.UpsertBot(Bot{Name: "ci", Description: "updated"}); err != nil {
+		t.Fatalf("upsert replace: %v", err)
+	}
+	if m.Bots[0].Description != "updated" {
+		t.Errorf("description: got %q want updated", m.Bots[0].Description)
+	}
+	if err := m.DeleteBot("ci"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if err := m.DeleteBot("ci"); !errors.Is(err, ErrBotNotFound) {
+		t.Errorf("delete missing: got %v want ErrBotNotFound", err)
+	}
+}
+
 func TestParse_UnsupportedSchema(t *testing.T) {
 	data := []byte("schema_version = 99\n")
 	_, err := Parse(data)
@@ -159,6 +236,8 @@ func TestScopeValidate(t *testing.T) {
 		{"team ok", Scope{Kind: ScopeKindTeam, Team: "core"}, false},
 		{"user missing", Scope{Kind: ScopeKindUser}, true},
 		{"user ok", Scope{Kind: ScopeKindUser, User: "a@b.c"}, false},
+		{"bot missing", Scope{Kind: ScopeKindBot}, true},
+		{"bot ok", Scope{Kind: ScopeKindBot, Bot: "python-backend"}, false},
 		{"unknown kind", Scope{Kind: "bogus"}, true},
 	}
 	for _, tc := range cases {

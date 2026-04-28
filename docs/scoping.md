@@ -11,10 +11,30 @@ Assets don't have to be everywhere. You can choose where each one is installed, 
 | `path` | specific paths within a repo | running under one of those paths — installs to `myapp/services/api/.claude/` |
 | `team` | every member of a named team | caller is a team member; expands to the team's repositories |
 | `user` | a single user (email) | caller's git identity matches the email; the asset becomes global for that user |
+| `bot` | a bot identity (CI runner, agent) | `SX_BOT=<name>` is set in the runtime — see [bots.md](bots.md) |
 
-The first three are structural and apply to every caller. `team` and
-`user` are identity-dependent and resolved against `git config
-user.email` when `sx install` runs.
+The first three are structural and apply to every caller. `team`,
+`user`, and `bot` are identity-dependent and resolved at install time:
+human callers go through `git config user.email`, bots through
+`SX_BOT`. The Sleuth-only **"personal"** scope offered in the
+interactive `sx add` TUI is the same as `--user <your-email>` —
+included as a convenience so users don't have to type their own
+address.
+
+### Per-scope deep dives
+
+* [orgs.md](orgs.md) — org-wide installs, when to switch to a
+  narrower scope
+* [repos.md](repos.md) — repo and path scope, monorepo patterns,
+  URL normalization
+* [teams.md](teams.md) — creating teams, member/admin lifecycle,
+  team-scoped installs
+* [users.md](users.md) — single-user installs, self-only restriction,
+  identity model
+* [bots.md](bots.md) — bot lifecycle, SX_BOT/SX_BOT_KEY auth,
+  bot-mode resolution, trust boundaries
+* [manifest-spec.md](manifest-spec.md#assetsscopes--install-targets) —
+  on-disk format for every scope kind
 
 ## Setting scope with `sx add` / `sx install`
 
@@ -45,6 +65,9 @@ sx install my-skill --team platform
 
 # Install for yourself only — cannot target someone else
 sx install my-skill --user alice@acme.com
+
+# Install for a bot identity (CI runner, agent)
+sx install my-skill --bot python-backend
 
 # Org-wide (clears all scopes)
 sx install my-skill --org

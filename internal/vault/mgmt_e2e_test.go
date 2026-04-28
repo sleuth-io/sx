@@ -238,6 +238,242 @@ func TestPathVault_TeamUserLifecycleE2E(t *testing.T) {
 	}
 }
 
+// TestPathVault_BotUpdate_PreservesTeams pins the contract that a
+// description-only update (Teams = nil) leaves existing team
+// memberships intact. The CLI's newBotUpdateCommand sets Teams to nil
+// to avoid the read-modify-write race that would clobber concurrent
+// `bot team add/remove` calls on Sleuth — the file-vault path has to
+// honor the same "nil means don't touch" semantics or it silently
+// wipes memberships on every description edit.
+func TestPathVault_BotUpdate_PreservesTeams(t *testing.T) {
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice")
+
+	if err := manifest.Save(dir, &manifest.Manifest{SchemaVersion: manifest.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("seed manifest: %v", err)
+	}
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	ctx := context.Background()
+
+	if err := v.CreateTeam(ctx, mgmt.Team{
+		Name: "platform", Members: []string{"alice@example.com"}, Admins: []string{"alice@example.com"},
+	}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+	if _, err := v.CreateBot(ctx, mgmt.Bot{Name: "ci", Teams: []string{"platform"}}); err != nil {
+		t.Fatalf("CreateBot: %v", err)
+	}
+
+	// Description-only update: Teams left nil to mean "don't touch".
+	if err := v.UpdateBot(ctx, mgmt.Bot{Name: "ci", Description: "updated"}); err != nil {
+		t.Fatalf("UpdateBot: %v", err)
+	}
+
+	bot, err := v.GetBot(ctx, "ci")
+	if err != nil {
+		t.Fatalf("GetBot: %v", err)
+	}
+	if !bot.IsOnTeam("platform") {
+		t.Errorf("description-only update wiped team memberships: got Teams=%v", bot.Teams)
+	}
+	if bot.Description != "updated" {
+		t.Errorf("description not updated: got %q", bot.Description)
+	}
+}
+
+// TestPathVault_TeamDeleteCascadesToBots verifies that deleting a team
+// strips its name from every bot's Teams slice (the invariant "every
+// entry in Bot.Teams references an existing team") and emits an audit
+// event per affected bot.
+func TestPathVault_TeamDeleteCascadesToBots(t *testing.T) {
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice Admin")
+
+	if err := manifest.Save(dir, &manifest.Manifest{
+		SchemaVersion: manifest.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("seed manifest: %v", err)
+	}
+
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	ctx := context.Background()
+
+	if err := v.CreateTeam(ctx, mgmt.Team{
+		Name:    "platform",
+		Members: []string{"alice@example.com"},
+		Admins:  []string{"alice@example.com"},
+	}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+	if _, err := v.CreateBot(ctx, mgmt.Bot{Name: "ci-bot", Teams: []string{"platform"}}); err != nil {
+		t.Fatalf("CreateBot: %v", err)
+	}
+
+	if err := v.DeleteTeam(ctx, "platform"); err != nil {
+		t.Fatalf("DeleteTeam: %v", err)
+	}
+
+	bot, err := v.GetBot(ctx, "ci-bot")
+	if err != nil {
+		t.Fatalf("GetBot after team delete: %v", err)
+	}
+	if bot.IsOnTeam("platform") {
+		t.Errorf("bot.Teams still contains deleted team: %v", bot.Teams)
+	}
+
+	events, err := v.QueryAuditEvents(ctx, mgmt.AuditFilter{EventPrefix: "bot."})
+	if err != nil {
+		t.Fatalf("QueryAuditEvents: %v", err)
+	}
+	var sawCascade bool
+	for _, ev := range events {
+		if ev.Event != mgmt.EventBotTeamRemoved {
+			continue
+		}
+		if ev.Target != "ci-bot" {
+			continue
+		}
+		if reason, _ := ev.Data["reason"].(string); reason == "team_deleted" {
+			sawCascade = true
+			break
+		}
+	}
+	if !sawCascade {
+		t.Errorf("expected bot.team_removed audit event with reason=team_deleted; got events=%+v", events)
+	}
+}
+
+// TestPathVault_BotLifecycleE2E exercises the full bot management flow
+// on a path vault: create a team, create a bot, add it to the team,
+// install assets directly to the bot, and verify SX_BOT-mode resolution
+// returns the right asset set (direct + team + org-wide; not user-only).
+func TestPathVault_BotLifecycleE2E(t *testing.T) {
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice Admin")
+
+	if err := manifest.Save(dir, &manifest.Manifest{
+		SchemaVersion: manifest.CurrentSchemaVersion,
+		Assets: []manifest.Asset{
+			{
+				Name: "direct", Version: "1.0.0", Type: asset.TypeSkill,
+				SourceHTTP: &manifest.SourceHTTP{URL: "https://example.com/d.zip"},
+			},
+			{
+				Name: "team-only", Version: "1.0.0", Type: asset.TypeSkill,
+				SourceHTTP: &manifest.SourceHTTP{URL: "https://example.com/t.zip"},
+			},
+			{
+				Name: "global", Version: "1.0.0", Type: asset.TypeSkill,
+				SourceHTTP: &manifest.SourceHTTP{URL: "https://example.com/g.zip"},
+				// Empty Scopes is org-wide.
+			},
+			{
+				Name: "user-only", Version: "1.0.0", Type: asset.TypeSkill,
+				SourceHTTP: &manifest.SourceHTTP{URL: "https://example.com/u.zip"},
+				Scopes: []manifest.Scope{
+					{Kind: manifest.ScopeKindUser, User: "alice@example.com"},
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed manifest: %v", err)
+	}
+
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault failed: %v", err)
+	}
+	ctx := context.Background()
+
+	// 1. Create a team and a bot.
+	if err := v.CreateTeam(ctx, mgmt.Team{
+		Name:         "platform",
+		Members:      []string{"alice@example.com"},
+		Admins:       []string{"alice@example.com"},
+		Repositories: []string{"https://github.com/acme/infra.git"},
+	}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+	if rawToken, err := v.CreateBot(ctx, mgmt.Bot{
+		Name:        "python-backend",
+		Description: "Backend CI bot",
+	}); err != nil {
+		t.Fatalf("CreateBot: %v", err)
+	} else if rawToken != "" {
+		t.Errorf("path vault should never auto-issue a bot key; got token of length %d", len(rawToken))
+	}
+
+	// 2. Add the bot to the team.
+	if err := v.AddBotTeam(ctx, "python-backend", "platform"); err != nil {
+		t.Fatalf("AddBotTeam: %v", err)
+	}
+	bot, err := v.GetBot(ctx, "python-backend")
+	if err != nil {
+		t.Fatalf("GetBot: %v", err)
+	}
+	if !bot.IsOnTeam("platform") {
+		t.Errorf("bot teams: got %v, want platform present", bot.Teams)
+	}
+
+	// 3. Install one asset directly to the bot, one to the team.
+	if err := v.SetAssetInstallation(ctx, "direct", InstallTarget{Kind: InstallKindBot, Bot: "python-backend"}); err != nil {
+		t.Fatalf("SetAssetInstallation (bot): %v", err)
+	}
+	if err := v.SetAssetInstallation(ctx, "team-only", InstallTarget{Kind: InstallKindTeam, Team: "platform"}); err != nil {
+		t.Fatalf("SetAssetInstallation (team): %v", err)
+	}
+
+	// 4. Resolve the lock file as the bot identity (SX_BOT).
+	mgmt.ResetActorCache()
+	t.Setenv("SX_BOT", "python-backend")
+	raw, _, _, err := v.GetLockFile(ctx, "")
+	if err != nil {
+		t.Fatalf("GetLockFile: %v", err)
+	}
+	lf, err := lockfile.Parse(raw)
+	if err != nil {
+		t.Fatalf("lockfile.Parse: %v", err)
+	}
+
+	got := make(map[string]bool, len(lf.Assets))
+	for _, a := range lf.Assets {
+		got[a.Name] = true
+	}
+
+	for _, name := range []string{"direct", "team-only", "global"} {
+		if !got[name] {
+			t.Errorf("bot caller missing expected asset %s", name)
+		}
+	}
+	if got["user-only"] {
+		t.Errorf("bot caller should not see user-only asset")
+	}
+
+	// 5. Bot identities are read-only: trying to mutate must fail.
+	mgmt.ResetActorCache()
+	t.Setenv("SX_BOT", "python-backend")
+	if _, err := v.CreateBot(ctx, mgmt.Bot{Name: "another"}); err == nil {
+		t.Error("bot identity should not be allowed to mutate vault state")
+	}
+}
+
 // TestPathVault_SetAssetInstallation_RejectsOtherUser verifies the user-
 // scoped install guard: only the authenticated caller may be the target.
 // Any write-access holder could otherwise force an asset to be "global"

@@ -37,7 +37,12 @@ make build && ./dist/sx <command>
 - [Vault Spec](docs/vault-spec.md) - Vault structure and management
 - [Manifest Spec](docs/manifest-spec.md) - sx.toml format (source of truth)
 - [Lock Spec](docs/lock-spec.md) - Per-user resolved lock file format
-- [Teams & installs](docs/teams.md) - Team management, targeted installs
+- [Scoping](docs/scoping.md) - Overview of every install scope (org/repo/path/team/user/bot), links to per-scope docs
+- [Orgs](docs/orgs.md) - Org-scoped (global) installs
+- [Repos](docs/repos.md) - Repo and path-scoped installs (monorepo patterns)
+- [Teams](docs/teams.md) - Team management and team-scoped installs
+- [Users](docs/users.md) - Single-user installs and self-only restriction
+- [Bots](docs/bots.md) - Bot identities and bot-scoped installs
 - [Audit log](docs/audit.md) - Mutation audit trail format and queries
 - [Usage analytics](docs/stats.md) - `sx stats` dashboard and event format
 - [Metadata Spec](docs/metadata-spec.md) - Asset metadata format and fields

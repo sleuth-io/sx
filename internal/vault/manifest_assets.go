@@ -72,10 +72,10 @@ func inheritAssetScopesFromManifest(vaultRoot string, asset *lockfile.Asset) err
 			asset.Scopes = append(asset.Scopes, lockfile.Scope{Repo: s.Repo})
 		case manifest.ScopeKindPath:
 			asset.Scopes = append(asset.Scopes, lockfile.Scope{Repo: s.Repo, Paths: append([]string(nil), s.Paths...)})
-		case manifest.ScopeKindOrg, manifest.ScopeKindTeam, manifest.ScopeKindUser:
+		case manifest.ScopeKindOrg, manifest.ScopeKindTeam, manifest.ScopeKindUser, manifest.ScopeKindBot:
 			// Identity-dependent scopes do not inherit — the new
-			// owner may not be in the same teams and a blanket
-			// carry-over would leak access.
+			// owner may not be in the same teams or bot identities,
+			// and a blanket carry-over would leak access.
 		}
 	}
 	return nil
@@ -195,10 +195,10 @@ func manifestAssetToLockfile(a manifest.Asset) lockfile.Asset {
 			dst.Scopes = append(dst.Scopes, lockfile.Scope{Repo: s.Repo})
 		case manifest.ScopeKindPath:
 			dst.Scopes = append(dst.Scopes, lockfile.Scope{Repo: s.Repo, Paths: append([]string(nil), s.Paths...)})
-		case manifest.ScopeKindOrg, manifest.ScopeKindTeam, manifest.ScopeKindUser:
+		case manifest.ScopeKindOrg, manifest.ScopeKindTeam, manifest.ScopeKindUser, manifest.ScopeKindBot:
 			// Identity-dependent scopes cannot be represented in the
 			// lockfile.Scope shape. Callers that need resolved, per-
-			// user scopes go through manifest.Resolve instead.
+			// user (or per-bot) scopes go through manifest.Resolve.
 		}
 	}
 	return dst

@@ -33,6 +33,7 @@ created_by     = "sx 0.1.0"       # informational
 | `created_by`     | string  | no       | Build/version that last wrote the file        |
 | `assets`         | array   | no       | Managed assets; may be empty                  |
 | `teams`          | array   | no       | Team definitions; may be empty                |
+| `bots`           | array   | no       | Bot definitions; may be empty                 |
 
 A build that encounters a `schema_version` higher than it understands
 refuses to read the file. When the field is absent it defaults to the
@@ -114,6 +115,7 @@ with no scopes declared is **org-wide** — available everywhere.
 | `path`   | `repo`, `paths`     | Available for specific paths within a repository                       |
 | `team`   | `team`              | Available to every member of the named team                            |
 | `user`   | `user` (email)      | Available to a single user. Marks the asset global in that user's lock |
+| `bot`    | `bot` (name)        | Available to a single bot identity. See [bots.md](bots.md)             |
 
 Team and user scopes are identity-dependent: the vault resolves them
 against the caller's git identity when producing the per-user lock file
@@ -140,6 +142,27 @@ repositories = ["github.com/acme/infra", "github.com/acme/tools"]
 
 Every team must have at least one admin at all times. A mutation that
 would leave the team without an admin is rejected by the CLI.
+
+## `[[bots]]` — bot definitions
+
+```toml
+[[bots]]
+name        = "python-backend"
+description = "Backend CI bot"
+teams       = ["platform", "data"]
+```
+
+| Field         | Type            | Notes                                     |
+|---------------|-----------------|-------------------------------------------|
+| `name`        | string          | Required. Primary key                     |
+| `description` | string          | Optional                                  |
+| `teams`       | array of string | Team names the bot is a member of         |
+
+Bots gain repository context through their team memberships, the same
+way human team members do. See [bots.md](bots.md) for the lifecycle and
+resolution rules. File-based vaults (path/git) treat bots as
+identity-only — there are no API keys stored in the manifest. Sleuth
+vaults issue real OAuth tokens via `sx bot key create`.
 
 ## Mutation semantics
 

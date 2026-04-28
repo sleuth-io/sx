@@ -142,6 +142,64 @@ func (p *PathVault) RemoveTeamRepository(ctx context.Context, team, repoURL stri
 	})
 }
 
+func (p *PathVault) ListBots(ctx context.Context) ([]mgmt.Bot, error) {
+	var out []mgmt.Bot
+	err := p.withReadLock(ctx, func() error {
+		bots, err := commonListBots(p.repoPath)
+		if err != nil {
+			return err
+		}
+		out = bots
+		return nil
+	})
+	return out, err
+}
+
+func (p *PathVault) GetBot(ctx context.Context, name string) (*mgmt.Bot, error) {
+	var out *mgmt.Bot
+	err := p.withReadLock(ctx, func() error {
+		bot, err := commonGetBot(p.repoPath, name)
+		if err != nil {
+			return err
+		}
+		out = bot
+		return nil
+	})
+	return out, err
+}
+
+// CreateBot on a path vault returns ("", err) — file-based vaults are
+// identity-only for bots and never issue API keys.
+func (p *PathVault) CreateBot(ctx context.Context, bot mgmt.Bot) (string, error) {
+	return "", p.withLock(ctx, func(actor mgmt.Actor) error {
+		return commonCreateBot(p.repoPath, actor, bot)
+	})
+}
+
+func (p *PathVault) UpdateBot(ctx context.Context, bot mgmt.Bot) error {
+	return p.withLock(ctx, func(actor mgmt.Actor) error {
+		return commonUpdateBot(p.repoPath, actor, bot)
+	})
+}
+
+func (p *PathVault) DeleteBot(ctx context.Context, name string) error {
+	return p.withLock(ctx, func(actor mgmt.Actor) error {
+		return commonDeleteBot(p.repoPath, actor, name)
+	})
+}
+
+func (p *PathVault) AddBotTeam(ctx context.Context, bot, team string) error {
+	return p.withLock(ctx, func(actor mgmt.Actor) error {
+		return commonAddBotTeam(p.repoPath, actor, bot, team)
+	})
+}
+
+func (p *PathVault) RemoveBotTeam(ctx context.Context, bot, team string) error {
+	return p.withLock(ctx, func(actor mgmt.Actor) error {
+		return commonRemoveBotTeam(p.repoPath, actor, bot, team)
+	})
+}
+
 func (p *PathVault) SetAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error {
 	return p.withLock(ctx, func(actor mgmt.Actor) error {
 		return commonSetAssetInstallation(p.repoPath, actor, assetName, target)

@@ -43,6 +43,7 @@ func NewInstallCommand() *cobra.Command {
 	var pathFlag string
 	var teamFlag string
 	var userFlag string
+	var botFlag string
 
 	cmd := &cobra.Command{
 		Use:   "install [asset]",
@@ -58,10 +59,11 @@ that directory (e.g., Docker sandboxes, CI pipelines).
 
 To set an installation target for an existing asset, pass the asset name
 as a positional argument together with one of --org, --repo, --path,
---team, or --user. Examples:
+--team, --user, or --bot. Examples:
 
   sx install --team platform my-skill
   sx install --user alice@example.com my-skill
+  sx install --bot python-backend my-skill
   sx install --org my-skill
   sx install --repo https://github.com/acme/infra.git my-skill
   sx install --path https://github.com/acme/infra.git#services/api my-skill
@@ -76,6 +78,7 @@ equivalent of 'pip freeze' against the vault's manifest.`,
 				path: pathFlag,
 				team: teamFlag,
 				user: userFlag,
+				bot:  botFlag,
 			}
 			if targetFlags.active() {
 				if len(args) != 1 {
@@ -102,6 +105,7 @@ equivalent of 'pip freeze' against the vault's manifest.`,
 	cmd.Flags().StringVar(&pathFlag, "path", "", "Install this asset for a repo subpath (format: repo_url#path1,path2)")
 	cmd.Flags().StringVar(&teamFlag, "team", "", "Install this asset for every member of a team")
 	cmd.Flags().StringVar(&userFlag, "user", "", "Install this asset for a specific user email")
+	cmd.Flags().StringVar(&botFlag, "bot", "", "Install this asset for a specific bot identity")
 
 	_ = cmd.Flags().MarkHidden("hook-mode") // Hide from help output since it's internal
 
@@ -116,10 +120,11 @@ type installTargetFlags struct {
 	path string
 	team string
 	user string
+	bot  string
 }
 
 func (f installTargetFlags) active() bool {
-	return f.org || f.repo != "" || f.path != "" || f.team != "" || f.user != ""
+	return f.org || f.repo != "" || f.path != "" || f.team != "" || f.user != "" || f.bot != ""
 }
 
 func (f installTargetFlags) count() int {
@@ -139,8 +144,15 @@ func (f installTargetFlags) count() int {
 	if f.user != "" {
 		n++
 	}
+	if f.bot != "" {
+		n++
+	}
 	return n
 }
+
+// errInstallExclusiveFlags is returned when more than one of --org,
+// --repo, --path, --team, --user, --bot is set.
+var errInstallExclusiveFlags = errors.New("exactly one of --org, --repo, --path, --team, --user, --bot may be set")
 
 // runInstallSetTarget translates one active install flag into a call to
 // Vault.SetAssetInstallation. Exactly one targeting flag must be set.
@@ -148,7 +160,7 @@ func (f installTargetFlags) count() int {
 // skills.new's server-side permission check).
 func runInstallSetTarget(cmd *cobra.Command, assetName string, f installTargetFlags) error {
 	if f.count() != 1 {
-		return errors.New("exactly one of --org, --repo, --path, --team, --user may be set")
+		return errInstallExclusiveFlags
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -196,6 +208,8 @@ func buildInstallTarget(f installTargetFlags) (vaultpkg.InstallTarget, error) {
 		return vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindTeam, Team: f.team}, nil
 	case f.user != "":
 		return vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindUser, User: f.user}, nil
+	case f.bot != "":
+		return vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindBot, Bot: f.bot}, nil
 	}
 	return vaultpkg.InstallTarget{}, errors.New("no installation target specified")
 }

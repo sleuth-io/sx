@@ -86,6 +86,53 @@ func TestCurrentGitActorCached(t *testing.T) {
 	}
 }
 
+// TestCurrentGitActor_CacheKeyIncludesSXBot verifies the actor cache
+// is keyed on (repoPath, SX_BOT) so a process that resolves a human
+// actor first does not return that stale identity once SX_BOT is set
+// later in the same run — and vice versa.
+func TestCurrentGitActor_CacheKeyIncludesSXBot(t *testing.T) {
+	ResetActorCache()
+	t.Cleanup(ResetActorCache)
+	dir := t.TempDir()
+
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %v (%s)", err, out)
+	}
+	cmd = exec.Command("git", "config", "user.email", "alice@example.com")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git config failed: %v (%s)", err, out)
+	}
+
+	human, err := CurrentGitActor(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("CurrentGitActor (human): %v", err)
+	}
+	if human.IsBot() {
+		t.Fatalf("expected human actor, got bot")
+	}
+
+	t.Setenv("SX_BOT", "ci-bot")
+	bot, err := CurrentGitActor(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("CurrentGitActor (bot): %v", err)
+	}
+	if !bot.IsBot() || bot.Bot != "ci-bot" {
+		t.Errorf("expected bot=ci-bot after setting SX_BOT, got %+v", bot)
+	}
+
+	t.Setenv("SX_BOT", "")
+	again, err := CurrentGitActor(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("CurrentGitActor (human again): %v", err)
+	}
+	if again.IsBot() || again.Email != human.Email {
+		t.Errorf("expected human actor after unsetting SX_BOT, got %+v", again)
+	}
+}
+
 func TestActor_RequireRealIdentity(t *testing.T) {
 	cases := []struct {
 		name    string

@@ -193,6 +193,54 @@ func (g *GitVault) RemoveTeamRepository(ctx context.Context, team, repoURL strin
 	})
 }
 
+func (g *GitVault) ListBots(ctx context.Context) ([]mgmt.Bot, error) {
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return nil, err
+	}
+	return commonListBots(g.repoPath)
+}
+
+func (g *GitVault) GetBot(ctx context.Context, name string) (*mgmt.Bot, error) {
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return nil, err
+	}
+	return commonGetBot(g.repoPath, name)
+}
+
+// CreateBot on a git vault returns ("", err) — file-based vaults are
+// identity-only for bots and never issue API keys.
+func (g *GitVault) CreateBot(ctx context.Context, bot mgmt.Bot) (string, error) {
+	return "", g.runInVaultTx(ctx, "Create bot "+bot.Name, func(root string, actor mgmt.Actor) error {
+		return commonCreateBot(root, actor, bot)
+	})
+}
+
+func (g *GitVault) UpdateBot(ctx context.Context, bot mgmt.Bot) error {
+	return g.runInVaultTx(ctx, "Update bot "+bot.Name, func(root string, actor mgmt.Actor) error {
+		return commonUpdateBot(root, actor, bot)
+	})
+}
+
+func (g *GitVault) DeleteBot(ctx context.Context, name string) error {
+	return g.runInVaultTx(ctx, "Delete bot "+name, func(root string, actor mgmt.Actor) error {
+		return commonDeleteBot(root, actor, name)
+	})
+}
+
+func (g *GitVault) AddBotTeam(ctx context.Context, bot, team string) error {
+	msg := fmt.Sprintf("Add bot %s to team %s", bot, team)
+	return g.runInVaultTx(ctx, msg, func(root string, actor mgmt.Actor) error {
+		return commonAddBotTeam(root, actor, bot, team)
+	})
+}
+
+func (g *GitVault) RemoveBotTeam(ctx context.Context, bot, team string) error {
+	msg := fmt.Sprintf("Remove bot %s from team %s", bot, team)
+	return g.runInVaultTx(ctx, msg, func(root string, actor mgmt.Actor) error {
+		return commonRemoveBotTeam(root, actor, bot, team)
+	})
+}
+
 func (g *GitVault) SetAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error {
 	msg := fmt.Sprintf("Install %s to %s", assetName, target.Describe())
 	return g.runInVaultTx(ctx, msg, func(root string, actor mgmt.Actor) error {

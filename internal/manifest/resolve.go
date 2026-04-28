@@ -9,12 +9,12 @@ import (
 )
 
 // Resolve produces a lockfile.LockFile from the manifest, flattening
-// team/user scopes into repo scopes based on the caller's identity. The
-// resulting lock file is the per-user, machine-generated artifact written
-// to the caller's local lockfile cache; the manifest in the vault remains
-// the source of truth.
+// team/user/bot scopes into repo scopes based on the caller's identity.
+// The resulting lock file is the per-user, machine-generated artifact
+// written to the caller's local lockfile cache; the manifest in the
+// vault remains the source of truth.
 //
-// Resolution rules per scope on each asset:
+// Resolution rules per scope on each asset (human caller):
 //   - kind=org → asset is global (no scope restrictions in the lock).
 //   - kind=repo → one lockfile.Scope with no paths.
 //   - kind=path → one lockfile.Scope with paths.
@@ -26,6 +26,23 @@ import (
 //   - kind=team, actor is a member → one lockfile.Scope per repository
 //     owned by the team (empty paths, i.e. full-repo scope).
 //   - kind=team, actor is not a member → scope is silently dropped.
+//   - kind=bot → scope is silently dropped (the human caller is not the
+//     named bot).
+//
+// Bot caller (actor.IsBot()) overrides:
+//   - kind=org → asset is global.
+//   - kind=bot, bot matches actor.Bot → asset is global.
+//   - kind=team → if the bot is on the team (Manifest.Bots row), every
+//     repository the team owns becomes a lockfile.Scope. Mirrors
+//     skills.new's bot-team membership rule.
+//   - kind=user → silently dropped (bots are not human users).
+//   - kind=repo / kind=path → unchanged (bots inherit raw repo scopes
+//     same as humans).
+//   - kind=bot, bot does not match → silently dropped.
+//
+// Note: we deliberately include kind=org installs in the bot's resolved
+// list. This diverges from the (now-being-fixed) skills.new behavior
+// that excluded org-wide installs from a bot's view. See docs/bots.md.
 //
 // After accumulating scopes for an asset: if any row produced a global
 // verdict, the asset's Scopes is nil. Otherwise repo-wide and
@@ -48,6 +65,21 @@ func Resolve(m *Manifest, actor mgmt.Actor) *lockfile.LockFile {
 		return out
 	}
 
+	// For bot callers, look up the bot's team list once (constant across
+	// all asset rows). Empty Teams means the bot only sees direct bot
+	// installs and org-wide assets.
+	var botTeams []string
+	if actor.IsBot() {
+		if bot, err := m.FindBot(actor.Bot); err == nil {
+			botTeams = append([]string(nil), bot.Teams...)
+		}
+		// FindBot error (bot row missing from manifest) is non-fatal:
+		// bot identities on file-based vaults are claimed via SX_BOT
+		// without server-side enforcement, so an unknown bot just sees
+		// org-wide installs and nothing else. Document this in
+		// docs/bots.md.
+	}
+
 	out.Assets = make([]lockfile.Asset, 0, len(m.Assets))
 	for i := range m.Assets {
 		src := m.Assets[i]
@@ -62,7 +94,13 @@ func Resolve(m *Manifest, actor mgmt.Actor) *lockfile.LockFile {
 			SourceGit:    resolveSourceGit(src.SourceGit),
 		}
 
-		resolved, drop := resolveScopes(src.Scopes, m, actorEmail)
+		var resolved []lockfile.Scope
+		var drop bool
+		if actor.IsBot() {
+			resolved, drop = resolveScopesForBot(src.Scopes, m, actor.Bot, botTeams)
+		} else {
+			resolved, drop = resolveScopes(src.Scopes, m, actorEmail)
+		}
 		if drop {
 			continue
 		}
@@ -70,6 +108,63 @@ func Resolve(m *Manifest, actor mgmt.Actor) *lockfile.LockFile {
 		out.Assets = append(out.Assets, dst)
 	}
 	return out
+}
+
+// resolveScopesForBot applies the bot resolution rule: org-wide and
+// matching bot scopes become global; team scopes the bot is on become
+// repo scopes; user scopes are silently dropped; non-matching bot
+// scopes are silently dropped. Repo and path scopes are honored as-is
+// (bots inherit raw repo targeting the same way humans do).
+func resolveScopesForBot(in []Scope, m *Manifest, botName string, botTeams []string) (_ []lockfile.Scope, drop bool) {
+	if len(in) == 0 {
+		return nil, false
+	}
+
+	becameGlobal := false
+	accumulated := make([]lockfile.Scope, 0, len(in))
+	teamSet := make(map[string]struct{}, len(botTeams))
+	for _, t := range botTeams {
+		teamSet[t] = struct{}{}
+	}
+
+	for _, s := range in {
+		switch s.Kind {
+		case ScopeKindOrg:
+			becameGlobal = true
+		case ScopeKindRepo:
+			accumulated = append(accumulated, lockfile.Scope{Repo: s.Repo})
+		case ScopeKindPath:
+			accumulated = append(accumulated, lockfile.Scope{
+				Repo:  s.Repo,
+				Paths: append([]string(nil), s.Paths...),
+			})
+		case ScopeKindBot:
+			if s.Bot == botName {
+				becameGlobal = true
+			}
+		case ScopeKindTeam:
+			if _, ok := teamSet[s.Team]; !ok {
+				continue
+			}
+			team, err := m.FindTeam(s.Team)
+			if err != nil || team == nil {
+				continue
+			}
+			for _, repoURL := range team.Repositories {
+				accumulated = append(accumulated, lockfile.Scope{Repo: repoURL})
+			}
+		case ScopeKindUser:
+			// Bot identities are not human users. Silently drop.
+		}
+	}
+
+	if becameGlobal {
+		return nil, false
+	}
+	if len(accumulated) == 0 {
+		return nil, true
+	}
+	return mergeScopes(accumulated), false
 }
 
 // resolveScopes applies the rules above to a single asset's scopes. It
@@ -111,6 +206,9 @@ func resolveScopes(in []Scope, m *Manifest, actorEmail string) (_ []lockfile.Sco
 			for _, repoURL := range team.Repositories {
 				accumulated = append(accumulated, lockfile.Scope{Repo: repoURL})
 			}
+		case ScopeKindBot:
+			// Human caller, bot-scoped install: silently drop. Belongs
+			// to a different identity.
 		}
 	}
 
