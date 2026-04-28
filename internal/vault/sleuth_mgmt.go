@@ -1,12 +1,12 @@
 package vault
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -794,7 +794,7 @@ func (s *SleuthVault) botsWithAssetInstalled(ctx context.Context, assetName stri
 	for r := range results {
 		collected = append(collected, r)
 	}
-	sort.Slice(collected, func(i, j int) bool { return collected[i].idx < collected[j].idx })
+	slices.SortFunc(collected, func(a, b result) int { return cmp.Compare(a.idx, b.idx) })
 	gids := make([]string, 0, len(collected))
 	for _, r := range collected {
 		gids = append(gids, r.gid)
@@ -884,6 +884,25 @@ func (s *SleuthVault) ListBotApiKeys(ctx context.Context, botName string) ([]mgm
 }
 
 func (s *SleuthVault) DeleteBotApiKey(ctx context.Context, botName, keyID string) error {
+	// Verify the key actually belongs to the named bot before issuing
+	// the mutation — the GraphQL endpoint takes a global keyId and
+	// would otherwise happily delete another bot's key if the user
+	// passed mismatched arguments (e.g. typo on the bot name with a
+	// real keyId from a different bot in scope).
+	keys, err := s.ListBotApiKeys(ctx, botName)
+	if err != nil {
+		return err
+	}
+	matched := false
+	for _, k := range keys {
+		if k.ID == keyID {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return fmt.Errorf("api key %q is not owned by bot %q", keyID, botName)
+	}
 	mutation := `mutation DeleteBotApiKey($keyId: ID!) {
 		deleteBotApiKey(keyId: $keyId) { success errors { field messages } }
 	}`

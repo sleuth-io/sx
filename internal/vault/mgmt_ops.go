@@ -432,6 +432,12 @@ func commonGetBot(vaultRoot, name string) (*mgmt.Bot, error) {
 	}
 	bot, err := m.FindBot(name)
 	if err != nil {
+		// Translate manifest's not-found sentinel to the mgmt-package
+		// equivalent so callers using errors.Is get a single answer
+		// regardless of vault backend (file-based vs Sleuth).
+		if errors.Is(err, manifest.ErrBotNotFound) {
+			return nil, mgmt.ErrBotNotFound
+		}
 		return nil, err
 	}
 	out := manifestBotToMgmt(*bot)

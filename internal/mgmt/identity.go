@@ -79,11 +79,22 @@ func (a Actor) RequireRealIdentity() error {
 	return nil
 }
 
-// actorCache caches the result of CurrentGitActor per repoPath for the
-// duration of the CLI execution so repeated calls don't shell out.
+// actorCacheKey distinguishes a cached actor by repoPath and the
+// SX_BOT env var. Without the bot field a process that resolved a
+// human actor first would return the stale human identity even after
+// SX_BOT was set later in the same process — and vice versa for tests
+// that toggle the env between human and bot personas.
+type actorCacheKey struct {
+	repoPath string
+	bot      string
+}
+
+// actorCache caches the result of CurrentGitActor per (repoPath, SX_BOT)
+// for the duration of the CLI execution so repeated calls don't shell
+// out.
 var (
 	actorCacheMu sync.Mutex
-	actorCache   = make(map[string]Actor)
+	actorCache   = make(map[actorCacheKey]Actor)
 )
 
 // CurrentGitActor resolves the caller's identity. SX_BOT short-circuits
@@ -95,21 +106,24 @@ var (
 // unconfigured workstations. Returns ErrIdentityNotSet only when every
 // source fails.
 func CurrentGitActor(ctx context.Context, repoPath string) (Actor, error) {
+	botName := strings.TrimSpace(os.Getenv(SXBotEnv))
+	cacheKey := actorCacheKey{repoPath: repoPath, bot: botName}
+
 	actorCacheMu.Lock()
-	if cached, ok := actorCache[repoPath]; ok {
+	if cached, ok := actorCache[cacheKey]; ok {
 		actorCacheMu.Unlock()
 		return cached, nil
 	}
 	actorCacheMu.Unlock()
 
-	if botName := strings.TrimSpace(os.Getenv(SXBotEnv)); botName != "" {
+	if botName != "" {
 		actor := Actor{
 			Email: "bot:" + botName,
 			Name:  botName,
 			Bot:   botName,
 		}
 		actorCacheMu.Lock()
-		actorCache[repoPath] = actor
+		actorCache[cacheKey] = actor
 		actorCacheMu.Unlock()
 		return actor, nil
 	}
@@ -133,7 +147,7 @@ func CurrentGitActor(ctx context.Context, repoPath string) (Actor, error) {
 	}
 
 	actorCacheMu.Lock()
-	actorCache[repoPath] = actor
+	actorCache[cacheKey] = actor
 	actorCacheMu.Unlock()
 	return actor, nil
 }
@@ -142,7 +156,7 @@ func CurrentGitActor(ctx context.Context, repoPath string) (Actor, error) {
 func ResetActorCache() {
 	actorCacheMu.Lock()
 	defer actorCacheMu.Unlock()
-	actorCache = make(map[string]Actor)
+	actorCache = make(map[actorCacheKey]Actor)
 }
 
 func readGitConfig(ctx context.Context, repoPath, key string) string {
