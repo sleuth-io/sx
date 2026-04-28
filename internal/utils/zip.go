@@ -125,23 +125,48 @@ func ReadZipFile(zipData []byte, filename string) ([]byte, error) {
 	return nil, fmt.Errorf("file not found in zip: %s", filename)
 }
 
-// ListZipFiles returns a list of all files in a zip archive
+// ListZipFiles returns a list of all file names in a zip archive.
 func ListZipFiles(zipData []byte) ([]string, error) {
+	entries, err := ListZipEntries(zipData)
+	if err != nil {
+		return nil, err
+	}
+	files := make([]string, 0, len(entries))
+	for _, e := range entries {
+		files = append(files, e.Name)
+	}
+	return files, nil
+}
+
+// ZipEntry summarizes one file in a zip archive without decompressing it.
+// “Size“ is the uncompressed size as recorded in the local file header,
+// suitable for inventory listings that don't need to read the body.
+type ZipEntry struct {
+	Name string
+	Size int64
+}
+
+// ListZipEntries returns name + uncompressed size for every file in the
+// archive, reading only the central directory. Lets callers build an
+// inventory (e.g. an MCP “bundled_files“ payload) without paying the cost
+// of decompressing every entry.
+func ListZipEntries(zipData []byte) ([]ZipEntry, error) {
 	if !IsZipFile(zipData) {
 		return nil, errors.New("invalid zip file: missing magic bytes")
 	}
-
 	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read zip: %w", err)
 	}
-
-	var files []string
+	entries := make([]ZipEntry, 0, len(reader.File))
 	for _, file := range reader.File {
-		files = append(files, file.Name)
+		entries = append(entries, ZipEntry{
+			Name: file.Name,
+			//nolint:gosec // Uncompressed size from a trusted local archive
+			Size: int64(file.UncompressedSize64),
+		})
 	}
-
-	return files, nil
+	return entries, nil
 }
 
 // CreateZip creates a zip archive from a directory

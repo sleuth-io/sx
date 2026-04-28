@@ -105,14 +105,19 @@ func (s *Server) registerVaultTools(ctx context.Context, mcpServer *mcp.Server) 
 		return // No tools provided by this vault
 	}
 
-	// Register tools with the MCP server
-	// The tools are expected to be []vaultpkg.ToolDef from Sleuth vault
-	if toolDefs, ok := tools.([]vaultpkg.ToolDef); ok {
-		log.Debug("registering MCP tools from vault", "count", len(toolDefs))
-		for _, def := range toolDefs {
+	// Vaults expose tools in one of two shapes — see buildCloudServeMCPServer
+	// for the cloud parallel.
+	switch t := tools.(type) {
+	case *vaultpkg.AssetShimRegistrar:
+		t.Register(mcpServer)
+	case []vaultpkg.ToolDef:
+		log.Debug("registering MCP tools from vault", "count", len(t))
+		for _, def := range t {
 			mcp.AddTool(mcpServer, def.Tool, def.Handler)
 			log.Debug("registered MCP tool", "name", def.Tool.Name)
 		}
+	default:
+		log.Debug("vault returned unexpected MCP tools type", "type", fmt.Sprintf("%T", tools))
 	}
 }
 

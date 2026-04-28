@@ -168,6 +168,7 @@ Use "{{muted (printf "%s [command] --help" .CommandPath)}}" for more information
 	rootCmd.AddCommand(commands.NewTeamCommand())
 	rootCmd.AddCommand(commands.NewStatsCommand())
 	rootCmd.AddCommand(commands.NewAuditCommand())
+	rootCmd.AddCommand(commands.NewCloudCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		// Print error with styling
