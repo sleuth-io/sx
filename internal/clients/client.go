@@ -223,10 +223,14 @@ const (
 // the hook asset is well-formed but the target client has no lifecycle
 // event to fire it from (e.g. Gemini does not implement `pre-compact`).
 // This is not a user error and should not contribute to the install
-// command's exit status.
+// command's exit status (HasAnyErrors only inspects Status, not Error).
 //
-// All other non-nil errors are reported as StatusFailed and the error is
-// preserved on the AssetResult so callers can inspect or surface it.
+// The original error is preserved on the AssetResult even when the status
+// is StatusSkipped so callers can introspect *why* the asset was skipped
+// (for example, a `--strict` mode that escalates unsupported-event skips
+// back into hard failures).
+//
+// All other non-nil errors are reported as StatusFailed.
 //
 // successMessage is used as result.Message when err is nil (for example,
 // the install path or "Installed to /home/...").
@@ -235,7 +239,7 @@ func TranslateInstallError(err error, successMessage string) (ResultStatus, stri
 		return StatusSuccess, successMessage, nil
 	}
 	if errors.Is(err, hook.ErrUnsupportedEvent) {
-		return StatusSkipped, err.Error(), nil
+		return StatusSkipped, err.Error(), err
 	}
 	return StatusFailed, fmt.Sprintf("Installation failed: %v", err), err
 }
