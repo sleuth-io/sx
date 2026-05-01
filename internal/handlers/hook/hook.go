@@ -58,6 +58,25 @@ func CacheZipFiles(zipData []byte) []string {
 	return files
 }
 
+// ErrUnsupportedEvent is returned when a hook asset's canonical event is not
+// supported by the target client. Callers (typically a client's InstallAssets
+// implementation) use errors.Is to distinguish this from real install
+// failures and surface the result as StatusSkipped rather than StatusFailed.
+//
+// This is not a user error: the asset is well-formed and the user's
+// configuration is correct; the target client simply has no lifecycle event
+// to fire it from. For example, Gemini Code Assist does not implement
+// `pre-compact` or `subagent-start`, so log hooks for those events are
+// soft-skipped on Gemini and installed as usual on Claude Code.
+var ErrUnsupportedEvent = errors.New("unsupported hook event")
+
+// UnsupportedEventError builds an error that wraps ErrUnsupportedEvent with
+// a human-readable message naming the client and event. Callers detect it
+// via errors.Is(err, ErrUnsupportedEvent).
+func UnsupportedEventError(clientName, event string) error {
+	return fmt.Errorf("%w %q on %s", ErrUnsupportedEvent, event, clientName)
+}
+
 // MapEvent maps a canonical hook event name to a client-native event name.
 // It first checks the client-specific override map, then falls back to the
 // standard eventMap. Returns the native event name and whether the event

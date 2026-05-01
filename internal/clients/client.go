@@ -2,10 +2,13 @@ package clients
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/bootstrap"
+	"github.com/sleuth-io/sx/internal/handlers/hook"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
 )
@@ -212,6 +215,30 @@ const (
 	StatusFailed  ResultStatus = "failed"
 	StatusSkipped ResultStatus = "skipped"
 )
+
+// TranslateInstallError converts an error returned by a per-asset install
+// handler into the AssetResult fields a client should report.
+//
+// Errors that wrap hook.ErrUnsupportedEvent are translated to StatusSkipped:
+// the hook asset is well-formed but the target client has no lifecycle
+// event to fire it from (e.g. Gemini does not implement `pre-compact`).
+// This is not a user error and should not contribute to the install
+// command's exit status.
+//
+// All other non-nil errors are reported as StatusFailed and the error is
+// preserved on the AssetResult so callers can inspect or surface it.
+//
+// successMessage is used as result.Message when err is nil (for example,
+// the install path or "Installed to /home/...").
+func TranslateInstallError(err error, successMessage string) (ResultStatus, string, error) {
+	if err == nil {
+		return StatusSuccess, successMessage, nil
+	}
+	if errors.Is(err, hook.ErrUnsupportedEvent) {
+		return StatusSkipped, err.Error(), nil
+	}
+	return StatusFailed, fmt.Sprintf("Installation failed: %v", err), err
+}
 
 // VerifyResult represents the result of verifying a single asset's installation
 type VerifyResult struct {
