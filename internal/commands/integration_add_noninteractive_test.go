@@ -3,6 +3,7 @@ package commands
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -268,8 +269,23 @@ prompt-file = "SKILL.md"
 		env.ResetVaultAssets(vaultDir)
 		os.RemoveAll(filepath.Join(vaultDir, "assets", "custom-name"))
 
+		// Type override changes the asset's schema requirements, so the
+		// source must satisfy the *target* type's contract — a rule
+		// requires RULE.md, not the skill source's SKILL.md. Use a
+		// rule-shaped source for this subtest.
+		ruleSourceDir := env.MkdirAll(filepath.Join(env.TempDir, "source-rule-override"))
+		env.WriteFile(filepath.Join(ruleSourceDir, "metadata.toml"), `[asset]
+name = "test-rule"
+type = "rule"
+description = "A test rule"
+
+[rule]
+prompt-file = "RULE.md"
+`)
+		env.WriteFile(filepath.Join(ruleSourceDir, "RULE.md"), "# Test Rule")
+
 		addCmd := NewAddCommand()
-		addCmd.SetArgs([]string{sourceDir, "--yes", "--name", "custom-name", "--type", "rule"})
+		addCmd.SetArgs([]string{ruleSourceDir, "--yes", "--name", "custom-name", "--type", "rule"})
 
 		if err := addCmd.Execute(); err != nil {
 			t.Fatalf("Failed to add skill: %v", err)
@@ -360,6 +376,35 @@ func TestAddNonInteractiveErrors(t *testing.T) {
 		err := addCmd.Execute()
 		if err == nil {
 			t.Error("Expected error when invalid --type is provided")
+		}
+	})
+
+	t.Run("error when hook event is unknown", func(t *testing.T) {
+		// A typo'd hook event must be rejected at sx add time, not silently
+		// accepted into the vault. The validation runs against
+		// metadata/validation.go's validHookEvents (the canonical event set).
+		sourceDir := env.MkdirAll(filepath.Join(env.TempDir, "source-bad-hook"))
+		env.WriteFile(filepath.Join(sourceDir, "metadata.toml"), `[asset]
+name = "bad-hook"
+type = "hook"
+description = "Hook with a typo'd event"
+
+[hook]
+event = "subagent-strat"
+script-file = "hook.sh"
+`)
+		env.WriteFile(filepath.Join(sourceDir, "hook.sh"), "#!/bin/sh\necho hi\n")
+
+		addCmd := NewAddCommand()
+		addCmd.SetArgs([]string{sourceDir, "--yes"})
+
+		err := addCmd.Execute()
+		if err == nil {
+			t.Fatal("Expected error when hook event is unknown")
+		}
+		if !strings.Contains(err.Error(), "invalid hook event") &&
+			!strings.Contains(err.Error(), "subagent-strat") {
+			t.Errorf("Expected error to mention invalid event or the typo: %v", err)
 		}
 	})
 }
