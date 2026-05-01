@@ -305,3 +305,40 @@ event = "afterFileEdit"
 		t.Errorf("Cursor event = %v, want \"afterFileEdit\"", meta.Hook.Cursor["event"])
 	}
 }
+
+func TestAsset_Validate_Clients(t *testing.T) {
+	t.Run("empty list passes", func(t *testing.T) {
+		a := Asset{Name: "x", Version: "1.0.0", Type: asset.TypeSkill}
+		if err := a.Validate(); err != nil {
+			t.Errorf("default empty Clients should not error: %v", err)
+		}
+	})
+
+	t.Run("known client IDs pass", func(t *testing.T) {
+		a := Asset{
+			Name:    "x",
+			Version: "1.0.0",
+			Type:    asset.TypeSkill,
+			Clients: []string{"claude-code", "cursor", "gemini", "cline", "github-copilot", "codex", "openclaw", "kiro"},
+		}
+		if err := a.Validate(); err != nil {
+			t.Errorf("known client IDs should not error: %v", err)
+		}
+	})
+
+	t.Run("unknown client ID fails", func(t *testing.T) {
+		a := Asset{
+			Name:    "x",
+			Version: "1.0.0",
+			Type:    asset.TypeSkill,
+			Clients: []string{"claude-code", "made-up-client"},
+		}
+		err := a.Validate()
+		if err == nil {
+			t.Fatal("unknown client ID should error")
+		}
+		if !strings.Contains(err.Error(), "made-up-client") {
+			t.Errorf("error should mention the bad ID: %v", err)
+		}
+	})
+}

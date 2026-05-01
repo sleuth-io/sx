@@ -2,6 +2,7 @@ package clients
 
 import (
 	"context"
+	"slices"
 	"sync"
 )
 
@@ -102,6 +103,14 @@ func (o *Orchestrator) filterAssets(assets []*AssetBundle,
 		// If asset is scoped to repo/path and this is a global scope,
 		// skip it (client doesn't support repo scope)
 		if !bundle.Asset.IsGlobal() && scope.Type == ScopeGlobal {
+			continue
+		}
+
+		// Author-declared client filter: when [asset].clients is set,
+		// only the listed clients receive this asset. Empty (default)
+		// means all clients — preserves existing behavior for assets
+		// without the field.
+		if len(bundle.Metadata.Asset.Clients) > 0 && !slices.Contains(bundle.Metadata.Asset.Clients, client.ID()) {
 			continue
 		}
 

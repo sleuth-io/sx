@@ -43,6 +43,18 @@ type Asset struct {
 	Documentation string     `toml:"documentation,omitempty"`
 	Readme        string     `toml:"readme,omitempty"`
 	Dependencies  []string   `toml:"dependencies,omitempty"`
+	// Clients optionally restricts which AI clients this asset installs to.
+	// When empty (the default), the asset installs to every enabled client
+	// that supports its asset type. When set, only the listed clients
+	// receive it; other enabled clients are silently skipped.
+	//
+	// Values must match registered client IDs (claude-code, cursor, gemini,
+	// cline, codex, github-copilot, kiro, openclaw). Validation runs at
+	// `sx add` / publish time so unknown IDs fail loudly.
+	//
+	// This is opt-in; existing assets without a `clients` field are
+	// unaffected and continue to install to every enabled client.
+	Clients []string `toml:"clients,omitempty"`
 }
 
 // SkillConfig represents the [skill] section
