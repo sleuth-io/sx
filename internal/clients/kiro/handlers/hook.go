@@ -148,7 +148,7 @@ func (h *HookHandler) writeHookFile(targetBase string) error {
 
 	kiroEvent, supported := h.mapEventToKiro()
 	if !supported {
-		return fmt.Errorf("hook event %q not supported for Kiro", h.metadata.Hook.Event)
+		return hook.UnsupportedEventError("Kiro", h.metadata.Hook.Event)
 	}
 
 	// Resolve the command to execute
