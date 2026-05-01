@@ -29,6 +29,20 @@ var (
 		"subagent-stop":         true,
 		"pre-compact":           true,
 	}
+
+	// Valid client IDs accepted in [asset].clients (parallels
+	// internal/clients ClientID* constants — kept here as a string set
+	// to avoid an import from metadata into the clients package).
+	validClientIDs = map[string]bool{
+		"claude-code":    true,
+		"cursor":         true,
+		"cline":          true,
+		"gemini":         true,
+		"github-copilot": true,
+		"codex":          true,
+		"openclaw":       true,
+		"kiro":           true,
+	}
 )
 
 // Validate validates the entire metadata structure
@@ -123,6 +137,13 @@ func (a *Asset) Validate() error {
 
 	if !a.Type.IsValid() {
 		return fmt.Errorf("invalid asset type: %s (must be one of: skill, command, agent, hook, rule, mcp, claude-code-plugin)", a.Type)
+	}
+
+	// Validate optional clients filter. Values must be known client IDs.
+	for _, id := range a.Clients {
+		if !validClientIDs[id] {
+			return fmt.Errorf("invalid client id %q in [asset].clients (must be one of: claude-code, cursor, cline, gemini, github-copilot, codex, openclaw, kiro)", id)
+		}
 	}
 
 	return nil
