@@ -137,15 +137,7 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 			continue
 		}
 
-		if err != nil {
-			result.Status = clients.StatusFailed
-			result.Error = err
-			result.Message = fmt.Sprintf("Installation failed: %v", err)
-		} else {
-			result.Status = clients.StatusSuccess
-			result.Message = installedPath
-		}
-
+		result.Status, result.Message, result.Error = clients.TranslateInstallError(err, installedPath)
 		resp.Results = append(resp.Results, result)
 	}
 

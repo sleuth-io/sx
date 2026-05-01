@@ -145,7 +145,7 @@ func (h *HookHandler) createHookScript(targetBase string) error {
 
 	clineEvent, supported := h.mapEventToCline()
 	if !supported {
-		return fmt.Errorf("hook event %q not supported for Cline", h.metadata.Hook.Event)
+		return hook.UnsupportedEventError("Cline", h.metadata.Hook.Event)
 	}
 
 	hookPath := filepath.Join(hooksDir, clineEvent)
