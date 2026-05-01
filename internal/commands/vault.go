@@ -754,7 +754,7 @@ func runVaultRemove(cmd *cobra.Command, assetName, versionFlag string, yes, dele
 
 	if shouldInstall {
 		out.println()
-		if err := runInstall(cmd, nil, false, "", false, "", "", false); err != nil {
+		if err := runInstall(cmd, nil, false, "", false, "", "", false, false); err != nil {
 			out.printfErr("Install failed: %v\n", err)
 		}
 	} else {
@@ -861,7 +861,7 @@ func runVaultRename(cmd *cobra.Command, oldName, newName string, yes bool) error
 
 	if shouldInstall {
 		out.println()
-		if err := runInstall(cmd, nil, false, "", false, "", "", false); err != nil {
+		if err := runInstall(cmd, nil, false, "", false, "", "", false, false); err != nil {
 			out.printfErr("Install failed: %v\n", err)
 		}
 	} else {
