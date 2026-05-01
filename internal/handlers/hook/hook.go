@@ -70,12 +70,34 @@ func CacheZipFiles(zipData []byte) []string {
 // soft-skipped on Gemini and installed as usual on Claude Code.
 var ErrUnsupportedEvent = errors.New("unsupported hook event")
 
-// UnsupportedEventError builds an error that wraps ErrUnsupportedEvent with
-// a human-readable message naming the client and event. Callers detect it
-// via errors.Is(err, ErrUnsupportedEvent).
-func UnsupportedEventError(clientName, event string) error {
-	return fmt.Errorf("%w %q on %s", ErrUnsupportedEvent, event, clientName)
+// unsupportedEventErr is the concrete type returned by UnsupportedEventError.
+// It carries Client and Event as structured fields so callers can build
+// per-client summaries without parsing the message string. Callers should
+// match it via errors.As, or detect the wrapped sentinel via errors.Is.
+type unsupportedEventErr struct {
+	Client string
+	Event  string
 }
+
+func (e *unsupportedEventErr) Error() string {
+	return fmt.Sprintf("%s %q on %s", ErrUnsupportedEvent.Error(), e.Event, e.Client)
+}
+
+func (e *unsupportedEventErr) Unwrap() error { return ErrUnsupportedEvent }
+
+// UnsupportedEventError builds an error that wraps ErrUnsupportedEvent with
+// the client and event captured as structured fields. Callers detect it via
+// errors.Is(err, ErrUnsupportedEvent), and extract the fields via:
+//
+//	var ue *UnsupportedEventDetails
+//	if errors.As(err, &ue) { ... ue.Client, ue.Event ... }
+func UnsupportedEventError(clientName, event string) error {
+	return &unsupportedEventErr{Client: clientName, Event: event}
+}
+
+// UnsupportedEventDetails is the public alias for the concrete type used with
+// errors.As to recover the (Client, Event) pair from an UnsupportedEventError.
+type UnsupportedEventDetails = unsupportedEventErr
 
 // MapEvent maps a canonical hook event name to a client-native event name.
 // It first checks the client-specific override map, then falls back to the

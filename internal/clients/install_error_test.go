@@ -22,7 +22,7 @@ func TestTranslateInstallError(t *testing.T) {
 		}
 	})
 
-	t.Run("unsupported event becomes skipped", func(t *testing.T) {
+	t.Run("unsupported event becomes skipped with error preserved", func(t *testing.T) {
 		input := hook.UnsupportedEventError("Gemini", "pre-compact")
 		status, msg, err := TranslateInstallError(input, "ignored")
 		if status != StatusSkipped {
@@ -31,8 +31,11 @@ func TestTranslateInstallError(t *testing.T) {
 		if !strings.Contains(msg, "pre-compact") {
 			t.Errorf("msg = %q, want it to mention the event", msg)
 		}
-		if err != nil {
-			t.Errorf("err = %v, want nil (soft skip should not propagate)", err)
+		// Preserve the error so callers (e.g. per-client summary aggregation)
+		// can introspect *why* the asset was skipped, while leaving Status
+		// as Skipped so it doesn't count toward HasAnyErrors / Failed.
+		if !errors.Is(err, hook.ErrUnsupportedEvent) {
+			t.Errorf("err = %v, want sentinel preserved on result", err)
 		}
 	})
 
@@ -44,8 +47,8 @@ func TestTranslateInstallError(t *testing.T) {
 		if status != StatusSkipped {
 			t.Errorf("status = %q, want %q", status, StatusSkipped)
 		}
-		if err != nil {
-			t.Errorf("err = %v, want nil", err)
+		if !errors.Is(err, hook.ErrUnsupportedEvent) {
+			t.Errorf("err = %v, want sentinel preserved on result", err)
 		}
 	})
 
