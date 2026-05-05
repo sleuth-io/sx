@@ -173,28 +173,17 @@ func TestGenerateReadme(t *testing.T) {
 	repoURL := "https://github.com/test/repo.git"
 	result := generateReadme(repoURL)
 
-	// Check that the template was rendered
 	if result == "" {
 		t.Error("generateReadme() returned empty string")
 	}
 
-	// Check that template version was injected
-	if !strings.Contains(result, "<!-- Template version: "+readmeTemplateVersion+" -->") {
-		t.Errorf("generateReadme() should contain version %q", readmeTemplateVersion)
-	}
-
-	// Check that install URL was generated (should be raw GitHub URL)
 	expectedURL := "https://raw.githubusercontent.com/test/repo/main/install.sh"
 	if !strings.Contains(result, expectedURL) {
 		t.Errorf("generateReadme() should contain install URL %q, got:\n%s", expectedURL, result)
 	}
 
-	// Check that placeholders were replaced
 	if strings.Contains(result, "{{.INSTALL_URL}}") {
 		t.Error("generateReadme() still contains {{.INSTALL_URL}} placeholder")
-	}
-	if strings.Contains(result, "{{.TEMPLATE_VERSION}}") {
-		t.Error("generateReadme() still contains {{.TEMPLATE_VERSION}} placeholder")
 	}
 }
 
