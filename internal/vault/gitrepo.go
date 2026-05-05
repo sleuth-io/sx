@@ -39,10 +39,6 @@ const (
 	// installScriptTemplateVersion is the current version of the install.sh template
 	// Increment this when making changes to the template
 	installScriptTemplateVersion = "1"
-
-	// readmeTemplateVersion is the current version of the README.md template
-	// Increment this when making changes to the template
-	readmeTemplateVersion = "1"
 )
 
 // GitVault implements Vault for Git vaults
@@ -340,50 +336,43 @@ func (g *GitVault) ensureInstallScript(ctx context.Context) error {
 	return err
 }
 
-// updateTemplates is the internal implementation that returns which files were updated
+// updateTemplates is the internal implementation that returns which files were updated.
+//
+// install.sh is version-managed: missing or outdated copies are regenerated.
+// README.md is created on first init only — once it exists we leave it alone so
+// users can customize it (e.g. with a team quick-start guide) without sx
+// silently resetting it on the next commit.
 func (g *GitVault) updateTemplates(ctx context.Context, commit bool) ([]string, error) {
 	var updatedFiles []string
 	installScriptPath := filepath.Join(g.repoPath, "install.sh")
 	readmePath := filepath.Join(g.repoPath, "README.md")
 
-	// Use version constants directly (not from templates, which contain placeholders)
-	installScriptVersion := installScriptTemplateVersion
-	readmeVersion := readmeTemplateVersion
-
 	// Check if install.sh needs to be created or updated
 	needInstallScriptUpdate := false
 	if content, err := os.ReadFile(installScriptPath); err == nil {
-		// File exists, check if version needs update
 		fileVersion := extractTemplateVersion(string(content), "# Template version: ")
-		needInstallScriptUpdate = shouldUpdateTemplate(fileVersion, installScriptVersion)
+		needInstallScriptUpdate = shouldUpdateTemplate(fileVersion, installScriptTemplateVersion)
 	} else if os.IsNotExist(err) {
-		// File doesn't exist
 		needInstallScriptUpdate = true
 	} else {
 		return nil, fmt.Errorf("failed to check install.sh: %w", err)
 	}
 
-	// Check if README.md needs to be created or updated
-	needReadmeUpdate := false
-	if content, err := os.ReadFile(readmePath); err == nil {
-		// File exists, check if version needs update
-		fileVersion := extractTemplateVersion(string(content), "<!-- Template version: ")
-		needReadmeUpdate = shouldUpdateTemplate(fileVersion, readmeVersion)
-	} else if os.IsNotExist(err) {
-		// File doesn't exist
-		needReadmeUpdate = true
-	} else {
-		return nil, fmt.Errorf("failed to check README.md: %w", err)
+	// README is only seeded if missing — never overwritten
+	needReadmeCreate := false
+	if _, err := os.Stat(readmePath); err != nil {
+		if os.IsNotExist(err) {
+			needReadmeCreate = true
+		} else {
+			return nil, fmt.Errorf("failed to check README.md: %w", err)
+		}
 	}
 
-	// If both files are up to date, nothing to do
-	if !needInstallScriptUpdate && !needReadmeUpdate {
+	if !needInstallScriptUpdate && !needReadmeCreate {
 		return updatedFiles, nil
 	}
 
-	// Create or update install.sh if needed
 	if needInstallScriptUpdate {
-		// Generate install.sh with actual repository URL
 		installScript := generateInstallScript(g.repoURL)
 		if err := os.WriteFile(installScriptPath, []byte(installScript), 0755); err != nil {
 			return nil, fmt.Errorf("failed to create install.sh: %w", err)
@@ -391,9 +380,7 @@ func (g *GitVault) updateTemplates(ctx context.Context, commit bool) ([]string, 
 		updatedFiles = append(updatedFiles, "install.sh")
 	}
 
-	// Create or update README.md if needed
-	if needReadmeUpdate {
-		// Generate README with actual repository URL
+	if needReadmeCreate {
 		readme := generateReadme(g.repoURL)
 		if err := os.WriteFile(readmePath, []byte(readme), 0644); err != nil {
 			return nil, fmt.Errorf("failed to create README.md: %w", err)
@@ -403,18 +390,15 @@ func (g *GitVault) updateTemplates(ctx context.Context, commit bool) ([]string, 
 
 	// Commit and push the changes if requested and any files were updated
 	if commit && len(updatedFiles) > 0 {
-		// Stage the updated files
 		if err := g.gitClient.Add(ctx, g.repoPath, updatedFiles...); err != nil {
 			return nil, fmt.Errorf("failed to stage updated templates: %w", err)
 		}
 
-		// Commit with a descriptive message
-		commitMsg := fmt.Sprintf("Update templates to version %s/%s", installScriptTemplateVersion, readmeTemplateVersion)
+		commitMsg := "Update install.sh to version " + installScriptTemplateVersion
 		if err := g.gitClient.Commit(ctx, g.repoPath, commitMsg); err != nil {
 			return nil, fmt.Errorf("failed to commit updated templates: %w", err)
 		}
 
-		// Push to remote
 		if err := g.gitClient.Push(ctx, g.repoPath); err != nil {
 			return nil, fmt.Errorf("failed to push updated templates: %w", err)
 		}
@@ -505,8 +489,7 @@ func generateReadme(repoURL string) string {
 
 	var buf bytes.Buffer
 	data := map[string]string{
-		"INSTALL_URL":      rawURL,
-		"TEMPLATE_VERSION": readmeTemplateVersion,
+		"INSTALL_URL": rawURL,
 	}
 	if err := tmpl.Execute(&buf, data); err != nil {
 		panic(fmt.Sprintf("failed to execute README.md template: %v", err))
