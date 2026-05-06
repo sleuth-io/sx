@@ -380,17 +380,17 @@ func TestAddNonInteractiveErrors(t *testing.T) {
 	})
 
 	t.Run("error when hook event is unknown", func(t *testing.T) {
-		// A typo'd hook event must be rejected at sx add time, not silently
+		// An unknown hook event must be rejected at sx add time, not silently
 		// accepted into the vault. The validation runs against
 		// metadata/validation.go's validHookEvents (the canonical event set).
 		sourceDir := env.MkdirAll(filepath.Join(env.TempDir, "source-bad-hook"))
 		env.WriteFile(filepath.Join(sourceDir, "metadata.toml"), `[asset]
 name = "bad-hook"
 type = "hook"
-description = "Hook with a typo'd event"
+description = "Hook with an unknown event"
 
 [hook]
-event = "subagent-strat"
+event = "subagent-launch"
 script-file = "hook.sh"
 `)
 		env.WriteFile(filepath.Join(sourceDir, "hook.sh"), "#!/bin/sh\necho hi\n")
@@ -403,8 +403,8 @@ script-file = "hook.sh"
 			t.Fatal("Expected error when hook event is unknown")
 		}
 		if !strings.Contains(err.Error(), "invalid hook event") &&
-			!strings.Contains(err.Error(), "subagent-strat") {
-			t.Errorf("Expected error to mention invalid event or the typo: %v", err)
+			!strings.Contains(err.Error(), "subagent-launch") {
+			t.Errorf("Expected error to mention invalid event or the bad value: %v", err)
 		}
 	})
 }

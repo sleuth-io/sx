@@ -488,10 +488,11 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 	}
 
 	// Validate the (possibly user-authored) metadata before it enters the
-	// vault. Catches problems like typo'd hook events (`event = "subagent-strat"`)
-	// that would otherwise pass `sx add` and only fail at install time.
+	// vault. Catches problems like unknown hook events that would otherwise
+	// pass `sx add` and only fail at install time. ValidateZip already wraps
+	// its errors with a "metadata validation failed:" prefix.
 	if err := metadata.ValidateZip(zipData, &assetType); err != nil {
-		return fmt.Errorf("metadata validation failed: %w", err)
+		return err
 	}
 
 	// Create asset entry (what it is)
