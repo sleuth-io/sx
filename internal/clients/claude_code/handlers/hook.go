@@ -185,7 +185,7 @@ func (h *HookHandler) updateSettings(targetBase string) error {
 
 	hookEvent, supported := h.mapEventToClaudeCode()
 	if !supported {
-		return fmt.Errorf("hook event %q not supported for Claude Code", h.metadata.Hook.Event)
+		return hook.UnsupportedEventError("Claude Code", h.metadata.Hook.Event)
 	}
 
 	hookConfig := h.buildHookConfig(targetBase)

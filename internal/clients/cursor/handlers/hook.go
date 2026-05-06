@@ -105,7 +105,7 @@ func (h *HookHandler) updateHooksJSON(targetBase string) error {
 
 	cursorEvent, supported := h.mapEventToCursor()
 	if !supported {
-		return fmt.Errorf("hook event %q not supported for Cursor", h.metadata.Hook.Event)
+		return hook.UnsupportedEventError("Cursor", h.metadata.Hook.Event)
 	}
 
 	entry := h.buildHookEntry(targetBase)

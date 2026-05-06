@@ -18,9 +18,10 @@ func NewUpdateTemplatesCommand() *cobra.Command {
 		Use:    "update-templates",
 		Hidden: true,
 		Short:  "Update templates in Git repository if needed",
-		Long: `Check and update templates (install.sh, README.md) in the Git repository
-if they are outdated or missing. Only updates files if their version is older
-than the current template version. This is a hidden maintenance command.`,
+		Long: `Check and update templates in the Git repository if they are outdated
+or missing. install.sh is regenerated when its version is older than the current
+template; README.md is only seeded when missing so user customizations are
+preserved. This is a hidden maintenance command.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpdateTemplates(cmd, args)
 		},

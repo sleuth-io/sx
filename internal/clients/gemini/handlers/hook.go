@@ -121,7 +121,7 @@ func (h *HookHandler) mapEventToGemini() (string, bool) {
 func (h *HookHandler) updateSettings(geminiDir string) error {
 	hookEvent, supported := h.mapEventToGemini()
 	if !supported {
-		return fmt.Errorf("hook event %q not supported for Gemini", h.metadata.Hook.Event)
+		return hook.UnsupportedEventError("Gemini", h.metadata.Hook.Event)
 	}
 
 	installDir := filepath.Join(geminiDir, "hooks", h.metadata.Asset.Name)

@@ -3,6 +3,8 @@ package hook
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/asset"
@@ -154,6 +156,33 @@ func TestMapEvent(t *testing.T) {
 		native, ok := MapEvent("post-tool-use", eventMap, overrides)
 		if !ok || native != "PostToolUse" {
 			t.Errorf("got (%q, %v), want (PostToolUse, true)", native, ok)
+		}
+	})
+}
+
+func TestUnsupportedEventError(t *testing.T) {
+	t.Run("wraps sentinel", func(t *testing.T) {
+		err := UnsupportedEventError("Gemini", "pre-compact")
+		if !errors.Is(err, ErrUnsupportedEvent) {
+			t.Errorf("errors.Is(err, ErrUnsupportedEvent) = false, want true")
+		}
+	})
+
+	t.Run("message names client and event", func(t *testing.T) {
+		err := UnsupportedEventError("Gemini", "pre-compact")
+		msg := err.Error()
+		if !strings.Contains(msg, "Gemini") {
+			t.Errorf("error message %q does not contain client name 'Gemini'", msg)
+		}
+		if !strings.Contains(msg, "pre-compact") {
+			t.Errorf("error message %q does not contain event name 'pre-compact'", msg)
+		}
+	})
+
+	t.Run("distinct from unrelated error", func(t *testing.T) {
+		other := errors.New("some other error")
+		if errors.Is(other, ErrUnsupportedEvent) {
+			t.Errorf("unrelated error matched ErrUnsupportedEvent sentinel")
 		}
 	})
 }
