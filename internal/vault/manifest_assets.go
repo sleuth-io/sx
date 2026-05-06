@@ -42,6 +42,22 @@ func upsertAssetInManifest(vaultRoot string, asset *lockfile.Asset) error {
 	if err != nil {
 		return err
 	}
+	// Preserve Clients from any existing entry at the *same name+version*
+	// when the incoming asset has none. Re-add paths (handleIdenticalAsset,
+	// configureRuleScopes, configureExistingAsset) construct lockfile.Asset
+	// without metadata in scope; without this guard, upsert would wipe an
+	// author-declared client filter on every re-configure of an existing
+	// version. We deliberately scope inheritance to the same version so a
+	// new version that intentionally drops `clients` does not silently
+	// inherit the prior version's restriction.
+	if len(asset.Clients) == 0 {
+		for i := range m.Assets {
+			if m.Assets[i].Name == asset.Name && m.Assets[i].Version == asset.Version && len(m.Assets[i].Clients) > 0 {
+				asset.Clients = append([]string(nil), m.Assets[i].Clients...)
+				break
+			}
+		}
+	}
 	m.UpsertAsset(lockfileAssetToManifest(*asset))
 	return manifest.Save(vaultRoot, m)
 }

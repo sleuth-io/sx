@@ -495,11 +495,14 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 		return err
 	}
 
-	// Create asset entry (what it is)
+	// Create asset entry (what it is). Mirror metadata's client filter into
+	// the lockfile so isAssetApplicable / MatchesClient see the restriction
+	// without re-reading the metadata.toml at install time.
 	lockAsset := &lockfile.Asset{
 		Name:    meta.Asset.Name,
 		Version: meta.Asset.Version,
 		Type:    meta.Asset.Type,
+		Clients: append([]string(nil), meta.Asset.Clients...),
 		SourcePath: &lockfile.SourcePath{
 			Path: fmt.Sprintf("./assets/%s/%s", meta.Asset.Name, meta.Asset.Version),
 		},

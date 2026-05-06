@@ -105,6 +105,12 @@ func (o *Orchestrator) filterAssets(assets []*AssetBundle,
 			continue
 		}
 
+		// The author-declared client filter ([asset].clients) is enforced
+		// upstream by isAssetApplicable / lockfile.Asset.MatchesClient,
+		// which read the value propagated from metadata into the lockfile
+		// at `sx add` time (see commands/add.go and vault/manifest_assets.go).
+		// No re-check needed here.
+
 		compatible = append(compatible, bundle)
 	}
 

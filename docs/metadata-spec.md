@@ -79,7 +79,19 @@ homepage = "https://example.com/project"
 repository = "https://github.com/user/repo"
 documentation = "https://docs.example.com"
 readme = "README.md"         # Path to readme file in package
+
+# Optional client targeting — restrict which AI clients receive this asset.
+# When omitted (the default), the asset installs to every enabled client
+# that supports its type. When set, only the listed clients receive it;
+# others are silently skipped. This is the author's "I don't belong here"
+# declaration — distinct from the runtime soft-skip a client emits when
+# it can't fire an asset's lifecycle event.
+clients = ["claude-code", "cursor"]
 ```
+
+Valid client IDs: `claude-code`, `cline`, `codex`, `cursor`, `gemini`,
+`github-copilot`, `kiro`, `openclaw`. Unknown IDs are rejected at
+`sx add` / publish time.
 
 ## Asset Types
 
@@ -936,7 +948,6 @@ Potential additions for future versions:
   ```
 - **Additional version operators**: `==`, `!=`, `>`, `<=`, `<`, `===` for more precise version constraints
 - **Platform targeting**: `platforms = ["macos", "linux", "windows"]`
-- **Client targeting**: `clients = ["claude-code", "gemini"]` (currently in lock file)
 - **License files**: `license-files = ["LICENSE", "LICENSES/*"]` with glob support
 - **Changelog tracking**: `changelog = "CHANGELOG.md"`
 - **Artifact signing**: Digital signatures for verification
