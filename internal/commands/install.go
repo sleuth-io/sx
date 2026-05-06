@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -35,6 +36,7 @@ func NewInstallCommand() *cobra.Command {
 	var targetDir string
 	var clientsFlag string
 	var dryRun bool
+	var strict bool
 
 	// Installation targeting flags — when any of these is set together
 	// with a positional asset name, sx install enters "set installation
@@ -91,7 +93,7 @@ equivalent of 'pip freeze' against the vault's manifest.`,
 				}
 				return runInstallSetTarget(cmd, args[0], targetFlags)
 			}
-			return runInstall(cmd, args, hookMode, clientID, fixMode, targetDir, clientsFlag, dryRun)
+			return runInstall(cmd, args, hookMode, clientID, fixMode, targetDir, clientsFlag, dryRun, strict)
 		},
 	}
 
@@ -101,6 +103,7 @@ equivalent of 'pip freeze' against the vault's manifest.`,
 	cmd.Flags().StringVar(&targetDir, "target", "", "Install as if running from this directory")
 	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Install to multiple clients (e.g., 'claude-code,cursor')")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the resolved asset list for the current context and exit without downloading or installing")
+	cmd.Flags().BoolVar(&strict, "strict", false, "Treat hook installs that soft-skip (event not supported by client) as failures (also via SX_STRICT=1)")
 
 	cmd.Flags().BoolVar(&orgFlag, "org", false, "Set this asset to install org-wide")
 	cmd.Flags().StringVar(&repoFlag, "repo", "", "Install this asset for a specific repository URL")
@@ -282,9 +285,14 @@ func describeAssetScopeForDryRun(a *lockfile.Asset) string {
 }
 
 // runInstall executes the install command
-func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID string, repairMode bool, targetDir string, clientsFlag string, dryRun bool) error {
+func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID string, repairMode bool, targetDir string, clientsFlag string, dryRun bool, strict bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
+
+	// SX_STRICT=1 is equivalent to --strict; --strict wins if both are set.
+	if !strict && os.Getenv("SX_STRICT") == "1" {
+		strict = true
+	}
 
 	log := logger.Get()
 	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
@@ -402,7 +410,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	}
 
 	// Install assets to their appropriate locations
-	installResult := installAssets(ctx, downloadResult.Downloads, env.GitContext, env.CurrentScope, env.Clients, styledOut)
+	installResult := installAssets(ctx, downloadResult.Downloads, env.GitContext, env.CurrentScope, env.Clients, styledOut, strict)
 
 	// Save new installation state (only for successfully installed assets)
 	saveInstallationState(tracker, sortedAssets, assetsToInstall, downloadResult.Downloads, installResult, env.CurrentScope, targetClientIDs, out)
@@ -602,8 +610,10 @@ func repairTracker(ctx context.Context, tracker *assets.Tracker, sortedAssets []
 	styledOut.Newline()
 }
 
-// installAssets installs assets to all detected clients using the orchestrator
-func installAssets(ctx context.Context, successfulDownloads []*assets.AssetWithMetadata, gitContext *gitutil.GitContext, currentScope *scope.Scope, targetClients []clients.Client, styledOut *ui.Output) *assets.InstallResult {
+// installAssets installs assets to all detected clients using the orchestrator.
+// When strict is true, hook installs that soft-skip due to unsupported events
+// are escalated to hard failures (used by --strict / SX_STRICT=1).
+func installAssets(ctx context.Context, successfulDownloads []*assets.AssetWithMetadata, gitContext *gitutil.GitContext, currentScope *scope.Scope, targetClients []clients.Client, styledOut *ui.Output, strict bool) *assets.InstallResult {
 	styledOut.Header("Installing assets...")
 
 	// Install each asset to its proper scope
@@ -638,7 +648,7 @@ func installAssets(ctx context.Context, successfulDownloads []*assets.AssetWithM
 	}
 
 	// Process and report results
-	return processInstallationResults(allResults, styledOut)
+	return processInstallationResults(allResults, styledOut, strict)
 }
 
 // buildInstallScope creates the installation scope from current context
@@ -708,8 +718,10 @@ func runMultiClientInstallation(ctx context.Context, bundles []*clients.AssetBun
 	return orchestrator.InstallToClients(ctx, bundles, installScope, clients.InstallOptions{}, targetClients)
 }
 
-// processInstallationResults processes results from all clients and builds the final result
-func processInstallationResults(allResults map[string]clients.InstallResponse, styledOut *ui.Output) *assets.InstallResult {
+// processInstallationResults processes results from all clients and builds the final result.
+// When strict is true, StatusSkipped results that wrap hook.ErrUnsupportedEvent are
+// rendered and counted as failures rather than as informational soft skips.
+func processInstallationResults(allResults map[string]clients.InstallResponse, styledOut *ui.Output, strict bool) *assets.InstallResult {
 	installResult := &assets.InstallResult{
 		Installed: []string{},
 		Failed:    []string{},
@@ -722,12 +734,28 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, s
 	// instead of one ⊘ line per (asset, client) pair.
 	type unsupportedSkip struct{ asset, event string }
 	unsupportedByClient := make(map[string][]unsupportedSkip)
+	// In strict mode, escalated unsupported-event skips don't show up in
+	// allResults' Status fields (only in the local `status` rebind), so
+	// HasAnyErrors won't detect them. This flag bridges that gap.
+	strictSawUnsupported := false
 
 	for clientID, resp := range allResults {
 		client, _ := clients.Global().Get(clientID)
 
 		for _, result := range resp.Results {
-			switch result.Status {
+			status := result.Status
+			// In strict mode, escalate unsupported-event soft skips to failures
+			// so CI / audit consumers see the same exit code they had before
+			// soft skip was introduced. Other StatusSkipped paths (no
+			// compatible assets, unsupported asset type) are unaffected —
+			// only hook events that *some* client supports but this one
+			// doesn't carry the sentinel.
+			if strict && status == clients.StatusSkipped && errors.Is(result.Error, hook.ErrUnsupportedEvent) {
+				status = clients.StatusFailed
+				strictSawUnsupported = true
+			}
+
+			switch status {
 			case clients.StatusSuccess:
 				msg := result.AssetName + " → " + client.DisplayName()
 				if result.Message != "" {
@@ -736,9 +764,15 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, s
 				styledOut.SuccessItem(msg)
 				successfullyInstalled[result.AssetName] = true
 			case clients.StatusFailed:
-				styledOut.ErrorItem(result.AssetName + " → " + client.DisplayName() + ": " + result.Error.Error())
+				detail := result.Message
+				if result.Error != nil {
+					detail = result.Error.Error()
+				}
+				styledOut.ErrorItem(result.AssetName + " → " + client.DisplayName() + ": " + detail)
 				installResult.Failed = append(installResult.Failed, result.AssetName)
-				installResult.Errors = append(installResult.Errors, result.Error)
+				if result.Error != nil {
+					installResult.Errors = append(installResult.Errors, result.Error)
+				}
 			case clients.StatusSkipped:
 				// Aggregate unsupported-event skips into a per-client summary
 				// (rendered after the loop). All other skip reasons keep
@@ -795,7 +829,7 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, s
 	}
 
 	// Add error if ANY client failed
-	if clients.HasAnyErrors(allResults) {
+	if clients.HasAnyErrors(allResults) || strictSawUnsupported {
 		installResult.Errors = append(installResult.Errors, errors.New("installation failed for one or more clients"))
 	}
 

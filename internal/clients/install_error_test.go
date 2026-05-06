@@ -31,9 +31,10 @@ func TestTranslateInstallError(t *testing.T) {
 		if !strings.Contains(msg, "pre-compact") {
 			t.Errorf("msg = %q, want it to mention the event", msg)
 		}
-		// Preserve the error so callers (e.g. per-client summary aggregation)
-		// can introspect *why* the asset was skipped, while leaving Status
-		// as Skipped so it doesn't count toward HasAnyErrors / Failed.
+		// Preserve the error so callers (e.g. per-client summary aggregation
+		// or --strict mode) can introspect *why* the asset was skipped, while
+		// leaving Status as Skipped so it doesn't count toward HasAnyErrors /
+		// installResult.Failed.
 		if !errors.Is(err, hook.ErrUnsupportedEvent) {
 			t.Errorf("err = %v, want sentinel preserved on result", err)
 		}

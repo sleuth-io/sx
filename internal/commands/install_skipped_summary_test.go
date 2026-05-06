@@ -16,7 +16,7 @@ func captureOutput(t *testing.T, results map[string]clients.InstallResponse) str
 	t.Helper()
 	var buf bytes.Buffer
 	styledOut := ui.NewOutput(&buf, &bytes.Buffer{})
-	processInstallationResults(results, styledOut)
+	processInstallationResults(results, styledOut, false)
 	return buf.String()
 }
 

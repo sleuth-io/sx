@@ -13,7 +13,7 @@ import (
 // lives in the cache directory, not the project.
 func RunDefaultCommand(cmd *cobra.Command, args []string) error {
 	if _, err := config.Load(); err == nil {
-		return runInstall(cmd, args, false, "", false, "", "", false)
+		return runInstall(cmd, args, false, "", false, "", "", false, false)
 	}
 	return cmd.Help()
 }
