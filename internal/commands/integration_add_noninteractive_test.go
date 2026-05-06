@@ -312,6 +312,32 @@ prompt-file = "SKILL.md"
 		}
 	})
 
+	t.Run("add with --no-install --scope=<entity> forwards entity (SK-452)", func(t *testing.T) {
+		// Pre-fix, --no-install passed "" as scopeEntity, silently dropping
+		// --scope=personal alongside the repo-scope flags. The helper now
+		// forwards result.ScopeEntity. Path vaults ignore the entity and
+		// produce a global asset (mirroring the existing --yes --scope test
+		// at line ~212), which is what we assert here — the point is that
+		// the call succeeds and produces a valid lock entry rather than
+		// erroring or silently dropping the flag.
+		env.ResetVaultAssets(vaultDir)
+
+		addCmd := NewAddCommand()
+		addCmd.SetArgs([]string{sourceDir, "--yes", "--no-install", "--scope", "personal"})
+
+		if err := addCmd.Execute(); err != nil {
+			t.Fatalf("Failed to add skill: %v", err)
+		}
+
+		lf, _ := env.ReadVaultAssets(vaultDir)
+		if len(lf.Assets) == 0 {
+			t.Fatal("Expected at least one asset in lock file")
+		}
+		if !lf.Assets[0].IsGlobal() {
+			t.Errorf("path vault should ignore scope entity and produce global asset, got %d scopes", len(lf.Assets[0].Scopes))
+		}
+	})
+
 	t.Run("add with --no-install --scope-repo path fragment (SK-452)", func(t *testing.T) {
 		env.ResetVaultAssets(vaultDir)
 
