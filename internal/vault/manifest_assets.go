@@ -42,6 +42,16 @@ func upsertAssetInManifest(vaultRoot string, asset *lockfile.Asset) error {
 	if err != nil {
 		return err
 	}
+	// Preserve Clients from any existing entry when the incoming asset has
+	// none. Re-add paths (handleIdenticalAsset, configureRuleScopes,
+	// configureExistingAsset) construct lockfile.Asset without metadata in
+	// scope; without this guard, upsert would wipe an author-declared
+	// client filter on every re-configure.
+	if len(asset.Clients) == 0 {
+		if existing := m.FindAsset(asset.Name); existing != nil && len(existing.Clients) > 0 {
+			asset.Clients = append([]string(nil), existing.Clients...)
+		}
+	}
 	m.UpsertAsset(lockfileAssetToManifest(*asset))
 	return manifest.Save(vaultRoot, m)
 }

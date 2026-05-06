@@ -280,3 +280,39 @@ func TestAssetScopes(t *testing.T) {
 		})
 	}
 }
+
+// TestAsset_MatchesClient covers the lockfile-level filter that enforces
+// [asset].clients at install time (consulted from isAssetApplicable in
+// internal/commands/install_context.go).
+func TestAsset_MatchesClient(t *testing.T) {
+	t.Run("empty Clients matches everything", func(t *testing.T) {
+		a := &Asset{Clients: nil}
+		if !a.MatchesClient("claude-code") || !a.MatchesClient("gemini") {
+			t.Errorf("empty Clients should match all clients")
+		}
+	})
+
+	t.Run("listed client matches", func(t *testing.T) {
+		a := &Asset{Clients: []string{"claude-code"}}
+		if !a.MatchesClient("claude-code") {
+			t.Errorf("listed client should match")
+		}
+	})
+
+	t.Run("non-listed client does not match", func(t *testing.T) {
+		a := &Asset{Clients: []string{"claude-code"}}
+		if a.MatchesClient("gemini") {
+			t.Errorf("non-listed client should not match")
+		}
+	})
+
+	t.Run("multi-client list", func(t *testing.T) {
+		a := &Asset{Clients: []string{"claude-code", "cursor"}}
+		if !a.MatchesClient("cursor") {
+			t.Errorf("listed client should match")
+		}
+		if a.MatchesClient("gemini") {
+			t.Errorf("non-listed client should not match")
+		}
+	})
+}

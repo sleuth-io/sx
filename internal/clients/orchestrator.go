@@ -2,7 +2,6 @@ package clients
 
 import (
 	"context"
-	"slices"
 	"sync"
 )
 
@@ -106,13 +105,11 @@ func (o *Orchestrator) filterAssets(assets []*AssetBundle,
 			continue
 		}
 
-		// Author-declared client filter: when [asset].clients is set,
-		// only the listed clients receive this asset. Empty (default)
-		// means all clients — preserves existing behavior for assets
-		// without the field.
-		if len(bundle.Metadata.Asset.Clients) > 0 && !slices.Contains(bundle.Metadata.Asset.Clients, client.ID()) {
-			continue
-		}
+		// The author-declared client filter ([asset].clients) is enforced
+		// upstream by isAssetApplicable / lockfile.Asset.MatchesClient,
+		// which read the value propagated from metadata into the lockfile
+		// at `sx add` time (see commands/add.go and vault/manifest_assets.go).
+		// No re-check needed here.
 
 		compatible = append(compatible, bundle)
 	}

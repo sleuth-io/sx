@@ -5,12 +5,34 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"sort"
+	"strings"
 
 	"github.com/Masterminds/semver/v3"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/utils"
 )
+
+// validClientIDList returns the sorted, comma-separated list of valid
+// client IDs for use in error messages. Derived from validClientIDs so
+// the error text cannot drift from the validation set.
+func validClientIDList() string {
+	return strings.Join(SortedValidClientIDs(), ", ")
+}
+
+// SortedValidClientIDs returns the set of client IDs accepted in
+// [asset].clients, sorted alphabetically. Exposed so the clients package
+// can assert this set matches its registered ClientID* constants and
+// flag drift at test time (avoiding a metadata→clients import cycle).
+func SortedValidClientIDs() []string {
+	ids := make([]string, 0, len(validClientIDs))
+	for id := range validClientIDs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
 
 var (
 	// nameRegex matches valid asset names (alphanumeric, dashes, underscores)
@@ -142,7 +164,7 @@ func (a *Asset) Validate() error {
 	// Validate optional clients filter. Values must be known client IDs.
 	for _, id := range a.Clients {
 		if !validClientIDs[id] {
-			return fmt.Errorf("invalid client id %q in [asset].clients (must be one of: claude-code, cursor, cline, gemini, github-copilot, codex, openclaw, kiro)", id)
+			return fmt.Errorf("invalid client id %q in [asset].clients (must be one of: %s)", id, validClientIDList())
 		}
 	}
 

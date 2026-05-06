@@ -391,6 +391,7 @@ func uploadRuleZip(ctx context.Context, status *components.Status, vault vaultpk
 		Name:    name,
 		Version: version,
 		Type:    asset.TypeRule,
+		Clients: append([]string(nil), meta.Asset.Clients...),
 		SourcePath: &lockfile.SourcePath{
 			Path: fmt.Sprintf("./assets/%s/%s", name, version),
 		},
