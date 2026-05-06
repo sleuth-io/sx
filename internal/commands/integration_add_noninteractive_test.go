@@ -264,6 +264,81 @@ prompt-file = "SKILL.md"
 		}
 	})
 
+	t.Run("add with --no-install --scope-repo honors the scope (SK-452)", func(t *testing.T) {
+		// Regression: --no-install was hardcoding global scope and silently
+		// dropping --scope-repo. Batch flows ("sx add ... --no-install
+		// --scope-repo X" in a loop, then a single sx install) need the
+		// scope to land in the lock file so the install fan-out routes the
+		// asset correctly.
+		env.ResetVaultAssets(vaultDir)
+
+		addCmd := NewAddCommand()
+		addCmd.SetArgs([]string{sourceDir, "--yes", "--no-install",
+			"--scope-repo", "git@github.com:org/consumer-project.git"})
+
+		if err := addCmd.Execute(); err != nil {
+			t.Fatalf("Failed to add skill: %v", err)
+		}
+
+		lf, _ := env.ReadVaultAssets(vaultDir)
+		if len(lf.Assets) == 0 {
+			t.Fatal("Expected at least one asset in lock file")
+		}
+		asset := lf.Assets[0]
+		if len(asset.Scopes) != 1 {
+			t.Fatalf("Expected 1 scope, got %d (--scope-repo was dropped)", len(asset.Scopes))
+		}
+		if asset.Scopes[0].Repo != "git@github.com:org/consumer-project.git" {
+			t.Errorf("Expected repo 'git@github.com:org/consumer-project.git', got %q", asset.Scopes[0].Repo)
+		}
+	})
+
+	t.Run("add with --no-install --scope-global stays global (SK-452 baseline)", func(t *testing.T) {
+		env.ResetVaultAssets(vaultDir)
+
+		addCmd := NewAddCommand()
+		addCmd.SetArgs([]string{sourceDir, "--yes", "--no-install", "--scope-global"})
+
+		if err := addCmd.Execute(); err != nil {
+			t.Fatalf("Failed to add skill: %v", err)
+		}
+
+		lf, _ := env.ReadVaultAssets(vaultDir)
+		if len(lf.Assets) == 0 {
+			t.Fatal("Expected at least one asset in lock file")
+		}
+		if !lf.Assets[0].IsGlobal() {
+			t.Errorf("Expected global scope, got %d scopes", len(lf.Assets[0].Scopes))
+		}
+	})
+
+	t.Run("add with --no-install --scope-repo path fragment (SK-452)", func(t *testing.T) {
+		env.ResetVaultAssets(vaultDir)
+
+		addCmd := NewAddCommand()
+		addCmd.SetArgs([]string{sourceDir, "--yes", "--no-install",
+			"--scope-repo", "git@github.com:org/repo.git#services/api"})
+
+		if err := addCmd.Execute(); err != nil {
+			t.Fatalf("Failed to add skill: %v", err)
+		}
+
+		lf, _ := env.ReadVaultAssets(vaultDir)
+		if len(lf.Assets) == 0 {
+			t.Fatal("Expected at least one asset in lock file")
+		}
+		asset := lf.Assets[0]
+		if len(asset.Scopes) != 1 {
+			t.Fatalf("Expected 1 scope, got %d", len(asset.Scopes))
+		}
+		if asset.Scopes[0].Repo != "git@github.com:org/repo.git" {
+			t.Errorf("Expected repo URL, got %q", asset.Scopes[0].Repo)
+		}
+		if len(asset.Scopes[0].Paths) != 1 || asset.Scopes[0].Paths[0] != "services/api" {
+			t.Errorf("Expected paths [services/api], got %v", asset.Scopes[0].Paths)
+		}
+	})
+
 	t.Run("add with explicit --name and --type overrides", func(t *testing.T) {
 		// Clean up previous lock file and assets
 		env.ResetVaultAssets(vaultDir)

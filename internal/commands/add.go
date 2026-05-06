@@ -421,13 +421,10 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 		},
 	}
 
-	// --no-install: still write lock file (global scope) but skip install prompt
+	// --no-install: write lock file but skip install prompt. Honors any
+	// scope flags so batch flows can pin assets to a target repo/path/scope.
 	if opts.NoInstall {
-		lockAsset.Scopes = []lockfile.Scope{}
-		if err := updateLockFile(ctx, out, vault, lockAsset, ""); err != nil {
-			return fmt.Errorf("failed to update lock file: %w", err)
-		}
-		return nil
+		return writeLockFileForNoInstall(ctx, out, vault, lockAsset, opts)
 	}
 
 	// Get scopes (from flags if --yes, otherwise prompt)
@@ -524,13 +521,10 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 
 	out.printf("✓ Successfully added %s@%s\n", meta.Asset.Name, meta.Asset.Version)
 
-	// --no-install: still write lock file (global scope) but skip install prompt
+	// --no-install: write lock file but skip install prompt. Honors any
+	// scope flags so batch flows can pin assets to a target repo/path/scope.
 	if opts.NoInstall {
-		lockAsset.Scopes = []lockfile.Scope{}
-		if err := updateLockFile(ctx, out, vault, lockAsset, ""); err != nil {
-			return fmt.Errorf("failed to update lock file: %w", err)
-		}
-		return nil
+		return writeLockFileForNoInstall(ctx, out, vault, lockAsset, opts)
 	}
 
 	// Get scopes (from flags if --yes, otherwise prompt)
