@@ -296,7 +296,18 @@ func (g *GitVault) cloneOrUpdate(ctx context.Context) error {
 		if err := g.clone(ctx); err != nil {
 			return err
 		}
+		if err := g.ensureUsageMergeAttributes(); err != nil {
+			return err
+		}
 	} else {
+		// Ensure the union-merge attribute for usage JSONL is in place
+		// BEFORE pulling: two writers appending to the same monthly
+		// file would otherwise produce a real merge conflict and stall
+		// the pull. The attribute lives in .git/info/attributes (per-
+		// clone, not committed) so it costs no churn on the vault.
+		if err := g.ensureUsageMergeAttributes(); err != nil {
+			return err
+		}
 		// Repository exists — but skip pull if it's empty (no commits yet)
 		empty, err := g.gitClient.IsEmpty(ctx, g.repoPath)
 		if err != nil {
@@ -311,6 +322,40 @@ func (g *GitVault) cloneOrUpdate(ctx context.Context) error {
 
 	g.hasSynced = true
 	return nil
+}
+
+// usageMergeAttributesLine is the gitattributes entry that tells git
+// to use the built-in `union` merge driver for usage JSONL files.
+// `union` concatenates both sides' lines on conflict — exactly the
+// right semantics for an append-only event log written concurrently
+// from multiple machines.
+const usageMergeAttributesLine = ".sx/usage/*.jsonl merge=union"
+
+// ensureUsageMergeAttributes appends usageMergeAttributesLine to the
+// clone's .git/info/attributes if it isn't already present. The file
+// is per-clone and not part of the commit graph, so this is safe to
+// run repeatedly and creates no churn on the vault.
+func (g *GitVault) ensureUsageMergeAttributes() error {
+	infoDir := filepath.Join(g.repoPath, ".git", "info")
+	if err := os.MkdirAll(infoDir, 0755); err != nil {
+		return err
+	}
+	attrPath := filepath.Join(infoDir, "attributes")
+	existing, err := os.ReadFile(attrPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if strings.Contains(string(existing), usageMergeAttributesLine) {
+		return nil
+	}
+	var buf bytes.Buffer
+	buf.Write(existing)
+	if len(existing) > 0 && !bytes.HasSuffix(existing, []byte("\n")) {
+		buf.WriteByte('\n')
+	}
+	buf.WriteString(usageMergeAttributesLine)
+	buf.WriteByte('\n')
+	return utils.WriteFileAtomic(attrPath, buf.Bytes(), 0644)
 }
 
 // clone clones the Git repository

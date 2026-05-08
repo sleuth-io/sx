@@ -116,7 +116,12 @@ func (c *Client) Pull(ctx context.Context, repoPath string) error {
 	start := time.Now()
 	log.Debug("git pull starting", "repoPath", repoPath)
 
-	cmd := execGitCommand(ctx, c.sshKeyPath, "pull", "--quiet")
+	// --no-rebase pins the reconciliation strategy to merge so newer
+	// git (≥2.27) doesn't refuse to pull divergent branches without an
+	// explicit pull.rebase / pull.ff setting. The merge path is also
+	// what lets gitattributes merge=union drivers run on conflicting
+	// append-only files like .sx/usage/*.jsonl.
+	cmd := execGitCommand(ctx, c.sshKeyPath, "pull", "--no-rebase", "--no-edit", "--quiet")
 	cmd.Dir = repoPath
 
 	output, err := cmd.CombinedOutput()
