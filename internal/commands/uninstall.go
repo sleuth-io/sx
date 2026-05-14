@@ -102,6 +102,11 @@ type UninstallOptions struct {
 	DryRun      bool
 	Verbose     bool
 	ClientsFlag string
+	// RemoveAllHooks removes every sx-installed hook from every detected
+	// client regardless of which bootstrap options are currently enabled in
+	// config. Used by self-uninstall to clear orphaned hooks that point at
+	// the sx binary we're about to delete.
+	RemoveAllHooks bool
 }
 
 // AssetUninstallPlan contains info needed to uninstall one asset
@@ -235,7 +240,7 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 
 	// Step 10: Uninstall system hooks if --all flag is passed
 	if opts.All {
-		uninstallSystemHooks(ctx, opts.ClientsFlag, styledOut)
+		uninstallSystemHooks(ctx, opts.ClientsFlag, opts.RemoveAllHooks, styledOut)
 	}
 
 	// Step 11: Report results
@@ -261,7 +266,7 @@ func handleAllFlagWithoutAssets(ctx context.Context, opts UninstallOptions, styl
 		return nil
 	}
 
-	uninstallSystemHooks(ctx, opts.ClientsFlag, styledOut)
+	uninstallSystemHooks(ctx, opts.ClientsFlag, opts.RemoveAllHooks, styledOut)
 	styledOut.Success("System hooks removed")
 	return nil
 }
@@ -693,7 +698,10 @@ func confirmUninstall(styledOut *ui.Output) bool {
 
 // uninstallSystemHooks removes system hooks from installed clients.
 // If clientsFlag is non-empty, only hooks for those clients are removed.
-func uninstallSystemHooks(ctx context.Context, clientsFlag string, styledOut *ui.Output) {
+// If removeAll is true, every hook the client knows how to install is targeted
+// for removal — bypassing the per-config enabled filter so we also clear hooks
+// for options the user has since disabled.
+func uninstallSystemHooks(ctx context.Context, clientsFlag string, removeAll bool, styledOut *ui.Output) {
 	styledOut.Newline()
 	styledOut.Header("Removing system hooks...")
 
@@ -705,8 +713,11 @@ func uninstallSystemHooks(ctx context.Context, clientsFlag string, styledOut *ui
 		installedClients = filterClientsByFlag(installedClients, clientsFlag)
 	}
 
-	// Load config to get enabled bootstrap options
-	mpc, _ := config.LoadMultiProfile()
+	// Load config to get enabled bootstrap options (only needed when filtering)
+	var mpc *config.MultiProfileConfig
+	if !removeAll {
+		mpc, _ = config.LoadMultiProfile()
+	}
 
 	// Get vault for its bootstrap options (guard against nil config)
 	var v vaultpkg.Vault
@@ -722,15 +733,17 @@ func uninstallSystemHooks(ctx context.Context, clientsFlag string, styledOut *ui
 		}
 		allOpts = append(allOpts, client.GetBootstrapOptions(ctx)...)
 
-		// Filter to enabled options (nil config = all enabled for backwards compat)
-		var enabledOpts []bootstrap.Option
-		if mpc == nil {
-			enabledOpts = allOpts
-		} else {
-			enabledOpts = bootstrap.Filter(allOpts, mpc.GetBootstrapOption)
+		// Decide which options to target. removeAll uses every known option so
+		// orphan hooks for disabled-in-config options also get removed.
+		var optsToUninstall []bootstrap.Option
+		switch {
+		case removeAll, mpc == nil:
+			optsToUninstall = allOpts
+		default:
+			optsToUninstall = bootstrap.Filter(allOpts, mpc.GetBootstrapOption)
 		}
 
-		if err := client.UninstallBootstrap(ctx, enabledOpts); err != nil {
+		if err := client.UninstallBootstrap(ctx, optsToUninstall); err != nil {
 			styledOut.ErrorItem("Failed to remove hooks from " + client.DisplayName() + ": " + err.Error())
 		} else {
 			styledOut.SuccessItem("Removed hooks from " + client.DisplayName())

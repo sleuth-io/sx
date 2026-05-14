@@ -19,8 +19,8 @@ func stubAssetCleanup(t *testing.T, returnErr error) *int {
 	prev := assetCleanupFn
 	assetCleanupFn = func(_ *cobra.Command, _ []string, opts UninstallOptions) error {
 		calls++
-		if !opts.All || !opts.Yes {
-			t.Errorf("expected asset cleanup to be invoked with All=true, Yes=true; got %+v", opts)
+		if !opts.All || !opts.Yes || !opts.RemoveAllHooks {
+			t.Errorf("expected asset cleanup to be invoked with All=true, Yes=true, RemoveAllHooks=true; got %+v", opts)
 		}
 		return returnErr
 	}
