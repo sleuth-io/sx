@@ -22,8 +22,45 @@ import (
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
+	"github.com/sleuth-io/sx/internal/ui/theme"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
+
+func uninstallLongHelp() string {
+	s := theme.Current().Styles()
+	e := s.Emphasis.Render
+	m := s.Muted.Render
+
+	return `Uninstall removes installed assets based on where you run it:
+
+  ` + m("Inside a repo") + `: removes only that repo's assets (global assets are not touched)
+  ` + m("Outside a repo") + `: does nothing unless --all is passed
+
+Use ` + e("--all") + ` to remove assets from all scopes (global + all repositories) and
+also remove system hooks from all clients.
+
+Use ` + e("--clients") + ` to limit which clients are affected (applies to both asset
+removal and hook removal).
+
+Note: ` + e("--profile") + ` has no effect on uninstall. All installed assets are removed
+regardless of which profile originally installed them.
+
+` + s.Header.Render("Examples:") + `
+  ` + m("# Uninstall repo assets (must be inside a repo)") + `
+  ` + e("sx uninstall") + `
+
+  ` + m("# Uninstall everything (global + all repos) and remove hooks") + `
+  ` + e("sx uninstall --all") + `
+
+  ` + m("# Uninstall everything but only from specific clients") + `
+  ` + e("sx uninstall --all --clients claude-code,cursor") + `
+
+  ` + m("# Preview what would be uninstalled") + `
+  ` + e("sx uninstall --dry-run") + `
+
+  ` + m("# Skip confirmation prompt") + `
+  ` + e("sx uninstall --yes")
+}
 
 // NewUninstallCommand creates the uninstall command
 func NewUninstallCommand() *cobra.Command {
@@ -35,24 +72,8 @@ func NewUninstallCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "uninstall",
-		Short: "Uninstall all assets from the current scope or all scopes",
-		Long: `Uninstall removes all installed assets from the current scope (global, repository, or path).
-
-Examples:
-  # Uninstall from current scope (prompts for confirmation)
-  sx uninstall
-
-  # Uninstall from all scopes (global + all repositories)
-  sx uninstall --all
-
-  # Preview what would be uninstalled without making changes
-  sx uninstall --dry-run
-
-  # Skip confirmation prompt
-  sx uninstall --yes
-
-  # Uninstall from all scopes without confirmation
-  sx uninstall --all --yes`,
+		Short: "Uninstall assets from the current repo or all scopes",
+		Long: uninstallLongHelp(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := UninstallOptions{
 				All:         all,
@@ -65,7 +86,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().BoolVar(&all, "all", false, "Uninstall from all scopes (global + all repositories)")
+	cmd.Flags().BoolVar(&all, "all", false, "Uninstall from all scopes (global + all repositories) and remove system hooks")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be uninstalled without removing")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "Verbose output")

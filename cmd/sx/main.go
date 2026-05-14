@@ -30,6 +30,64 @@ func joinStrings(items []string, sep string) string {
 	return strings.Join(items, sep)
 }
 
+// colorizeFlags returns a template function that colors flag names in cobra's
+// FlagUsages output while leaving descriptions in the default color.
+// Each line looks like: "      --flag-name string   Description text"
+func colorizeFlags(render func(...string) string) func(string) string {
+	return func(flagUsages string) string {
+		var result strings.Builder
+		for i, line := range strings.Split(flagUsages, "\n") {
+			if i > 0 {
+				result.WriteByte('\n')
+			}
+			// Find where the description starts: two or more consecutive spaces
+			// after the flag+type portion. Flag lines have leading whitespace,
+			// then the flag (e.g. "-h, --help" or "    --all"), optionally
+			// followed by a type word like "string", then 2+ spaces before desc.
+			trimmed := strings.TrimLeft(line, " ")
+			if trimmed == "" || !strings.HasPrefix(trimmed, "-") {
+				result.WriteString(line)
+				continue
+			}
+
+			// Walk past the flag and optional type to find the description gap
+			leadingSpaces := len(line) - len(trimmed)
+			descIdx := -1
+			inGap := false
+			gapStart := 0
+			for j := leadingSpaces; j < len(line); j++ {
+				if line[j] == ' ' {
+					if !inGap {
+						inGap = true
+						gapStart = j
+					}
+					if j-gapStart >= 2 {
+						// Check there's actually content after the gap
+						rest := strings.TrimLeft(line[j:], " ")
+						if rest != "" {
+							descIdx = len(line) - len(rest)
+						}
+						break
+					}
+				} else {
+					inGap = false
+				}
+			}
+
+			if descIdx > 0 {
+				result.WriteString(line[:leadingSpaces])
+				result.WriteString(render(line[leadingSpaces:descIdx]))
+				result.WriteString(line[descIdx:])
+			} else {
+				// No description found, color the whole flag part
+				result.WriteString(line[:leadingSpaces])
+				result.WriteString(render(line[leadingSpaces:]))
+			}
+		}
+		return result.String()
+	}
+}
+
 func main() {
 	// Log command invocation with context
 	log := logger.Get()
@@ -112,6 +170,7 @@ Capture what your best AI users have learned and spread it to everyone automatic
 	cobra.AddTemplateFunc("muted", styles.Muted.Render)
 	cobra.AddTemplateFunc("header", styles.Header.Render)
 	cobra.AddTemplateFunc("join", joinStrings)
+	cobra.AddTemplateFunc("colorizeFlags", colorizeFlags(styles.Emphasis.Render))
 
 	rootCmd.SetHelpTemplate(`{{if .Long}}{{.Long}}{{else}}{{.Short}}{{end}}{{if .Version}}
 {{muted .Version}}{{end}}
@@ -133,10 +192,10 @@ Capture what your best AI users have learned and spread it to everyone automatic
   {{emphasis (rpad .Name .NamePadding)}} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
 
 {{header "Flags:"}}
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces | colorizeFlags}}{{end}}{{if .HasAvailableInheritedFlags}}
 
 {{header "Global Flags:"}}
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces | colorizeFlags}}{{end}}{{if .HasHelpSubCommands}}
 
 {{header "Additional help topics:"}}{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
   {{emphasis (rpad .CommandPath .CommandPathPadding)}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
