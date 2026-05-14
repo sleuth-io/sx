@@ -19,11 +19,16 @@ import (
 // Overridable by tests so they don't try to delete the real test binary.
 var executableFn = os.Executable
 
+// assetCleanupFn invokes the existing asset uninstall flow. Overridable by
+// tests that need to assert the call was made or simulate a failure.
+var assetCleanupFn = runUninstall
+
 // SelfUninstallOptions controls the self-uninstall flow.
 type SelfUninstallOptions struct {
 	Yes         bool
 	DryRun      bool
 	KeepAssets  bool
+	Force       bool
 	Verbose     bool
 	keepBinary  bool // test hook: skip the binary-removal step
 	skipConfirm bool // test hook: skip the confirmation prompt
@@ -45,6 +50,12 @@ This is the inverse of the curl|bash installer. It will:
   3. Delete the sx cache directory.
   4. Delete the sx binary itself.
 
+If asset cleanup fails, the command aborts before touching the config, cache,
+or binary so you can investigate and retry. Pass --force to continue anyway.
+
+On Windows, the binary cannot delete itself while it is running; you will be
+shown the path to remove manually.
+
 This action is irreversible. Use --dry-run to preview, or --keep-assets to
 leave installed assets in place.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -55,6 +66,7 @@ leave installed assets in place.`,
 	cmd.Flags().BoolVar(&opts.Yes, "yes", false, "Skip confirmation prompt")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Show what would be removed without making changes")
 	cmd.Flags().BoolVar(&opts.KeepAssets, "keep-assets", false, "Do not uninstall assets — only remove sx itself")
+	cmd.Flags().BoolVar(&opts.Force, "force", false, "Continue with config, cache, and binary removal even if asset cleanup fails")
 	cmd.Flags().BoolVar(&opts.Verbose, "verbose", false, "Verbose output")
 
 	return cmd
@@ -95,7 +107,11 @@ func runSelfUninstall(cmd *cobra.Command, opts SelfUninstallOptions) error {
 	}
 	styledOut.ListItem("•", "Config:  "+displayPath(paths.configDir, paths.configErr))
 	styledOut.ListItem("•", "Cache:   "+displayPath(paths.cacheDir, paths.cacheErr))
-	styledOut.ListItem("•", "Binary:  "+displayPath(paths.binary, paths.binaryErr))
+	binaryLine := "Binary:  " + displayPath(paths.binary, paths.binaryErr)
+	if runtime.GOOS == "windows" && paths.binary != "" && paths.binaryErr == nil {
+		binaryLine += " (manual removal required on Windows)"
+	}
+	styledOut.ListItem("•", binaryLine)
 	styledOut.Newline()
 	styledOut.Warning("This action is irreversible.")
 	styledOut.Newline()
@@ -114,7 +130,9 @@ func runSelfUninstall(cmd *cobra.Command, opts SelfUninstallOptions) error {
 		}
 	}
 
-	// Step 1: uninstall all assets via the existing flow.
+	// Step 1: uninstall all assets via the existing flow. If this fails,
+	// abort before deleting config/cache/binary so the user can retry — once
+	// the binary is gone, the recovery path is gone too. --force overrides.
 	if !opts.KeepAssets {
 		styledOut.Newline()
 		styledOut.Header("Uninstalling assets...")
@@ -123,9 +141,16 @@ func runSelfUninstall(cmd *cobra.Command, opts SelfUninstallOptions) error {
 			Yes:     true,
 			Verbose: opts.Verbose,
 		}
-		if err := runUninstall(cmd, nil, assetOpts); err != nil {
-			styledOut.Warning(fmt.Sprintf("Asset cleanup reported: %v", err))
-			styledOut.Muted("Continuing with config, cache, and binary removal.")
+		if err := assetCleanupFn(cmd, nil, assetOpts); err != nil {
+			if !opts.Force {
+				styledOut.Newline()
+				styledOut.Error(fmt.Sprintf("Asset cleanup failed: %v", err))
+				styledOut.Muted("Config, cache, and the sx binary were left in place so you can retry.")
+				styledOut.Muted("Fix the underlying error and re-run, or pass --force to remove sx anyway.")
+				return fmt.Errorf("asset cleanup failed: %w", err)
+			}
+			styledOut.Warning(fmt.Sprintf("Asset cleanup failed: %v", err))
+			styledOut.Warning("Continuing because --force was passed; some assets may be left behind.")
 		}
 	}
 
@@ -189,16 +214,13 @@ func removeBinary(paths selfUninstallPaths, styledOut *ui.Output) {
 	styledOut.SuccessItem("Removed " + paths.binary)
 }
 
-// removeDirIfExists is RemoveAll that ignores a missing target.
+// removeDirIfExists wraps os.RemoveAll. os.RemoveAll already returns nil for a
+// missing target, so the only thing we add is an empty-path guard.
 func removeDirIfExists(path string) error {
 	if path == "" {
 		return nil
 	}
-	err := os.RemoveAll(path)
-	if err != nil && errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	return err
+	return os.RemoveAll(path)
 }
 
 // displayPath returns a printable representation of a resolved path, or a
