@@ -11,9 +11,6 @@ import (
 var (
 	// gitCommitSHARegex matches full 40-character Git commit SHAs
 	gitCommitSHARegex = regexp.MustCompile(`^[0-9a-f]{40}$`)
-
-	// nameRegex matches valid asset names (alphanumeric, dashes, underscores)
-	nameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 )
 
 // Validate validates the entire lock file
@@ -68,10 +65,6 @@ func (a *Asset) Validate() error {
 	// Validate required fields
 	if a.Name == "" {
 		return errors.New("name is required")
-	}
-
-	if !nameRegex.MatchString(a.Name) {
-		return errors.New("name must contain only alphanumeric characters, dashes, and underscores")
 	}
 
 	if a.Version == "" {

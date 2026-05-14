@@ -142,6 +142,26 @@ func TestValidateLockFile(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "asset name with dots",
+			lockFile: &LockFile{
+				LockVersion: "1.0",
+				Version:     "abc",
+				CreatedBy:   "test",
+				Assets: []Asset{
+					{
+						Name:    "sx-sleuth-io-skills-repository-myagent.md",
+						Version: "1.0.0",
+						Type:    asset.TypeSkill,
+						SourceHTTP: &SourceHTTP{
+							URL:    "https://example.com/test.zip",
+							Hashes: map[string]string{"sha256": "abc"},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "missing asset name",
 			lockFile: &LockFile{
 				LockVersion: "1.0",
