@@ -22,8 +22,45 @@ import (
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
+	"github.com/sleuth-io/sx/internal/ui/theme"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
+
+func uninstallLongHelp() string {
+	s := theme.Current().Styles()
+	e := s.Emphasis.Render
+	m := s.Muted.Render
+
+	return `Uninstall removes installed assets based on where you run it:
+
+  ` + m("Inside a repo") + `: removes only that repo's assets (global assets are not touched)
+  ` + m("Outside a repo") + `: does nothing unless --all is passed
+
+Use ` + e("--all") + ` to remove assets from all scopes (global + all repositories) and
+also remove system hooks from all clients.
+
+Use ` + e("--clients") + ` to limit which clients are affected (applies to both asset
+removal and hook removal).
+
+Note: ` + e("--profile") + ` has no effect on uninstall. All installed assets are removed
+regardless of which profile originally installed them.
+
+` + s.Header.Render("Examples:") + `
+  ` + m("# Uninstall repo assets (must be inside a repo)") + `
+  ` + e("sx uninstall") + `
+
+  ` + m("# Uninstall everything (global + all repos) and remove hooks") + `
+  ` + e("sx uninstall --all") + `
+
+  ` + m("# Uninstall everything but only from specific clients") + `
+  ` + e("sx uninstall --all --clients claude-code,cursor") + `
+
+  ` + m("# Preview what would be uninstalled") + `
+  ` + e("sx uninstall --dry-run") + `
+
+  ` + m("# Skip confirmation prompt") + `
+  ` + e("sx uninstall --yes")
+}
 
 // NewUninstallCommand creates the uninstall command
 func NewUninstallCommand() *cobra.Command {
@@ -35,24 +72,8 @@ func NewUninstallCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "uninstall",
-		Short: "Uninstall all assets from the current scope or all scopes",
-		Long: `Uninstall removes all installed assets from the current scope (global, repository, or path).
-
-Examples:
-  # Uninstall from current scope (prompts for confirmation)
-  sx uninstall
-
-  # Uninstall from all scopes (global + all repositories)
-  sx uninstall --all
-
-  # Preview what would be uninstalled without making changes
-  sx uninstall --dry-run
-
-  # Skip confirmation prompt
-  sx uninstall --yes
-
-  # Uninstall from all scopes without confirmation
-  sx uninstall --all --yes`,
+		Short: "Uninstall assets from the current repo or all scopes",
+		Long:  uninstallLongHelp(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := UninstallOptions{
 				All:         all,
@@ -65,7 +86,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().BoolVar(&all, "all", false, "Uninstall from all scopes (global + all repositories)")
+	cmd.Flags().BoolVar(&all, "all", false, "Uninstall from all scopes (global + all repositories) and remove system hooks")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be uninstalled without removing")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "Verbose output")
@@ -154,16 +175,23 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 	// Step 3: Build uninstall plan
 	plan := buildUninstallPlanFromTracker(lockFile, tracker, gitContext, trackingBase)
 
+	// Step 4: Filter plan by scope (without --all, only current repo's assets)
+	plan = filterUninstallPlanByScope(plan, opts.All)
+
 	if len(plan.Assets) == 0 {
 		// No assets to uninstall, but if --all is passed, still remove system hooks
 		if opts.All {
 			return handleAllFlagWithoutAssets(ctx, opts, styledOut)
 		}
-		styledOut.Info("No assets to uninstall")
+		if !gitContext.IsRepo {
+			styledOut.Info("Not in a repository. Use --all to uninstall from all scopes.")
+		} else {
+			styledOut.Info("No assets to uninstall in this repository")
+		}
 		return nil
 	}
 
-	// Step 4: Filter plan by client flag if provided
+	// Step 5: Filter plan by client flag if provided
 	if opts.ClientsFlag != "" {
 		plan = filterUninstallPlanByClients(plan, opts.ClientsFlag)
 		if len(plan.Assets) == 0 {
@@ -172,7 +200,7 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 		}
 	}
 
-	// Step 5: Display plan and confirm
+	// Step 6: Display plan and confirm
 	displayUninstallPlan(plan, styledOut)
 
 	if opts.All {
@@ -191,26 +219,26 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 		return nil
 	}
 
-	// Step 5: Execute uninstall
+	// Step 7: Execute uninstall
 	styledOut.Newline()
 	styledOut.Header("Uninstalling assets...")
 	results := executeUninstall(ctx, plan, opts, styledOut)
 
-	// Step 6: Update tracker
+	// Step 8: Update tracker
 	if err := updateTracker(results, plan, out); err != nil {
 		out.printfErr("Warning: failed to update tracker: %v\n", err)
 		logger.Get().Error("failed to update tracker", "error", err)
 	}
 
-	// Step 7: Regenerate client support
+	// Step 9: Regenerate client support
 	regenerateClientSupport(ctx, plan, results, out)
 
-	// Step 8: Uninstall system hooks if --all flag is passed
+	// Step 10: Uninstall system hooks if --all flag is passed
 	if opts.All {
-		uninstallSystemHooks(ctx, styledOut)
+		uninstallSystemHooks(ctx, opts.ClientsFlag, styledOut)
 	}
 
-	// Step 9: Report results
+	// Step 11: Report results
 	reportResults(results, styledOut)
 
 	return nil
@@ -233,7 +261,7 @@ func handleAllFlagWithoutAssets(ctx context.Context, opts UninstallOptions, styl
 		return nil
 	}
 
-	uninstallSystemHooks(ctx, styledOut)
+	uninstallSystemHooks(ctx, opts.ClientsFlag, styledOut)
 	styledOut.Success("System hooks removed")
 	return nil
 }
@@ -366,6 +394,33 @@ func buildUninstallPlanFromTracker(lockFile *lockfile.LockFile, tracker *assets.
 		})
 	}
 
+	return plan
+}
+
+// filterUninstallPlanByScope filters the plan based on git context and --all flag.
+// Without --all: only repo-scoped assets matching the current repo (global assets are never included).
+// Outside a repo without --all: returns an empty plan (no-op).
+// With --all: returns all assets unfiltered.
+func filterUninstallPlanByScope(plan UninstallPlan, all bool) UninstallPlan {
+	if all {
+		return plan
+	}
+
+	// Outside a repo (or no git context): no-op
+	if plan.GitContext == nil || !plan.GitContext.IsRepo {
+		plan.Assets = nil
+		return plan
+	}
+
+	// Inside a repo: only assets matching this repo
+	repoURL := plan.GitContext.RepoURL
+	var filtered []AssetUninstallPlan
+	for _, a := range plan.Assets {
+		if !a.IsGlobal && a.Repository == repoURL {
+			filtered = append(filtered, a)
+		}
+	}
+	plan.Assets = filtered
 	return plan
 }
 
@@ -636,20 +691,28 @@ func confirmUninstall(styledOut *ui.Output) bool {
 	return response == "y" || response == "yes"
 }
 
-// uninstallSystemHooks removes system hooks from all installed clients
-func uninstallSystemHooks(ctx context.Context, styledOut *ui.Output) {
+// uninstallSystemHooks removes system hooks from installed clients.
+// If clientsFlag is non-empty, only hooks for those clients are removed.
+func uninstallSystemHooks(ctx context.Context, clientsFlag string, styledOut *ui.Output) {
 	styledOut.Newline()
 	styledOut.Header("Removing system hooks...")
 
 	registry := clients.Global()
 	installedClients := registry.DetectInstalled()
 
+	// Filter to specified clients if --clients flag is set
+	if clientsFlag != "" {
+		installedClients = filterClientsByFlag(installedClients, clientsFlag)
+	}
+
 	// Load config to get enabled bootstrap options
 	mpc, _ := config.LoadMultiProfile()
 
-	// Get vault for its bootstrap options
-	cfg, _ := config.Load()
-	v, _ := vaultpkg.NewFromConfig(cfg)
+	// Get vault for its bootstrap options (guard against nil config)
+	var v vaultpkg.Vault
+	if cfg, err := config.Load(); err == nil {
+		v, _ = vaultpkg.NewFromConfig(cfg)
+	}
 
 	for _, client := range installedClients {
 		// Gather all options from vault and client

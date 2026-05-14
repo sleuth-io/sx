@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -8,7 +9,257 @@ import (
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/assets"
+	"github.com/sleuth-io/sx/internal/bootstrap"
+	"github.com/sleuth-io/sx/internal/clients"
+	"github.com/sleuth-io/sx/internal/gitutil"
+	"github.com/sleuth-io/sx/internal/lockfile"
 )
+
+// stubClient is a minimal clients.Client implementation for testing
+type stubClient struct {
+	id string
+}
+
+func (s *stubClient) ID() string          { return s.id }
+func (s *stubClient) DisplayName() string { return s.id }
+func (s *stubClient) IsInstalled() bool   { return true }
+func (s *stubClient) GetVersion() string  { return "" }
+func (s *stubClient) SupportsAssetType(asset.Type) bool {
+	return true
+}
+func (s *stubClient) InstallAssets(context.Context, clients.InstallRequest) (clients.InstallResponse, error) {
+	return clients.InstallResponse{}, nil
+}
+func (s *stubClient) UninstallAssets(context.Context, clients.UninstallRequest) (clients.UninstallResponse, error) {
+	return clients.UninstallResponse{}, nil
+}
+func (s *stubClient) ListAssets(context.Context, *clients.InstallScope) ([]clients.InstalledSkill, error) {
+	return nil, nil
+}
+func (s *stubClient) ReadSkill(context.Context, string, *clients.InstallScope) (*clients.SkillContent, error) {
+	return &clients.SkillContent{}, nil
+}
+func (s *stubClient) EnsureAssetSupport(context.Context, *clients.InstallScope) error { return nil }
+func (s *stubClient) GetBootstrapOptions(context.Context) []bootstrap.Option          { return nil }
+func (s *stubClient) GetBootstrapPath() string                                        { return "" }
+func (s *stubClient) InstallBootstrap(context.Context, []bootstrap.Option) error      { return nil }
+func (s *stubClient) UninstallBootstrap(context.Context, []bootstrap.Option) error    { return nil }
+func (s *stubClient) ShouldInstall(context.Context) (bool, error)                     { return true, nil }
+func (s *stubClient) VerifyAssets(context.Context, []*lockfile.Asset, *clients.InstallScope) []clients.VerifyResult {
+	return nil
+}
+func (s *stubClient) ScanInstalledAssets(context.Context, *clients.InstallScope) ([]clients.InstalledAsset, error) {
+	return nil, nil
+}
+func (s *stubClient) GetAssetPath(context.Context, string, asset.Type, *clients.InstallScope) (string, error) {
+	return "", nil
+}
+func (s *stubClient) RuleCapabilities() *clients.RuleCapabilities { return nil }
+
+// keys returns sorted keys from a map for readable error messages
+func keys(m map[string]bool) []string {
+	result := make([]string, 0, len(m))
+	for k := range m {
+		result = append(result, k)
+	}
+	slices.Sort(result)
+	return result
+}
+
+func TestFilterUninstallPlanByScope(t *testing.T) {
+	// Shared tracker data: 2 global, 2 repo-A (one path-scoped), 1 repo-B
+	allAssets := []AssetUninstallPlan{
+		{Name: "global-skill-1", Type: asset.TypeSkill, IsGlobal: true, Clients: []string{"claude-code"}},
+		{Name: "global-skill-2", Type: asset.TypeSkill, IsGlobal: true, Clients: []string{"claude-code", "cursor"}},
+		{Name: "repo-a-skill", Type: asset.TypeSkill, IsGlobal: false, Repository: "https://github.com/org/repo-a", Clients: []string{"claude-code"}},
+		{Name: "repo-a-path-skill", Type: asset.TypeSkill, IsGlobal: false, Repository: "https://github.com/org/repo-a", Path: "services/api", Clients: []string{"claude-code", "cursor"}},
+		{Name: "repo-b-skill", Type: asset.TypeSkill, IsGlobal: false, Repository: "https://github.com/org/repo-b", Clients: []string{"cursor"}},
+	}
+
+	tests := []struct {
+		name       string
+		gitContext *gitutil.GitContext
+		all        bool
+		wantNames  []string
+	}{
+		{
+			name:       "inside repo without --all: only that repo's assets",
+			gitContext: &gitutil.GitContext{IsRepo: true, RepoURL: "https://github.com/org/repo-a", RepoRoot: "/work/repo-a", RelativePath: "."},
+			all:        false,
+			wantNames:  []string{"repo-a-skill", "repo-a-path-skill"},
+		},
+		{
+			name:       "inside repo with --all: all assets",
+			gitContext: &gitutil.GitContext{IsRepo: true, RepoURL: "https://github.com/org/repo-a", RepoRoot: "/work/repo-a", RelativePath: "."},
+			all:        true,
+			wantNames:  []string{"global-skill-1", "global-skill-2", "repo-a-skill", "repo-a-path-skill", "repo-b-skill"},
+		},
+		{
+			name:       "outside repo without --all: no-op",
+			gitContext: &gitutil.GitContext{IsRepo: false},
+			all:        false,
+			wantNames:  []string{},
+		},
+		{
+			name:       "outside repo with --all: all assets",
+			gitContext: &gitutil.GitContext{IsRepo: false},
+			all:        true,
+			wantNames:  []string{"global-skill-1", "global-skill-2", "repo-a-skill", "repo-a-path-skill", "repo-b-skill"},
+		},
+		{
+			name:       "inside repo-b without --all: only repo-b assets",
+			gitContext: &gitutil.GitContext{IsRepo: true, RepoURL: "https://github.com/org/repo-b", RepoRoot: "/work/repo-b", RelativePath: "."},
+			all:        false,
+			wantNames:  []string{"repo-b-skill"},
+		},
+		{
+			name:       "inside unknown repo without --all: no matching assets",
+			gitContext: &gitutil.GitContext{IsRepo: true, RepoURL: "https://github.com/org/repo-c", RepoRoot: "/work/repo-c", RelativePath: "."},
+			all:        false,
+			wantNames:  []string{},
+		},
+		{
+			name:       "inside repo-a subdirectory without --all: still matches repo-a assets",
+			gitContext: &gitutil.GitContext{IsRepo: true, RepoURL: "https://github.com/org/repo-a", RepoRoot: "/work/repo-a", RelativePath: "services/api"},
+			all:        false,
+			wantNames:  []string{"repo-a-skill", "repo-a-path-skill"},
+		},
+		{
+			name:       "inside unknown repo with --all: all assets",
+			gitContext: &gitutil.GitContext{IsRepo: true, RepoURL: "https://github.com/org/repo-c", RepoRoot: "/work/repo-c", RelativePath: "."},
+			all:        true,
+			wantNames:  []string{"global-skill-1", "global-skill-2", "repo-a-skill", "repo-a-path-skill", "repo-b-skill"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan := UninstallPlan{
+				Assets:     append([]AssetUninstallPlan{}, allAssets...),
+				GitContext: tt.gitContext,
+			}
+
+			result := filterUninstallPlanByScope(plan, tt.all)
+
+			gotNames := make(map[string]bool)
+			for _, a := range result.Assets {
+				gotNames[a.Name] = true
+			}
+
+			wantNames := make(map[string]bool)
+			for _, name := range tt.wantNames {
+				wantNames[name] = true
+			}
+
+			if len(gotNames) != len(wantNames) {
+				t.Errorf("got %d assets %v, want %d assets %v", len(gotNames), keys(gotNames), len(wantNames), keys(wantNames))
+				return
+			}
+
+			for name := range wantNames {
+				if !gotNames[name] {
+					t.Errorf("missing expected asset %q", name)
+				}
+			}
+		})
+	}
+}
+
+func TestFilterUninstallPlanByScopeThenClients(t *testing.T) {
+	allAssets := []AssetUninstallPlan{
+		{Name: "global-skill", Type: asset.TypeSkill, IsGlobal: true, Clients: []string{"claude-code", "cursor"}},
+		{Name: "repo-skill", Type: asset.TypeSkill, IsGlobal: false, Repository: "https://github.com/org/repo-a", Clients: []string{"claude-code", "cursor"}},
+	}
+
+	tests := []struct {
+		name        string
+		gitContext  *gitutil.GitContext
+		all         bool
+		clientsFlag string
+		wantNames   []string
+		wantClients map[string][]string
+	}{
+		{
+			name:        "inside repo, no --all, --clients cursor: only repo assets for cursor",
+			gitContext:  &gitutil.GitContext{IsRepo: true, RepoURL: "https://github.com/org/repo-a", RepoRoot: "/work/repo-a", RelativePath: "."},
+			all:         false,
+			clientsFlag: "cursor",
+			wantNames:   []string{"repo-skill"},
+			wantClients: map[string][]string{"repo-skill": {"cursor"}},
+		},
+		{
+			name:        "inside repo, --all, --clients cursor: all assets for cursor",
+			gitContext:  &gitutil.GitContext{IsRepo: true, RepoURL: "https://github.com/org/repo-a", RepoRoot: "/work/repo-a", RelativePath: "."},
+			all:         true,
+			clientsFlag: "cursor",
+			wantNames:   []string{"global-skill", "repo-skill"},
+			wantClients: map[string][]string{"global-skill": {"cursor"}, "repo-skill": {"cursor"}},
+		},
+		{
+			name:        "outside repo, no --all, --clients cursor: no-op",
+			gitContext:  &gitutil.GitContext{IsRepo: false},
+			all:         false,
+			clientsFlag: "cursor",
+			wantNames:   []string{},
+			wantClients: map[string][]string{},
+		},
+		{
+			name:        "outside repo, --all, --clients cursor: all assets for cursor",
+			gitContext:  &gitutil.GitContext{IsRepo: false},
+			all:         true,
+			clientsFlag: "cursor",
+			wantNames:   []string{"global-skill", "repo-skill"},
+			wantClients: map[string][]string{"global-skill": {"cursor"}, "repo-skill": {"cursor"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan := UninstallPlan{
+				Assets:     append([]AssetUninstallPlan{}, allAssets...),
+				GitContext: tt.gitContext,
+			}
+
+			// Apply scope filter first, then clients filter (same order as runUninstall)
+			result := filterUninstallPlanByScope(plan, tt.all)
+			if tt.clientsFlag != "" {
+				result = filterUninstallPlanByClients(result, tt.clientsFlag)
+			}
+
+			gotNames := make(map[string]bool)
+			for _, a := range result.Assets {
+				gotNames[a.Name] = true
+			}
+
+			wantNames := make(map[string]bool)
+			for _, name := range tt.wantNames {
+				wantNames[name] = true
+			}
+
+			if len(gotNames) != len(wantNames) {
+				t.Errorf("got %d assets %v, want %d assets %v", len(gotNames), keys(gotNames), len(wantNames), keys(wantNames))
+				return
+			}
+
+			for name := range wantNames {
+				if !gotNames[name] {
+					t.Errorf("missing expected asset %q", name)
+				}
+			}
+
+			for _, a := range result.Assets {
+				expected, ok := tt.wantClients[a.Name]
+				if !ok {
+					t.Errorf("unexpected asset %q", a.Name)
+					continue
+				}
+				if len(a.Clients) != len(expected) {
+					t.Errorf("asset %q: got clients %v, want %v", a.Name, a.Clients, expected)
+				}
+			}
+		})
+	}
+}
 
 func TestFilterUninstallPlanByClients(t *testing.T) {
 	tests := []struct {
@@ -326,6 +577,73 @@ func TestUpdateTrackerPartialClientRemoval(t *testing.T) {
 			for key := range tt.expectedClients {
 				if !slices.Contains(tt.expectedRemoved, key) {
 					t.Errorf("expected asset %q not found in tracker", key)
+				}
+			}
+		})
+	}
+}
+
+func TestFilterClientsByFlag(t *testing.T) {
+	allClients := []clients.Client{
+		&stubClient{id: "claude-code"},
+		&stubClient{id: "cursor"},
+		&stubClient{id: "gemini"},
+	}
+
+	tests := []struct {
+		name    string
+		flag    string
+		wantIDs []string
+	}{
+		{
+			name:    "single client",
+			flag:    "cursor",
+			wantIDs: []string{"cursor"},
+		},
+		{
+			name:    "multiple clients",
+			flag:    "claude-code,gemini",
+			wantIDs: []string{"claude-code", "gemini"},
+		},
+		{
+			name:    "with spaces",
+			flag:    "claude-code , cursor",
+			wantIDs: []string{"claude-code", "cursor"},
+		},
+		{
+			name:    "no match",
+			flag:    "unknown",
+			wantIDs: []string{},
+		},
+		{
+			name:    "all clients",
+			flag:    "claude-code,cursor,gemini",
+			wantIDs: []string{"claude-code", "cursor", "gemini"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := filterClientsByFlag(allClients, tt.flag)
+
+			gotIDs := make(map[string]bool)
+			for _, c := range result {
+				gotIDs[c.ID()] = true
+			}
+
+			wantIDs := make(map[string]bool)
+			for _, id := range tt.wantIDs {
+				wantIDs[id] = true
+			}
+
+			if len(gotIDs) != len(wantIDs) {
+				t.Errorf("got %d clients %v, want %d clients %v", len(gotIDs), keys(gotIDs), len(wantIDs), keys(wantIDs))
+				return
+			}
+
+			for id := range wantIDs {
+				if !gotIDs[id] {
+					t.Errorf("missing expected client %q", id)
 				}
 			}
 		})
