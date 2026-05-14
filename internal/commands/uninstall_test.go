@@ -56,6 +56,16 @@ func (s *stubClient) GetAssetPath(context.Context, string, asset.Type, *clients.
 }
 func (s *stubClient) RuleCapabilities() *clients.RuleCapabilities { return nil }
 
+// keys returns sorted keys from a map for readable error messages
+func keys(m map[string]bool) []string {
+	result := make([]string, 0, len(m))
+	for k := range m {
+		result = append(result, k)
+	}
+	slices.Sort(result)
+	return result
+}
+
 func TestFilterUninstallPlanByScope(t *testing.T) {
 	// Shared tracker data: 2 global, 2 repo-A (one path-scoped), 1 repo-B
 	allAssets := []AssetUninstallPlan{
@@ -131,19 +141,24 @@ func TestFilterUninstallPlanByScope(t *testing.T) {
 
 			result := filterUninstallPlanByScope(plan, tt.all)
 
-			gotNames := make([]string, len(result.Assets))
-			for i, a := range result.Assets {
-				gotNames[i] = a.Name
+			gotNames := make(map[string]bool)
+			for _, a := range result.Assets {
+				gotNames[a.Name] = true
 			}
 
-			if len(gotNames) != len(tt.wantNames) {
-				t.Errorf("got %d assets %v, want %d assets %v", len(gotNames), gotNames, len(tt.wantNames), tt.wantNames)
+			wantNames := make(map[string]bool)
+			for _, name := range tt.wantNames {
+				wantNames[name] = true
+			}
+
+			if len(gotNames) != len(wantNames) {
+				t.Errorf("got %d assets %v, want %d assets %v", len(gotNames), keys(gotNames), len(wantNames), keys(wantNames))
 				return
 			}
 
-			for i, name := range tt.wantNames {
-				if gotNames[i] != name {
-					t.Errorf("asset[%d] = %q, want %q", i, gotNames[i], name)
+			for name := range wantNames {
+				if !gotNames[name] {
+					t.Errorf("missing expected asset %q", name)
 				}
 			}
 		})
@@ -211,19 +226,24 @@ func TestFilterUninstallPlanByScopeThenClients(t *testing.T) {
 				result = filterUninstallPlanByClients(result, tt.clientsFlag)
 			}
 
-			gotNames := make([]string, len(result.Assets))
-			for i, a := range result.Assets {
-				gotNames[i] = a.Name
+			gotNames := make(map[string]bool)
+			for _, a := range result.Assets {
+				gotNames[a.Name] = true
 			}
 
-			if len(gotNames) != len(tt.wantNames) {
-				t.Errorf("got %d assets %v, want %d assets %v", len(gotNames), gotNames, len(tt.wantNames), tt.wantNames)
+			wantNames := make(map[string]bool)
+			for _, name := range tt.wantNames {
+				wantNames[name] = true
+			}
+
+			if len(gotNames) != len(wantNames) {
+				t.Errorf("got %d assets %v, want %d assets %v", len(gotNames), keys(gotNames), len(wantNames), keys(wantNames))
 				return
 			}
 
-			for i, name := range tt.wantNames {
-				if gotNames[i] != name {
-					t.Errorf("asset[%d] = %q, want %q", i, gotNames[i], name)
+			for name := range wantNames {
+				if !gotNames[name] {
+					t.Errorf("missing expected asset %q", name)
 				}
 			}
 
@@ -606,19 +626,24 @@ func TestFilterClientsByFlag(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := filterClientsByFlag(allClients, tt.flag)
 
-			gotIDs := make([]string, len(result))
-			for i, c := range result {
-				gotIDs[i] = c.ID()
+			gotIDs := make(map[string]bool)
+			for _, c := range result {
+				gotIDs[c.ID()] = true
 			}
 
-			if len(gotIDs) != len(tt.wantIDs) {
-				t.Errorf("got %d clients %v, want %d clients %v", len(gotIDs), gotIDs, len(tt.wantIDs), tt.wantIDs)
+			wantIDs := make(map[string]bool)
+			for _, id := range tt.wantIDs {
+				wantIDs[id] = true
+			}
+
+			if len(gotIDs) != len(wantIDs) {
+				t.Errorf("got %d clients %v, want %d clients %v", len(gotIDs), keys(gotIDs), len(wantIDs), keys(wantIDs))
 				return
 			}
 
-			for i, id := range tt.wantIDs {
-				if gotIDs[i] != id {
-					t.Errorf("client[%d] = %q, want %q", i, gotIDs[i], id)
+			for id := range wantIDs {
+				if !gotIDs[id] {
+					t.Errorf("missing expected client %q", id)
 				}
 			}
 		})

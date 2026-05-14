@@ -708,9 +708,11 @@ func uninstallSystemHooks(ctx context.Context, clientsFlag string, styledOut *ui
 	// Load config to get enabled bootstrap options
 	mpc, _ := config.LoadMultiProfile()
 
-	// Get vault for its bootstrap options
-	cfg, _ := config.Load()
-	v, _ := vaultpkg.NewFromConfig(cfg)
+	// Get vault for its bootstrap options (guard against nil config)
+	var v vaultpkg.Vault
+	if cfg, err := config.Load(); err == nil {
+		v, _ = vaultpkg.NewFromConfig(cfg)
+	}
 
 	for _, client := range installedClients {
 		// Gather all options from vault and client
