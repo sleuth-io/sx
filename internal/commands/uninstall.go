@@ -691,8 +691,10 @@ func confirmUninstall(styledOut *ui.Output) bool {
 	return response == "y" || response == "yes"
 }
 
-// uninstallSystemHooks removes system hooks from installed clients.
-// If clientsFlag is non-empty, only hooks for those clients are removed.
+// uninstallSystemHooks removes every sx-installed hook from each detected
+// client. Hooks for options the user has since disabled in config are still
+// targeted so nothing is left referencing the sx binary. If clientsFlag is
+// non-empty, only hooks for those clients are removed.
 func uninstallSystemHooks(ctx context.Context, clientsFlag string, styledOut *ui.Output) {
 	styledOut.Newline()
 	styledOut.Header("Removing system hooks...")
@@ -705,32 +707,30 @@ func uninstallSystemHooks(ctx context.Context, clientsFlag string, styledOut *ui
 		installedClients = filterClientsByFlag(installedClients, clientsFlag)
 	}
 
-	// Load config to get enabled bootstrap options
-	mpc, _ := config.LoadMultiProfile()
-
 	// Get vault for its bootstrap options (guard against nil config)
 	var v vaultpkg.Vault
 	if cfg, err := config.Load(); err == nil {
 		v, _ = vaultpkg.NewFromConfig(cfg)
 	}
 
+	uninstallHooksFromClients(ctx, installedClients, v, styledOut)
+}
+
+// uninstallHooksFromClients passes every bootstrap option each client knows
+// about — plus any vault-supplied options — to client.UninstallBootstrap.
+// No per-config "enabled" filter is applied: orphaned hooks whose option has
+// since been disabled in config would otherwise be left referencing the sx
+// binary. Extracted from uninstallSystemHooks so the contract can be
+// regression-tested with stub clients.
+func uninstallHooksFromClients(ctx context.Context, installedClients []clients.Client, v vaultpkg.Vault, styledOut *ui.Output) {
 	for _, client := range installedClients {
-		// Gather all options from vault and client
 		var allOpts []bootstrap.Option
 		if v != nil {
 			allOpts = append(allOpts, v.GetBootstrapOptions(ctx)...)
 		}
 		allOpts = append(allOpts, client.GetBootstrapOptions(ctx)...)
 
-		// Filter to enabled options (nil config = all enabled for backwards compat)
-		var enabledOpts []bootstrap.Option
-		if mpc == nil {
-			enabledOpts = allOpts
-		} else {
-			enabledOpts = bootstrap.Filter(allOpts, mpc.GetBootstrapOption)
-		}
-
-		if err := client.UninstallBootstrap(ctx, enabledOpts); err != nil {
+		if err := client.UninstallBootstrap(ctx, allOpts); err != nil {
 			styledOut.ErrorItem("Failed to remove hooks from " + client.DisplayName() + ": " + err.Error())
 		} else {
 			styledOut.SuccessItem("Removed hooks from " + client.DisplayName())

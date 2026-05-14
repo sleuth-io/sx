@@ -214,6 +214,7 @@ Use "{{muted (printf "%s [command] --help" .CommandPath)}}" for more information
 	rootCmd.AddCommand(commands.NewProfileCommand())
 	rootCmd.AddCommand(commands.NewInstallCommand())
 	rootCmd.AddCommand(commands.NewUninstallCommand())
+	rootCmd.AddCommand(commands.NewSelfUninstallCommand())
 	rootCmd.AddCommand(commands.NewRemoveCommand())
 	rootCmd.AddCommand(commands.NewAddCommand())
 	rootCmd.AddCommand(commands.NewUpdateTemplatesCommand())

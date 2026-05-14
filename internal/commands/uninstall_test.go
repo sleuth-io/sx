@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/gitutil"
 	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/ui"
 )
 
 // stubClient is a minimal clients.Client implementation for testing
@@ -55,6 +57,56 @@ func (s *stubClient) GetAssetPath(context.Context, string, asset.Type, *clients.
 	return "", nil
 }
 func (s *stubClient) RuleCapabilities() *clients.RuleCapabilities { return nil }
+
+// recordingClient is a stubClient that captures the bootstrap options it
+// receives via UninstallBootstrap so tests can assert what was passed in.
+type recordingClient struct {
+	stubClient
+	options       []bootstrap.Option // returned from GetBootstrapOptions
+	uninstallSeen []bootstrap.Option // captured by UninstallBootstrap
+}
+
+func (r *recordingClient) GetBootstrapOptions(context.Context) []bootstrap.Option {
+	return r.options
+}
+
+func (r *recordingClient) UninstallBootstrap(_ context.Context, opts []bootstrap.Option) error {
+	r.uninstallSeen = append([]bootstrap.Option(nil), opts...)
+	return nil
+}
+
+// TestUninstallHooksFromClients_PassesEveryOption pins the contract that
+// uninstallSystemHooks (via this helper) hands UninstallBootstrap every
+// option the client returns from GetBootstrapOptions, regardless of which
+// options are enabled in the user's MultiProfileConfig. If a future change
+// re-introduces an enabled-filter, this test fails.
+func TestUninstallHooksFromClients_PassesEveryOption(t *testing.T) {
+	rec := &recordingClient{
+		stubClient: stubClient{id: "stub"},
+		options: []bootstrap.Option{
+			{Key: bootstrap.SessionHookKey, Description: "session"},
+			{Key: bootstrap.AnalyticsHookKey, Description: "analytics"},
+			{Key: "custom-disabled-in-config", Description: "user disabled this in config"},
+		},
+	}
+
+	out := ui.NewOutput(&bytes.Buffer{}, &bytes.Buffer{})
+	uninstallHooksFromClients(context.Background(), []clients.Client{rec}, nil, out)
+
+	if len(rec.uninstallSeen) != len(rec.options) {
+		t.Fatalf("expected %d options passed to UninstallBootstrap, got %d (%+v)",
+			len(rec.options), len(rec.uninstallSeen), rec.uninstallSeen)
+	}
+	seen := make(map[string]bool, len(rec.uninstallSeen))
+	for _, o := range rec.uninstallSeen {
+		seen[o.Key] = true
+	}
+	for _, want := range rec.options {
+		if !seen[want.Key] {
+			t.Errorf("option %q was not passed to UninstallBootstrap — would be left as an orphan hook", want.Key)
+		}
+	}
+}
 
 // keys returns sorted keys from a map for readable error messages
 func keys(m map[string]bool) []string {
