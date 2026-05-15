@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sleuth-io/sx/internal/asset"
-	"github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -107,22 +106,7 @@ func handleNewAssetFromVault(ctx context.Context, cmd *cobra.Command, out *outpu
 
 	latestVersion := versions[len(versions)-1]
 
-	// Check if the asset is already installed. Try vault scopes first (path
-	// vaults), then fall back to the local tracker (Sleuth vaults where scope
-	// lookup is server-side and not available here).
-	currentScopes := existingAssetScopes(vault, assetName)
-	if currentScopes == nil {
-		if tracker, trackerErr := assets.LoadTracker(); trackerErr == nil {
-			for _, a := range tracker.Assets {
-				if a.Name == assetName {
-					// Asset is in the tracker — treat as globally installed
-					currentScopes = []lockfile.Scope{}
-					break
-				}
-			}
-		}
-	}
-
+	currentScopes := resolveCurrentScopes(vault, assetName)
 	if currentScopes != nil {
 		out.printf("Found asset: %s v%s in vault (installed)\n", assetName, latestVersion)
 	} else {

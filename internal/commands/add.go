@@ -5,14 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/sleuth-io/sx/internal/asset"
-	"github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/github"
 	"github.com/sleuth-io/sx/internal/lockfile"
@@ -189,23 +187,17 @@ func routeSpecializedInput(ctx context.Context, cmd *cobra.Command, out *outputH
 		return true, addFromMarketplace(ctx, cmd, out, status, input, promptInstall, opts)
 	}
 
-	// Check if path points to an already-installed asset directory
-	if !isURL(input) && !github.IsTreeURL(input) {
-		if info, err := os.Stat(input); err == nil && info.IsDir() {
-			dirName := filepath.Base(input)
-			if tracker, trackerErr := assets.LoadTracker(); trackerErr == nil {
-				for _, a := range tracker.Assets {
-					if a.Name == dirName {
-						return true, configureExistingAsset(ctx, cmd, out, status, dirName, opts)
-					}
-				}
-			}
-		}
-	}
-
 	// Existing asset name (not a file, directory, or URL)
 	if !isURL(input) && !github.IsTreeURL(input) {
 		if _, err := os.Stat(input); os.IsNotExist(err) {
+			// If the named asset is installed locally, treat the on-disk
+			// directory as the source. This keeps `sx add <name>` and
+			// `sx add <path-to-installed-dir>` behaviorally equivalent —
+			// either form picks up local edits and uploads a new version
+			// when the content differs from the latest in the vault.
+			if installedPath := resolveInstalledAssetPath(ctx, input); installedPath != "" {
+				return true, addFromZipSource(ctx, cmd, out, status, installedPath, opts)
+			}
 			return true, configureExistingAsset(ctx, cmd, out, status, input, opts)
 		}
 	}
@@ -470,7 +462,7 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 			return err
 		}
 	} else {
-		currentScopes := existingAssetScopes(vault, name)
+		currentScopes := resolveCurrentScopes(vault, name)
 		result, err = promptForRepositories(out, name, version, currentScopes, vault)
 		if err != nil {
 			return fmt.Errorf("failed to configure repositories: %w", err)
@@ -569,7 +561,7 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 			return err
 		}
 	} else {
-		currentScopes := existingAssetScopes(vault, lockAsset.Name)
+		currentScopes := resolveCurrentScopes(vault, lockAsset.Name)
 		result, err = promptForRepositories(out, lockAsset.Name, lockAsset.Version, currentScopes, vault)
 		if err != nil {
 			return fmt.Errorf("failed to configure scopes: %w", err)
