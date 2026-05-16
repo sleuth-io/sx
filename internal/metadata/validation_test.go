@@ -319,7 +319,7 @@ func TestAsset_Validate_Clients(t *testing.T) {
 			Name:    "x",
 			Version: "1.0.0",
 			Type:    asset.TypeSkill,
-			Clients: []string{"claude-code", "cursor", "gemini", "cline", "github-copilot", "codex", "openclaw", "kiro"},
+			Clients: []string{"claude-code", "cursor", "gemini", "cline", "github-copilot", "codex", "openclaw", "opencode", "kiro"},
 		}
 		if err := a.Validate(); err != nil {
 			t.Errorf("known client IDs should not error: %v", err)

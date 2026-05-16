@@ -11,6 +11,7 @@ import (
 	"github.com/sleuth-io/sx/internal/clients/codex"
 	"github.com/sleuth-io/sx/internal/clients/cursor"
 	"github.com/sleuth-io/sx/internal/clients/gemini"
+	"github.com/sleuth-io/sx/internal/clients/opencode"
 )
 
 func init() {
@@ -19,6 +20,7 @@ func init() {
 	clients.Register(codex.NewClient())
 	clients.Register(cursor.NewClient())
 	clients.Register(gemini.NewClient())
+	clients.Register(opencode.NewClient())
 }
 
 // TestPathRepositoryIntegration tests the full workflow with a path repository

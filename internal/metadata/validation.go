@@ -60,6 +60,7 @@ var (
 		"github-copilot": true,
 		"codex":          true,
 		"openclaw":       true,
+		"opencode":       true,
 		"kiro":           true,
 	}
 )

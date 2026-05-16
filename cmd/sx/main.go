@@ -18,6 +18,7 @@ import (
 	_ "github.com/sleuth-io/sx/internal/clients/github_copilot" // Register GitHub Copilot client
 	_ "github.com/sleuth-io/sx/internal/clients/kiro"           // Register Kiro client
 	_ "github.com/sleuth-io/sx/internal/clients/openclaw"       // Register OpenClaw client
+	_ "github.com/sleuth-io/sx/internal/clients/opencode"       // Register OpenCode client
 	"github.com/sleuth-io/sx/internal/commands"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/git"
