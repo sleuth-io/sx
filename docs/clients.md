@@ -24,7 +24,7 @@ Many AI tools ship in two forms: a **desktop IDE** and a **CLI**. These often ha
 | Gemini         | CLI/IDE | Full support for CLI/VS Code; rules and MCP only (JetBrains); MCP-remote only (Android Studio) |
 | GitHub Copilot | IDE ext | Full support                                                                                   |
 | Kiro           | CLI+IDE | Full support. See [Kiro-specific docs](kiro.md) for hook setup.                                |
-| OpenCode       | CLI     | Skills, commands, MCP servers. Config at `~/.config/opencode/` (or `.opencode/` per-repo).     |
+| OpenCode       | CLI     | Skills, commands, agents, rules, MCP servers. Config at `~/.config/opencode/` (or `.opencode/` per-repo). Rules are written to `rules/<name>.md` and registered via the `instructions` array in `opencode.json`. |
 
 ## Web clients (cloud relay)
 

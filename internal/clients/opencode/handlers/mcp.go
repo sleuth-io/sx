@@ -150,8 +150,9 @@ func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
 // doesn't already have one, so newly-materialized files are valid against
 // the OpenCode JSON schema out of the box.
 type OpenCodeConfig struct {
-	MCP   map[string]any
-	Other map[string]any
+	MCP          map[string]any
+	Instructions []string
+	Other        map[string]any
 }
 
 // ReadOpenCodeConfig reads opencode.json (or returns an empty config if the
@@ -179,8 +180,16 @@ func ReadOpenCodeConfig(path string) (*OpenCodeConfig, error) {
 		config.MCP = servers
 	}
 
+	if rawInstructions, ok := raw["instructions"].([]any); ok {
+		for _, v := range rawInstructions {
+			if s, ok := v.(string); ok {
+				config.Instructions = append(config.Instructions, s)
+			}
+		}
+	}
+
 	for k, v := range raw {
-		if k != "mcp" {
+		if k != "mcp" && k != "instructions" {
 			config.Other[k] = v
 		}
 	}
@@ -205,6 +214,10 @@ func WriteOpenCodeConfig(path string, config *OpenCodeConfig) error {
 
 	if len(config.MCP) > 0 {
 		output["mcp"] = config.MCP
+	}
+
+	if len(config.Instructions) > 0 {
+		output["instructions"] = config.Instructions
 	}
 
 	data, err := json.MarshalIndent(output, "", "  ")

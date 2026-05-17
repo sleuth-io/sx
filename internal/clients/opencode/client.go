@@ -32,6 +32,8 @@ func NewClient() *Client {
 				asset.TypeSkill,
 				asset.TypeCommand,
 				asset.TypeMCP,
+				asset.TypeAgent,
+				asset.TypeRule,
 			},
 		),
 	}
@@ -90,6 +92,10 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 			installErr = handlers.NewCommandHandler(bundle.Metadata).Install(ctx, bundle.ZipData, targetBase)
 		case asset.TypeMCP:
 			installErr = handlers.NewMCPHandler(bundle.Metadata).Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeAgent:
+			installErr = handlers.NewAgentHandler(bundle.Metadata).Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeRule:
+			installErr = handlers.NewRuleHandler(bundle.Metadata, c.ruleRegisterPath(req.Scope, bundle.Asset.Name)).Install(ctx, bundle.ZipData, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + bundle.Metadata.Asset.Type.Key
@@ -130,6 +136,10 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 			uninstallErr = handlers.NewCommandHandler(meta).Remove(ctx, targetBase)
 		case asset.TypeMCP:
 			uninstallErr = handlers.NewMCPHandler(meta).Remove(ctx, targetBase)
+		case asset.TypeAgent:
+			uninstallErr = handlers.NewAgentHandler(meta).Remove(ctx, targetBase)
+		case asset.TypeRule:
+			uninstallErr = handlers.NewRuleHandler(meta, c.ruleRegisterPath(req.Scope, a.Name)).Remove(ctx, targetBase)
 		default:
 			result.Status = clients.StatusSkipped
 			result.Message = "Unsupported asset type: " + a.Type.Key
@@ -148,6 +158,25 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 	}
 
 	return resp, nil
+}
+
+// ruleRegisterPath returns the string to write into opencode.json's
+// `instructions` array for a rule install. Global installs register the
+// absolute path under ~/.config/opencode; repo and path installs register a
+// path relative to the config file's directory so the project stays
+// portable across checkouts.
+func (c *Client) ruleRegisterPath(scope *clients.InstallScope, ruleName string) string {
+	switch scope.Type {
+	case clients.ScopeRepository, clients.ScopePath:
+		return filepath.Join(handlers.DirRules, ruleName+".md")
+	case clients.ScopeGlobal:
+		base, err := c.determineTargetBase(scope)
+		if err != nil {
+			return ""
+		}
+		return filepath.Join(base, handlers.DirRules, ruleName+".md")
+	}
+	return ""
 }
 
 // determineTargetBase resolves the install directory for the requested scope.
@@ -229,6 +258,13 @@ func (c *Client) ReadSkill(ctx context.Context, name string, scope *clients.Inst
 // EnsureAssetSupport is a no-op for OpenCode (skills are auto-discovered).
 func (c *Client) EnsureAssetSupport(_ context.Context, _ *clients.InstallScope) error {
 	return nil
+}
+
+// RuleCapabilities exposes OpenCode's rule storage convention so sx can
+// detect, parse, and generate rule files alongside the rest of its
+// per-client rule pipeline.
+func (c *Client) RuleCapabilities() *clients.RuleCapabilities {
+	return RuleCapabilities()
 }
 
 // GetBootstrapOptions returns optional bootstrap items.
@@ -347,6 +383,10 @@ func (c *Client) GetAssetPath(_ context.Context, name string, assetType asset.Ty
 		return filepath.Join(targetBase, handlers.DirSkills, name), nil
 	case asset.TypeCommand:
 		return filepath.Join(targetBase, handlers.DirCommands, name+".md"), nil
+	case asset.TypeAgent:
+		return filepath.Join(targetBase, handlers.DirAgents, name+".md"), nil
+	case asset.TypeRule:
+		return filepath.Join(targetBase, handlers.DirRules, name+".md"), nil
 	default:
 		return "", fmt.Errorf("path not supported for type: %s", assetType)
 	}

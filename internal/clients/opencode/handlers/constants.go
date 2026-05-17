@@ -17,7 +17,8 @@ const (
 const (
 	DirSkills     = "skills"
 	DirCommands   = "commands"
-	DirAgents     = "agents"
+	DirAgents     = "agent"
+	DirRules      = "rules"
 	DirMCPServers = "mcp-servers"
 )
 
@@ -25,4 +26,6 @@ const (
 const (
 	DefaultSkillPromptFile   = "SKILL.md"
 	DefaultCommandPromptFile = "COMMAND.md"
+	DefaultAgentPromptFile   = "AGENT.md"
+	DefaultRulePromptFile    = "RULE.md"
 )

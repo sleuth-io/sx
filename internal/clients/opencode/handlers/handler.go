@@ -16,6 +16,9 @@ type Handler interface {
 }
 
 // NewHandler returns the appropriate handler for the given asset type.
+// The rule handler is constructed with an empty register path here because
+// this constructor is used by verify, which only checks file presence. Use
+// NewRuleHandler directly with a register path for install/remove.
 func NewHandler(assetType asset.Type, meta *metadata.Metadata) (Handler, error) {
 	switch assetType {
 	case asset.TypeSkill:
@@ -24,6 +27,10 @@ func NewHandler(assetType asset.Type, meta *metadata.Metadata) (Handler, error) 
 		return NewCommandHandler(meta), nil
 	case asset.TypeMCP:
 		return NewMCPHandler(meta), nil
+	case asset.TypeAgent:
+		return NewAgentHandler(meta), nil
+	case asset.TypeRule:
+		return NewRuleHandler(meta, ""), nil
 	default:
 		return nil, fmt.Errorf("unsupported asset type for OpenCode: %s", assetType.Key)
 	}

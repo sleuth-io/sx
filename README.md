@@ -219,7 +219,7 @@ everyone gets the same tools automatically.
 | Gemini (Android Studio) | ✅ Supported   | Rules, MCP-remote only (HTTP, no stdio)                   |
 | Kiro                    | ✅ Supported   | Skills, rules, commands, MCP servers                      |
 | Openclaw                | ✅ Supported   | Skills, rules, commands                                   |
-| OpenCode                | ✅ Supported   | Skills, commands, MCP servers                             |
+| OpenCode                | ✅ Supported   | Skills, commands, agents, rules, MCP servers              |
 | claude.ai (web)         | ✅ Supported   | Via the [skills.new cloud relay](docs/cloud-relay.md)     |
 | chatgpt.com (web)       | ✅ Supported   | Via the [skills.new cloud relay](docs/cloud-relay.md)     |
 

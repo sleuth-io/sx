@@ -34,9 +34,9 @@ func TestOpenCodeClient_SupportsAssetType(t *testing.T) {
 		{asset.TypeSkill, true},
 		{asset.TypeCommand, true},
 		{asset.TypeMCP, true},
-		{asset.TypeRule, false},
+		{asset.TypeRule, true},
+		{asset.TypeAgent, true},
 		{asset.TypeHook, false},
-		{asset.TypeAgent, false},
 	}
 	for _, tc := range cases {
 		if got := c.SupportsAssetType(tc.t); got != tc.want {
@@ -138,7 +138,25 @@ func TestOpenCodeClient_GetAssetPath(t *testing.T) {
 		t.Errorf("cmd path = %q, want %q", cmd, wantCmd)
 	}
 
-	if _, err := c.GetAssetPath(context.Background(), "x", asset.TypeRule, scope); err == nil {
+	agentPath, err := c.GetAssetPath(context.Background(), "my-agent", asset.TypeAgent, scope)
+	if err != nil {
+		t.Fatalf("agent path: %v", err)
+	}
+	wantAgent := filepath.Join(tempDir, ".config", "opencode", "agent", "my-agent.md")
+	if agentPath != wantAgent {
+		t.Errorf("agent path = %q, want %q", agentPath, wantAgent)
+	}
+
+	rulePath, err := c.GetAssetPath(context.Background(), "my-rule", asset.TypeRule, scope)
+	if err != nil {
+		t.Fatalf("rule path: %v", err)
+	}
+	wantRule := filepath.Join(tempDir, ".config", "opencode", "rules", "my-rule.md")
+	if rulePath != wantRule {
+		t.Errorf("rule path = %q, want %q", rulePath, wantRule)
+	}
+
+	if _, err := c.GetAssetPath(context.Background(), "x", asset.TypeHook, scope); err == nil {
 		t.Error("expected error for unsupported asset type")
 	}
 }
@@ -218,8 +236,21 @@ func TestOpenCodeClient_ShouldInstall(t *testing.T) {
 
 func TestOpenCodeClient_RuleCapabilities(t *testing.T) {
 	c := NewClient()
-	if c.RuleCapabilities() != nil {
-		t.Error("RuleCapabilities should be nil — opencode rules are not supported via sx yet")
+	caps := c.RuleCapabilities()
+	if caps == nil {
+		t.Fatal("RuleCapabilities should be non-nil now that opencode supports rules")
+	}
+	if caps.ClientName != "opencode" {
+		t.Errorf("ClientName = %q, want opencode", caps.ClientName)
+	}
+	if caps.RulesDirectory != ".opencode/rules" {
+		t.Errorf("RulesDirectory = %q, want .opencode/rules", caps.RulesDirectory)
+	}
+	if !caps.MatchesPath(".opencode/rules/style.md") {
+		t.Error("MatchesPath should accept .opencode/rules/style.md")
+	}
+	if caps.DetectAssetType(".opencode/agent/deploy.md", nil) == nil {
+		t.Error("DetectAssetType should claim .opencode/agent/ paths")
 	}
 }
 
@@ -232,9 +263,9 @@ func TestOpenCodeClient_InstallAssets_UnsupportedType(t *testing.T) {
 		Scope: &clients.InstallScope{Type: clients.ScopeGlobal},
 		Assets: []*clients.AssetBundle{
 			{
-				Asset: &lockfile.Asset{Name: "x", Type: asset.TypeRule},
+				Asset: &lockfile.Asset{Name: "x", Type: asset.TypeHook},
 				Metadata: &metadata.Metadata{
-					Asset: metadata.Asset{Name: "x", Type: asset.TypeRule},
+					Asset: metadata.Asset{Name: "x", Type: asset.TypeHook},
 				},
 				ZipData: []byte("dummy"),
 			},
@@ -271,7 +302,7 @@ func TestOpenCodeClient_UninstallAssets_UnsupportedType(t *testing.T) {
 	req := clients.UninstallRequest{
 		Scope: &clients.InstallScope{Type: clients.ScopeGlobal},
 		Assets: []asset.Asset{
-			{Name: "x", Type: asset.TypeRule},
+			{Name: "x", Type: asset.TypeHook},
 		},
 	}
 	resp, err := c.UninstallAssets(context.Background(), req)
