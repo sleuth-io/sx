@@ -78,7 +78,7 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 		if err.Error() == "selection cancelled" {
 			if currentRepos != nil {
 				styledOut.Info("No changes made")
-				return &scopeResult{Scopes: currentRepos}, nil
+				return &scopeResult{Inherit: true}, nil
 			}
 			styledOut.Info("Cancelled")
 			return &scopeResult{Remove: true}, nil
@@ -88,8 +88,13 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 
 	switch selected.Value {
 	case "keep": // Keep current settings
+		// Inherit:true makes the downstream flow take the no-mutation
+		// branch (inheritLockFile is a no-op for Sleuth vaults), so the
+		// server's existing scope — including identity-dependent kinds
+		// like user/team/bot that aren't visible in the stripped lockfile
+		// view — is preserved verbatim.
 		styledOut.Success(fmt.Sprintf("%s v%s - no changes made", assetName, version))
-		return &scopeResult{Scopes: currentRepos}, nil
+		return &scopeResult{Inherit: true}, nil
 
 	case "global": // Make it available globally
 		styledOut.Success("Set to global installation")
