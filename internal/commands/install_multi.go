@@ -48,20 +48,18 @@ func loadActiveProfilesAndLockFiles(
 	if len(activeConfigs) == 0 {
 		return nil, nil, nil, nil, false, errors.New("no active profiles configured — run 'sx profile activate <name>'")
 	}
-	primaryCfg = activeConfigs[0]
-	if validateErr := primaryCfg.Validate(); validateErr != nil {
-		return nil, nil, nil, nil, false, fmt.Errorf("invalid configuration for profile %s: %w", primaryCfg.ProfileName, validateErr)
+	// Validate every active config up front; an invalid entry is a
+	// configuration error the user should fix regardless of fetch order.
+	for _, c := range activeConfigs {
+		if validateErr := c.Validate(); validateErr != nil {
+			return nil, nil, nil, nil, false, fmt.Errorf("invalid configuration for profile %s: %w", c.ProfileName, validateErr)
+		}
 	}
-	mgmt.SetIdentityOverride(primaryCfg.Identity)
+	// Seed identity from the first active profile for the lock-fetch
+	// loop's initial pass; loadActiveLockFiles swaps it per-iteration.
+	mgmt.SetIdentityOverride(activeConfigs[0].Identity)
 
 	profileLocks = loadActiveLockFiles(ctx, activeConfigs, status)
-	// loadActiveLockFiles leaves the identity + audit-tag overrides set
-	// to whichever profile was last in its loop. Restore them to the
-	// primary now so any audit-emitting code between here and the
-	// per-vault download/bootstrap swaps attributes to the right
-	// profile.
-	mgmt.SetIdentityOverride(primaryCfg.Identity)
-	mgmt.SetAuditProfileTag(primaryCfg.ProfileName)
 	if !reportFetchErrors(profileLocks, styledOut) {
 		// All profiles failed. A pristine "no lock file yet" outcome is
 		// the new-user case (every profile reports ErrLockFileNotFound).
@@ -81,16 +79,23 @@ func loadActiveProfilesAndLockFiles(
 		return nil, nil, nil, nil, true, nil
 	}
 
-	// Primary config (used for downstream env detection) comes from the
-	// first profile that successfully fetched a lock file. Asset-level
-	// vault routing happens later via mergeApplicableAssets.
+	// Primary = first profile that actually contributed a lock file.
+	// This is the profile that owns audit attribution for any
+	// post-fetch single-vault work (env detection, hooks, ensure-asset-
+	// support) and is the fallback identity when no per-vault swap
+	// applies. Using the first *active* profile would misattribute when
+	// the default's fetch failed but a secondary succeeded.
+	primaryCfg = activeConfigs[0]
 	cfg = primaryCfg
 	for _, pl := range profileLocks {
 		if pl.LockFile != nil {
+			primaryCfg = pl.Config
 			cfg = pl.Config
 			break
 		}
 	}
+	mgmt.SetIdentityOverride(primaryCfg.Identity)
+	mgmt.SetAuditProfileTag(primaryCfg.ProfileName)
 	return profileLocks, mpc, primaryCfg, cfg, false, nil
 }
 

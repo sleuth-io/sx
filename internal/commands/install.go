@@ -930,12 +930,30 @@ func collectActiveVaultBootstrapOptions(ctx context.Context, profileMeta map[str
 		}
 	}
 	// Restore overrides to the primary profile so the surrounding flow
-	// continues attributing audit events correctly.
+	// continues attributing audit events correctly. If primary isn't in
+	// the metadata (its fetch failed but the install proceeded via
+	// partial-failure tolerance), fall back to the first profile that
+	// did contribute — never leave the override pointing at whichever
+	// profile happened to be last in the loop above.
+	restored := false
 	if primary, ok := profileMeta[primaryProfile]; ok {
 		mgmt.SetIdentityOverride(primary.Identity)
 		mgmt.SetAuditProfileTag(primary.Profile)
-	} else {
-		log.Debug("primary profile missing from metadata when restoring overrides", "primary", primaryProfile)
+		restored = true
+	}
+	if !restored {
+		for _, name := range profileOrder {
+			if fallback, ok := profileMeta[name]; ok {
+				mgmt.SetIdentityOverride(fallback.Identity)
+				mgmt.SetAuditProfileTag(fallback.Profile)
+				log.Debug("primary profile missing from metadata; restored to fallback", "primary", primaryProfile, "fallback", name)
+				restored = true
+				break
+			}
+		}
+	}
+	if !restored {
+		log.Debug("no profiles in metadata to restore overrides", "primary", primaryProfile)
 	}
 	return allOpts
 }
