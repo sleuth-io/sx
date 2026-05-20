@@ -410,7 +410,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	// Early exit if nothing to install
 	if len(assetsToInstall) == 0 {
-		return handleNothingToInstall(ctx, hookMode, tracker, sortedAssets, env, targetClientIDs, styledOut, out)
+		return handleNothingToInstall(ctx, hookMode, tracker, sortedAssets, env, targetClientIDs, profileMeta, profileOrder, primaryCfg.ProfileName, styledOut, out)
 	}
 
 	// Download assets, routing each to its origin profile's vault and
@@ -441,7 +441,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	// Install client-specific hooks (e.g., auto-update, usage tracking)
 	// env.Clients is already filtered by --client/--clients flag
-	installClientHooks(ctx, env.Clients, out)
+	installClientHooks(ctx, env.Clients, profileMeta, profileOrder, primaryCfg.ProfileName, out)
 
 	// Log summary
 	log.Info("install completed", "installed", len(installResult.Installed), "failed", len(installResult.Failed))
@@ -854,10 +854,13 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, s
 
 // installClientHooks calls InstallHooks on all clients to install client-specific hooks.
 // Uses config's BootstrapOptions to determine which options to install.
-func installClientHooks(ctx context.Context, targetClients []clients.Client, out *outputHelper) {
+// Vault-side bootstrap items (session hooks, analytics hooks, MCP servers) are
+// gathered from every active profile so multi-active users still get the
+// bootstrap surface their non-default vaults publish.
+func installClientHooks(ctx context.Context, targetClients []clients.Client, profileMeta map[string]profileMetadata, profileOrder []string, primaryProfile string, out *outputHelper) {
 	log := logger.Get()
 
-	// Load config to get bootstrap options
+	// Load config to get bootstrap option enable/disable settings.
 	mpc, err := config.LoadMultiProfile()
 	if err != nil {
 		log.Error("failed to load config for bootstrap options", "error", err)
@@ -865,17 +868,13 @@ func installClientHooks(ctx context.Context, targetClients []clients.Client, out
 		mpc = &config.MultiProfileConfig{}
 	}
 
-	// Load vault to get its bootstrap options
-	cfg, _ := config.Load()
-	var vaultOpts []bootstrap.Option
-	if cfg != nil {
-		if v, err := vaultpkg.NewFromConfig(cfg); err == nil {
-			vaultOpts = v.GetBootstrapOptions(ctx)
-		}
-	}
+	// Union vault bootstrap options across every active profile. Swap the
+	// identity + audit overrides per vault so any audit-emitting call
+	// inside GetBootstrapOptions attributes correctly.
+	vaultOpts := collectActiveVaultBootstrapOptions(ctx, profileMeta, profileOrder, primaryProfile)
 
 	for _, client := range targetClients {
-		// Gather all options (vault + this client)
+		// Gather all options (every active vault + this client)
 		var allOpts []bootstrap.Option
 		allOpts = append(allOpts, vaultOpts...)
 		if clientOpts := client.GetBootstrapOptions(ctx); clientOpts != nil {
@@ -891,6 +890,36 @@ func installClientHooks(ctx context.Context, targetClients []clients.Client, out
 			// Don't fail the install command if hook installation fails
 		}
 	}
+}
+
+// collectActiveVaultBootstrapOptions visits every active profile's vault
+// in the configured order, swapping the process-global identity/audit
+// overrides per call, and returns the concatenated options. The primary
+// profile's overrides are restored before returning so the caller's
+// subsequent operations attribute correctly.
+func collectActiveVaultBootstrapOptions(ctx context.Context, profileMeta map[string]profileMetadata, profileOrder []string, primaryProfile string) []bootstrap.Option {
+	log := logger.Get()
+	var allOpts []bootstrap.Option
+	for _, name := range profileOrder {
+		meta, ok := profileMeta[name]
+		if !ok || meta.Vault == nil {
+			continue
+		}
+		mgmt.SetIdentityOverride(meta.Identity)
+		mgmt.SetAuditProfileTag(meta.Profile)
+		if opts := meta.Vault.GetBootstrapOptions(ctx); opts != nil {
+			allOpts = append(allOpts, opts...)
+		}
+	}
+	// Restore overrides to the primary profile so the surrounding flow
+	// continues attributing audit events correctly.
+	if primary, ok := profileMeta[primaryProfile]; ok {
+		mgmt.SetIdentityOverride(primary.Identity)
+		mgmt.SetAuditProfileTag(primary.Profile)
+	} else {
+		log.Debug("primary profile missing from metadata when restoring overrides", "primary", primaryProfile)
+	}
+	return allOpts
 }
 
 // ensureAssetSupport calls EnsureAssetSupport on all clients to set up local rules files, etc.
