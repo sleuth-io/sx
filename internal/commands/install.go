@@ -177,6 +177,16 @@ func runInstallSetTarget(cmd *cobra.Command, assetName string, f installTargetFl
 		return err
 	}
 
+	// Verify the asset exists in the chosen vault before mutating. In
+	// multi-active setups the asset the user wants to retarget might be
+	// owned by a non-default profile's vault, and writing to the default
+	// vault would either fail mid-flight or (worse) succeed against an
+	// unrelated row with the same name. Catch this up front with a
+	// clear error pointing at --profile.
+	if _, err := v.GetAssetDetails(ctx, assetName); err != nil {
+		return fmt.Errorf("asset %q not found in the default profile's vault: %w (if it lives in another profile, retry with --profile <name>)", assetName, err)
+	}
+
 	target, err := buildInstallTarget(f)
 	if err != nil {
 		return err
@@ -366,7 +376,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	// for "first-active" is whichever profile appears first in
 	// profileLocks (already ordered per config.GetActiveProfileNames).
 	matcherScope := scope.NewMatcher(env.CurrentScope)
-	sortedAssets, _, assetOrigin, conflicts, err := mergeApplicableAssets(profileLocks, env.Clients, matcherScope)
+	sortedAssets, assetOrigin, conflicts, err := mergeApplicableAssets(profileLocks, env.Clients, matcherScope)
 	if err != nil {
 		return err
 	}
@@ -405,8 +415,16 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	assetsToInstall := determineAssetsToInstall(tracker, sortedAssets, env.CurrentScope, targetClientIDs, out)
 
-	// Clean up assets that were removed from lock file (must run even if no assets to install!)
-	cleanupRemovedAssets(ctx, tracker, sortedAssets, env.GitContext, env.CurrentScope, env.Clients, styledOut)
+	// Clean up assets that were removed from lock file — but only if every
+	// active profile produced a lock file. With multi-active profiles a
+	// transient fetch failure on one vault would otherwise look like
+	// "every asset from that vault was removed" and trigger wrongful
+	// uninstalls. Treat ErrLockFileNotFound (fresh setup) as benign.
+	if hadHardFetchFailure(profileLocks) {
+		styledOut.Warning("Skipping removed-asset cleanup because one or more profiles failed to fetch.")
+	} else {
+		cleanupRemovedAssets(ctx, tracker, sortedAssets, env.GitContext, env.CurrentScope, env.Clients, styledOut)
+	}
 
 	// Early exit if nothing to install
 	if len(assetsToInstall) == 0 {

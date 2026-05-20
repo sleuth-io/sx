@@ -55,6 +55,13 @@ func loadActiveProfilesAndLockFiles(
 	mgmt.SetIdentityOverride(primaryCfg.Identity)
 
 	profileLocks = loadActiveLockFiles(ctx, activeConfigs, status)
+	// loadActiveLockFiles leaves the identity + audit-tag overrides set
+	// to whichever profile was last in its loop. Restore them to the
+	// primary now so any audit-emitting code between here and the
+	// per-vault download/bootstrap swaps attributes to the right
+	// profile.
+	mgmt.SetIdentityOverride(primaryCfg.Identity)
+	mgmt.SetAuditProfileTag(primaryCfg.ProfileName)
 	if !reportFetchErrors(profileLocks, styledOut) {
 		// All profiles failed. A pristine "no lock file yet" outcome is
 		// the new-user case (every profile reports ErrLockFileNotFound).
@@ -147,8 +154,7 @@ func mergeApplicableAssets(
 	profileLocks []profileLockFile,
 	targetClients []clients.Client,
 	matcherScope *scope.Matcher,
-) (sortedAssets []*lockfile.Asset, assetVault map[string]vaultpkg.Vault, assetOrigin map[string]string, conflicts []assetConflict, err error) {
-	assetVault = make(map[string]vaultpkg.Vault)
+) (sortedAssets []*lockfile.Asset, assetOrigin map[string]string, conflicts []assetConflict, err error) {
 	assetOrigin = make(map[string]string)
 	conflictByName := make(map[string]*assetConflict)
 
@@ -159,7 +165,7 @@ func mergeApplicableAssets(
 		applicable := filterAssetsByScope(pl.LockFile, targetClients, matcherScope)
 		sorted, resolveErr := resolveAssetDependencies(pl.LockFile, applicable)
 		if resolveErr != nil {
-			return nil, nil, nil, nil, fmt.Errorf("dependency resolution for profile %s: %w", pl.ProfileName, resolveErr)
+			return nil, nil, nil, fmt.Errorf("dependency resolution for profile %s: %w", pl.ProfileName, resolveErr)
 		}
 		for _, asset := range sorted {
 			if existing, taken := assetOrigin[asset.Name]; taken {
@@ -172,7 +178,6 @@ func mergeApplicableAssets(
 				continue
 			}
 			sortedAssets = append(sortedAssets, asset)
-			assetVault[asset.Name] = pl.Vault
 			assetOrigin[asset.Name] = pl.ProfileName
 		}
 	}
@@ -187,7 +192,7 @@ func mergeApplicableAssets(
 			conflicts = append(conflicts, *conflictByName[n])
 		}
 	}
-	return sortedAssets, assetVault, assetOrigin, conflicts, nil
+	return sortedAssets, assetOrigin, conflicts, nil
 }
 
 // profileMetadata pairs identity + audit-tag context for the profiles
@@ -217,6 +222,25 @@ func buildProfileMetadata(profileLocks []profileLockFile) map[string]profileMeta
 		}
 	}
 	return out
+}
+
+// hadHardFetchFailure reports whether any active profile failed to
+// fetch its lock file with something other than ErrLockFileNotFound.
+// Used to gate removed-asset cleanup so a transient outage on one
+// profile doesn't cause sx to uninstall assets that belong to another
+// active profile (since cleanup compares against the merged-but-
+// partial sortedAssets set).
+func hadHardFetchFailure(profileLocks []profileLockFile) bool {
+	for _, pl := range profileLocks {
+		if pl.FetchErr == nil {
+			continue
+		}
+		if errors.Is(pl.FetchErr, vaultpkg.ErrLockFileNotFound) {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // reportFetchErrors surfaces per-profile lock file fetch failures as

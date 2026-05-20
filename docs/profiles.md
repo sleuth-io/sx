@@ -147,6 +147,16 @@ When two active profiles publish an asset with the same name:
 
 Shadowed assets aren't downloaded or installed; only the winner is.
 
+### Mutating commands target the default profile
+
+`sx add`, `sx install <asset> --org/--repo/--team/...`, `sx team`,
+`sx role`, and similar mutating commands write to the **default**
+profile's vault when no `--profile` flag is given. `sx install`'s
+set-target form verifies that the asset exists in that vault before
+writing and errors with a hint to use `--profile <name>` if it
+doesn't — so retargeting an asset that lives in a non-default active
+profile is a one-flag change.
+
 ### Cross-profile dependencies are not resolved
 
 Dependency resolution runs **per profile**, against that profile's own

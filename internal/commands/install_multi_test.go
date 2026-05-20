@@ -51,7 +51,7 @@ func TestMergeApplicableAssets_DefaultFirstWins(t *testing.T) {
 		buildProfileLock("work", "shared", "work-only"),
 		buildProfileLock("personal", "shared", "personal-only"),
 	}
-	sortedAssets, vaultMap, origin, conflicts, err := mergeApplicableAssets(locks, clientList, matcher)
+	sortedAssets, origin, conflicts, err := mergeApplicableAssets(locks, clientList, matcher)
 	if err != nil {
 		t.Fatalf("mergeApplicableAssets: %v", err)
 	}
@@ -70,9 +70,6 @@ func TestMergeApplicableAssets_DefaultFirstWins(t *testing.T) {
 	if !slices.Equal(conflicts[0].Shadowed, []string{"personal"}) {
 		t.Fatalf("shadowed=%v want [personal]", conflicts[0].Shadowed)
 	}
-	if vaultMap == nil {
-		t.Fatalf("vaultMap should be non-nil")
-	}
 	if origin["shared"] != "work" {
 		t.Fatalf("origin[shared]=%s want work", origin["shared"])
 	}
@@ -90,8 +87,7 @@ func TestMergeApplicableAssets_ThreeWayConflict(t *testing.T) {
 		buildProfileLock("b", "dup"),
 		buildProfileLock("c", "dup"),
 	}
-	sorted, vaultMap, _, conflicts, err := mergeApplicableAssets(locks, clientList, matcher)
-	_, _ = sorted, vaultMap
+	_, _, conflicts, err := mergeApplicableAssets(locks, clientList, matcher)
 	if err != nil {
 		t.Fatalf("merge: %v", err)
 	}
