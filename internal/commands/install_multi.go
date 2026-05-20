@@ -108,13 +108,10 @@ func loadActiveLockFiles(ctx context.Context, configs []*config.Config, status *
 	results := make([]profileLockFile, 0, len(configs))
 	for _, cfg := range configs {
 		entry := profileLockFile{ProfileName: cfg.ProfileName, Config: cfg}
-		if err := cfg.Validate(); err != nil {
-			entry.FetchErr = fmt.Errorf("invalid configuration for profile %s: %w", cfg.ProfileName, err)
-			results = append(results, entry)
-			continue
-		}
-		// Switch identity context to this profile before any vault op that
-		// resolves the caller's actor.
+		// Validation already ran in loadActiveProfilesAndLockFiles; if
+		// callers stop pre-validating, restore the inline check here.
+		// Switch identity context to this profile before any vault op
+		// that resolves the caller's actor.
 		mgmt.SetIdentityOverride(cfg.Identity)
 		mgmt.SetAuditProfileTag(cfg.ProfileName)
 		vault, err := vaultpkg.NewFromConfig(cfg)
@@ -341,12 +338,19 @@ func downloadAssetsMultiVault(
 			orderedGroups = append(orderedGroups, g)
 		}
 	}
-	// Defensive: include any group not in profileOrder (shouldn't happen
-	// but guards against silently dropping assets).
-	for name, g := range groupsByProfile {
+	// Defensive: include any group not in profileOrder (shouldn't
+	// happen, but guards against silently dropping assets). Sort the
+	// missing names so output stays deterministic on the safety path,
+	// matching the primary path's profileOrder iteration.
+	var missing []string
+	for name := range groupsByProfile {
 		if !slices.ContainsFunc(orderedGroups, func(o *group) bool { return o.profile == name }) {
-			orderedGroups = append(orderedGroups, g)
+			missing = append(missing, name)
 		}
+	}
+	sort.Strings(missing)
+	for _, name := range missing {
+		orderedGroups = append(orderedGroups, groupsByProfile[name])
 	}
 
 	status.Start(fmt.Sprintf("Downloading %d assets", len(assetsToInstall)))

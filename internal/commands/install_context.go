@@ -268,7 +268,7 @@ func handleNothingToInstall(
 
 	// Install client-specific hooks
 	// env.Clients is already filtered by --client/--clients flag
-	installClientHooks(ctx, env.Clients, profileMeta, profileOrder, primaryProfile, out)
+	installClientHooks(ctx, env.Clients, profileMeta, profileOrder, primaryProfile, styledOut, out)
 
 	// Ensure asset support is configured for target clients
 	ensureAssetSupport(ctx, env.Clients, buildInstallScope(env.CurrentScope, env.GitContext), out)
