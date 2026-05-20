@@ -225,7 +225,7 @@ func buildProfileMetadata(profileLocks []profileLockFile) map[string]profileMeta
 			Identity: pl.Config.Identity,
 			Profile:  pl.ProfileName,
 			Vault:    pl.Vault,
-			VaultKey: pl.Config.GetRepositoryURL(),
+			VaultKey: pl.Config.VaultIdentifier(),
 		}
 	}
 	return out

@@ -222,6 +222,20 @@ func (c *Config) GetRepositoryURL() string {
 	return c.RepositoryURL
 }
 
+// VaultIdentifier returns a stable string that uniquely identifies the
+// vault this Config points at, suitable for use as a cache partition
+// key. Prefers RepositoryURL when set (the canonical field for git and
+// path vaults, and modern Sleuth configs) and falls back to ServerURL
+// for legacy Sleuth configs that predate the RepositoryURL field.
+// Returns empty only when both are missing — which Validate would have
+// already rejected.
+func (c *Config) VaultIdentifier() string {
+	if c.RepositoryURL != "" {
+		return c.RepositoryURL
+	}
+	return c.ServerURL
+}
+
 // IsSilent checks if silent mode is enabled via environment variable
 func IsSilent() bool {
 	return os.Getenv("SX_SYNC_SILENT") == "true" || os.Getenv("SKILLS_SYNC_SILENT") == "true"

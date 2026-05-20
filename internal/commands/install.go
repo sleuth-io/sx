@@ -217,6 +217,11 @@ func runInstallSetTarget(cmd *cobra.Command, assetName string, f installTargetFl
 // a one-step --profile suggestion. Only called from the error path so
 // the identity override is left in whatever state was last set — the
 // command is about to terminate either way.
+//
+// The survey is best-effort: each per-vault lookup gets a short
+// timeout (so a typo on a Sleuth profile doesn't hang for the full
+// 5-minute install budget), and the loop bails on parent ctx
+// cancellation to keep Ctrl-C responsive.
 func findAssetOwningProfile(ctx context.Context, assetName string) string {
 	configs, _, err := config.LoadActive()
 	if err != nil {
@@ -227,6 +232,9 @@ func findAssetOwningProfile(ctx context.Context, assetName string) string {
 		defaultName = configs[0].ProfileName
 	}
 	for _, cfg := range configs {
+		if err := ctx.Err(); err != nil {
+			return ""
+		}
 		if cfg.ProfileName == defaultName {
 			continue
 		}
@@ -235,7 +243,10 @@ func findAssetOwningProfile(ctx context.Context, assetName string) string {
 		if err != nil {
 			continue
 		}
-		if _, err := vault.GetAssetDetails(ctx, assetName); err == nil {
+		probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, err = vault.GetAssetDetails(probeCtx, assetName)
+		cancel()
+		if err == nil {
 			return cfg.ProfileName
 		}
 	}
@@ -268,12 +279,13 @@ func buildInstallTarget(f installTargetFlags) (vaultpkg.InstallTarget, error) {
 // install context (scope, clients) without any side effects. Format
 // mirrors `pip freeze` — one line per asset with name, version, and
 // the matched scope — plus a header so the output is self-explanatory
-// when piped. When more than one profile contributed an asset
-// (multi-active mode), each line gets a `; profile=<name>` suffix so
-// users can see which vault each asset came from. Single-profile
-// output is left unchanged so existing scripts that parse the
-// `pip freeze`-style format keep working.
-func printDryRunPreview(w io.Writer, assets []*lockfile.Asset, env *installEnvironment, assetOrigin map[string]string) {
+// when piped. When the user has more than one active profile, each
+// line gets a `; profile=<name>` suffix so users can see which vault
+// each asset came from (and which profiles contributed zero is
+// implicit by absence). Single-profile output is left unchanged so
+// existing scripts that parse the `pip freeze`-style format keep
+// working.
+func printDryRunPreview(w io.Writer, assets []*lockfile.Asset, env *installEnvironment, assetOrigin map[string]string, multiActive bool) {
 	if len(assets) == 0 {
 		fmt.Fprintln(w, "# No assets resolved for this context.")
 		fmt.Fprintln(w, "# Checked clients:", strings.Join(getTargetClientIDs(env.Clients), ", "))
@@ -287,37 +299,15 @@ func printDryRunPreview(w io.Writer, assets []*lockfile.Asset, env *installEnvir
 	}
 	fmt.Fprintln(w)
 
-	showProfile := hasMultipleProfileOrigins(assets, assetOrigin)
 	for _, a := range assets {
 		scopeDesc := describeAssetScopeForDryRun(a)
-		if showProfile {
+		if multiActive {
 			origin := assetOrigin[a.Name]
 			fmt.Fprintf(w, "%s==%s  # %s; scope=%s; profile=%s\n", a.Name, a.Version, a.Type, scopeDesc, origin)
 		} else {
 			fmt.Fprintf(w, "%s==%s  # %s; scope=%s\n", a.Name, a.Version, a.Type, scopeDesc)
 		}
 	}
-}
-
-// hasMultipleProfileOrigins reports whether the assets in the slice
-// came from more than one profile, which is the signal to widen the
-// dry-run output with origin info.
-func hasMultipleProfileOrigins(assets []*lockfile.Asset, assetOrigin map[string]string) bool {
-	seen := ""
-	for _, a := range assets {
-		origin, ok := assetOrigin[a.Name]
-		if !ok || origin == "" {
-			continue
-		}
-		if seen == "" {
-			seen = origin
-			continue
-		}
-		if origin != seen {
-			return true
-		}
-	}
-	return false
 }
 
 // describeCurrentScope renders a short label for the caller's current
@@ -465,7 +455,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	// --dry-run: print the resolved asset list and exit before we touch
 	// the tracker, download anything, or write to client directories.
 	if dryRun {
-		printDryRunPreview(cmd.OutOrStdout(), sortedAssets, env, assetOrigin)
+		printDryRunPreview(cmd.OutOrStdout(), sortedAssets, env, assetOrigin, len(profileOrder) > 1)
 		return nil
 	}
 
@@ -953,8 +943,10 @@ func installClientHooks(ctx context.Context, targetClients []clients.Client, pro
 
 	// Union vault bootstrap options across every active profile. Swap the
 	// identity + audit overrides per vault so any audit-emitting call
-	// inside GetBootstrapOptions attributes correctly.
-	vaultOpts := collectActiveVaultBootstrapOptions(ctx, profileMeta, profileOrder, primaryProfile, styledOut)
+	// inside GetBootstrapOptions attributes correctly. Shadowing is
+	// reported with the same severity policy as asset conflicts: muted
+	// when the default profile wins, warning otherwise.
+	vaultOpts := collectActiveVaultBootstrapOptions(ctx, profileMeta, profileOrder, primaryProfile, mpc.DefaultProfile, styledOut)
 
 	for _, client := range targetClients {
 		// Gather all options (every active vault + this client)
@@ -981,7 +973,7 @@ func installClientHooks(ctx context.Context, targetClients []clients.Client, pro
 // by Option.Key (first occurrence wins, matching the asset conflict
 // policy). The primary profile's overrides are restored before
 // returning so the caller's subsequent operations attribute correctly.
-func collectActiveVaultBootstrapOptions(ctx context.Context, profileMeta map[string]profileMetadata, profileOrder []string, primaryProfile string, styledOut *ui.Output) []bootstrap.Option {
+func collectActiveVaultBootstrapOptions(ctx context.Context, profileMeta map[string]profileMetadata, profileOrder []string, primaryProfile, defaultProfile string, styledOut *ui.Output) []bootstrap.Option {
 	log := logger.Get()
 	var allOpts []bootstrap.Option
 	seen := make(map[string]string) // key → winning profile name
@@ -997,7 +989,12 @@ func collectActiveVaultBootstrapOptions(ctx context.Context, profileMeta map[str
 			if winner, taken := seen[opt.Key]; taken {
 				log.Debug("bootstrap option shadowed by earlier profile", "key", opt.Key, "winner", winner, "shadowed", name)
 				if styledOut != nil {
-					styledOut.Muted(fmt.Sprintf("bootstrap option %s shadowed: %s wins, %s ignored", opt.Key, winner, name))
+					msg := fmt.Sprintf("bootstrap option %s shadowed: %s wins, %s ignored", opt.Key, winner, name)
+					if defaultProfile != "" && winner == defaultProfile {
+						styledOut.Muted(msg)
+					} else {
+						styledOut.Warning(msg)
+					}
 				}
 				continue
 			}
