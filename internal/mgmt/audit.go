@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -54,12 +55,17 @@ const (
 
 // AuditEvent is a single row in .sx/audit/YYYY-MM.jsonl.
 type AuditEvent struct {
-	Timestamp  time.Time      `json:"ts"`
-	Actor      string         `json:"actor"`
-	Event      string         `json:"event"`
-	TargetType string         `json:"target_type"`
-	Target     string         `json:"target"`
-	Data       map[string]any `json:"data,omitempty"`
+	Timestamp  time.Time `json:"ts"`
+	Actor      string    `json:"actor"`
+	Event      string    `json:"event"`
+	TargetType string    `json:"target_type"`
+	Target     string    `json:"target"`
+	// Profile records which sx profile produced the event. Optional —
+	// older sx versions did not populate it. Useful for cross-vault
+	// correlation when a user runs multiple profiles against the same
+	// audit stream.
+	Profile string         `json:"profile,omitempty"`
+	Data    map[string]any `json:"data,omitempty"`
 }
 
 // AuditFilter narrows an audit query. Zero values mean "don't filter on
@@ -74,13 +80,43 @@ type AuditFilter struct {
 	Limit       int
 }
 
+// auditProfileTag is the active profile name reported on every emitted
+// audit event. Populated by SetAuditProfileTag at command boot so call
+// sites don't have to thread the profile through every AuditEvent
+// literal. Guarded by auditProfileTagMu — vault mutation paths may emit
+// events from background goroutines.
+var (
+	auditProfileTagMu sync.RWMutex
+	auditProfileTag   string
+)
+
+// SetAuditProfileTag records the profile name to stamp onto subsequent
+// AppendAuditEvent calls. Empty disables tagging.
+func SetAuditProfileTag(name string) {
+	auditProfileTagMu.Lock()
+	auditProfileTag = strings.TrimSpace(name)
+	auditProfileTagMu.Unlock()
+}
+
+// getAuditProfileTag reads the tag under the package mutex.
+func getAuditProfileTag() string {
+	auditProfileTagMu.RLock()
+	defer auditProfileTagMu.RUnlock()
+	return auditProfileTag
+}
+
 // AppendAuditEvent appends an event to the monthly audit file for the
-// event's timestamp. The parent directory is created if needed.
+// event's timestamp. The parent directory is created if needed. Stamps
+// the active profile (when set via SetAuditProfileTag) so consumers can
+// correlate cross-profile activity.
 func AppendAuditEvent(vaultRoot string, event AuditEvent) error {
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now().UTC()
 	} else {
 		event.Timestamp = event.Timestamp.UTC()
+	}
+	if event.Profile == "" {
+		event.Profile = getAuditProfileTag()
 	}
 
 	dir := filepath.Join(vaultRoot, AuditDirName)

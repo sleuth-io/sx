@@ -16,6 +16,7 @@ import (
 	"github.com/sleuth-io/sx/internal/gitutil"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/scope"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
@@ -209,7 +210,10 @@ func handleCursorWorkspace(hookMode bool, effectiveClient string, log *slog.Logg
 	}
 }
 
-// loadConfigAndVault loads configuration and creates vault instance
+// loadConfigAndVault loads configuration and creates vault instance.
+// Also installs the profile's identity override into mgmt so vault
+// operations resolve team/user scopes against the profile email instead
+// of the system git config.
 func loadConfigAndVault() (*config.Config, vaultpkg.Vault, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -219,6 +223,9 @@ func loadConfigAndVault() (*config.Config, vaultpkg.Vault, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, nil, fmt.Errorf("invalid configuration: %w", err)
 	}
+
+	mgmt.SetIdentityOverride(cfg.Identity)
+	mgmt.SetAuditProfileTag(cfg.ProfileName)
 
 	vault, err := vaultpkg.NewFromConfig(cfg)
 	if err != nil {
@@ -250,6 +257,9 @@ func handleNothingToInstall(
 	sortedAssets []*lockfile.Asset,
 	env *installEnvironment,
 	targetClientIDs []string,
+	profileMeta map[string]profileMetadata,
+	profileOrder []string,
+	primaryProfile string,
 	styledOut *ui.Output,
 	out *outputHelper,
 ) error {
@@ -258,7 +268,7 @@ func handleNothingToInstall(
 
 	// Install client-specific hooks
 	// env.Clients is already filtered by --client/--clients flag
-	installClientHooks(ctx, env.Clients, out)
+	installClientHooks(ctx, env.Clients, profileMeta, profileOrder, primaryProfile, styledOut, out)
 
 	// Ensure asset support is configured for target clients
 	ensureAssetSupport(ctx, env.Clients, buildInstallScope(env.CurrentScope, env.GitContext), out)

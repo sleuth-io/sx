@@ -18,20 +18,25 @@ import (
 
 // AssetFetcher handles fetching assets from a vault
 type AssetFetcher struct {
-	vault vaultpkg.Vault
+	vault    vaultpkg.Vault
+	vaultKey string
 }
 
-// NewAssetFetcher creates a new asset fetcher
-func NewAssetFetcher(vault vaultpkg.Vault) *AssetFetcher {
+// NewAssetFetcher creates a new asset fetcher. vaultKey, when non-empty,
+// partitions the disk cache by vault so two vaults that publish the
+// same name@version don't collide. Empty key keeps the legacy global
+// cache layout.
+func NewAssetFetcher(vault vaultpkg.Vault, vaultKey string) *AssetFetcher {
 	return &AssetFetcher{
-		vault: vault,
+		vault:    vault,
+		vaultKey: vaultKey,
 	}
 }
 
 // FetchAsset downloads a single asset
 func (f *AssetFetcher) FetchAsset(ctx context.Context, asset *lockfile.Asset) (zipData []byte, meta *metadata.Metadata, err error) {
 	// Try disk cache first
-	zipData, err = cache.LoadAssetFromDisk(asset.Name, asset.Version)
+	zipData, err = cache.LoadAssetFromDisk(asset.Name, asset.Version, f.vaultKey)
 	if err == nil {
 		// Cache hit, extract metadata and return
 		metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
@@ -73,7 +78,7 @@ func (f *AssetFetcher) FetchAsset(ctx context.Context, asset *lockfile.Asset) (z
 	}
 
 	// Cache to disk for future use
-	_ = cache.SaveAssetToDisk(asset.Name, asset.Version, zipData)
+	_ = cache.SaveAssetToDisk(asset.Name, asset.Version, f.vaultKey, zipData)
 	// Ignore cache save errors - not critical
 
 	return zipData, meta, nil
@@ -82,7 +87,7 @@ func (f *AssetFetcher) FetchAsset(ctx context.Context, asset *lockfile.Asset) (z
 // FetchAssetWithProgress downloads a single asset with progress bar
 func (f *AssetFetcher) FetchAssetWithProgress(ctx context.Context, asset *lockfile.Asset, bar *progressbar.ProgressBar) (zipData []byte, meta *metadata.Metadata, err error) {
 	// Try disk cache first
-	zipData, err = cache.LoadAssetFromDisk(asset.Name, asset.Version)
+	zipData, err = cache.LoadAssetFromDisk(asset.Name, asset.Version, f.vaultKey)
 	if err == nil {
 		// Cache hit, extract metadata and return
 		metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
@@ -134,7 +139,7 @@ func (f *AssetFetcher) FetchAssetWithProgress(ctx context.Context, asset *lockfi
 	}
 
 	// Cache to disk for future use
-	_ = cache.SaveAssetToDisk(asset.Name, asset.Version, zipData)
+	_ = cache.SaveAssetToDisk(asset.Name, asset.Version, f.vaultKey, zipData)
 	// Ignore cache save errors - not critical
 
 	return zipData, meta, nil

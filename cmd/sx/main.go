@@ -208,7 +208,7 @@ Use "{{muted (printf "%s [command] --help" .CommandPath)}}" for more information
 	rootCmd.PersistentFlags().String("ssh-key", "",
 		"Path to SSH private key file or key content for git operations (can also use SX_SSH_KEY environment variable)")
 	rootCmd.PersistentFlags().String("profile", "",
-		"Use a specific profile (can also use SX_PROFILE environment variable)")
+		"Override the active profile set for this command (comma-separated for multi-active; can also use SX_PROFILE environment variable)")
 
 	// Add subcommands
 	rootCmd.AddCommand(commands.NewInitCommand())
