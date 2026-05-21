@@ -392,12 +392,16 @@ func downloadAssetsMultiVault(
 		merged = append(merged, results...)
 	}
 
+	// Stop the spinner before printing any human-facing diagnostics so
+	// per-group warnings and per-asset error lines don't interleave
+	// with spinner redraws on a multi-vault failure.
+	status.Clear()
+
 	for _, err := range groupErrs {
 		styledOut.Warning(err.Error())
 	}
 
 	result := processDownloadResults(merged, styledOut)
-	status.Clear()
 
 	if len(result.Downloads) == 0 {
 		if len(groupErrs) > 0 {

@@ -226,14 +226,88 @@ func TestContextWithIdentity_PrefersContextOverGlobal(t *testing.T) {
 	}
 }
 
-// TestContextWithIdentity_EmptyIsNoop verifies that an empty email
-// leaves ctx untouched so callers don't accidentally clear a parent
-// identity by passing through.
-func TestContextWithIdentity_EmptyIsNoop(t *testing.T) {
-	parent := ContextWithIdentity(context.Background(), "parent@example.com")
-	child := ContextWithIdentity(parent, "")
-	if got := identityFromContext(child); got != "parent@example.com" {
-		t.Errorf("empty email must not clear parent identity, got %q", got)
+// TestContextWithIdentity_EmptyIsExplicitOptOut verifies that an empty
+// email is recorded as an explicit "no identity for this call" — not a
+// no-op pass-through. The multi-profile fan-out relies on this so a
+// profile with empty Identity falls back to git config rather than
+// inheriting the seeded global override (which carries the first
+// profile's email).
+func TestContextWithIdentity_EmptyIsExplicitOptOut(t *testing.T) {
+	ResetActorCache()
+	t.Cleanup(func() {
+		SetIdentityOverride("")
+		ResetActorCache()
+	})
+	SetIdentityOverride("global@example.com")
+
+	dir := t.TempDir()
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v (%s)", err, out)
+	}
+	cmd = exec.Command("git", "config", "user.email", "git-config@example.com")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git config: %v (%s)", err, out)
+	}
+
+	// ContextWithIdentity("") must skip both the per-call and global
+	// overrides and fall through to git config.
+	actor, err := CurrentGitActor(ContextWithIdentity(context.Background(), ""), dir)
+	if err != nil {
+		t.Fatalf("CurrentGitActor: %v", err)
+	}
+	if actor.Email != "git-config@example.com" {
+		t.Errorf("explicit-empty ctx must skip global override; got %s, want git-config@example.com", actor.Email)
+	}
+}
+
+// TestCurrentGitActor_MixedActiveSetFallsBackToGitConfig is the
+// regression for the fan-out hazard: when the active set mixes a
+// profile with an explicit Identity and one without, the
+// no-Identity profile must resolve against git config — not against
+// the seeded global override (which carries the first profile's
+// email). Simulates loadActiveLockFiles by setting the global
+// override and then resolving from a goroutine carrying
+// ContextWithIdentity("").
+func TestCurrentGitActor_MixedActiveSetFallsBackToGitConfig(t *testing.T) {
+	ResetActorCache()
+	t.Cleanup(func() {
+		SetIdentityOverride("")
+		ResetActorCache()
+	})
+	SetIdentityOverride("alice@work.com")
+
+	dir := t.TempDir()
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.email", "bob@personal.com"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, out)
+		}
+	}
+
+	// Profile A: explicit Identity — should resolve to alice@work.com
+	actorA, err := CurrentGitActor(ContextWithIdentity(context.Background(), "alice@work.com"), dir)
+	if err != nil {
+		t.Fatalf("profile A: %v", err)
+	}
+	if actorA.Email != "alice@work.com" {
+		t.Errorf("profile A: got %s, want alice@work.com", actorA.Email)
+	}
+
+	// Profile B: empty Identity — must NOT inherit alice@work.com from
+	// the seeded global override; must fall through to git config.
+	actorB, err := CurrentGitActor(ContextWithIdentity(context.Background(), ""), dir)
+	if err != nil {
+		t.Fatalf("profile B: %v", err)
+	}
+	if actorB.Email != "bob@personal.com" {
+		t.Errorf("profile B: expected git-config fallback bob@personal.com, got %s", actorB.Email)
 	}
 }
 

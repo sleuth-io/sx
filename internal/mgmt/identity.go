@@ -129,27 +129,41 @@ func getIdentityOverrideLocked() string {
 // without racing the process-global override.
 type identityContextKey struct{}
 
-// ContextWithIdentity returns a derived context that carries the given
-// email as the per-call identity override. CurrentGitActor consults
-// this in preference to the process-global override, so concurrent
-// fetches can scope identity independently. Empty email returns ctx
-// unchanged.
-func ContextWithIdentity(ctx context.Context, email string) context.Context {
-	trimmed := strings.TrimSpace(email)
-	if trimmed == "" {
-		return ctx
-	}
-	return context.WithValue(ctx, identityContextKey{}, trimmed)
+// identityContextValue carries an explicit per-call identity. Stored as
+// a pointer so absent vs. present-but-empty are distinguishable: absent
+// means "no per-call override; consult the process-global override",
+// while present-but-empty means "this caller explicitly has no
+// identity — skip both overrides and resolve via git config". The
+// fan-out in loadActiveLockFiles relies on the latter so a profile
+// with empty Identity falls back to git config even when an earlier
+// profile in the active set seeded a non-empty global override.
+type identityContextValue struct {
+	Email string
 }
 
-// identityFromContext extracts the per-call identity override, returning
-// "" when ctx is nil or no identity was set.
-func identityFromContext(ctx context.Context) string {
+// ContextWithIdentity returns a derived context that carries the given
+// email as the per-call identity override. CurrentGitActor consults
+// this in preference to the process-global override. An empty email
+// is recorded as an *explicit* opt-out (skip both overrides, resolve
+// via git config) rather than as a no-op — see identityContextValue.
+func ContextWithIdentity(ctx context.Context, email string) context.Context {
+	v := &identityContextValue{Email: strings.TrimSpace(email)}
+	return context.WithValue(ctx, identityContextKey{}, v)
+}
+
+// identityFromContext extracts the per-call identity override. The
+// second return is true when ctx carries an explicit value (including
+// the explicit-empty opt-out); false means no per-call override was
+// set and callers should consult the global override.
+func identityFromContext(ctx context.Context) (string, bool) {
 	if ctx == nil {
-		return ""
+		return "", false
 	}
-	v, _ := ctx.Value(identityContextKey{}).(string)
-	return v
+	v, ok := ctx.Value(identityContextKey{}).(*identityContextValue)
+	if !ok || v == nil {
+		return "", false
+	}
+	return v.Email, true
 }
 
 // CurrentGitActor resolves the caller's identity. SX_BOT short-circuits
@@ -165,8 +179,8 @@ func identityFromContext(ctx context.Context) string {
 // only when every source fails.
 func CurrentGitActor(ctx context.Context, repoPath string) (Actor, error) {
 	botName := strings.TrimSpace(os.Getenv(SXBotEnv))
-	override := identityFromContext(ctx)
-	if override == "" {
+	override, fromCtx := identityFromContext(ctx)
+	if !fromCtx {
 		override = getIdentityOverrideLocked()
 	}
 	cacheKey := actorCacheKey{repoPath: repoPath, bot: botName, identity: override}
