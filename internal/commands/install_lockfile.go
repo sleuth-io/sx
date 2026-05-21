@@ -9,42 +9,48 @@ import (
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
-	"github.com/sleuth-io/sx/internal/ui/components"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
-// fetchLockFileWithCache fetches the lock file, using cache when possible.
-// It handles ETag-based caching, parsing, and validation.
-func fetchLockFileWithCache(ctx context.Context, vault vaultpkg.Vault, cfg *config.Config, status *components.Status) (*lockfile.LockFile, error) {
-	status.Start("Fetching lock file")
-
-	cachedETag, _ := cache.LoadETag(cfg.RepositoryURL)
+// fetchLockFile fetches and parses the lock file for a single profile,
+// using the on-disk ETag cache when the vault reports notModified. It
+// does not touch the shared status component, so callers running it
+// from goroutines (see loadActiveLockFiles) don't fight for the
+// spinner. Returns ErrLockFileNotFound for the pristine "new vault"
+// case so callers can short-circuit without treating it as a hard
+// failure.
+func fetchLockFile(ctx context.Context, vault vaultpkg.Vault, cfg *config.Config) (*lockfile.LockFile, error) {
+	// Key the cache by VaultIdentifier rather than raw RepositoryURL so
+	// legacy Sleuth profiles (ServerURL set, RepositoryURL empty) get
+	// distinct cache paths. Two such profiles in the same active set
+	// would otherwise share cache entries and — under the parallel
+	// fan-out in loadActiveLockFiles — race on the same cache file.
+	cacheKey := cfg.VaultIdentifier()
+	cachedETag, _ := cache.LoadETag(cacheKey)
 	lockFileData, newETag, notModified, err := vault.GetLockFile(ctx, cachedETag)
 	if err != nil {
 		if errors.Is(err, vaultpkg.ErrLockFileNotFound) {
-			status.Clear()
 			return nil, vaultpkg.ErrLockFileNotFound
 		}
-		status.Fail("Failed to fetch lock file")
 		return nil, fmt.Errorf("failed to fetch lock file: %w", err)
 	}
 
 	if notModified {
-		lockFileData, err = cache.LoadLockFile(cfg.RepositoryURL)
+		lockFileData, err = cache.LoadLockFile(cacheKey)
 		if err != nil {
-			status.Fail("Failed to load cached lock file")
 			return nil, fmt.Errorf("failed to load cached lock file: %w", err)
 		}
 	} else {
-		saveLockFileToCache(cfg.RepositoryURL, newETag, lockFileData)
+		saveLockFileToCache(cacheKey, newETag, lockFileData)
 	}
 
-	lf, err := parseLockFile(lockFileData, status)
+	lf, err := lockfile.Parse(lockFileData)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse lock file: %w", err)
 	}
-
-	status.Clear()
+	if err := lf.Validate(); err != nil {
+		return nil, fmt.Errorf("lock file validation failed: %w", err)
+	}
 	return lf, nil
 }
 
@@ -59,20 +65,4 @@ func saveLockFileToCache(repoURL, etag string, data []byte) {
 	if err := cache.SaveLockFile(repoURL, data); err != nil {
 		log.Error("failed to cache lock file", "error", err)
 	}
-}
-
-// parseLockFile parses and validates the lock file data
-func parseLockFile(data []byte, status *components.Status) (*lockfile.LockFile, error) {
-	lf, err := lockfile.Parse(data)
-	if err != nil {
-		status.Fail("Failed to parse lock file")
-		return nil, fmt.Errorf("failed to parse lock file: %w", err)
-	}
-
-	if err := lf.Validate(); err != nil {
-		status.Fail("Lock file validation failed")
-		return nil, fmt.Errorf("lock file validation failed: %w", err)
-	}
-
-	return lf, nil
 }

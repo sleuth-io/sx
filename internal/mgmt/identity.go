@@ -87,6 +87,7 @@ func (a Actor) RequireRealIdentity() error {
 type actorCacheKey struct {
 	repoPath string
 	bot      string
+	identity string
 }
 
 // actorCache caches the result of CurrentGitActor per (repoPath, SX_BOT)
@@ -97,17 +98,92 @@ var (
 	actorCache   = make(map[actorCacheKey]Actor)
 )
 
+// identityOverride is a process-wide email override set from the active
+// profile's Identity field. When non-empty, CurrentGitActor uses it
+// instead of consulting `git config user.email`. Guarded by
+// identityOverrideMu so concurrent vault HTTP/git work (or background
+// audit writes) reads a stable value.
+var (
+	identityOverrideMu sync.RWMutex
+	identityOverride   string
+)
+
+// SetIdentityOverride sets the process-wide email override consulted by
+// CurrentGitActor. Pass empty to clear. Trims whitespace.
+func SetIdentityOverride(email string) {
+	identityOverrideMu.Lock()
+	identityOverride = strings.TrimSpace(email)
+	identityOverrideMu.Unlock()
+}
+
+// getIdentityOverrideLocked reads the override under the package mutex.
+func getIdentityOverrideLocked() string {
+	identityOverrideMu.RLock()
+	defer identityOverrideMu.RUnlock()
+	return identityOverride
+}
+
+// identityContextKey scopes a per-call identity override carried in
+// context. Used by the multi-profile install fan-out so concurrent lock
+// file fetches can each resolve actor against their own profile email
+// without racing the process-global override.
+type identityContextKey struct{}
+
+// identityContextValue carries an explicit per-call identity. Stored as
+// a pointer so absent vs. present-but-empty are distinguishable: absent
+// means "no per-call override; consult the process-global override",
+// while present-but-empty means "this caller explicitly has no
+// identity — skip both overrides and resolve via git config". The
+// fan-out in loadActiveLockFiles relies on the latter so a profile
+// with empty Identity falls back to git config even when an earlier
+// profile in the active set seeded a non-empty global override.
+type identityContextValue struct {
+	Email string
+}
+
+// ContextWithIdentity returns a derived context that carries the given
+// email as the per-call identity override. CurrentGitActor consults
+// this in preference to the process-global override. An empty email
+// is recorded as an *explicit* opt-out (skip both overrides, resolve
+// via git config) rather than as a no-op — see identityContextValue.
+func ContextWithIdentity(ctx context.Context, email string) context.Context {
+	v := &identityContextValue{Email: strings.TrimSpace(email)}
+	return context.WithValue(ctx, identityContextKey{}, v)
+}
+
+// identityFromContext extracts the per-call identity override. The
+// second return is true when ctx carries an explicit value (including
+// the explicit-empty opt-out); false means no per-call override was
+// set and callers should consult the global override.
+func identityFromContext(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
+	v, ok := ctx.Value(identityContextKey{}).(*identityContextValue)
+	if !ok || v == nil {
+		return "", false
+	}
+	return v.Email, true
+}
+
 // CurrentGitActor resolves the caller's identity. SX_BOT short-circuits
 // the resolution: if set, the actor is a bot identity, with Email
 // "bot:<name>" so audit log entries are attributed unambiguously and
-// never collide with a human email. Otherwise resolution proceeds via
-// `git config user.email` (scoped to the given repoPath if non-empty,
-// falling back to global git config), with a $USER@host fallback for
-// unconfigured workstations. Returns ErrIdentityNotSet only when every
-// source fails.
+// never collide with a human email. Otherwise resolution prefers a
+// per-call identity carried on ctx (see ContextWithIdentity) so
+// concurrent multi-profile work can scope identity per goroutine;
+// falling back to the process-global override (SetIdentityOverride),
+// then to `git config user.email` (scoped to the given repoPath if
+// non-empty, falling back to global git config), with a $USER@host
+// fallback for unconfigured workstations. Returns ErrIdentityNotSet
+// only when every source fails.
 func CurrentGitActor(ctx context.Context, repoPath string) (Actor, error) {
 	botName := strings.TrimSpace(os.Getenv(SXBotEnv))
-	cacheKey := actorCacheKey{repoPath: repoPath, bot: botName}
+	override, fromCtx := identityFromContext(ctx)
+	if !fromCtx {
+		override = getIdentityOverrideLocked()
+	}
+	cacheKey := actorCacheKey{repoPath: repoPath, bot: botName, identity: override}
 
 	actorCacheMu.Lock()
 	if cached, ok := actorCache[cacheKey]; ok {
@@ -121,6 +197,20 @@ func CurrentGitActor(ctx context.Context, repoPath string) (Actor, error) {
 			Email: "bot:" + botName,
 			Name:  botName,
 			Bot:   botName,
+		}
+		actorCacheMu.Lock()
+		actorCache[cacheKey] = actor
+		actorCacheMu.Unlock()
+		return actor, nil
+	}
+
+	if override != "" {
+		// Use git config user.name when available for a nicer display;
+		// the email is authoritative from the profile override.
+		name := readGitConfig(ctx, repoPath, "user.name")
+		actor := Actor{
+			Email: NormalizeEmail(override),
+			Name:  strings.TrimSpace(name),
 		}
 		actorCacheMu.Lock()
 		actorCache[cacheKey] = actor

@@ -127,15 +127,22 @@ func EnsureCacheDirs() error {
 	return nil
 }
 
-// GetAssetCachePath returns the cache path for a specific asset
-func GetAssetCachePath(name, version string) (string, error) {
+// GetAssetCachePath returns the cache path for a specific asset.
+// vaultKey, when non-empty, partitions the cache by vault so two
+// vaults that publish the same name@version don't collide. Empty
+// vaultKey keeps the legacy single-vault path so existing caches
+// remain valid.
+func GetAssetCachePath(name, version, vaultKey string) (string, error) {
 	assetCacheDir, err := GetAssetCacheDir()
 	if err != nil {
 		return "", err
 	}
 	// Use sanitized name for directory safety
 	safeName := filepath.Base(filepath.Clean(name))
-	return filepath.Join(assetCacheDir, safeName, version+".zip"), nil
+	if vaultKey == "" {
+		return filepath.Join(assetCacheDir, safeName, version+".zip"), nil
+	}
+	return filepath.Join(assetCacheDir, "by-vault", utils.URLHash(vaultKey), safeName, version+".zip"), nil
 }
 
 // GetGitRepoCachePath returns the cache path for a git repository
@@ -379,9 +386,9 @@ func GetTrackerCachePath(scopeKey string) (string, error) {
 	return filepath.Join(trackerDir, scopeKey+".json"), nil
 }
 
-// SaveAssetToDisk caches an asset zip to disk
-func SaveAssetToDisk(name, version string, data []byte) error {
-	cachePath, err := GetAssetCachePath(name, version)
+// SaveAssetToDisk caches an asset zip to disk under the given vault key.
+func SaveAssetToDisk(name, version, vaultKey string, data []byte) error {
+	cachePath, err := GetAssetCachePath(name, version, vaultKey)
 	if err != nil {
 		return err
 	}
@@ -399,9 +406,9 @@ func SaveAssetToDisk(name, version string, data []byte) error {
 	return os.WriteFile(cachePath, data, 0644)
 }
 
-// LoadAssetFromDisk loads a cached asset from disk
-func LoadAssetFromDisk(name, version string) ([]byte, error) {
-	cachePath, err := GetAssetCachePath(name, version)
+// LoadAssetFromDisk loads a cached asset from disk for the given vault.
+func LoadAssetFromDisk(name, version, vaultKey string) ([]byte, error) {
+	cachePath, err := GetAssetCachePath(name, version, vaultKey)
 	if err != nil {
 		return nil, err
 	}

@@ -34,6 +34,14 @@ type Config struct {
 	// - For path: file:// URL pointing to local directory (file:///path/to/repo)
 	RepositoryURL string `json:"repositoryUrl,omitempty"`
 
+	// Identity is the email used to resolve team and user scopes when
+	// this Config is the active profile. Empty falls back to git config.
+	Identity string `json:"identity,omitempty"`
+
+	// ProfileName is the active profile name this Config was loaded from.
+	// Populated by Load(); not serialized.
+	ProfileName string `json:"-"`
+
 	// ForceEnabledClients is the list of client IDs that should always be enabled,
 	// even if not detected.
 	ForceEnabledClients []string `json:"forceEnabledClients,omitempty"`
@@ -63,7 +71,53 @@ func Load() (*Config, error) {
 		}
 	}
 
-	return profile.ToConfig(mpc.ForceEnabledClients, mpc.ForceDisabledClients), nil
+	cfg := profile.ToConfig(mpc.ForceEnabledClients, mpc.ForceDisabledClients)
+	cfg.ProfileName = profileName
+	return cfg, nil
+}
+
+// LoadActive returns one Config per active profile. The default profile
+// (if it is in the active set) is always first so callers can use slice
+// order as conflict precedence. Used by read-side commands that must
+// span every active profile (sx install, sx list).
+func LoadActive() ([]*Config, *MultiProfileConfig, error) {
+	mpc, err := LoadMultiProfile()
+	if err != nil {
+		return nil, nil, err
+	}
+	names := GetActiveProfileNames(mpc)
+	if len(names) == 0 {
+		return nil, nil, errors.New("no active profiles configured")
+	}
+	configs := make([]*Config, 0, len(names))
+	overrideHint := ""
+	switch {
+	case GetActiveProfileOverride() != "":
+		overrideHint = " (from --profile flag)"
+	case os.Getenv("SX_PROFILE") != "":
+		overrideHint = " (from SX_PROFILE env)"
+	}
+	for _, name := range names {
+		profile, ok := mpc.GetProfile(name)
+		if !ok {
+			return nil, nil, fmt.Errorf("active profile not found: %s%s", name, overrideHint)
+		}
+		cfg := profile.ToConfig(mpc.ForceEnabledClients, mpc.ForceDisabledClients)
+		cfg.ProfileName = name
+		configs = append(configs, cfg)
+	}
+	return configs, mpc, nil
+}
+
+// GetIdentity returns the configured identity email for this profile, or
+// empty when not set (callers fall back to git config user.email).
+func (c *Config) GetIdentity() string {
+	return c.Identity
+}
+
+// GetProfileName returns the profile name this Config was loaded from.
+func (c *Config) GetProfileName() string {
+	return c.ProfileName
 }
 
 // Save saves the configuration to the config file
@@ -166,6 +220,20 @@ func (c *Config) GetAuthToken() string {
 // GetRepositoryURL returns the repository URL
 func (c *Config) GetRepositoryURL() string {
 	return c.RepositoryURL
+}
+
+// VaultIdentifier returns a stable string that uniquely identifies the
+// vault this Config points at, suitable for use as a cache partition
+// key. Prefers RepositoryURL when set (the canonical field for git and
+// path vaults, and modern Sleuth configs) and falls back to ServerURL
+// for legacy Sleuth configs that predate the RepositoryURL field.
+// Returns empty only when both are missing — which Validate would have
+// already rejected.
+func (c *Config) VaultIdentifier() string {
+	if c.RepositoryURL != "" {
+		return c.RepositoryURL
+	}
+	return c.ServerURL
 }
 
 // IsSilent checks if silent mode is enabled via environment variable

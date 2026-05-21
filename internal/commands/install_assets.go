@@ -1,51 +1,20 @@
 package commands
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/sleuth-io/sx/internal/assets"
-	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/scope"
 	"github.com/sleuth-io/sx/internal/ui"
-	"github.com/sleuth-io/sx/internal/ui/components"
-	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
 // downloadAssetsResult holds the result of downloading assets
 type downloadAssetsResult struct {
 	Downloads []*assets.AssetWithMetadata
 	Errors    []error
-}
-
-// downloadAssetsWithStatus downloads assets and returns successful downloads
-func downloadAssetsWithStatus(
-	ctx context.Context,
-	vault vaultpkg.Vault,
-	assetsToInstall []*lockfile.Asset,
-	status *components.Status,
-	styledOut *ui.Output,
-) (*downloadAssetsResult, error) {
-	status.Start(fmt.Sprintf("Downloading %d assets", len(assetsToInstall)))
-
-	fetcher := assets.NewAssetFetcher(vault)
-	results, err := fetcher.FetchAssets(ctx, assetsToInstall, 10)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch assets: %w", err)
-	}
-
-	result := processDownloadResults(results, styledOut)
-	status.Clear()
-
-	if len(result.Downloads) == 0 {
-		styledOut.Error("No assets downloaded successfully")
-		return nil, errors.New("no assets downloaded successfully")
-	}
-
-	return result, nil
 }
 
 // processDownloadResults separates successful downloads from errors

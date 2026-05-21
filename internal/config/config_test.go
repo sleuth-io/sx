@@ -583,6 +583,34 @@ func TestProfileToConfig(t *testing.T) {
 	}
 }
 
+// TestVaultIdentifier_LegacySleuthFallsBackToServerURL covers the
+// cache-key invariant the lock-file/ETag cache relies on under the
+// parallel multi-profile fan-out: two legacy Sleuth profiles (with
+// only ServerURL set, no RepositoryURL) must produce distinct cache
+// keys via VaultIdentifier so they don't share an on-disk cache file
+// and race when fetched concurrently.
+func TestVaultIdentifier_LegacySleuthFallsBackToServerURL(t *testing.T) {
+	a := &Config{Type: RepositoryTypeSleuth, ServerURL: "https://a.sleuth.io"}
+	b := &Config{Type: RepositoryTypeSleuth, ServerURL: "https://b.sleuth.io"}
+
+	if got := a.VaultIdentifier(); got != "https://a.sleuth.io" {
+		t.Errorf("legacy Sleuth a: VaultIdentifier = %q, want https://a.sleuth.io", got)
+	}
+	if got := b.VaultIdentifier(); got != "https://b.sleuth.io" {
+		t.Errorf("legacy Sleuth b: VaultIdentifier = %q, want https://b.sleuth.io", got)
+	}
+	if a.VaultIdentifier() == b.VaultIdentifier() {
+		t.Fatal("two distinct legacy Sleuth profiles must not share a cache key")
+	}
+
+	// Modern config (RepositoryURL populated) must still prefer it
+	// even when ServerURL is also set.
+	c := &Config{Type: RepositoryTypeSleuth, RepositoryURL: "https://canonical.example", ServerURL: "https://legacy.example"}
+	if got := c.VaultIdentifier(); got != "https://canonical.example" {
+		t.Errorf("modern Sleuth: VaultIdentifier = %q, want canonical RepositoryURL", got)
+	}
+}
+
 // Test SaveMultiProfile persists client settings correctly
 func TestSaveMultiProfileWithClientSettings(t *testing.T) {
 	tmpHome := t.TempDir()

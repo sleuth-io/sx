@@ -22,6 +22,7 @@ import (
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/metadata"
+	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/scope"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
@@ -176,6 +177,19 @@ func runInstallSetTarget(cmd *cobra.Command, assetName string, f installTargetFl
 		return err
 	}
 
+	// Verify the asset exists in the chosen vault before mutating. In
+	// multi-active setups the asset the user wants to retarget might be
+	// owned by a non-default profile's vault, and writing to the default
+	// vault would either fail mid-flight or (worse) succeed against an
+	// unrelated row with the same name. Catch this up front and, when
+	// possible, name the profile that actually owns the asset.
+	if _, err := v.GetAssetDetails(ctx, assetName); err != nil {
+		if owner := findAssetOwningProfile(ctx, assetName); owner != "" {
+			return fmt.Errorf("asset %q not found in the default profile's vault: %w (asset lives in profile %q — retry with --profile %s)", assetName, err, owner, owner)
+		}
+		return fmt.Errorf("asset %q not found in the default profile's vault: %w (if it lives in another profile, retry with --profile <name>)", assetName, err)
+	}
+
 	target, err := buildInstallTarget(f)
 	if err != nil {
 		return err
@@ -195,6 +209,48 @@ func runInstallSetTarget(cmd *cobra.Command, assetName string, f installTargetFl
 	}
 	status.Done("Updated installation target for " + assetName)
 	return nil
+}
+
+// findAssetOwningProfile surveys the other active profiles' vaults for
+// an asset by name. Returns the first matching profile name, or empty
+// when none have it. Used to turn the set-target "not found" error into
+// a one-step --profile suggestion. Only called from the error path so
+// the identity override is left in whatever state was last set — the
+// command is about to terminate either way.
+//
+// The survey is best-effort: each per-vault lookup gets a short
+// timeout (so a typo on a Sleuth profile doesn't hang for the full
+// 5-minute install budget), and the loop bails on parent ctx
+// cancellation to keep Ctrl-C responsive.
+func findAssetOwningProfile(ctx context.Context, assetName string) string {
+	configs, _, err := config.LoadActive()
+	if err != nil {
+		return ""
+	}
+	defaultName := ""
+	if len(configs) > 0 {
+		defaultName = configs[0].ProfileName
+	}
+	for _, cfg := range configs {
+		if err := ctx.Err(); err != nil {
+			return ""
+		}
+		if cfg.ProfileName == defaultName {
+			continue
+		}
+		mgmt.SetIdentityOverride(cfg.Identity)
+		vault, err := vaultpkg.NewFromConfig(cfg)
+		if err != nil {
+			continue
+		}
+		probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, err = vault.GetAssetDetails(probeCtx, assetName)
+		cancel()
+		if err == nil {
+			return cfg.ProfileName
+		}
+	}
+	return ""
 }
 
 func buildInstallTarget(f installTargetFlags) (vaultpkg.InstallTarget, error) {
@@ -223,8 +279,13 @@ func buildInstallTarget(f installTargetFlags) (vaultpkg.InstallTarget, error) {
 // install context (scope, clients) without any side effects. Format
 // mirrors `pip freeze` — one line per asset with name, version, and
 // the matched scope — plus a header so the output is self-explanatory
-// when piped.
-func printDryRunPreview(w io.Writer, assets []*lockfile.Asset, env *installEnvironment) {
+// when piped. When the user has more than one active profile, each
+// line gets a `; profile=<name>` suffix so users can see which vault
+// each asset came from (and which profiles contributed zero is
+// implicit by absence). Single-profile output is left unchanged so
+// existing scripts that parse the `pip freeze`-style format keep
+// working.
+func printDryRunPreview(w io.Writer, assets []*lockfile.Asset, env *installEnvironment, assetOrigin map[string]string, multiActive bool) {
 	if len(assets) == 0 {
 		fmt.Fprintln(w, "# No assets resolved for this context.")
 		fmt.Fprintln(w, "# Checked clients:", strings.Join(getTargetClientIDs(env.Clients), ", "))
@@ -240,7 +301,12 @@ func printDryRunPreview(w io.Writer, assets []*lockfile.Asset, env *installEnvir
 
 	for _, a := range assets {
 		scopeDesc := describeAssetScopeForDryRun(a)
-		fmt.Fprintf(w, "%s==%s  # %s; scope=%s\n", a.Name, a.Version, a.Type, scopeDesc)
+		if multiActive {
+			origin := assetOrigin[a.Name]
+			fmt.Fprintf(w, "%s==%s  # %s; scope=%s; profile=%s\n", a.Name, a.Version, a.Type, scopeDesc, origin)
+		} else {
+			fmt.Fprintf(w, "%s==%s  # %s; scope=%s\n", a.Name, a.Version, a.Type, scopeDesc)
+		}
 	}
 }
 
@@ -324,21 +390,13 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	// Handle Cursor workspace directory in hook mode
 	handleCursorWorkspace(hookMode, effectiveClientsFlag, log)
 
-	// Load and validate configuration
-	cfg, vault, err := loadConfigAndVault()
+	// Load every active profile's configuration and fetch their lock files.
+	profileLocks, mpc, primaryCfg, cfg, done, err := loadActiveProfilesAndLockFiles(ctx, status, styledOut)
 	if err != nil {
 		return err
 	}
-
-	// Fetch and parse lock file
-	lockFile, err := fetchLockFileWithCache(ctx, vault, cfg, status)
-	if err != nil {
-		if errors.Is(err, vaultpkg.ErrLockFileNotFound) {
-			styledOut.Info("No assets installed yet.")
-			styledOut.Muted("Add skills with 'sx add' or browse skills.sh with 'sx add --browse'.")
-			return nil
-		}
-		return err
+	if done {
+		return nil
 	}
 
 	// Detect environment (git context, scope, clients)
@@ -368,19 +426,37 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 		return nil
 	}
 
-	// Filter and resolve assets
+	// Filter and resolve assets across every active profile, applying
+	// the default-wins / first-active-wins conflict policy. Precedence
+	// for "first-active" is whichever profile appears first in
+	// profileLocks (already ordered per config.GetActiveProfileNames).
 	matcherScope := scope.NewMatcher(env.CurrentScope)
-	applicableAssets := filterAssetsByScope(lockFile, env.Clients, matcherScope)
-
-	sortedAssets, err := resolveAssetDependencies(lockFile, applicableAssets)
+	sortedAssets, assetOrigin, conflicts, err := mergeApplicableAssets(profileLocks, env.Clients, matcherScope)
 	if err != nil {
 		return err
 	}
+	if len(conflicts) > 0 {
+		reportConflicts(conflicts, mpc.DefaultProfile, styledOut)
+	}
+	profileMeta := buildProfileMetadata(profileLocks)
+	profileOrder := make([]string, 0, len(profileLocks))
+	for _, pl := range profileLocks {
+		if pl.LockFile != nil {
+			profileOrder = append(profileOrder, pl.ProfileName)
+		}
+	}
+	// Lock-file fetches ran in parallel with identity scoped per goroutine
+	// via context, so the process-global override was not touched. Set
+	// it (and the audit tag) to the primary profile now so any audit
+	// events emitted by the rest of the flow attribute correctly. The
+	// download step swaps both again per vault group.
+	mgmt.SetIdentityOverride(primaryCfg.Identity)
+	mgmt.SetAuditProfileTag(primaryCfg.ProfileName)
 
 	// --dry-run: print the resolved asset list and exit before we touch
 	// the tracker, download anything, or write to client directories.
 	if dryRun {
-		printDryRunPreview(cmd.OutOrStdout(), sortedAssets, env)
+		printDryRunPreview(cmd.OutOrStdout(), sortedAssets, env, assetOrigin, len(profileOrder) > 1)
 		return nil
 	}
 
@@ -395,19 +471,33 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	assetsToInstall := determineAssetsToInstall(tracker, sortedAssets, env.CurrentScope, targetClientIDs, out)
 
-	// Clean up assets that were removed from lock file (must run even if no assets to install!)
-	cleanupRemovedAssets(ctx, tracker, sortedAssets, env.GitContext, env.CurrentScope, env.Clients, styledOut)
+	// Clean up assets that were removed from lock file — but only if every
+	// active profile produced a lock file. With multi-active profiles a
+	// transient fetch failure on one vault would otherwise look like
+	// "every asset from that vault was removed" and trigger wrongful
+	// uninstalls. Treat ErrLockFileNotFound (fresh setup) as benign.
+	if hadHardFetchFailure(profileLocks) {
+		styledOut.Warning("Skipping removed-asset cleanup because one or more profiles failed to fetch.")
+	} else {
+		cleanupRemovedAssets(ctx, tracker, sortedAssets, env.GitContext, env.CurrentScope, env.Clients, styledOut)
+	}
 
 	// Early exit if nothing to install
 	if len(assetsToInstall) == 0 {
-		return handleNothingToInstall(ctx, hookMode, tracker, sortedAssets, env, targetClientIDs, styledOut, out)
+		return handleNothingToInstall(ctx, hookMode, tracker, sortedAssets, env, targetClientIDs, profileMeta, profileOrder, primaryCfg.ProfileName, styledOut, out)
 	}
 
-	// Download assets
-	downloadResult, err := downloadAssetsWithStatus(ctx, vault, assetsToInstall, status, styledOut)
+	// Download assets, routing each to its origin profile's vault and
+	// swapping the identity/audit overrides per group so attribution
+	// matches the originating profile.
+	downloadResult, err := downloadAssetsMultiVault(ctx, assetsToInstall, assetOrigin, profileMeta, profileOrder, status, styledOut)
 	if err != nil {
 		return err
 	}
+	// Restore primary overrides once downloads complete; remaining flow
+	// (install hooks, tracker save, bootstrap) belongs to the primary.
+	mgmt.SetIdentityOverride(primaryCfg.Identity)
+	mgmt.SetAuditProfileTag(primaryCfg.ProfileName)
 
 	// Install assets to their appropriate locations
 	installResult := installAssets(ctx, downloadResult.Downloads, env.GitContext, env.CurrentScope, env.Clients, styledOut, strict)
@@ -425,7 +515,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	// Install client-specific hooks (e.g., auto-update, usage tracking)
 	// env.Clients is already filtered by --client/--clients flag
-	installClientHooks(ctx, env.Clients, out)
+	installClientHooks(ctx, env.Clients, profileMeta, profileOrder, primaryCfg.ProfileName, styledOut, out)
 
 	// Log summary
 	log.Info("install completed", "installed", len(installResult.Installed), "failed", len(installResult.Failed))
@@ -838,10 +928,13 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, s
 
 // installClientHooks calls InstallHooks on all clients to install client-specific hooks.
 // Uses config's BootstrapOptions to determine which options to install.
-func installClientHooks(ctx context.Context, targetClients []clients.Client, out *outputHelper) {
+// Vault-side bootstrap items (session hooks, analytics hooks, MCP servers) are
+// gathered from every active profile so multi-active users still get the
+// bootstrap surface their non-default vaults publish.
+func installClientHooks(ctx context.Context, targetClients []clients.Client, profileMeta map[string]profileMetadata, profileOrder []string, primaryProfile string, styledOut *ui.Output, out *outputHelper) {
 	log := logger.Get()
 
-	// Load config to get bootstrap options
+	// Load config to get bootstrap option enable/disable settings.
 	mpc, err := config.LoadMultiProfile()
 	if err != nil {
 		log.Error("failed to load config for bootstrap options", "error", err)
@@ -849,17 +942,15 @@ func installClientHooks(ctx context.Context, targetClients []clients.Client, out
 		mpc = &config.MultiProfileConfig{}
 	}
 
-	// Load vault to get its bootstrap options
-	cfg, _ := config.Load()
-	var vaultOpts []bootstrap.Option
-	if cfg != nil {
-		if v, err := vaultpkg.NewFromConfig(cfg); err == nil {
-			vaultOpts = v.GetBootstrapOptions(ctx)
-		}
-	}
+	// Union vault bootstrap options across every active profile. Swap the
+	// identity + audit overrides per vault so any audit-emitting call
+	// inside GetBootstrapOptions attributes correctly. Shadowing is
+	// reported with the same severity policy as asset conflicts: muted
+	// when the default profile wins, warning otherwise.
+	vaultOpts := collectActiveVaultBootstrapOptions(ctx, profileMeta, profileOrder, primaryProfile, mpc.DefaultProfile, styledOut)
 
 	for _, client := range targetClients {
-		// Gather all options (vault + this client)
+		// Gather all options (every active vault + this client)
 		var allOpts []bootstrap.Option
 		allOpts = append(allOpts, vaultOpts...)
 		if clientOpts := client.GetBootstrapOptions(ctx); clientOpts != nil {
@@ -875,6 +966,70 @@ func installClientHooks(ctx context.Context, targetClients []clients.Client, out
 			// Don't fail the install command if hook installation fails
 		}
 	}
+}
+
+// collectActiveVaultBootstrapOptions visits every active profile's vault
+// in the configured order, swapping the process-global identity/audit
+// overrides per call, and returns the concatenated options deduplicated
+// by Option.Key (first occurrence wins, matching the asset conflict
+// policy). The primary profile's overrides are restored before
+// returning so the caller's subsequent operations attribute correctly.
+func collectActiveVaultBootstrapOptions(ctx context.Context, profileMeta map[string]profileMetadata, profileOrder []string, primaryProfile, defaultProfile string, styledOut *ui.Output) []bootstrap.Option {
+	log := logger.Get()
+	var allOpts []bootstrap.Option
+	seen := make(map[string]string) // key → winning profile name
+	for _, name := range profileOrder {
+		meta, ok := profileMeta[name]
+		if !ok || meta.Vault == nil {
+			continue
+		}
+		mgmt.SetIdentityOverride(meta.Identity)
+		mgmt.SetAuditProfileTag(meta.Profile)
+		opts := meta.Vault.GetBootstrapOptions(ctx)
+		for _, opt := range opts {
+			if winner, taken := seen[opt.Key]; taken {
+				log.Debug("bootstrap option shadowed by earlier profile", "key", opt.Key, "winner", winner, "shadowed", name)
+				if styledOut != nil {
+					msg := fmt.Sprintf("bootstrap option %s shadowed: %s wins, %s ignored", opt.Key, winner, name)
+					if defaultProfile != "" && winner == defaultProfile {
+						styledOut.Muted(msg)
+					} else {
+						styledOut.Warning(msg)
+					}
+				}
+				continue
+			}
+			seen[opt.Key] = name
+			allOpts = append(allOpts, opt)
+		}
+	}
+	// Restore overrides to the primary profile so the surrounding flow
+	// continues attributing audit events correctly. If primary isn't in
+	// the metadata (its fetch failed but the install proceeded via
+	// partial-failure tolerance), fall back to the first profile that
+	// did contribute — never leave the override pointing at whichever
+	// profile happened to be last in the loop above.
+	restored := false
+	if primary, ok := profileMeta[primaryProfile]; ok {
+		mgmt.SetIdentityOverride(primary.Identity)
+		mgmt.SetAuditProfileTag(primary.Profile)
+		restored = true
+	}
+	if !restored {
+		for _, name := range profileOrder {
+			if fallback, ok := profileMeta[name]; ok {
+				mgmt.SetIdentityOverride(fallback.Identity)
+				mgmt.SetAuditProfileTag(fallback.Profile)
+				log.Debug("primary profile missing from metadata; restored to fallback", "primary", primaryProfile, "fallback", name)
+				restored = true
+				break
+			}
+		}
+	}
+	if !restored {
+		log.Debug("no profiles in metadata to restore overrides", "primary", primaryProfile)
+	}
+	return allOpts
 }
 
 // ensureAssetSupport calls EnsureAssetSupport on all clients to set up local rules files, etc.

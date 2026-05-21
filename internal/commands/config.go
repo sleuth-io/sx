@@ -485,8 +485,9 @@ func gatherUnifiedAssets(currentScope *scope.Scope, showAll bool) []ScopeAssets 
 		return nil
 	}
 
-	// Load lock file
-	lockFileData, err := cache.LoadLockFile(cfg.RepositoryURL)
+	// Load lock file (key by VaultIdentifier so legacy Sleuth profiles
+	// with only ServerURL set still find their cached entry).
+	lockFileData, err := cache.LoadLockFile(cfg.VaultIdentifier())
 	if err != nil || len(lockFileData) == 0 {
 		return nil
 	}
