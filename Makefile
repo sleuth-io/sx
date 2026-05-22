@@ -1,4 +1,4 @@
-.PHONY: help build build-darwin build-darwin-amd64 install test lint format clean release demo sx logs
+.PHONY: help build build-darwin build-darwin-amd64 install test lint format clean release demo sx logs gql-generate gql-check
 
 # Default target
 help: ## Show this help message
@@ -114,7 +114,26 @@ init: ## Initialize development environment (download deps)
 	@echo "✓ Development environment initialized"
 	@echo "  Tools available via 'go tool <name>' (see go.mod tool section)"
 
-prepush: format lint test build ## Run before pushing (format, lint, test, build)
+# GraphQL codegen lives in internal/vault/graphql. genqlient reads its
+# config from the current directory, so we cd in to keep the invocation
+# self-contained — no -config flag drift between dev and CI.
+GQL_DIR=internal/vault/graphql
+
+gql-generate: ## Regenerate GraphQL client code from .graphql files
+	@echo "Regenerating GraphQL client..."
+	@cd $(GQL_DIR) && go tool genqlient
+
+gql-check: gql-generate ## Fail if generated GraphQL code is out of date
+	@echo "Checking GraphQL generated code is up to date..."
+	@if ! git diff --quiet -- $(GQL_DIR)/generated.go; then \
+		echo "ERROR: $(GQL_DIR)/generated.go is out of date."; \
+		echo "Run 'make gql-generate' and commit the result."; \
+		git diff --stat -- $(GQL_DIR)/generated.go; \
+		exit 1; \
+	fi
+	@echo "✓ GraphQL generated code is up to date"
+
+prepush: format lint gql-check test build ## Run before pushing (format, lint, gql-check, test, build)
 
 postpull: init ## Run after pulling (install tools and download dependencies)
 
