@@ -763,36 +763,18 @@ func (s *SleuthVault) CreateBotApiKey(ctx context.Context, botName, label string
 	if err != nil {
 		return "", mgmt.BotApiKey{}, err
 	}
-	mutation := `mutation CreateBotApiKey($botId: ID!, $label: String) {
-		createBotApiKey(botId: $botId, label: $label) {
-			botKey
-			errors { field messages }
-		}
-	}`
-	vars := map[string]any{"botId": gid, "label": label}
-	var resp struct {
-		Data struct {
-			CreateBotApiKey struct {
-				BotKey string                `json:"botKey"`
-				Errors []sleuthMutationError `json:"errors"`
-			} `json:"createBotApiKey"`
-		} `json:"data"`
-		Errors []sleuthGraphQLError `json:"errors"`
-	}
-	if err := s.executeGraphQLQuery(ctx, mutation, vars, &resp); err != nil {
+	resp, err := vaultgql.CreateBotApiKey(ctx, s.gqlClient(), gid, label)
+	if err != nil {
 		return "", mgmt.BotApiKey{}, err
 	}
-	if err := sleuthErrorsToErr(resp.Errors); err != nil {
-		return "", mgmt.BotApiKey{}, err
-	}
-	if err := sleuthMutationErrorsToErr(resp.Data.CreateBotApiKey.Errors); err != nil {
-		return "", mgmt.BotApiKey{}, err
+	if resp.CreateBotApiKey == nil {
+		return "", mgmt.BotApiKey{}, errors.New("missing createBotApiKey payload in response")
 	}
 	// The GraphQL response omits the per-key metadata (id/maskedToken/
 	// createdAt) since the raw token is the only useful payload at
 	// creation time. Callers that need to display the masked form should
 	// follow up with ListBotApiKeys.
-	return resp.Data.CreateBotApiKey.BotKey, mgmt.BotApiKey{Label: label}, nil
+	return resp.CreateBotApiKey.BotKey, mgmt.BotApiKey{Label: label}, nil
 }
 
 func (s *SleuthVault) ListBotApiKeys(ctx context.Context, botName string) ([]mgmt.BotApiKey, error) {

@@ -4901,7 +4901,7 @@ type Mutation {
   createBot(input: CreateBotInput!): CreateBotMutation
   updateBot(input: UpdateBotInput!): UpdateBotMutation
   deleteBot(id: ID!): DeleteBotMutation
-  createBotApiKey(botId: ID!, label: String): CreateBotApiKeyMutation
+  createBotApiKey(botId: ID!, label: String!): CreateBotApiKeyMutation
   deleteBotApiKey(keyId: ID!): DeleteBotApiKeyMutation
   installSkillToBot(botId: ID!, skillId: ID!): InstallSkillToBotMutation
   uninstallSkillFromBot(botId: ID!, skillId: ID!): UninstallSkillFromBotMutation

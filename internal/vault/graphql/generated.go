@@ -1709,15 +1709,15 @@ func (v *__BotInstalledInput) GetSlug() string { return v.Slug }
 
 // __CreateBotApiKeyInput is used internally by genqlient
 type __CreateBotApiKeyInput struct {
-	BotId string  `json:"botId"`
-	Label *string `json:"label"`
+	BotId string `json:"botId"`
+	Label string `json:"label"`
 }
 
 // GetBotId returns __CreateBotApiKeyInput.BotId, and is useful for accessing the field via an interface.
 func (v *__CreateBotApiKeyInput) GetBotId() string { return v.BotId }
 
 // GetLabel returns __CreateBotApiKeyInput.Label, and is useful for accessing the field via an interface.
-func (v *__CreateBotApiKeyInput) GetLabel() *string { return v.Label }
+func (v *__CreateBotApiKeyInput) GetLabel() string { return v.Label }
 
 // __CreateBotInput is used internally by genqlient
 type __CreateBotInput struct {
@@ -2030,7 +2030,7 @@ func CreateBot(
 
 // The mutation executed by CreateBotApiKey.
 const CreateBotApiKey_Operation = `
-mutation CreateBotApiKey ($botId: ID!, $label: String) {
+mutation CreateBotApiKey ($botId: ID!, $label: String!) {
 	createBotApiKey(botId: $botId, label: $label) {
 		botKey
 	}
@@ -2041,7 +2041,7 @@ func CreateBotApiKey(
 	ctx_ context.Context,
 	client_ graphql.Client,
 	botId string,
-	label *string,
+	label string,
 ) (data_ *CreateBotApiKeyResponse, err_ error) {
 	req_ := &graphql.Request{
 		OpName: "CreateBotApiKey",
