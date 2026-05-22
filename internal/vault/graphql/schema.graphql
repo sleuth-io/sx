@@ -5,10 +5,10 @@ type ManagedBot {
   description: String!
   status: BotsBotStatusChoices!
   id: ID!
-  teams: [Team!]
-  teamMemberships: [BotTeamMembership!]
-  installedSkills: [BotInstalledSkill!]
-  apiKeys: [BotApiKey!]
+  teams: [Team!]!
+  teamMemberships: [BotTeamMembership!]!
+  installedSkills: [BotInstalledSkill!]!
+  apiKeys: [BotApiKey!]!
 }
 
 """
@@ -275,7 +275,7 @@ type OrganizationType implements TeamOrUsersScoped {
 
   """EXPERIMENTAL FIELD, can change at any time."""
   workingHours: WorkingHoursType
-  bots: [ManagedBot!]
+  bots: [ManagedBot!]!
   llmFeaturesEnabled: Boolean!
   repositories(provider: IntegrationProvider, term: String, alwaysIncludeIds: [ID!], before: String, after: String, first: Int, last: Int): RepositoryConnection!
   developerSalaries: [DeveloperSalaryType!]!
@@ -4223,7 +4223,7 @@ enum ChangeRequestStatusEnum {
 }
 
 type Query {
-  bots: [ManagedBot!]
+  bots: [ManagedBot!]!
   bot(slug: String, id: ID): ManagedBot!
   managementSession: ManagementSession!
   myAssetCapabilities: MyAssetCapabilities!

@@ -297,33 +297,25 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 
 // ---- Bot management (via the existing skills.new GraphQL surface) ----
 
+// sleuthBotNode is the in-memory shape used by listBotNodes consumers
+// (ListBots, GetBot, botGIDByName, botSlugByName, botsWithAssetInstalled).
+// Populated from the generated ListBots response — see listBotNodes for
+// the conversion. Only the fields actually read by callers are kept;
+// status and apiKeys were dead fields under the old hand-rolled struct.
 type sleuthBotNode struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Slug        string `json:"slug"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-	Teams       []struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	} `json:"teams"`
-	APIKeys []struct {
-		ID          string    `json:"id"`
-		Label       string    `json:"label"`
-		MaskedToken string    `json:"maskedToken"`
-		CreatedAt   time.Time `json:"createdAt"`
-	} `json:"apiKeys"`
+	ID          string
+	Name        string
+	Slug        string
+	Description string
+	Teams       []string // team names
 }
 
 func sleuthBotToMgmt(node sleuthBotNode) mgmt.Bot {
-	bot := mgmt.Bot{
+	return mgmt.Bot{
 		Name:        node.Name,
 		Description: node.Description,
+		Teams:       node.Teams,
 	}
-	for _, t := range node.Teams {
-		bot.Teams = append(bot.Teams, t.Name)
-	}
-	return bot
 }
 
 // sleuthBotListSoftCap is the count at which we warn about possible
@@ -339,34 +331,30 @@ const sleuthBotListSoftCap = 1000
 // projects these to mgmt.Bot; helpers like botGIDByName scan for a
 // single row.
 func (s *SleuthVault) listBotNodes(ctx context.Context) ([]sleuthBotNode, error) {
-	query := `query ListBots {
-		bots {
-			id
-			name
-			slug
-			description
-			status
-			teams { id name }
+	resp, err := vaultgql.ListBots(ctx, s.gqlClient())
+	if err != nil {
+		return nil, err
+	}
+	nodes := make([]sleuthBotNode, len(resp.Bots))
+	for i, b := range resp.Bots {
+		teams := make([]string, len(b.Teams))
+		for j, t := range b.Teams {
+			teams[j] = t.Name
 		}
-	}`
-	var resp struct {
-		Data struct {
-			Bots []sleuthBotNode `json:"bots"`
-		} `json:"data"`
-		Errors []sleuthGraphQLError `json:"errors"`
+		nodes[i] = sleuthBotNode{
+			ID:          b.Id,
+			Name:        b.Name,
+			Slug:        b.Slug,
+			Description: b.Description,
+			Teams:       teams,
+		}
 	}
-	if err := s.executeGraphQLQuery(ctx, query, nil, &resp); err != nil {
-		return nil, err
-	}
-	if err := sleuthErrorsToErr(resp.Errors); err != nil {
-		return nil, err
-	}
-	if len(resp.Data.Bots) >= sleuthBotListSoftCap {
+	if len(nodes) >= sleuthBotListSoftCap {
 		logger.Get().Warn("ListBots result reached the soft cap; some bots may be truncated by an undeclared server-side limit",
 			"soft_cap", sleuthBotListSoftCap,
-			"returned", len(resp.Data.Bots))
+			"returned", len(nodes))
 	}
-	return resp.Data.Bots, nil
+	return nodes, nil
 }
 
 func (s *SleuthVault) ListBots(ctx context.Context) ([]mgmt.Bot, error) {
