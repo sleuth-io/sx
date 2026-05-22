@@ -1,0 +1,12 @@
+mutation UpdateBot($input: UpdateBotInput!) {
+  updateBot(input: $input) {
+    bot {
+      id
+      name
+    }
+    errors {
+      field
+      messages
+    }
+  }
+}

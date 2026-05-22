@@ -1,0 +1,9 @@
+mutation UninstallSkillFromBot($botId: ID!, $skillId: ID!) {
+  uninstallSkillFromBot(botId: $botId, skillId: $skillId) {
+    success
+    errors {
+      field
+      messages
+    }
+  }
+}

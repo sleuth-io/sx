@@ -1,0 +1,6987 @@
+type ManagedBot {
+  metaCreatedOn: DateTime!
+  name: String!
+  slug: String!
+  description: String!
+  status: BotsBotStatusChoices!
+  id: ID!
+  teams: [Team!]
+  teamMemberships: [BotTeamMembership!]
+  installedSkills: [BotInstalledSkill!]
+  apiKeys: [BotApiKey!]
+}
+
+"""
+The `DateTime` scalar type represents a DateTime
+value as specified by
+[iso8601](https://en.wikipedia.org/wiki/ISO_8601).
+"""
+scalar DateTime
+
+"""An enumeration."""
+enum BotsBotStatusChoices {
+  """Active"""
+  ACTIVE
+}
+
+type Team {
+  name: String!
+  parent: Team
+  provider: IntegrationProvider
+  integrationSlug: String
+  id: ID!
+  members(before: String, after: String, first: Int, last: Int): UserConnection!
+  adminMemberIds: [ID!]
+  integrationDescription: String
+  hasSubteams: Boolean!
+  skillsRepositories: [SkillsRepositoryType!]
+  missingConfiguration: Boolean!
+
+  """
+  URL to the external provider's page for this team (only set for teams synced from an external provider).
+  """
+  externalTeamUrl: String
+  repositories(before: String, after: String, first: Int, last: Int): RepositoryConnection!
+}
+
+enum IntegrationProvider {
+  """Bitbucket"""
+  BITBUCKET
+
+  """Circleci"""
+  CIRCLECI
+
+  """Claude Code"""
+  CLAUDE_CODE
+
+  """Cloudwatch"""
+  CLOUDWATCH
+
+  """Custom Git"""
+  CUSTOM_GIT
+
+  """Datadog"""
+  DATADOG
+
+  """Github"""
+  GITHUB
+
+  """Github Copilot"""
+  GITHUB_COPILOT
+
+  """Incident Io"""
+  INCIDENT_IO
+
+  """Jira"""
+  JIRA
+
+  """Jira Datacenter"""
+  JIRA_DATACENTER
+
+  """Linear"""
+  LINEAR
+
+  """Newrelic"""
+  NEWRELIC
+
+  """Opsgenie"""
+  OPSGENIE
+
+  """Pagerduty"""
+  PAGERDUTY
+
+  """Slack"""
+  SLACK
+
+  """Sleuth Dora"""
+  SLEUTH_DORA
+
+  """Statuspage"""
+  STATUSPAGE
+
+  """Zendesk"""
+  ZENDESK
+}
+
+type UserConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [UserEdge!]!
+  nodes: [User!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+"""
+The Relay compliant `PageInfo` type, containing data necessary to paginate this connection.
+"""
+type PageInfo {
+  """When paginating forwards, are there more items?"""
+  hasNextPage: Boolean!
+
+  """When paginating backwards, are there more items?"""
+  hasPreviousPage: Boolean!
+
+  """When paginating backwards, the cursor to continue."""
+  startCursor: String
+
+  """When paginating forwards, the cursor to continue."""
+  endCursor: String
+}
+
+type UserEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: User!
+}
+
+type User {
+  id: ID!
+
+  """
+  Designates that this user has all permissions without explicitly assigning them.
+  """
+  isSuperuser: Boolean!
+  firstName: String!
+  lastName: String!
+
+  """Designates whether the user can log into this admin site."""
+  isStaff: Boolean!
+
+  """
+  Designates whether this user should be treated as active. Unselect this instead of deleting accounts.
+  """
+  isActive: Boolean!
+  dateJoined: DateTime!
+
+  """150 characters or fewer. Letters, digits and @/./+/-/_ only."""
+  username: String!
+  userOnboardingCompletedAt: DateTime
+  seen: [SeenEventType!]!
+  permissions: UserPermissionsType!
+  setup: UserSetupType!
+  display: String!
+  gravatar: String!
+  role: Role
+  externalUsers: [ExternalUserType!]!
+  missingExternalUserProviders: [String!]!
+  teams: [ShortTeamType!]!
+  organizations: [OrganizationType!]!
+  slackUserId: String
+  hasUsablePassword: Boolean!
+
+  """EXPERIMENTAL FIELD, can change at any time."""
+  workingHours: WorkingHoursType
+  isBeingImpersonated: Boolean!
+  email: String!
+  timezone: String
+  favoriteWorkspaces: [FavoriteWorkspaceType!]!
+  notifications(before: String, after: String, first: Int, last: Int): NotificationConnection!
+  personalTokens(before: String, after: String, first: Int, last: Int): AccessTokenConnection!
+  activeSkillProfile: VaultAssetProfile
+}
+
+type SeenEventType {
+  name: String!
+}
+
+type UserPermissionsType {
+  canChangeOrg: Boolean!
+  canChangeOrgConfig: Boolean!
+  canChangeBilling: Boolean!
+  canManageAssets: Boolean!
+  canCreateAssets: Boolean!
+}
+
+type UserSetupType {
+  confirmedEmail: Boolean!
+  noSlack: Boolean!
+  socialConnections: [String!]!
+}
+
+enum Role {
+  ADMIN
+  ASSET_MANAGER
+  DEV
+  BILLING
+  MEMBER
+}
+
+type ExternalUserType {
+  name: String
+  username: String
+  provider: String!
+  user: User
+  id: ID!
+  email: String
+}
+
+type ShortTeamType {
+  slug: String!
+  name: String!
+}
+
+type OrganizationType implements TeamOrUsersScoped {
+  name: String!
+  slug: String!
+  description: String!
+  url: String!
+  addressLine1: String
+  addressLine2: String
+  addressCity: String
+  addressCountry: String
+  addressState: String
+  addressPostalCode: String
+  owner: User
+  emailDomain: String
+
+  """
+  Default role to assign to users signing up with SSO. Only supports MEMBER, DEV and ADMIN.
+  """
+  defaultRole: Role!
+
+  """URL to the organization's icon"""
+  iconUrl: String
+  orgOnboardingCompletedAt: DateTime
+  teamsOrUsers(
+    term: String = null
+
+    """
+    Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
+    """
+    excludeId: ID = null
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): TeamOrUsersConnection!
+  teamsSyncStatuses: [TeamsSyncStatusType!]!
+  teams(childless: Boolean = false, parent: TeamParentInputType, term: String, alwaysIncludeIds: [ID!] = null, before: String, after: String, first: Int, last: Int): TeamsConnection!
+  team(id: ID!): Team!
+  users(term: String!, excludeTeamSlug: ID = "", userType: UsersType = MEMBERS, userRole: Role = null, ids: [ID!] = null, alwaysIncludeIds: [ID!] = null, before: String, after: String, first: Int, last: Int): UserConnection!
+  externalUsers(excludeLinked: Boolean = false, term: String = null, provider: String = null, before: String, after: String, first: Int, last: Int): ExternalUsersConnection!
+  pendingInvites(before: String, after: String, first: Int, last: Int): InvitationConnection!
+  allowedLoginMethods: [OrgAllowedLoginMethodType!]!
+  flagEnabled(flagName: String!): Boolean!
+  apiKey: String! @deprecated(reason: "Use `accessTokens` field instead.")
+  trialDaysRemaining: Int!
+  isActive: Boolean!
+  timezone: String
+  planType: PlanType!
+  accessTokens(before: String, after: String, first: Int, last: Int): AccessTokenConnection!
+
+  """EXPERIMENTAL FIELD, can change at any time."""
+  workingHours: WorkingHoursType
+  bots: [ManagedBot!]
+  llmFeaturesEnabled: Boolean!
+  repositories(provider: IntegrationProvider, term: String, alwaysIncludeIds: [ID!], before: String, after: String, first: Int, last: Int): RepositoryConnection!
+  developerSalaries: [DeveloperSalaryType!]!
+  skillsSettings: SkillsSettings!
+  skillsDashboard: Dashboard
+  skillsDashboards: [Dashboard!]!
+}
+
+interface TeamOrUsersScoped {
+  teamsOrUsers(
+    term: String = null
+
+    """
+    Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
+    """
+    excludeId: ID = null
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): TeamOrUsersConnection!
+}
+
+type TeamOrUsersConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [TeamOrUserEdge!]!
+  nodes: [TeamOrUser!]!
+}
+
+type TeamOrUserEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: TeamOrUser!
+}
+
+type TeamOrUser {
+  name: String!
+  id: ID!
+  type: TeamOrUserType!
+  emailAddress: String!
+  avatar: String!
+}
+
+enum TeamOrUserType {
+  USER
+  TEAM
+}
+
+type TeamsSyncStatusType {
+  provider: String
+  integrationSlug: String
+  lastSyncAt: DateTime
+  syncInProgress: Boolean!
+}
+
+type TeamsConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [TeamEdge!]!
+  nodes: [Team!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type TeamEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: Team!
+}
+
+input TeamParentInputType {
+  id: ID = null
+  any: Boolean = null
+}
+
+enum UsersType {
+  ALL
+  MEMBERS
+}
+
+type ExternalUsersConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [ExternalUserTypeEdge!]!
+  nodes: [ExternalUserType!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type ExternalUserTypeEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: ExternalUserType!
+}
+
+type InvitationConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [InvitationTypeEdge!]!
+  nodes: [InvitationType!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type InvitationTypeEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: InvitationType!
+}
+
+type InvitationType implements Node {
+  invitedBy: User!
+  email: String!
+  on: DateTime!
+  id: ID!
+}
+
+"""An object with an ID"""
+interface Node {
+  """The ID of the object"""
+  id: ID!
+}
+
+type OrgAllowedLoginMethodType {
+  type: AllowedLoginMethodType!
+  provider: SocialLoginProviderType
+  enabled: Boolean!
+}
+
+enum AllowedLoginMethodType {
+  """Sleuth-managed username and password"""
+  PASSWORD
+
+  """Third-party OAuth-based authentication provider"""
+  PROVIDER
+}
+
+enum SocialLoginProviderType {
+  """Github"""
+  GITHUB
+
+  """Google"""
+  GOOGLE
+
+  """Sleuth Dora"""
+  SLEUTH_DORA
+}
+
+enum PlanType {
+  """Free"""
+  FREE
+
+  """Trial"""
+  TRIAL
+
+  """Enterprise"""
+  ENTERPRISE
+}
+
+type AccessTokenConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [AccessTokenNodeEdge!]!
+  nodes: [AccessTokenNode!]!
+}
+
+type AccessTokenNodeEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: AccessTokenNode!
+}
+
+type AccessTokenNode {
+  id: Int!
+  label: String!
+  token: String!
+  scope: OAuthScopeType!
+  created: String!
+  expires: String!
+  applicationName: String!
+}
+
+enum OAuthScopeType {
+  ALL
+
+  """Register deploy"""
+  REGISTER_DEPLOY
+}
+
+type WorkingHoursType {
+  startTime: Time!
+  duration: String!
+  recurrence: String
+}
+
+"""
+The `Time` scalar type represents a Time value as
+specified by
+[iso8601](https://en.wikipedia.org/wiki/ISO_8601).
+"""
+scalar Time
+
+type RepositoryConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [RepositoryTypeEdge!]!
+  nodes: [RepositoryType!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type RepositoryTypeEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: RepositoryType!
+}
+
+type RepositoryType {
+  provider: String!
+  owner: String!
+  name: String!
+  id: ID
+  issueTeamKeys: String
+  suggestedSkills(status: String): [SuggestedSkill!]
+  monoRepoConfigs: [MonoRepoConfigType!]
+  importedSkills: [Skill!]
+}
+
+"""GraphQL type for suggested skill."""
+type SuggestedSkill {
+  """Suggested skill name"""
+  name: String!
+
+  """Description of what this skill covers"""
+  description: String!
+
+  """How the skill can be used"""
+  usageGuide: String!
+
+  """AI reasoning for why this should be a skill"""
+  reasoning: String
+
+  """Importance rating from 1-10, with 10 being most important"""
+  importance: Int!
+
+  """Importance tier (Critical, Important, Useful, Minor, Trivial)"""
+  importanceTier: String
+
+  """Reasoning for the importance score based on evaluation criteria"""
+  importanceReasoning: String
+  id: ID!
+  status: SuggestedSkillStatusEnum!
+  relatedFiles: [String!]!
+  createdSkillId: String
+}
+
+"""Status of a suggested skill."""
+enum SuggestedSkillStatusEnum {
+  PENDING
+  APPROVED
+  REJECTED
+  CREATED
+}
+
+"""GraphQL type for monorepo configuration"""
+type MonoRepoConfigType {
+  id: ID
+  name: String
+  sourcePathPrefixIncludes: [String]
+  sourcePathPrefixExcludes: [String]
+  issueTeamKeys: [String]
+  issueProvider: Provider
+  teamsUsing: [ID]
+}
+
+enum Provider {
+  """AppDynamics"""
+  APPDYNAMICS
+
+  """AWS"""
+  AWS
+
+  """Azure DevOps"""
+  AZURE
+
+  """Bitbucket"""
+  BITBUCKET
+
+  """Bitbucket Pipelines"""
+  BITBUCKET_PIPELINES
+
+  """Blameless"""
+  BLAMELESS
+
+  """Bugsnag"""
+  BUGSNAG
+
+  """Buildkite"""
+  BUILDKITE
+
+  """CircleCI"""
+  CIRCLECI
+
+  """Claude Code"""
+  CLAUDE_CODE
+
+  """Amazon CloudWatch"""
+  CLOUDWATCH
+
+  """Shortcut"""
+  CLUBHOUSE
+
+  """CodeDeploy"""
+  CODEDEPLOY
+
+  """Custom - any git repository"""
+  CUSTOM_GIT
+
+  """Custom Incident - user provided"""
+  CUSTOM_INCIDENT
+
+  """Custom Metric - user provided"""
+  CUSTOM_METRIC
+
+  """Datadog"""
+  DATADOG
+
+  """Fake Build"""
+  FAKEBUILD
+
+  """Fake Flag"""
+  FAKEFLAG
+
+  """Fake Git"""
+  FAKEGIT
+
+  """FireHydrant"""
+  FIREHYDRANT
+
+  """GitHub"""
+  GITHUB
+
+  """Sleuth Automations for GitHub"""
+  GITHUB_AUTOMATIONS
+
+  """GitHub Copilot"""
+  GITHUB_COPILOT
+
+  """GitHub Enterprise Server"""
+  GITHUB_ENTERPRISE
+
+  """GitLab"""
+  GITLAB
+
+  """Google"""
+  GOOGLE
+
+  """Honeybadger"""
+  HONEYBADGER
+
+  """Incident.io"""
+  INCIDENT_IO
+
+  """Jenkins"""
+  JENKINS
+
+  """Sleuth DORA"""
+  SLEUTH_DORA
+
+  """Jira Cloud"""
+  JIRA
+
+  """Jira Data Center"""
+  JIRA_DATACENTER
+
+  """LaunchDarkly"""
+  LAUNCHDARKLY
+
+  """Linear"""
+  LINEAR
+
+  """Microsoft"""
+  MICROSOFT
+
+  """Microsoft Teams"""
+  MICROSOFT_TEAMS
+
+  """New Relic"""
+  NEWRELIC
+
+  """Opsgenie"""
+  OPSGENIE
+
+  """PagerDuty"""
+  PAGERDUTY
+
+  """Rollbar"""
+  ROLLBAR
+
+  """Rootly"""
+  ROOTLY
+
+  """Sentry Cloud"""
+  SENTRY
+
+  """Sentry Self-Hosted"""
+  SENTRY_SELF_HOSTED
+
+  """ServiceNow"""
+  SERVICENOW
+
+  """Splunk Observability Cloud"""
+  SIGNALFX
+
+  """Slack"""
+  SLACK
+
+  """Statuspage"""
+  STATUSPAGE
+
+  """Email"""
+  EMAIL
+
+  """Zendesk"""
+  ZENDESK
+}
+
+"""GraphQL type for skill."""
+type Skill implements VaultAsset {
+  slug: String!
+  description: String!
+  id: ID!
+  name: String!
+  type: AssetType!
+  latestVersion: String!
+  versionsCount: Int!
+  status: SkillStatusEnum!
+  installations: [VaultAssetInstallation!]!
+
+  """
+  Pending installation requests for this asset visible to the current user
+  """
+  installationRequests: [AssetInstallationRequest!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  versions: [VaultAssetVersion!]!
+  profiles: [VaultAssetProfile!]!
+  isChatDefault: Boolean!
+  usageCount: Int!
+
+  """Token counts for the current version"""
+  tokenCounts: AssetTokenCount
+
+  """Asset source metadata"""
+  source: AssetSource!
+
+  """Current user's permissions for this asset"""
+  permissions: VaultAssetPermissions
+
+  """Files belonging to this asset"""
+  files(
+    """Get files at a specific asset version number"""
+    version: Int
+  ): [SkillFile!]!
+
+  """Repository code contexts where this asset will execute"""
+  codeContexts: [AssetCodeContext!]!
+
+  """Whether an evaluation is currently in progress for this asset"""
+  evaluating: Boolean!
+
+  """
+  Last known context tokens used in orchestration for progress bar display
+  """
+  contextTokensUsed: Int
+
+  """Maximum context tokens available for orchestration"""
+  contextMaxTokens: Int
+  teamId: String
+  teamName: String
+
+  """GID of the repository this skill was imported from"""
+  sourceRepositoryGid: String
+
+  """Name of the repository this skill was imported from"""
+  sourceRepositoryName: String
+
+  """All evals for this skill"""
+  evals: [AssetEval!]
+
+  """Pass rate from latest benchmark (with_skill)"""
+  evalPassRate: Float
+
+  """Delta pass rate from latest benchmark (with_skill - without_skill)"""
+  evalImpact: Float
+
+  """Most recent benchmark with full results"""
+  latestBenchmark: EvalBenchmark
+
+  """Benchmark history (lightweight summaries)"""
+  benchmarks: [EvalBenchmarkSummary!]
+
+  """Description optimization history"""
+  descriptionOptimizations: [DescriptionOptimization!]
+}
+
+enum AssetType {
+  """Skill"""
+  SKILL
+
+  """MCP Server"""
+  MCP
+
+  """Agent"""
+  AGENT
+
+  """Command"""
+  COMMAND
+
+  """Hook"""
+  HOOK
+
+  """Rule"""
+  RULE
+
+  """Claude Code Plugin"""
+  CLAUDE_CODE_PLUGIN
+}
+
+"""Status of an asset."""
+enum SkillStatusEnum {
+  DRAFT
+  PUBLISHED
+  AUTO_PUBLISHED
+  REJECTED
+}
+
+"""Token counts for an asset version."""
+type AssetTokenCount {
+  """Token count using Claude tokenizer"""
+  claudeTokens: Int
+
+  """Token count using OpenAI tiktoken"""
+  openaiTokens: Int
+
+  """Estimated tokens using ~4 chars/token"""
+  estimatedTokens: Int!
+
+  """Frontmatter token count using Claude tokenizer"""
+  claudeFrontmatterTokens: Int
+
+  """Frontmatter token count using OpenAI tiktoken"""
+  openaiFrontmatterTokens: Int
+
+  """Estimated frontmatter tokens using ~4 chars/token"""
+  estimatedFrontmatterTokens: Int
+}
+
+"""Base interface for asset source metadata."""
+interface AssetSource {
+  """Whether this asset is read-only"""
+  isReadonly: Boolean!
+}
+
+"""Per-asset permissions for the current user."""
+type VaultAssetPermissions {
+  canEdit: Boolean!
+  canDelete: Boolean!
+  canPublish: Boolean!
+  canInstallSelf: Boolean!
+  canInstallTeam: Boolean!
+  canInstallOrg: Boolean!
+  canInstallRepo: Boolean!
+  canUninstallSelf: Boolean!
+  canUninstallTeam: Boolean!
+  canUninstallOrg: Boolean!
+  canUninstallRepo: Boolean!
+  canMergePr: Boolean!
+  isAuthor: Boolean!
+  teamAdminOf: [String!]!
+  canRequestInstallTeam: Boolean!
+  canRequestInstallOrg: Boolean!
+  canRequestInstallRepo: Boolean!
+}
+
+type DeveloperSalaryType {
+  annualRate: Decimal!
+  id: String!
+  level: SalaryLevel!
+  currency: Currency!
+}
+
+"""The `Decimal` scalar type represents a python Decimal."""
+scalar Decimal
+
+enum SalaryLevel {
+  """Senior"""
+  SENIOR
+}
+
+enum Currency {
+  """UAE Dirham"""
+  AED
+
+  """Afghani"""
+  AFN
+
+  """Lek"""
+  ALL
+
+  """Armenian Dram"""
+  AMD
+
+  """Netherlands Antillean Guilder"""
+  ANG
+
+  """Kwanza"""
+  AOA
+
+  """Argentine Peso"""
+  ARS
+
+  """Australian Dollar"""
+  AUD
+
+  """Aruban Florin"""
+  AWG
+
+  """Azerbaijanian Manat"""
+  AZN
+
+  """Convertible Mark"""
+  BAM
+
+  """Barbados Dollar"""
+  BBD
+
+  """Taka"""
+  BDT
+
+  """Bulgarian Lev"""
+  BGN
+
+  """Bahraini Dinar"""
+  BHD
+
+  """Burundi Franc"""
+  BIF
+
+  """Bermudian Dollar"""
+  BMD
+
+  """Brunei Dollar"""
+  BND
+
+  """Boliviano"""
+  BOB
+
+  """Mvdol"""
+  BOV
+
+  """Brazilian Real"""
+  BRL
+
+  """Bahamian Dollar"""
+  BSD
+
+  """Ngultrum"""
+  BTN
+
+  """Pula"""
+  BWP
+
+  """Belarusian Ruble (BYR)"""
+  BYR
+
+  """Belarusian Ruble (BYN)"""
+  BYN
+
+  """Belize Dollar"""
+  BZD
+
+  """Canadian Dollar"""
+  CAD
+
+  """Congolese Franc"""
+  CDF
+
+  """WIR Euro"""
+  CHE
+
+  """Swiss Franc"""
+  CHF
+
+  """WIR Franc"""
+  CHW
+
+  """Unidades de fomento"""
+  CLF
+
+  """Chilean Peso"""
+  CLP
+
+  """Yuan Renminbi"""
+  CNY
+
+  """Colombian Peso"""
+  COP
+
+  """Unidad de Valor Real"""
+  COU
+
+  """Costa Rican Colon"""
+  CRC
+
+  """Peso Convertible"""
+  CUC
+
+  """Cuban Peso"""
+  CUP
+
+  """Cape Verde Escudo"""
+  CVE
+
+  """Czech Koruna"""
+  CZK
+
+  """Djibouti Franc"""
+  DJF
+
+  """Danish Krone"""
+  DKK
+
+  """Dominican Peso"""
+  DOP
+
+  """Algerian Dinar"""
+  DZD
+
+  """Egyptian Pound"""
+  EGP
+
+  """Nakfa"""
+  ERN
+
+  """Ethiopian Birr"""
+  ETB
+
+  """Euro"""
+  EUR
+
+  """Fiji Dollar"""
+  FJD
+
+  """Falkland Islands Pound"""
+  FKP
+
+  """Pound Sterling"""
+  GBP
+
+  """Lari"""
+  GEL
+
+  """Ghana Cedi"""
+  GHS
+
+  """Gibraltar Pound"""
+  GIP
+
+  """Dalasi"""
+  GMD
+
+  """Guinea Franc"""
+  GNF
+
+  """Quetzal"""
+  GTQ
+
+  """Guyana Dollar"""
+  GYD
+
+  """Hong Kong Dollar"""
+  HKD
+
+  """Lempira"""
+  HNL
+
+  """Croatian Kuna"""
+  HRK
+
+  """Gourde"""
+  HTG
+
+  """Forint"""
+  HUF
+
+  """Rupiah"""
+  IDR
+
+  """New Israeli Sheqel"""
+  ILS
+
+  """Indian Rupee"""
+  INR
+
+  """Iraqi Dinar"""
+  IQD
+
+  """Iranian Rial"""
+  IRR
+
+  """Iceland Krona"""
+  ISK
+
+  """Jamaican Dollar"""
+  JMD
+
+  """Jordanian Dinar"""
+  JOD
+
+  """Yen"""
+  JPY
+
+  """Kenyan Shilling"""
+  KES
+
+  """Som"""
+  KGS
+
+  """Riel"""
+  KHR
+
+  """Comoro Franc"""
+  KMF
+
+  """North Korean Won"""
+  KPW
+
+  """Won"""
+  KRW
+
+  """Kuwaiti Dinar"""
+  KWD
+
+  """Cayman Islands Dollar"""
+  KYD
+
+  """Tenge"""
+  KZT
+
+  """Kip"""
+  LAK
+
+  """Lebanese Pound"""
+  LBP
+
+  """Sri Lanka Rupee"""
+  LKR
+
+  """Liberian Dollar"""
+  LRD
+
+  """Loti"""
+  LSL
+
+  """Lithuanian Litas"""
+  LTL
+
+  """Latvian Lats"""
+  LVL
+
+  """Libyan Dinar"""
+  LYD
+
+  """Moroccan Dirham"""
+  MAD
+
+  """Moldovan Leu"""
+  MDL
+
+  """Malagasy Ariary"""
+  MGA
+
+  """Denar"""
+  MKD
+
+  """Kyat"""
+  MMK
+
+  """Tugrik"""
+  MNT
+
+  """Pataca"""
+  MOP
+
+  """Ouguiya"""
+  MRO
+
+  """Mauritius Rupee"""
+  MUR
+
+  """Rufiyaa"""
+  MVR
+
+  """Kwacha"""
+  MWK
+
+  """Mexican Peso"""
+  MXN
+
+  """Mexican Unidad de Inversion (UDI)"""
+  MXV
+
+  """Malaysian Ringgit"""
+  MYR
+
+  """Mozambique Metical"""
+  MZN
+
+  """Namibia Dollar"""
+  NAD
+
+  """Naira"""
+  NGN
+
+  """Cordoba Oro"""
+  NIO
+
+  """Norwegian Krone"""
+  NOK
+
+  """Nepalese Rupee"""
+  NPR
+
+  """New Zealand Dollar"""
+  NZD
+
+  """Rial Omani"""
+  OMR
+
+  """Balboa"""
+  PAB
+
+  """Nuevo Sol"""
+  PEN
+
+  """Kina"""
+  PGK
+
+  """Philippine Peso"""
+  PHP
+
+  """Pakistan Rupee"""
+  PKR
+
+  """Zloty"""
+  PLN
+
+  """Guarani"""
+  PYG
+
+  """Qatari Rial"""
+  QAR
+
+  """New Romanian Leu"""
+  RON
+
+  """Serbian Dinar"""
+  RSD
+
+  """Russian Ruble"""
+  RUB
+
+  """Rwanda Franc"""
+  RWF
+
+  """Saudi Riyal"""
+  SAR
+
+  """Solomon Islands Dollar"""
+  SBD
+
+  """Seychelles Rupee"""
+  SCR
+
+  """Sudanese Pound"""
+  SDG
+
+  """Swedish Krona"""
+  SEK
+
+  """Singapore Dollar"""
+  SGD
+
+  """Saint Helena Pound"""
+  SHP
+
+  """Leone"""
+  SLL
+
+  """Somali Shilling"""
+  SOS
+
+  """Surinam Dollar"""
+  SRD
+
+  """South Sudanese Pound"""
+  SSP
+
+  """Dobra"""
+  STD
+
+  """El Salvador Colon"""
+  SVC
+
+  """Syrian Pound"""
+  SYP
+
+  """Lilangeni"""
+  SZL
+
+  """Baht"""
+  THB
+
+  """Somoni"""
+  TJS
+
+  """Turkmenistan New Manat"""
+  TMT
+
+  """Tunisian Dinar"""
+  TND
+
+  """Pa’anga"""
+  TOP
+
+  """Turkish Lira"""
+  TRY
+
+  """Trinidad and Tobago Dollar"""
+  TTD
+
+  """New Taiwan Dollar"""
+  TWD
+
+  """Tanzanian Shilling"""
+  TZS
+
+  """Hryvnia"""
+  UAH
+
+  """Uganda Shilling"""
+  UGX
+
+  """US Dollar"""
+  USD
+
+  """US Dollar (Next day)"""
+  USN
+
+  """US Dollar (Same day)"""
+  USS
+
+  """Uruguay Peso en Unidades Indexadas (URUIURUI)"""
+  UYI
+
+  """Peso Uruguayo"""
+  UYU
+
+  """Uzbekistan Sum"""
+  UZS
+
+  """Bolivar"""
+  VEF
+
+  """Dong"""
+  VND
+
+  """Vatu"""
+  VUV
+
+  """Tala"""
+  WST
+
+  """CFA Franc BEAC"""
+  XAF
+
+  """Silver"""
+  XAG
+
+  """Gold"""
+  XAU
+
+  """Bond Markets Unit European Composite Unit (EURCO)"""
+  XBA
+
+  """Bond Markets Unit European Monetary Unit (E.M.U.-6)"""
+  XBB
+
+  """Bond Markets Unit European Unit of Account 9 (E.U.A.-9)"""
+  XBC
+
+  """Bond Markets Unit European Unit of Account 17 (E.U.A.-17)"""
+  XBD
+
+  """East Caribbean Dollar"""
+  XCD
+
+  """SDR (Special Drawing Right)"""
+  XDR
+
+  """UIC-Franc"""
+  XFU
+
+  """CFA Franc BCEAO"""
+  XOF
+
+  """Palladium"""
+  XPD
+
+  """CFP Franc"""
+  XPF
+
+  """Platinum"""
+  XPT
+
+  """Sucre"""
+  XSU
+
+  """Codes specifically reserved for testing purposes"""
+  XTS
+
+  """ADB Unit of Account"""
+  XUA
+
+  """Yemeni Rial"""
+  YER
+
+  """Rand"""
+  ZAR
+
+  """Zambian Kwacha"""
+  ZMW
+
+  """Zimbabwe Dollar"""
+  ZWL
+}
+
+"""Organization-level settings for skills."""
+type SkillsSettings {
+  """
+  Whether to automatically publish skills that meet the confidence threshold
+  """
+  autoPublishEnabled: Boolean!
+
+  """Minimum confidence percentage required for auto-publishing (0-100)"""
+  autoPublishThreshold: Int!
+
+  """
+  Whether skill PRs should be automatically created based on code changes in GitHub PRs
+  """
+  autoCreateSkillPullRequests: Boolean!
+}
+
+type Dashboard implements Assessable & UserScoped & TeamOrUsersScoped & Commentable {
+  name: String!
+  start: DateTime!
+  end: DateTime!
+  owner: User
+  workspace: Workspace!
+  assessment: DelayedAssessment!
+  users(term: String = "", before: String, after: String, first: Int, last: Int): UserConnection!
+  teamsOrUsers(
+    term: String = null
+
+    """
+    Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
+    """
+    excludeId: ID = null
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): TeamOrUsersConnection!
+  comment(id: ID!): Comment
+  comments(before: String, after: String, first: Int, last: Int): CommentConnection!
+  commentsCount: Int!
+  commentAuthors(before: String, after: String, first: Int, last: Int): UserConnection!
+  id: ID!
+  createdOn: DateTime!
+  modifiedOn: DateTime!
+  section(id: ID!): Section
+  sections(before: String, after: String, first: Int, last: Int): SectionConnection!
+  highlightWidget: Widget
+}
+
+interface Assessable {
+  assessment: DelayedAssessment!
+}
+
+type DelayedAssessment implements Delayable {
+  inProgress: Boolean!
+  instance: Assessment
+}
+
+interface Delayable {
+  inProgress: Boolean!
+}
+
+type Assessment {
+  scoreByAi: Score!
+  score: Score
+  summary: TextContent!
+}
+
+enum Score {
+  """Bad"""
+  BAD
+
+  """OK"""
+  OK
+
+  """Good"""
+  GOOD
+}
+
+type TextContent {
+  html: HTMLString!
+  markdown: String!
+}
+
+"""
+The `HTMLString` scalar type represents HTML data. It is an extension of the String scalar type.
+"""
+scalar HTMLString
+
+interface UserScoped {
+  users(term: String = "", before: String, after: String, first: Int, last: Int): UserConnection!
+}
+
+interface Commentable {
+  comment(id: ID!): Comment
+  comments(before: String, after: String, first: Int, last: Int): CommentConnection!
+  commentsCount: Int!
+  commentAuthors(before: String, after: String, first: Int, last: Int): UserConnection!
+}
+
+type CommentConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [CommentEdge!]!
+  nodes: [Comment!]!
+}
+
+type CommentEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: Comment!
+}
+
+type Workspace implements UserScoped & TeamOrUsersScoped {
+  name: String!
+
+  """Every org has one global workspace, this workspace cannot be deleted."""
+  isGlobal: Boolean!
+  marker: WorkspaceMarkerField
+  reviews(published: Boolean, term: String, reviewType: ReviewType = REVIEW, before: String, after: String, first: Int, last: Int): ReviewConnection!
+  users(term: String = "", before: String, after: String, first: Int, last: Int): UserConnection!
+  teamsOrUsers(
+    term: String = null
+
+    """
+    Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
+    """
+    excludeId: ID = null
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): TeamOrUsersConnection!
+  id: ID!
+  review(id: ID!): Review
+  survey(id: ID!): Survey
+  surveys(published: Boolean, term: String, before: String, after: String, first: Int, last: Int): SurveyConnection!
+  dashboard(id: ID!): Dashboard
+  dashboards(published: Boolean, term: String, before: String, after: String, first: Int, last: Int): DashboardConnection!
+  chain(id: ID, reviewId: ID): ReviewChain
+  parameterOptions(
+    """
+    The name of the field for which we need the list of options. Valid values: TAG_NAME, TAG_OPERATOR, TAG_VALUE
+    """
+    fieldName: String!
+
+    """Search term to filter the options."""
+    term: String
+
+    """
+    For some fields we need to know the values of the previous fields. This is a list of those values. Example: for a list of tag operators we need to know the tag name.
+    """
+    precursorValues: [String]
+
+    """
+    These are the values already selected for this field. We will return a subset of these values, limiting them to the valid ones.
+    """
+    selectedValues: [String]
+
+    """
+    A PQL fragment (e.g. `issue.in_progress`) that will be used to limit which tags are available for querying. Can also be ˙ALL˙ if we are looking for tag-names.
+    """
+    pqlFragmentName: String!
+    includeRelatedTags: Boolean
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): ParameterValueOptionConnection!
+  workCategoryBuckets(defaultToGlobal: Boolean = false): [NamedWorkCategoryGqlType!]
+  workPlanningBuckets(defaultToGlobal: Boolean = false): [NamedWorkPlanningGqlType!]
+}
+
+type WorkspaceMarkerField {
+  type: WorkspaceMarkerType
+  name: String!
+  color: String
+}
+
+enum WorkspaceMarkerType {
+  """Icon"""
+  ICON
+
+  """Emoji"""
+  EMOJI
+}
+
+type ReviewConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [ReviewEdge!]!
+  nodes: [Review!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type ReviewEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: Review!
+}
+
+type Review implements Assessable & UserScoped & TeamOrUsersScoped & Commentable {
+  name: String!
+  start: DateTime!
+  end: DateTime!
+  owner: User
+  workspace: Workspace!
+  reviewType: ReviewType!
+  publishedOn: DateTime
+  inProgressOn: DateTime
+  dueOn: DateTime!
+  sectionSubmissionDeadline: DateTime
+  status: ReviewStatus!
+  onlyOwnerCanChangeStatus: Boolean!
+  requireApproval: Boolean!
+  comments(before: String, after: String, first: Int, last: Int): CommentConnection!
+  assessment: DelayedAssessment!
+  users(term: String = "", before: String, after: String, first: Int, last: Int): UserConnection!
+  teamsOrUsers(
+    term: String = null
+
+    """
+    Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
+    """
+    excludeId: ID = null
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): TeamOrUsersConnection!
+  comment(id: ID!): Comment
+  commentsCount: Int!
+  commentAuthors(before: String, after: String, first: Int, last: Int): UserConnection!
+  id: ID!
+  createdOn: DateTime!
+  modifiedOn: DateTime!
+  section(id: ID!): Section
+  sections(before: String, after: String, first: Int, last: Int): SectionConnection!
+  highlightWidget: Widget
+  previousReview: Review
+  nextReview: Review
+  pql(query: String!): PqlResponse!
+  chain: ReviewChain
+  recipientsCount: Int!
+}
+
+enum ReviewType {
+  """Review"""
+  REVIEW
+
+  """Survey"""
+  SURVEY
+
+  """Dashboard"""
+  DASHBOARD
+}
+
+enum ReviewStatus {
+  """Draft"""
+  DRAFT
+
+  """In progress"""
+  IN_PROGRESS
+
+  """Published"""
+  PUBLISHED
+}
+
+type Section implements Assessable & Commentable {
+  name: String!
+  position: Int!
+  review: Review!
+  hasAssessment: Boolean!
+  assessmentSummaryIsMandatory: Boolean!
+  assessmentScoreIsMandatory: Boolean!
+  status: SectionStatus!
+  comments(before: String, after: String, first: Int, last: Int): CommentConnection!
+  assessment: DelayedAssessment!
+  comment(id: ID!): Comment
+  commentsCount: Int!
+  commentAuthors(before: String, after: String, first: Int, last: Int): UserConnection!
+  id: ID!
+  widget(id: ID!): Widget
+  widgets(before: String, after: String, first: Int, last: Int): WidgetConnection!
+  parameterOptions(
+    """Widget type slug."""
+    slug: String!
+
+    """
+    The name of the field for which we need the list of options. Valid values depend on the widget type.
+    """
+    fieldName: String!
+
+    """Search term to filter the options."""
+    term: String
+
+    """
+    For some fields we need to know the values of the previous fields. This is a list of those values. Example: for a list of tag operators we need to know the tag name.
+    """
+    precursorValues: [String]
+
+    """
+    These are the values already selected for this field. We will return a subset of these values, limiting them to the valid ones.
+    """
+    selectedValues: [String]
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): ParameterValueOptionConnection!
+  owners(before: String, after: String, first: Int, last: Int): UserConnection!
+}
+
+enum SectionStatus {
+  """Draft"""
+  DRAFT
+
+  """Submitted"""
+  SUBMITTED
+
+  """Approved"""
+  APPROVED
+}
+
+type Widget implements Assessable & TeamOrUsersScoped {
+  name: String!
+  position: Int!
+  section: Section!
+  widgetType: WidgetType!
+  valueType: String!
+  parameters: JSONString!
+  assessment: DelayedAssessment!
+  teamsOrUsers(
+    term: String = null
+
+    """
+    Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
+    """
+    excludeId: ID = null
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): TeamOrUsersConnection!
+  id: ID!
+  createdOn: DateTime!
+  modifiedOn: DateTime!
+  dataModifiedOn: DateTime
+  value(type: String, start: DateTime, end: DateTime, userOrTeamIds: [ID!], pqlFilters: [PQLFilterInput!]): DelayedWidgetValue!
+  renderer: FormatRenderer!
+  size: WidgetSize!
+  scope: ScopeType!
+}
+
+"""
+Allows use of a JSON String for input / output from the GraphQL schema.
+
+Use of this type is *not recommended* as you lose the benefits of having a defined, static
+schema (one of the key benefits of GraphQL).
+"""
+scalar JSONString
+
+type DelayedWidgetValue implements Delayable {
+  inProgress: Boolean!
+  instance: WidgetValue
+  valueContextId: String!
+  error: WidgetError
+  sourceData(periodIndex: Int! = 0, category: String): SourceData!
+}
+
+type WidgetError {
+  message: String!
+  settingsPage: SettingsPage
+}
+
+enum SettingsPage {
+  INTEGRATION_AUTHS
+  INTEGRATION_AUTH_SCOPING
+  ORG_SALARIES
+  PQL_BUCKETS
+  WIDGET_CONFIG
+}
+
+type SourceData {
+  columns: [SourceDataColumn!]!
+  values: [[GenericScalar]!]!
+  listedObjectType: SourceDataObjectType!
+}
+
+type SourceDataColumn {
+  name: String!
+  type: DataType!
+  unit: Unit
+}
+
+enum DataType {
+  """Text"""
+  TEXT
+
+  """Number"""
+  NUMBER
+
+  """Date"""
+  DATE
+
+  """DateTime"""
+  DATETIME
+
+  """Currency"""
+  CURRENCY
+
+  """Link"""
+  LINK
+}
+
+enum Unit {
+  """Percentage"""
+  PERCENTAGE
+
+  """Seconds"""
+  SECONDS
+
+  """UTC Timestamp"""
+  UTC_TIMESTAMP
+
+  """Working hours"""
+  WORKING_HOURS
+
+  """Count"""
+  COUNT
+
+  """Currency"""
+  CURRENCY
+
+  """Unknown"""
+  UNKNOWN
+}
+
+"""
+The `GenericScalar` scalar type represents a generic
+GraphQL scalar value that could be:
+String, Boolean, Int, Float, List or Object.
+"""
+scalar GenericScalar
+
+enum SourceDataObjectType {
+  ISSUE
+  INCIDENT
+  PULL_REQUEST
+  SURVEY_ANSWER
+  SUPPORT_TICKET
+  UNKNOWN
+}
+
+"""Single filter for use in PQL queries."""
+input PQLFilterInput {
+  tagName: String!
+  operator: PQLOperator!
+  tagValue: PQLFieldValue!
+}
+
+"""
+The `TagOperatorType` scalar type is used for PQL queries. Valid values are `:`, `:!`, `:<`, `:>`.
+"""
+scalar PQLOperator
+
+"""
+Used for filtering in PQL queries. Can be of one of the following types `String`, `List[String]`, `Float`, `Int`. Timedeltas are passed as `String`, their full format is `"10d:20h:3:m:9s"`, which means 10 days, 20 hours, 3 minutes, 9 seconds. But they can also be as short as 1 time-unit, example: `5h` which means 5 hours.
+"""
+scalar PQLFieldValue
+
+enum FormatRenderer {
+  """HTML"""
+  HTML
+
+  """Bar chart"""
+  BAR_CHART
+
+  """Sorted bar chart"""
+  SORTED_BAR_CHART
+
+  """Bar with line chart"""
+  BAR_WITH_LINE_CHART
+
+  """Line chart"""
+  LINE_CHART
+
+  """Doughnut chart"""
+  DOUGHNUT_CHART
+
+  """Pie chart"""
+  PIE_CHART
+
+  """Pie chart (top 5)"""
+  PIE_CHART_TOP_FIVE
+
+  """Radar chart"""
+  RADAR_CHART
+
+  """Stacked bar chart"""
+  STACKED_BAR_CHART
+
+  """Stacked Line chart"""
+  STACKED_LINE_CHART
+
+  """Priorities"""
+  PRIORITIES
+
+  """Emoji"""
+  EMOJI
+
+  """Traffic light"""
+  TRAFFIC_LIGHT
+
+  """Weather"""
+  WEATHER
+
+  """Rating table"""
+  RATING_TABLE
+
+  """Percentage table"""
+  PERCENTAGE_TABLE
+
+  """Survey text answer list"""
+  SURVEY_TEXT_ANSWER_LIST
+
+  """Survey rating answer list"""
+  SURVEY_RATING_ANSWER_LIST
+
+  """Dora"""
+  DORA
+
+  """Horizontal proportion chart"""
+  HORIZONTAL_PROPORTION_CHART
+
+  """Timeline"""
+  TIMELINE
+
+  """KTLO"""
+  KTLO
+
+  """Horizontal bar chart"""
+  HORIZONTAL_BAR_CHART
+}
+
+enum WidgetSize {
+  """Small"""
+  SMALL
+
+  """Medium"""
+  MEDIUM
+
+  """Large"""
+  LARGE
+}
+
+type ScopeType {
+  teamsAndUsers: [TeamOrUser!]!
+  source: ScopeSource!
+}
+
+enum ScopeSource {
+  WIDGET
+  REVIEW
+  WORKSPACE
+}
+
+type WidgetConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [WidgetEdge!]!
+  nodes: [Widget!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type WidgetEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: Widget!
+}
+
+type ParameterValueOptionConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [ParameterValueOptionTypeEdge!]!
+  nodes: [ParameterValueOptionType!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type ParameterValueOptionTypeEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: ParameterValueOptionType!
+}
+
+type ParameterValueOptionType {
+  value: String!
+  label: String!
+  pqlFragmentName: String
+
+  """
+  This field holds additional metadata for the option. It is different for different parameter types.
+  """
+  meta: JSONString
+}
+
+type SectionConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [SectionEdge!]!
+  nodes: [Section!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type SectionEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: Section!
+}
+
+type PqlResponse {
+  intValue: Float
+  floatValue: Float
+  strValue: String
+  listValue: [String!]
+  filters: [QueryFilter]!
+}
+
+type QueryFilter {
+  name: String
+}
+
+type ReviewChain {
+  id: ID!
+  templateIconPath: String
+  chainReviews(
+    """Include the top review (review with no next review) in the chain"""
+    includeTopLink: Boolean = false
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): ReviewConnection!
+}
+
+type Survey implements Assessable & UserScoped & TeamOrUsersScoped & Commentable {
+  name: String!
+  start: DateTime!
+  end: DateTime!
+  owner: User
+  workspace: Workspace!
+  publishedOn: DateTime
+  inProgressOn: DateTime
+  dueOn: DateTime!
+  status: ReviewStatus!
+  onlyOwnerCanChangeStatus: Boolean!
+  comments(before: String, after: String, first: Int, last: Int): CommentConnection!
+  assessment: DelayedAssessment!
+  users(term: String = "", before: String, after: String, first: Int, last: Int): UserConnection!
+  teamsOrUsers(
+    term: String = null
+
+    """
+    Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
+    """
+    excludeId: ID = null
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): TeamOrUsersConnection!
+  comment(id: ID!): Comment
+  commentsCount: Int!
+  commentAuthors(before: String, after: String, first: Int, last: Int): UserConnection!
+  id: ID!
+  createdOn: DateTime!
+  modifiedOn: DateTime!
+  section(id: ID!): Section
+  sections(before: String, after: String, first: Int, last: Int): SectionConnection!
+  highlightWidget: Widget
+  previousSurvey: Survey
+  nextSurvey: Survey
+  chain: SurveyChain
+  recipientsCount: Int!
+}
+
+type SurveyChain {
+  id: ID!
+  templateIconPath: String
+  chainReviews(
+    """Include the top survey (survey with no next survey) in the chain"""
+    includeTopLink: Boolean = false
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): SurveyConnection!
+}
+
+type SurveyConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [SurveyEdge!]!
+  nodes: [Survey!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type SurveyEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: Survey!
+}
+
+type DashboardConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [DashboardEdge!]!
+  nodes: [Dashboard!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type DashboardEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: Dashboard!
+}
+
+type NamedWorkCategoryGqlType {
+  id: String!
+  bucketKey: NamedWorkCategory!
+  workspace: Workspace!
+  pqlFilters: [PQLFilter!]!
+  pql: String!
+}
+
+"""
+Basic bucket keys are: BUGS, DEVEX, FEATURE, KTLO, SUPPORT, TECH_DEBT. But you can also create your own.
+"""
+scalar NamedWorkCategory
+
+"""Single filter for use in PQL queries."""
+type PQLFilter {
+  tagName: String!
+  operator: PQLOperator!
+  tagValue: PQLFieldValue!
+}
+
+type NamedWorkPlanningGqlType {
+  id: String!
+  bucketKey: NamedWorkPlanningType!
+  workspace: Workspace!
+  pqlFilters: [PQLFilter!]!
+  pql: String!
+}
+
+enum NamedWorkPlanningType {
+  """Planned Work"""
+  PLANNED_WORK
+
+  """Unplanned Work"""
+  UNPLANNED_WORK
+}
+
+type FavoriteWorkspaceType {
+  id: String!
+  name: String!
+}
+
+type NotificationConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [NotificationEdge!]!
+  nodes: [Notification!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type NotificationEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: Notification!
+}
+
+type Notification {
+  integrationAuth: IntegrationAuthenticationType
+  recipient: User
+  event: NotificationEvent!
+  id: ID!
+  provider: NotificationProviderType!
+  createdOn: DateTime!
+  modifiedOn: DateTime!
+}
+
+type IntegrationAuthenticationType {
+  id: ID!
+  org: OrganizationType!
+  description: String!
+
+  """
+  Be careful when changing this. Some relationships are referenced by slugs as strings.
+  """
+  slug: String!
+  provider: String!
+  url: String
+  readOnly: Boolean!
+  type: IntegrationAuthenticationConnectionType!
+  name: String
+  username: String
+  regionName: String
+  realm: String
+  apiClientName: String
+  extraHeaders: String
+  camouflagedApiToken: String!
+  camouflagedApiSecondaryToken: String!
+  disconnectPath: String
+  userLabel: String
+  canBeEdited: Boolean!
+}
+
+enum IntegrationAuthenticationConnectionType {
+  """Uses an API key to authenticate the integration"""
+  API_KEY
+
+  """Users a SocialAuthUser to authenticate the integration"""
+  OAUTH
+
+  """Uses a provider-specific app to authenticate the integration"""
+  APP
+}
+
+enum NotificationEvent {
+  """User Mention"""
+  AT_MENTION
+
+  """Review Published"""
+  REVIEW_PUBLISHED
+
+  """Review Overdue"""
+  REVIEW_OVERDUE
+
+  """Section Due Soon"""
+  SECTION_DUE_SOON
+
+  """Section Submitted"""
+  SECTION_SUBMITTED
+
+  """Your Review State Changed"""
+  YOUR_REVIEW_STATE_CHANGED
+
+  """Your Review Section Changed"""
+  YOUR_REVIEW_SECTION_CHANGED
+
+  """All Sections Submitted"""
+  ALL_SECTIONS_SUBMITTED
+
+  """Section Rejected"""
+  SECTION_REJECTED
+
+  """Section Approved"""
+  SECTION_APPROVED
+
+  """Section Commented On"""
+  SECTION_COMMENTED_ON
+
+  """Your Section Submitted"""
+  YOUR_SECTION_SUBMITTED
+
+  """Section Assigned"""
+  SECTION_ASSIGNED
+
+  """Section Unassigned"""
+  SECTION_UNASSIGNED
+
+  """Section Deleted"""
+  SECTION_DELETED
+
+  """Review Due Date Changed"""
+  REVIEW_DUE_DATE_CHANGED
+
+  """Review Scope Changed"""
+  REVIEW_SCOPE_CHANGED
+
+  """Review Stopped"""
+  REVIEW_STOPPED
+}
+
+enum NotificationProviderType {
+  """Email"""
+  EMAIL
+
+  """Slack"""
+  SLACK
+}
+
+"""
+GraphQL type for team-repository configuration with optional mono_repo_config
+"""
+type SkillsRepositoryType {
+  repositoryId: String!
+  monoRepoConfigId: ID
+}
+
+"""
+A team a bot belongs to, with the count of assets installed to that team.
+"""
+type BotTeamMembership {
+  team: Team!
+  assetCount: Int!
+}
+
+"""Lightweight skill info for display on bot detail page."""
+type BotInstalledSkill {
+  id: ID!
+  name: String!
+  slug: String!
+  assetType: String!
+  description: String!
+  createdAt: DateTime!
+  usageCount: Int!
+}
+
+"""An API key for a bot, showing masked token for identification."""
+type BotApiKey {
+  id: ID!
+  label: String!
+  maskedToken: String!
+  createdAt: DateTime!
+}
+
+type Comment {
+  author: User
+  id: ID!
+  text: TextContent!
+  createdOn: DateTime!
+  updatedOn: DateTime!
+}
+
+type Reaction {
+  emoji: String!
+  author: User
+  id: ID!
+}
+
+interface WidgetLegend {
+  type: String
+}
+
+type WorkEffortLegend implements WidgetLegend {
+  type: String
+  items: [WorkEffortLegendItem!]!
+}
+
+type WorkEffortLegendItem {
+  categoryName: String!
+
+  """Number of seconds spent working on this category."""
+  timeSpent: Int!
+  avgHourlySalary: DecimalRoundedTo2
+  currencySign: String
+  moneySpent: Int
+
+  """Percentage will be `null` when the total time of all issues is 0."""
+  percentage: FloatRoundedTo1
+}
+
+"""The `Decimal` scalar rounded to 2 decimal places."""
+scalar DecimalRoundedTo2
+
+"""
+The `Float` scalar rounded to 1 decimal places. `Float`: [IEEE 754](http://en.wikipedia.org/wiki/IEEE_floating_point).
+"""
+scalar FloatRoundedTo1
+
+type DoraLegend implements WidgetLegend {
+  type: String
+  items: [DoraLegendItem!]!
+}
+
+type DoraLegendItem {
+  """Will be one of `Failure rate`, `Frequency`, `Lead time`, `MTTR`"""
+  categoryName: String!
+  rank: DoraRanking
+}
+
+enum DoraRanking {
+  LOW
+  MEDIUM
+  HIGH
+  ELITE
+}
+
+type WidgetType {
+  name: String!
+  version: Int!
+  description: String!
+  slug: String!
+  active: Boolean!
+  thumbnailUrl: String
+  images: [WidgetTypeImage!]!
+  parameterSchema: String!
+  defaultValues(workspaceId: ID!): String!
+  publishedOn: DateTime!
+  supportedValueTypes: [WidgetValueType!]!
+  teamOrUserAware: Boolean!
+  namePlaceholder: String!
+  filterPqlFragment: String
+  isSurveyQuestionWidget: Boolean!
+  isSurveyWidget: Boolean!
+  externalConfiguration: [NamedBucketOptions!]
+  isSkillsWidget: Boolean!
+}
+
+type WidgetValueType {
+  name: String!
+  format: WidgetValueFormat!
+  default: Boolean!
+  defaultRenderer: FormatRenderer!
+  formatRenderers: [FormatRenderer!]!
+}
+
+enum WidgetValueFormat {
+  """Text"""
+  TEXT
+
+  """Number"""
+  NUMBER
+
+  """Categories"""
+  CATEGORIES
+
+  """Combined"""
+  COMBINED
+
+  """Grouped categories"""
+  GROUPED_CATEGORIES
+
+  """Percentage categories"""
+  PERCENTAGE_CATEGORIES
+
+  """Epics timeline"""
+  EPICS_TIMELINE_CATEGORIES
+
+  """Priorities"""
+  PRIORITIES
+
+  """Rating"""
+  RATING
+
+  """Dora"""
+  DORA
+
+  """Rating wth previous"""
+  RATING_WITH_PREVIOUS
+
+  """Rating table"""
+  RATING_TABLE
+
+  """Rating table"""
+  SURVEY_TEXT_ANSWER_LIST
+
+  """Rating table"""
+  SURVEY_RATING_ANSWER_LIST
+
+  """KTLO"""
+  KTLO
+}
+
+enum NamedBucketOptions {
+  """Work Category"""
+  WORK_CATEGORY
+
+  """Work Type"""
+  WORK_TYPE
+}
+
+type WidgetTypeImage {
+  url: String!
+  description: String!
+  isHero: Boolean!
+}
+
+interface WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+}
+
+type ExportLink {
+  url: String!
+  format: ExportFormat!
+}
+
+enum ExportFormat {
+  """XLSX"""
+  XLSX
+}
+
+interface BaseNoteGqlType {
+  msg: String!
+}
+
+type TextWidgetValue implements WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+  content: TextContent
+  details: GenericScalar
+}
+
+type SurveyQuestionTextWidgetValue implements WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+  responseSummary: String!
+  responses: [String!]!
+}
+
+type SurveyQuestionRatingWidgetValue implements WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+  responseSummary: String!
+  responses: [String!]!
+  averageRating: FloatRoundedTo2!
+}
+
+"""
+The `Float` scalar rounded to 2 decimal places. `Float`: [IEEE 754](http://en.wikipedia.org/wiki/IEEE_floating_point).
+"""
+scalar FloatRoundedTo2
+
+type PrioritiesWidgetValue implements WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+  priorities: [PriorityWidgetValueData!]!
+  nextCyclePriorities: [PriorityWidgetValueData!]!
+}
+
+type PriorityWidgetValueData {
+  priority: TextContent!
+  status: PriorityStatus
+}
+
+enum PriorityStatus {
+  """✅ Done"""
+  DONE
+
+  """👍 On track"""
+  ON_TRACK
+
+  """⚠️ Off track"""
+  OFF_TRACK
+
+  """🚫 Blocked"""
+  BLOCKED
+
+  """🙅‍♀️ Deprioritized"""
+  DEPRIORITIZED
+
+  """➕ Newly added"""
+  NEWLY_ADDED
+}
+
+type NumberWidgetValue implements WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+  number: Float
+  unit: Unit!
+  summary: String
+}
+
+type CategoriesWidgetValue implements WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+  renderHints: CategoriesWidgetRenderHints
+  title: String!
+  labels: [String!]
+  values: [Float]!
+  unit: Unit!
+  xAxisLabel: String
+  yAxisLabel: String
+  summary: String
+}
+
+type CategoriesWidgetRenderHints {
+  renderPercentages: Boolean
+  xAxisLabel: String
+  yAxisLabel: String
+  rawDateLabels: Boolean
+}
+
+type CombinedCategoriesWidgetValue implements WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+  renderHints: GroupedCategoriesWidgetRenderHints
+  title: String!
+  labels: [String!]
+  values: [CombinedCategoryDataset!]!
+  xAxisLabel: String
+  yAxisLabel: String
+  unit: Unit!
+}
+
+type GroupedCategoriesWidgetRenderHints {
+  renderPercentages: Boolean
+  xAxisLabel: String
+  yAxisLabel: String
+  rawDateLabels: Boolean
+}
+
+type CombinedCategoryDataset {
+  category: String!
+  items: [Float!]!
+  negative: Boolean!
+  type: CombinedChartType!
+}
+
+enum CombinedChartType {
+  """Line"""
+  LINE
+
+  """Bar"""
+  BAR
+}
+
+type GroupedCategoriesWidgetValue implements WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+  renderHints: GroupedCategoriesWidgetRenderHints
+  title: String!
+  labels: [String!]
+  values: [CategoryDataset!]!
+  xAxisLabel: String
+  yAxisLabel: String
+  unit: Unit!
+  legendsForPeriods: [WidgetLegend!]
+  summary: String
+}
+
+type CategoryDataset {
+  category: String!
+  items: [Float!]!
+}
+
+type PercentageCategoriesWidgetValue implements WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+  renderHints: CategoriesWidgetRenderHints
+  title: String!
+  labels: [String!]
+  values: [Float]!
+  unit: Unit!
+  xAxisLabel: String
+  yAxisLabel: String
+}
+
+type EpicsTimelineWidgetValue implements WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+  renderHints: CategoriesWidgetRenderHints
+  title: String!
+  labels: [String!]
+  values: [EpicDataset!]!
+  unit: Unit!
+}
+
+type EpicDataset {
+  start: DateTime
+  end: DateTime
+  percentage: FloatRoundedTo1
+  isOverdue: Boolean!
+  url: String!
+  status: String
+}
+
+type RatingWidgetValue implements WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+  rating: Rating
+  previousRating: Rating
+  commentary: TextContent
+}
+
+enum Rating {
+  """So-so"""
+  SO_SO
+
+  """Good"""
+  GOOD
+
+  """Perfect"""
+  PERFECT
+}
+
+type RatingTableWidgetValue implements WidgetValue {
+  type: WidgetValueFormat!
+  exportLinks: [ExportLink]!
+  legend: WidgetLegend
+  notes: [BaseNoteGqlType!]
+  rating: Rating
+  headings: [String!]!
+  rows: [String!]!
+  cells: [[RatingTableWidgetCell]!]!
+  participationRates: [FloatRoundedTo2!]
+}
+
+type RatingTableWidgetCell {
+  rating: Rating
+
+  """Percentage will be `null` when there are no issues in this epic."""
+  value: FloatRoundedTo2
+}
+
+type Note implements BaseNoteGqlType {
+  msg: String!
+}
+
+type IgnoredIssuesNote implements BaseNoteGqlType {
+  msg: String!
+  count: Int!
+}
+
+type DateModifierNote implements BaseNoteGqlType {
+  msg: String!
+  start: DateTime!
+  end: DateTime!
+  startField: String!
+  endField: String
+}
+
+type UsersModifierNote implements BaseNoteGqlType {
+  msg: String!
+  usersField: String!
+  users: [String]!
+  teams: [String]!
+}
+
+type FiltersModifierNote implements BaseNoteGqlType {
+  msg: String!
+  filters: [String]!
+}
+
+type ScopingModifierNote implements BaseNoteGqlType {
+  msg: String!
+  filters: [String]!
+  auth: String!
+}
+
+type WidgetConversation {
+  metaCreatedOn: DateTime!
+  metaLastUpdatedOn: DateTime!
+
+  """Persisted Mermaid diagram code extracted from AI response"""
+  mermaidCode: String!
+
+  """Last known input token count from AI conversation"""
+  contextTokensUsed: Int
+
+  """Max context window size for the AI model"""
+  contextMaxTokens: Int
+  id: ID!
+  currentVersion: WidgetChartVersion
+}
+
+type WidgetChartVersion {
+  metaCreatedOn: DateTime!
+  versionNumber: Int!
+  mermaidCode: String!
+  tableMarkdown: String!
+  insightsMarkdown: String!
+  changeSummary: String!
+  isActive: Boolean!
+  pqlQuery: String!
+  chartConfig: JSONString
+  id: ID!
+}
+
+type DeviceGrant {
+  userCode: String!
+  status: String!
+}
+
+"""An enumeration."""
+enum WSEventType {
+  review_created
+  review_published
+  review_in_progress
+  review_updated
+  review_removed
+  review_repeated
+  review_copied
+  review_stopped
+  review_chain_removed
+  review_assessment_update_requested
+  review_assessment_updated
+  review_assessment_no_change
+  section_assessment_update_requested
+  section_assessment_updated
+  section_assessment_no_change
+  widget_assessment_update_requested
+  widget_assessment_updated
+  comment_added
+  comment_updated
+  comment_removed
+  section_added
+  section_updated
+  section_removed
+  section_status_updated
+  workspace_created
+  workspace_updated
+  workspace_removed
+  widget_added
+  widget_removed
+  widget_updated
+  widget_value_no_change
+  widget_value_updated
+  widget_value_update_requested
+  user
+  ai
+  ai_transitional
+  tool_call
+  tool_streaming
+  tool_result
+  issues_error
+  ai_waiting
+  ai_thinking
+  ai_responded
+  ai_noop
+  plan
+  evaluation
+  agent_status
+  breakdown_started
+  subtask_created
+  dependency_added
+  dependent_plan_updated
+  implementation_planning_started
+  implementation_planning_progress
+  implementation_planning_complete
+  implementation_planning_failed
+  processing_started
+  issue_retrieved
+  cheap_plan_generation_started
+  cheap_plan_generation_complete
+  analysis_started
+  issue_analysis_started
+  issue_analyzed
+  analysis_complete
+  enhanced_plan_generation_started
+  issue_plan_started
+  issue_plan_generated
+  issue_plan_progress
+  enhanced_plan_generation_complete
+  researching_started
+  researching_completed
+  related_issues_analyzed
+  related_prs_analyzed
+  related_code_analyzed
+  planning_started
+  planning_completed
+  evaluating_started
+  evaluating_completed
+  processing_heartbeat
+  processing_complete
+  processing_stopped
+  no_issues_found
+  error
+  discovery_asset_found
+  discovery_completed
+  asset_loading_status
+}
+
+enum NamedWorkCategoryType {
+  """Feature and Enhancements"""
+  FEATURE
+
+  """Keep The Lights On"""
+  KTLO
+
+  """Tech Debt"""
+  TECH_DEBT
+
+  """Support"""
+  SUPPORT
+
+  """Bugs"""
+  BUGS
+
+  """DevEx and Internal Improvements"""
+  DEVEX
+}
+
+"""Vault containing assets."""
+type Vault {
+  assets(
+    """Single asset type filter (legacy alias)"""
+    type: AssetType
+
+    """Filter by one or more asset types"""
+    assetTypes: [AssetType!]
+
+    """Match name or description (icontains)"""
+    search: String
+
+    """Filter by status values"""
+    status: [SkillStatusEnum!]
+
+    """Repository GIDs"""
+    repositoryIds: [ID!]
+
+    """Filter by installation entity type"""
+    installationEntityType: VaultAssetInstallationEntityType
+
+    """Specific entity GIDs for the type"""
+    installationEntityIds: [ID!]
+
+    """
+    Filter to assets with zero installations (mutually exclusive with installationEntityType)
+    """
+    noInstallations: Boolean = false
+
+    """null = include all; true = org-wide only; false = exclude org-wide"""
+    includeOrgWide: Boolean
+
+    """Mono-repo config GID"""
+    monoRepoConfigId: ID
+
+    """Filter to repo installs without mono-repo config"""
+    baseRepoOnly: Boolean = false
+
+    """Sort field"""
+    sortBy: AssetSortField
+
+    """Sort direction"""
+    sortDirection: SortDirection
+    qualityMin: Float
+    qualityMax: Float
+    impactMin: Float
+    impactMax: Float
+
+    """Filter by source: MANAGED or GIT"""
+    sourceType: AssetSourceType
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): VaultAssetsConnection!
+  asset(id: ID!): VaultAsset
+}
+
+"""Paginated list of vault assets."""
+type VaultAssetsConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [VaultAssetEdge!]!
+  nodes: [VaultAsset!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type VaultAssetEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: VaultAsset!
+}
+
+"""Entity type for vault asset installation."""
+enum VaultAssetInstallationEntityType {
+  ORGANIZATION
+  REPOSITORY
+  TEAM
+  USER
+  BOT
+}
+
+"""Sort options for vault asset listings."""
+enum AssetSortField {
+  QUALITY
+  IMPACT
+  POPULARITY_30D
+  POPULARITY_90D
+  POPULARITY_ALL
+  CREATED
+}
+
+"""Sort direction for ordered listings."""
+enum SortDirection {
+  ASC
+  DESC
+}
+
+enum AssetSourceType {
+  """Managed"""
+  MANAGED
+
+  """Git"""
+  GIT
+}
+
+"""Asset in the vault (Skill, MCP, Agent, etc.)."""
+interface VaultAsset {
+  id: ID!
+  name: String!
+  slug: String!
+  type: AssetType!
+  latestVersion: String!
+  versionsCount: Int!
+  description: String!
+  status: SkillStatusEnum
+  installations: [VaultAssetInstallation!]!
+
+  """
+  Pending installation requests for this asset visible to the current user
+  """
+  installationRequests: [AssetInstallationRequest!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  versions: [VaultAssetVersion!]!
+  profiles: [VaultAssetProfile!]!
+  isChatDefault: Boolean!
+  usageCount: Int!
+
+  """Token counts for the current version"""
+  tokenCounts: AssetTokenCount
+
+  """Asset source metadata"""
+  source: AssetSource!
+
+  """Current user's permissions for this asset"""
+  permissions: VaultAssetPermissions
+
+  """Files belonging to this asset"""
+  files(
+    """Get files at a specific asset version number"""
+    version: Int
+  ): [SkillFile!]!
+
+  """Repository code contexts where this asset will execute"""
+  codeContexts: [AssetCodeContext!]!
+
+  """Whether an evaluation is currently in progress for this asset"""
+  evaluating: Boolean!
+}
+
+"""Version information for a vault asset."""
+type VaultAssetVersion {
+  version: String!
+  isActive: Boolean!
+  createdAt: DateTime
+  createdByName: String
+  filesCount: Int!
+  changeSummary: String!
+}
+
+"""Installation location for a vault asset."""
+type VaultAssetInstallation {
+  entityType: VaultAssetInstallationEntityType!
+  entityId: String
+  entityName: String!
+  entityProvider: String
+  monoRepoConfigId: String
+  monoRepoConfigName: String
+
+  """Whether the current user can uninstall from this target"""
+  canUninstall: Boolean!
+}
+
+"""Result from an AI query."""
+type AiQueryResult {
+  """Status of the query execution"""
+  status: String!
+
+  """Query results (filtered and summarized)"""
+  data: String!
+
+  """List of tools called during execution"""
+  toolCallsMade: [String!]!
+}
+
+"""Status of skill discovery for a repository."""
+type SkillDiscoveryStatus {
+  """Whether skill discovery is currently running"""
+  isRunning: Boolean!
+
+  """Stream ID for the discovery process"""
+  streamId: String
+}
+
+type AssetDiscoveryStatus {
+  isComplete: Boolean!
+  isRunning: Boolean!
+  entries: [AssetDiscoveryEntry!]!
+  counts: JSONString!
+  totalRepos: Int!
+  sourceClients: [String!]!
+}
+
+type AssetDiscoveryEntry {
+  assetName: String!
+  assetType: String!
+  repoName: String!
+  isNew: Boolean!
+  sourceClient: String!
+}
+
+"""A tool available from an MCP integration."""
+type McpIntegrationTool {
+  """Tool name"""
+  name: String!
+
+  """Tool description"""
+  description: String!
+
+  """Approximate prompt token cost when this tool is included in a request"""
+  estimatedTokens: Int
+}
+
+"""Paginated list of MCP integration tools."""
+type McpIntegrationToolsConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [McpIntegrationToolEdge!]!
+
+  """Server instructions/description from the MCP initialize response"""
+  serverInstructions: String
+
+  """Total estimated tokens across all tools"""
+  totalEstimatedTokens: Int
+
+  """Discovered transport type: stdio, http, or sse"""
+  mcpTransport: String
+
+  """Discovered command to run the MCP server (stdio only)"""
+  mcpCommand: String
+
+  """Discovered command arguments (stdio only)"""
+  mcpArgs: [String!]
+
+  """Discovered required environment variables"""
+  mcpEnv: JSONString
+
+  """Discovered server endpoint URL (http/sse only)"""
+  mcpUrl: String
+  nodes: [McpIntegrationTool!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type McpIntegrationToolEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: McpIntegrationTool!
+}
+
+"""Diff between two skill versions."""
+type SkillVersionDiff {
+  """Version number being compared from"""
+  fromVersion: Int!
+
+  """Version number being compared to"""
+  toVersion: Int!
+
+  """File diffs"""
+  files: [SkillVersionFileDiff!]!
+
+  """Total lines added"""
+  totalAdditions: Int!
+
+  """Total lines deleted"""
+  totalDeletions: Int!
+
+  """Number of files added"""
+  filesAdded: Int!
+
+  """Number of files modified"""
+  filesModified: Int!
+
+  """Number of files deleted"""
+  filesDeleted: Int!
+}
+
+"""Diff information for a single file between versions."""
+type SkillVersionFileDiff {
+  """File name"""
+  name: String!
+
+  """File path"""
+  path: String
+
+  """Action: add, modify, delete"""
+  action: String!
+
+  """Number of lines added"""
+  additions: Int!
+
+  """Number of lines deleted"""
+  deletions: Int!
+
+  """Unified diff patch"""
+  patch: String
+}
+
+"""GraphQL type for skill profile."""
+type VaultAssetProfile {
+  name: String!
+  description: String!
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  assets(before: String, after: String, first: Int, last: Int): VaultAssetsConnection!
+}
+
+"""An entry from a public catalog (skills.sh, Smithery, etc.)."""
+type CatalogEntry {
+  """Provider-specific unique key"""
+  key: String!
+
+  """Display name"""
+  name: String!
+
+  """Short description"""
+  description: String!
+
+  """Install/use count"""
+  popularity: Int!
+
+  """Link to the catalog page"""
+  sourceUrl: String!
+
+  """'skill' or 'mcp'"""
+  assetType: String!
+}
+
+"""A catalog source provider."""
+type CatalogSource {
+  """Provider key, e.g. 'skills_sh'"""
+  sourceName: String!
+
+  """Human-readable name, e.g. 'skills.sh'"""
+  displayName: String!
+
+  """Type of assets this source provides: 'skill' or 'mcp'"""
+  assetType: String!
+}
+
+type McpServer implements VaultAsset {
+  id: ID!
+  name: String!
+  slug: String!
+  type: AssetType!
+  latestVersion: String!
+  versionsCount: Int!
+  description: String!
+  status: SkillStatusEnum
+  installations: [VaultAssetInstallation!]!
+
+  """
+  Pending installation requests for this asset visible to the current user
+  """
+  installationRequests: [AssetInstallationRequest!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  versions: [VaultAssetVersion!]!
+  profiles: [VaultAssetProfile!]!
+  isChatDefault: Boolean!
+  usageCount: Int!
+
+  """Token counts for the current version"""
+  tokenCounts: AssetTokenCount
+
+  """Asset source metadata"""
+  source: AssetSource!
+
+  """Current user's permissions for this asset"""
+  permissions: VaultAssetPermissions
+
+  """Files belonging to this asset"""
+  files(
+    """Get files at a specific asset version number"""
+    version: Int
+  ): [SkillFile!]!
+
+  """Repository code contexts where this asset will execute"""
+  codeContexts: [AssetCodeContext!]!
+
+  """Whether an evaluation is currently in progress for this asset"""
+  evaluating: Boolean!
+  transport: String
+  url: String
+  mcpCommand: String
+  mcpArgs: [String]
+  mcpEnv: JSONString
+  timeout: Int
+  secured: Boolean
+  integrationId: String
+  toolNames: [McpToolEntry]
+}
+
+type McpToolEntry {
+  name: String!
+  description: String
+
+  """Approximate prompt token cost when this tool is included in a request"""
+  estimatedTokens: Int
+}
+
+type Hook implements VaultAsset {
+  id: ID!
+  name: String!
+  slug: String!
+  type: AssetType!
+  latestVersion: String!
+  versionsCount: Int!
+  description: String!
+  status: SkillStatusEnum
+  installations: [VaultAssetInstallation!]!
+
+  """
+  Pending installation requests for this asset visible to the current user
+  """
+  installationRequests: [AssetInstallationRequest!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  versions: [VaultAssetVersion!]!
+  profiles: [VaultAssetProfile!]!
+  isChatDefault: Boolean!
+  usageCount: Int!
+
+  """Token counts for the current version"""
+  tokenCounts: AssetTokenCount
+
+  """Asset source metadata"""
+  source: AssetSource!
+
+  """Current user's permissions for this asset"""
+  permissions: VaultAssetPermissions
+
+  """Files belonging to this asset"""
+  files(
+    """Get files at a specific asset version number"""
+    version: Int
+  ): [SkillFile!]!
+
+  """Repository code contexts where this asset will execute"""
+  codeContexts: [AssetCodeContext!]!
+
+  """Whether an evaluation is currently in progress for this asset"""
+  evaluating: Boolean!
+  event: String
+  hookCommand: String
+  hookArgs: [String]
+  timeout: Int
+  matcher: String
+}
+
+type Agent implements VaultAsset {
+  id: ID!
+  name: String!
+  slug: String!
+  type: AssetType!
+  latestVersion: String!
+  versionsCount: Int!
+  description: String!
+  status: SkillStatusEnum
+  installations: [VaultAssetInstallation!]!
+
+  """
+  Pending installation requests for this asset visible to the current user
+  """
+  installationRequests: [AssetInstallationRequest!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  versions: [VaultAssetVersion!]!
+  profiles: [VaultAssetProfile!]!
+  isChatDefault: Boolean!
+  usageCount: Int!
+
+  """Token counts for the current version"""
+  tokenCounts: AssetTokenCount
+
+  """Asset source metadata"""
+  source: AssetSource!
+
+  """Current user's permissions for this asset"""
+  permissions: VaultAssetPermissions
+
+  """Files belonging to this asset"""
+  files(
+    """Get files at a specific asset version number"""
+    version: Int
+  ): [SkillFile!]!
+
+  """Repository code contexts where this asset will execute"""
+  codeContexts: [AssetCodeContext!]!
+
+  """Whether an evaluation is currently in progress for this asset"""
+  evaluating: Boolean!
+}
+
+type Command implements VaultAsset {
+  id: ID!
+  name: String!
+  slug: String!
+  type: AssetType!
+  latestVersion: String!
+  versionsCount: Int!
+  description: String!
+  status: SkillStatusEnum
+  installations: [VaultAssetInstallation!]!
+
+  """
+  Pending installation requests for this asset visible to the current user
+  """
+  installationRequests: [AssetInstallationRequest!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  versions: [VaultAssetVersion!]!
+  profiles: [VaultAssetProfile!]!
+  isChatDefault: Boolean!
+  usageCount: Int!
+
+  """Token counts for the current version"""
+  tokenCounts: AssetTokenCount
+
+  """Asset source metadata"""
+  source: AssetSource!
+
+  """Current user's permissions for this asset"""
+  permissions: VaultAssetPermissions
+
+  """Files belonging to this asset"""
+  files(
+    """Get files at a specific asset version number"""
+    version: Int
+  ): [SkillFile!]!
+
+  """Repository code contexts where this asset will execute"""
+  codeContexts: [AssetCodeContext!]!
+
+  """Whether an evaluation is currently in progress for this asset"""
+  evaluating: Boolean!
+}
+
+type Rule implements VaultAsset {
+  id: ID!
+  name: String!
+  slug: String!
+  type: AssetType!
+  latestVersion: String!
+  versionsCount: Int!
+  description: String!
+  status: SkillStatusEnum
+  installations: [VaultAssetInstallation!]!
+
+  """
+  Pending installation requests for this asset visible to the current user
+  """
+  installationRequests: [AssetInstallationRequest!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  versions: [VaultAssetVersion!]!
+  profiles: [VaultAssetProfile!]!
+  isChatDefault: Boolean!
+  usageCount: Int!
+
+  """Token counts for the current version"""
+  tokenCounts: AssetTokenCount
+
+  """Asset source metadata"""
+  source: AssetSource!
+
+  """Current user's permissions for this asset"""
+  permissions: VaultAssetPermissions
+
+  """Files belonging to this asset"""
+  files(
+    """Get files at a specific asset version number"""
+    version: Int
+  ): [SkillFile!]!
+
+  """Repository code contexts where this asset will execute"""
+  codeContexts: [AssetCodeContext!]!
+
+  """Whether an evaluation is currently in progress for this asset"""
+  evaluating: Boolean!
+  title: String
+  globs: [String]
+}
+
+type ClaudeCodePlugin implements VaultAsset {
+  id: ID!
+  name: String!
+  slug: String!
+  type: AssetType!
+  latestVersion: String!
+  versionsCount: Int!
+  description: String!
+  status: SkillStatusEnum
+  installations: [VaultAssetInstallation!]!
+
+  """
+  Pending installation requests for this asset visible to the current user
+  """
+  installationRequests: [AssetInstallationRequest!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  versions: [VaultAssetVersion!]!
+  profiles: [VaultAssetProfile!]!
+  isChatDefault: Boolean!
+  usageCount: Int!
+
+  """Token counts for the current version"""
+  tokenCounts: AssetTokenCount
+
+  """Asset source metadata"""
+  source: AssetSource!
+
+  """Current user's permissions for this asset"""
+  permissions: VaultAssetPermissions
+
+  """Files belonging to this asset"""
+  files(
+    """Get files at a specific asset version number"""
+    version: Int
+  ): [SkillFile!]!
+
+  """Repository code contexts where this asset will execute"""
+  codeContexts: [AssetCodeContext!]!
+
+  """Whether an evaluation is currently in progress for this asset"""
+  evaluating: Boolean!
+  marketplaceUrl: String
+}
+
+type RemoteMarketplacePlugin {
+  name: String!
+  description: String
+  source: String!
+}
+
+"""Response for installed assets query."""
+type InstalledAssetsResponse {
+  assets: InstalledAssetsByOwnership!
+  syncSummary: InstalledAssetsSyncSummary
+}
+
+"""Assets grouped by ownership type."""
+type InstalledAssetsByOwnership {
+  userOwned: [InstalledAssetData!]!
+  repositoryOwned: [InstalledAssetData!]!
+  teamOwnedViaMembership: [InstalledAssetData!]!
+  teamOwnedViaRepository: [InstalledAssetData!]!
+  organizationOwned: [InstalledAssetData!]!
+  profileOwned: [InstalledAssetData!]!
+  botOwned: [InstalledAssetData!]!
+}
+
+"""An asset in the installed assets response."""
+type InstalledAssetData {
+  id: ID
+  slug: String!
+  name: String!
+  description: String
+  originalPrompt: String
+  status: String!
+  assetType: String!
+  sourceType: String!
+  installations: [InstalledAssetInstallation!]!
+  relevantInstallations: [InstalledAssetInstallation!]!
+  createdAt: DateTime
+  updatedAt: DateTime
+  createdBy: String
+  usageCount: Int!
+  confidenceScore: Float
+  evalImpact: Float
+  installStatus: InstalledAssetInstallStatus
+  tokenCounts: InstalledAssetTokenCounts
+}
+
+"""Install status for a single asset."""
+type InstalledAssetInstallStatus {
+  everInstalled: Boolean!
+  lastInstalledAt: String
+  lastInstalledVersion: Int
+  latestVersion: Int!
+  versionsBehind: Int!
+  needsUpdate: Boolean!
+  needsInstall: Boolean!
+}
+
+"""Installation location for an installed asset."""
+type InstalledAssetInstallation {
+  entityType: String!
+  entityId: String
+  entityName: String!
+  entityProvider: String
+  monoRepoConfigId: String
+  monoRepoConfigName: String
+}
+
+"""Token counts for an installed asset's current version."""
+type InstalledAssetTokenCounts {
+  estimatedTokens: Int!
+  claudeTokens: Int
+  openaiTokens: Int
+  estimatedFrontmatterTokens: Int
+  claudeFrontmatterTokens: Int
+  openaiFrontmatterTokens: Int
+}
+
+"""Summary of install sync status across all assets."""
+type InstalledAssetsSyncSummary {
+  totalAssets: Int!
+  upToDate: Int!
+  needsUpdate: Int!
+  notInstalled: Int!
+  lastSyncAt: String
+}
+
+type AssetAuditEvent {
+  id: ID!
+  date: DateTime!
+  actorType: String!
+  actorId: Int
+  actorName: String
+  actorEmail: String
+  actorAvatarUrl: String
+  event: String!
+  eventLabel: String!
+  targetType: String!
+  targetId: Int!
+  targetName: String
+  targetSlug: String
+  targetGid: String
+  targetAssetType: AssetType
+  data: JSONString
+}
+
+type AssetAuditEventConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [AssetAuditEventEdge!]!
+  nodes: [AssetAuditEvent!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type AssetAuditEventEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: AssetAuditEvent!
+}
+
+"""Source metadata for a Pulse-managed asset."""
+type AssetManagedSource implements AssetSource {
+  """Whether this asset is read-only"""
+  isReadonly: Boolean!
+  originalPrompt: String
+  confidenceScore: Float
+  evaluationResult: String
+  fileIds: [String!]!
+  createdBy: String
+  creatorId: String
+
+  """Catalog source key if imported from a catalog"""
+  catalogSource: String
+
+  """URL to the catalog source page"""
+  catalogSourceUrl: String
+}
+
+"""Source metadata for a git-sourced asset."""
+type AssetGitSource implements AssetSource {
+  """Whether this asset is read-only"""
+  isReadonly: Boolean!
+
+  """Source repository"""
+  repository: RepositoryType
+
+  """Path within the repository"""
+  path: String!
+
+  """SHA of the latest synced commit"""
+  ref: String
+
+  """AI client this asset was discovered from"""
+  sourceClient: AiClient
+
+  """Last time content was fetched from the remote"""
+  lastFetchedAt: DateTime
+
+  """URL to the source file/directory in the repository"""
+  sourceUrl: String
+}
+
+enum AiClient {
+  """Claude Code"""
+  CLAUDE_CODE
+
+  """Cursor"""
+  CURSOR
+
+  """GitHub Copilot"""
+  GITHUB_COPILOT
+
+  """Cline"""
+  CLINE
+
+  """Windsurf"""
+  WINDSURF
+
+  """Gemini"""
+  GEMINI
+
+  """Codex"""
+  CODEX
+
+  """Kiro"""
+  KIRO
+
+  """OpenClaw"""
+  OPENCLAW
+
+  """SX Vault"""
+  SX
+}
+
+"""A repository code context where an asset will execute."""
+type AssetCodeContext {
+  repositoryName: String!
+  monoRepoConfigName: String
+
+  """Human-readable source (e.g. 'Team: Engineering')"""
+  source: String!
+
+  """Source type: organization, team, repository, user"""
+  sourceType: String!
+}
+
+type SkillUsageDataPoint {
+  date: String!
+  count: Int!
+}
+
+type SkillUsageTimeSeries {
+  skillId: String
+  skillName: String!
+  dataPoints: [SkillUsageDataPoint!]!
+}
+
+type SkillUsageTimeSeriesResponse {
+  timeRange: String!
+  granularity: String!
+  startDate: String!
+  endDate: String!
+  series: [SkillUsageTimeSeries!]!
+  skillsUsedInPeriod: Int!
+  totalSkillsAvailable: Int!
+  totalUsageInPeriod: Int!
+  daysInPeriod: Int!
+}
+
+type RepositoryTopSkill {
+  skillId: String!
+  skillName: String!
+  totalUses: Int!
+}
+
+type RepositoryWithSkills {
+  id: ID!
+  owner: String!
+  name: String!
+  fullName: String!
+  topSkill: RepositoryTopSkill
+  totalSkillUses: Int!
+  assetCount: Int!
+}
+
+"""A versioned file belonging to a vault asset (skill, agent, etc.)."""
+type SkillFile {
+  id: ID!
+  name: String!
+  path: String
+  deletable: Boolean!
+  versions: [SkillFileVersion!]!
+  currentVersion: Int
+  tokenCounts: SkillFileTokenCounts
+}
+
+"""A version of a skill file."""
+type SkillFileVersion {
+  version: Int!
+  content: String!
+  createdAt: DateTime
+  createdBy: String
+  changeSummary: String
+}
+
+"""Token counts for a skill file version."""
+type SkillFileTokenCounts {
+  estimatedTokens: Int!
+  claudeTokens: Int
+  openaiTokens: Int
+}
+
+type TeamAdminScope {
+  gid: String!
+  name: String!
+}
+
+type MyAssetCapabilities {
+  """Org role name (ADMIN, ASSET_MANAGER, DEV, MEMBER, BILLING)"""
+  role: String
+  canCreate: Boolean!
+  canPublishAny: Boolean!
+  canInstallOrg: Boolean!
+  canInstallRepoAny: Boolean!
+  canInstallSelf: Boolean!
+  teamAdminOf: [TeamAdminScope!]!
+  isReadOnly: Boolean!
+}
+
+type ManagementSession {
+  id: String!
+  title: String
+  eventCount: Int!
+}
+
+type PqlQueryResult {
+  markdown: String!
+}
+
+type AssetEval {
+  """Unique key within the skill, e.g. 'basic-pdf-fill'"""
+  evalKey: String!
+
+  """The task prompt to execute"""
+  prompt: String!
+
+  """Human-readable description of expected success"""
+  expectedOutput: String!
+
+  """List of verifiable assertion strings"""
+  expectations: JSONString!
+
+  """Optional file paths or contents for the eval"""
+  inputFiles: JSONString
+
+  """Grouping category: 'basic', 'edge-case', etc."""
+  category: String
+  isActive: Boolean!
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type EvalRun {
+  configuration: SkillsEvalRunConfigurationChoices!
+  runNumber: Int!
+  status: SkillsEvalRunStatusChoices!
+  output: String!
+  error: String!
+  durationSeconds: Float
+  totalTokens: Int
+  toolCallsCount: Int!
+  id: ID!
+  createdAt: DateTime!
+
+  """Key of the eval this run belongs to"""
+  evalKey: String
+  grading: EvalGrading
+}
+
+"""An enumeration."""
+enum SkillsEvalRunConfigurationChoices {
+  """With Skill"""
+  WITH_SKILL
+
+  """Without Skill"""
+  WITHOUT_SKILL
+}
+
+"""An enumeration."""
+enum SkillsEvalRunStatusChoices {
+  """Pending"""
+  PENDING
+
+  """Running"""
+  RUNNING
+
+  """Completed"""
+  COMPLETED
+
+  """Failed"""
+  FAILED
+
+  """Superseded"""
+  SUPERSEDED
+}
+
+type EvalGrading {
+  """[{text, passed, evidence}]"""
+  expectationsResults: JSONString!
+  passed: Int!
+  failed: Int!
+  total: Int!
+
+  """0.0 to 1.0"""
+  passRate: Float!
+
+  """[{claim, type, verified, evidence}]"""
+  claims: JSONString
+
+  """{suggestions[], overall}"""
+  evalFeedback: JSONString
+}
+
+type EvalBenchmark {
+  status: SkillsEvalBenchmarkStatusChoices!
+  triggeredBy: SkillsEvalBenchmarkTriggeredByChoices!
+  executorModel: String!
+  runsPerConfig: Int!
+
+  """
+  Aggregated stats: {with_skill: {...}, without_skill: {...}, delta: {...}}
+  """
+  runSummary: JSONString
+
+  """Analyzer observations and patterns"""
+  notes: JSONString
+  error: String!
+  id: ID!
+  createdAt: DateTime!
+  runs: [EvalRun!]
+}
+
+"""An enumeration."""
+enum SkillsEvalBenchmarkStatusChoices {
+  """Pending"""
+  PENDING
+
+  """Running"""
+  RUNNING
+
+  """Completed"""
+  COMPLETED
+
+  """Failed"""
+  FAILED
+
+  """Superseded"""
+  SUPERSEDED
+}
+
+"""An enumeration."""
+enum SkillsEvalBenchmarkTriggeredByChoices {
+  """Manual"""
+  MANUAL
+
+  """Version Change"""
+  VERSION_CHANGE
+
+  """Model Change"""
+  MODEL_CHANGE
+
+  """Scheduled"""
+  SCHEDULED
+
+  """Orchestrator"""
+  ORCHESTRATOR
+
+  """Upload"""
+  UPLOAD
+}
+
+"""Lightweight benchmark summary for list views."""
+type EvalBenchmarkSummary {
+  id: ID!
+  status: String!
+  triggeredBy: String!
+  passRate: Float
+  createdAt: DateTime!
+}
+
+type DescriptionOptimization {
+  status: SkillsDescriptionOptimizationStatusChoices!
+  originalDesc: String!
+  bestDescription: String!
+  bestScore: String!
+  iterationsRun: Int!
+
+  """Full iteration history"""
+  history: JSONString
+
+  """[{query, should_trigger}]"""
+  triggerEvalSet: JSONString
+  id: ID!
+  createdAt: DateTime!
+}
+
+"""An enumeration."""
+enum SkillsDescriptionOptimizationStatusChoices {
+  """Pending"""
+  PENDING
+
+  """Running"""
+  RUNNING
+
+  """Completed"""
+  COMPLETED
+
+  """Failed"""
+  FAILED
+
+  """Superseded"""
+  SUPERSEDED
+}
+
+type AssetInstallationRequest {
+  targetType: IssuesAssetInstallationRequestTargetTypeChoices!
+  status: IssuesAssetInstallationRequestStatusChoices!
+  reviewedAt: DateTime
+  reviewNote: String
+  id: ID!
+  assetName: String!
+  assetId: ID!
+  assetType: AssetType!
+  requestedByName: String
+  requestedByEmail: String
+  targetLabel: String!
+  targetEntityId: ID
+  targetProvider: String
+  reviewedByName: String
+  createdAt: DateTime!
+
+  """Whether the current user can approve or reject this request"""
+  canReview: Boolean!
+
+  """Whether the current user can retract this request (they submitted it)"""
+  canRetract: Boolean!
+}
+
+"""An enumeration."""
+enum IssuesAssetInstallationRequestTargetTypeChoices {
+  """Team"""
+  TEAM
+
+  """Organization"""
+  ORGANIZATION
+
+  """Repository"""
+  REPOSITORY
+}
+
+"""An enumeration."""
+enum IssuesAssetInstallationRequestStatusChoices {
+  """Pending"""
+  PENDING
+
+  """Approved"""
+  APPROVED
+
+  """Rejected"""
+  REJECTED
+}
+
+type ChangeRequest {
+  id: ID!
+  type: ChangeRequestTypeEnum!
+  title: String!
+  description: String
+  status: ChangeRequestStatusEnum!
+  assetName: String!
+  assetGid: ID!
+  assetType: AssetType!
+  requestedByName: String
+  createdAt: DateTime!
+  sourceUrl: String
+  targetLabel: String
+  targetType: String
+  targetProvider: String
+
+  """
+  True when approving this installation request will remove an existing organization-wide installation of the asset (narrowing scope to the requested team or repository).
+  """
+  willUninstallFromOrg: Boolean!
+
+  """Whether the current user can approve or reject this change request."""
+  canReview: Boolean!
+
+  """
+  Whether the current user can retract this change request (only for installation requests they submitted).
+  """
+  canRetract: Boolean!
+}
+
+type ChangeRequestConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [ChangeRequestEdge!]!
+  nodes: [ChangeRequest!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type ChangeRequestEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: ChangeRequest!
+}
+
+enum ChangeRequestTypeEnum {
+  PULL_REQUEST
+  INSTALLATION_REQUEST
+}
+
+enum ChangeRequestStatusEnum {
+  OPEN
+  APPROVED
+  REJECTED
+}
+
+type Query {
+  bots: [ManagedBot!]
+  bot(slug: String, id: ID): ManagedBot!
+  managementSession: ManagementSession!
+  myAssetCapabilities: MyAssetCapabilities!
+  pqlQuery(query: String!, timeRange: String = "30d"): PqlQueryResult!
+  vault: Vault!
+  assetIds(
+    """Single asset type filter (legacy alias)"""
+    type: AssetType
+
+    """Filter by one or more asset types"""
+    assetTypes: [AssetType!]
+
+    """Match name or description (icontains)"""
+    search: String
+
+    """Filter by status values"""
+    status: [SkillStatusEnum!]
+
+    """Repository GIDs"""
+    repositoryIds: [ID!]
+
+    """Filter by installation entity type"""
+    installationEntityType: VaultAssetInstallationEntityType
+
+    """Specific entity GIDs for the type"""
+    installationEntityIds: [ID!]
+
+    """
+    Filter to assets with zero installations (mutually exclusive with installationEntityType)
+    """
+    noInstallations: Boolean = false
+
+    """null = include all; true = org-wide only; false = exclude org-wide"""
+    includeOrgWide: Boolean
+
+    """Mono-repo config GID"""
+    monoRepoConfigId: ID
+
+    """Filter to repo installs without mono-repo config"""
+    baseRepoOnly: Boolean = false
+
+    """Sort field"""
+    sortBy: AssetSortField
+
+    """Sort direction"""
+    sortDirection: SortDirection
+    qualityMin: Float
+    qualityMax: Float
+    impactMin: Float
+    impactMax: Float
+
+    """Filter by source: MANAGED or GIT"""
+    sourceType: AssetSourceType
+  ): [ID!]!
+  aiQuery(input: AiQueryInput!): AiQueryResult!
+  asset(id: ID!): VaultAsset
+  evalBenchmark(id: ID!): EvalBenchmark!
+  assetPullRequest(id: ID!): SkillPullRequest!
+  assetPullRequests(
+    assetId: ID
+    sourceUrl: String
+    status: SkillPullRequestStatusEnum
+    creationType: SkillPullRequestCreationTypeEnum
+
+    """Search by PR title or asset name"""
+    search: String
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): SkillPullRequestConnection!
+  skillDiscoveryStatus(repositoryGid: ID!): SkillDiscoveryStatus!
+  assetDiscoveryStatus: AssetDiscoveryStatus!
+  skillVersionDiff(
+    """Skill GID"""
+    skillId: ID!
+
+    """Version to compare from"""
+    fromVersion: Int!
+
+    """Version to compare to"""
+    toVersion: Int!
+  ): SkillVersionDiff!
+  mcpIntegrationTools(integrationId: ID, url: String, before: String, after: String, first: Int, last: Int): McpIntegrationToolsConnection!
+  mcpProviderUrls: [McpProviderUrl!]!
+  profile(id: ID!): VaultAssetProfile
+  profiles(
+    """Filter by name (case-insensitive contains)"""
+    name: String
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): VaultAssetProfileConnection!
+  remoteMarketplacePlugins(url: String!): [RemoteMarketplacePlugin!]!
+  catalogEntries(
+    """Catalog source key"""
+    source: String!
+
+    """Optional search filter"""
+    search: String
+
+    """Maximum results to return"""
+    limit: Int
+
+    """Pagination offset"""
+    offset: Int
+  ): [CatalogEntry!]
+  catalogImportedKeys(
+    """Catalog source key"""
+    source: String!
+  ): [String!]!
+  catalogSources(
+    """Filter by asset type: 'skill' or 'mcp'"""
+    assetType: String
+  ): [CatalogSource!]!
+  installedAssets(
+    """User GID (defaults to current user)"""
+    userId: ID
+
+    """Bot GID (mutually exclusive with user_id)"""
+    botId: ID
+
+    """Repository GID to filter by"""
+    repositoryId: ID
+
+    """Asset type to filter by"""
+    assetType: String
+
+    """Case-insensitive search term for name/description"""
+    term: String
+  ): InstalledAssetsResponse!
+  assetAuditLog(
+    """Search by target name, event, or data"""
+    search: String
+
+    """Filter by asset types"""
+    assetTypes: [AssetType!]
+
+    """Filter by event types"""
+    events: [AssetEventType!]
+
+    """Filter by target asset GID"""
+    targetId: ID
+
+    """Filter by actor user ID"""
+    actorId: Int
+
+    """Filter events after this date"""
+    dateFrom: DateTime
+
+    """Filter events before this date"""
+    dateTo: DateTime
+
+    """Filter by actor type (user, bot, system)"""
+    actorType: String
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): AssetAuditEventConnection!
+  skillUsageTimeSeries(
+    timeRange: SkillUsageTimeRange = DAYS_30
+    skillId: ID
+    repositoryId: ID
+    teamId: ID
+    botId: ID
+
+    """Filter by ownership: 'organization' or 'user'"""
+    ownedBy: String
+
+    """Filter by asset type (comma-separated, e.g. 'skill,agent')"""
+    assetType: String
+
+    """Group series by asset type"""
+    groupByAssetType: Boolean = false
+  ): SkillUsageTimeSeriesResponse!
+  repositoriesWithSkills(
+    """Filter by team GID"""
+    teamId: ID
+
+    """Max repositories to return"""
+    pageSize: Int = 10
+  ): [RepositoryWithSkills!]!
+  changeRequests(
+    """Filter by unified status: OPEN, APPROVED, REJECTED"""
+    status: ChangeRequestStatusEnum
+
+    """Filter by type: PULL_REQUEST or INSTALLATION_REQUEST"""
+    changeType: ChangeRequestTypeEnum
+
+    """Search by title or asset name"""
+    search: String
+
+    """Filter PRs by source URL"""
+    sourceUrl: String
+    before: String
+    after: String
+    first: Int
+    last: Int
+  ): ChangeRequestConnection!
+  installationRequests(
+    """Filter: pending, approved, rejected"""
+    status: String
+  ): [AssetInstallationRequest!]!
+  myInstallationRequests(
+    """Filter: pending, approved, rejected"""
+    status: String
+  ): [AssetInstallationRequest!]!
+  pendingInstallationRequestCount: Int!
+  repository(id: ID!): RepositoryType
+  notification(id: ID!): Notification
+  salaries: [DeveloperSalaryType!]!
+  user: User
+  releaseCommit: String!
+  baseurl: String!
+  flashMessages: [MessageType!]!
+  teamUsingSleuth(email: String!): Boolean!
+  searchOptions(orgSlug: ID!): SearchOptionsType!
+  organization: OrganizationType!
+  integrationProvider(provider: IntegrationProvider!): IntegrationProviderDefinitionType!
+  integrationProviders(providerCategories: [ProviderCategory]): [IntegrationProviderDefinitionType!]!
+  pql(
+    query: String!
+
+    """The inclusive start datetime"""
+    start: DateTime
+
+    """The non-inclusive end datetime"""
+    end: DateTime
+
+    """IDs of users"""
+    users: [Int]
+
+    """Only supported for super users"""
+    ignoreCache: Boolean
+  ): PqlResponse!
+  workspace(
+    id: ID
+
+    """
+    Returns the Global workspace. The `id` takes precedence over `is_global`.
+    """
+    isGlobal: Boolean
+  ): Workspace!
+  workspaces(term: String = "", globalOnly: Boolean, before: String, after: String, first: Int, last: Int): WorkspaceConnection!
+  widgetType(slug: ID!): WidgetType!
+  widgetTypes(skillsOnly: Boolean, before: String, after: String, first: Int, last: Int): WidgetTypeConnection!
+  widget(id: ID!): Widget
+  reviewTemplates(reviewType: ReviewType = REVIEW, isSkillsDashboard: Boolean = false): [ReviewTemplateGqlType!]!
+  review(id: ID!): Review
+  surveys(published: Boolean, term: String, before: String, after: String, first: Int, last: Int): SurveyConnection!
+  survey(id: ID!): Survey
+  dashboard(id: ID!): Dashboard
+  dashboards(published: Boolean, term: String, before: String, after: String, first: Int, last: Int): DashboardConnection!
+  deviceGrant(clientId: String!, userCode: String!): DeviceGrant
+  search(term: String = null, resultType: SearchResultType, workspaceId: ID, before: String, after: String, first: Int, last: Int): SearchResultConnection!
+}
+
+"""Input for querying integrations with natural language."""
+input AiQueryInput {
+  """Natural language query to execute"""
+  query: String!
+
+  """Integration provider to query"""
+  provider: Provider!
+
+  """Git context for the query"""
+  context: AiQueryContextInput!
+}
+
+"""Context information for AI queries (auto-detected by sx MCP server)."""
+input AiQueryContextInput {
+  """Full repository URL (e.g., "https://github.com/owner/repo")"""
+  repoUrl: String!
+
+  """Current branch name"""
+  branch: String!
+
+  """Current commit SHA"""
+  commitSha: String!
+}
+
+"""GraphQL type for skill pull request."""
+type SkillPullRequest {
+  """Title of the proposed changes"""
+  title: String!
+
+  """Description of what this pull request changes"""
+  description: String!
+
+  """Whether approval is required to merge this pull request"""
+  requiresApproval: Boolean!
+  approvedAt: DateTime
+  mergedAt: DateTime
+  id: ID!
+  skill: Skill!
+  status: SkillPullRequestStatusEnum!
+  sourceUrl: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  baseVersionNumber: Int
+  authorId: String
+  authorName: String
+  approvedById: String
+  approvedByName: String
+  mergedById: String
+  mergedByName: String
+  mergedVersionNumber: Int
+  fileChanges: [SkillPullRequestFile!]
+  comments: [SkillPullRequestComment!]
+  diff: PullRequestDiff
+}
+
+"""Status of a skill pull request."""
+enum SkillPullRequestStatusEnum {
+  OPEN
+  MERGED
+  CLOSED
+}
+
+"""GraphQL type for file changes within a skill pull request."""
+type SkillPullRequestFile {
+  name: String!
+  path: String
+  action: IssuesAssetPullRequestFileActionChoices!
+  content: String
+  previousContent: String
+}
+
+"""An enumeration."""
+enum IssuesAssetPullRequestFileActionChoices {
+  """Add"""
+  ADD
+
+  """Modify"""
+  MODIFY
+
+  """Delete"""
+  DELETE
+}
+
+"""GraphQL type for comments on skill pull requests."""
+type SkillPullRequestComment {
+  """Comment text"""
+  text: String!
+
+  """File name this comment is on (optional)"""
+  fileName: String
+
+  """Line number for inline comments"""
+  lineNumber: Int
+  id: ID!
+  authorId: String
+  authorName: String
+  createdAt: DateTime!
+}
+
+"""Complete diff between pull request and current version."""
+type PullRequestDiff {
+  pullRequestId: String!
+  baseVersionNumber: Int
+  files: [PullRequestFileDiff!]!
+  totalAdditions: Int!
+  totalDeletions: Int!
+  filesAdded: Int!
+  filesModified: Int!
+  filesDeleted: Int!
+  hasConflicts: Boolean!
+  conflictFiles: [String!]!
+}
+
+"""Diff information for a single file in a pull request."""
+type PullRequestFileDiff {
+  name: String!
+  path: String
+  action: String!
+  additions: Int!
+  deletions: Int!
+  patch: String
+  hasConflict: Boolean!
+  conflictReason: String
+}
+
+type SkillPullRequestConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [SkillPullRequestEdge!]!
+  nodes: [SkillPullRequest!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type SkillPullRequestEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: SkillPullRequest!
+}
+
+"""Creation type of a skill pull request."""
+enum SkillPullRequestCreationTypeEnum {
+  AUTOGENERATED
+  MANUAL
+}
+
+"""A provider and its upstream MCP server URL."""
+type McpProviderUrl {
+  provider: String!
+  url: String!
+}
+
+"""Paginated list of skill profiles."""
+type VaultAssetProfileConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [VaultAssetProfileEdge!]!
+  nodes: [VaultAssetProfile!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type VaultAssetProfileEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: VaultAssetProfile!
+}
+
+enum AssetEventType {
+  """Created"""
+  CREATED
+
+  """Updated"""
+  UPDATED
+
+  """Deleted"""
+  DELETED
+
+  """Published"""
+  PUBLISHED
+
+  """Unpublished"""
+  UNPUBLISHED
+
+  """Version Created"""
+  VERSION_CREATED
+
+  """PR Created"""
+  PR_CREATED
+
+  """PR Approved"""
+  PR_APPROVED
+
+  """PR Merged"""
+  PR_MERGED
+
+  """PR Closed"""
+  PR_CLOSED
+
+  """Downloaded"""
+  DOWNLOADED
+
+  """Installed"""
+  INSTALLED
+
+  """Uninstalled"""
+  UNINSTALLED
+
+  """Imported from Catalog"""
+  IMPORTED_FROM_CATALOG
+
+  """Updated from Catalog"""
+  UPDATED_FROM_CATALOG
+
+  """Imported from Repository"""
+  IMPORTED_FROM_REPOSITORY
+
+  """Discovered from Git"""
+  GIT_ASSET_DISCOVERED
+
+  """Git Content Refreshed"""
+  GIT_ASSET_CONTENT_REFRESHED
+
+  """Auto-Deleted From Git"""
+  GIT_ASSET_AUTO_DELETED
+
+  """Settings Updated"""
+  SETTINGS_UPDATED
+
+  """Profile Created"""
+  PROFILE_CREATED
+
+  """Profile Updated"""
+  PROFILE_UPDATED
+
+  """Profile Deleted"""
+  PROFILE_DELETED
+
+  """Profile Assets Added"""
+  PROFILE_ASSETS_ADDED
+
+  """Profile Assets Removed"""
+  PROFILE_ASSETS_REMOVED
+
+  """Lock File Accessed"""
+  LOCK_FILE_ACCESSED
+
+  """Bot Created"""
+  BOT_CREATED
+
+  """Bot Updated"""
+  BOT_UPDATED
+
+  """Bot Deleted"""
+  BOT_DELETED
+
+  """Bot Key Deleted"""
+  BOT_KEY_DELETED
+}
+
+enum SkillUsageTimeRange {
+  DAYS_30
+  DAYS_90
+  ALL
+}
+
+type MessageType {
+  type: MessageTypeEnum!
+  message: String!
+}
+
+enum MessageTypeEnum {
+  INFO
+  ERROR
+  WARNING
+}
+
+type SearchOptionsType {
+  projects: [NameAndSlugSearchOptionType!]!
+  labels: [NameAndSlugSearchOptionType!]!
+  teams: [NameAndSlugSearchOptionType!]!
+  deployments: [NameAndSlugSearchOptionType!]!
+  environments: [NameAndSlugSearchOptionType!]!
+  tags: [String!]!
+  authors: [String!]!
+  healthOptions: [String!]!
+  sizeOptions: [String!]!
+}
+
+type NameAndSlugSearchOptionType {
+  name: String!
+  slug: String!
+}
+
+type IntegrationProviderDefinitionType {
+  categories: [ProviderCategory!]!
+  provider: IntegrationProvider!
+  label: String!
+  integrationEnabled: Boolean!
+  auth: IntegrationProviderAuthType!
+  connections: [IntegrationAuthenticationType!]!
+}
+
+enum ProviderCategory {
+  BUILD
+  CODE
+  INCIDENT
+  ISSUE
+  METRIC
+  SUPPORT
+  CHAT
+}
+
+type IntegrationProviderAuthType {
+  type: IntegrationAuthenticationConnectionType!
+
+  """
+  Is true if the integration provider supports multiple authentication connections.
+  """
+  isMulti: Boolean!
+  oauthPath: String
+}
+
+type WorkspaceConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [WorkspaceEdge!]!
+  nodes: [Workspace!]!
+}
+
+type WorkspaceEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: Workspace!
+}
+
+type WidgetTypeConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [WidgetTypeEdge!]!
+  nodes: [WidgetType!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type WidgetTypeEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: WidgetType!
+}
+
+type ReviewTemplateGqlType {
+  id: ID!
+  title: String!
+  description: String!
+  iconUrl: String
+  emojiDepiction: String
+  duration: Int!
+}
+
+type SearchResultConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [SearchResultEdge!]!
+  nodes: [SearchResult!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type SearchResultEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: SearchResult!
+}
+
+type SearchResult {
+  type: SearchResultType!
+  workspaceId: ID
+  workspaceName: String
+  workspaceMarker: WorkspaceMarkerField
+  artifactId: ID
+  artifactName: String
+  chainCount: Int
+  lastViewedOn: DateTime
+  ownerType: String
+  ownerId: ID
+  monoRepoConfigId: ID
+  assetType: AssetType
+}
+
+enum SearchResultType {
+  REVIEW
+  SURVEY
+  DASHBOARD
+  WORKSPACE
+  SKILL
+  REPOSITORY
+  TEAM
+}
+
+type Mutation {
+  createBot(input: CreateBotInput!): CreateBotMutation
+  updateBot(input: UpdateBotInput!): UpdateBotMutation
+  deleteBot(id: ID!): DeleteBotMutation
+  createBotApiKey(botId: ID!, label: String): CreateBotApiKeyMutation
+  deleteBotApiKey(keyId: ID!): DeleteBotApiKeyMutation
+  installSkillToBot(botId: ID!, skillId: ID!): InstallSkillToBotMutation
+  uninstallSkillFromBot(botId: ID!, skillId: ID!): UninstallSkillFromBotMutation
+  toggleLLMFeatures(enabled: Boolean!): ToggleLLMFeaturesMutation
+  runEvalBenchmark(input: RunEvalBenchmarkInput!): RunEvalBenchmarkMutation
+  triggerDescriptionOptimization(input: TriggerDescriptionOptimizationInput!): TriggerDescriptionOptimizationMutation
+  applyOptimizedDescription(input: ApplyOptimizedDescriptionInput!): ApplyOptimizedDescriptionMutation
+  improveEvals(input: ImproveEvalsInput!): ImproveEvalsMutation
+  createAssetEval(input: CreateAssetEvalInput!): CreateAssetEvalMutation
+  updateAssetEval(input: UpdateAssetEvalInput!): UpdateAssetEvalMutation
+  deleteAssetEval(input: DeleteAssetEvalInput!): DeleteAssetEvalMutation
+  importAssetEvals(input: ImportAssetEvalsInput!): ImportAssetEvalsMutation
+  exportAssetEvals(input: ExportAssetEvalsInput!): ExportAssetEvalsMutation
+  regenerateEvals(input: RegenerateEvalsInput!): RegenerateEvalsMutation
+
+  """Delete a file from an asset, creating a new asset version without it."""
+  deleteSkillFile(assetId: ID!, fileId: ID!): DeleteSkillFileMutation
+
+  """
+  Save a new version of a file, creating a new asset version with the updated content.
+  """
+  saveSkillFileVersion(input: SaveSkillFileVersionInput!): SaveSkillFileVersionMutation
+
+  """
+  Create a new file on an asset and seed it with an initial content version.
+  """
+  createSkillFile(input: CreateSkillFileInput!): CreateSkillFileMutation
+  createInstallationRequest(input: CreateInstallationRequestInput!): CreateInstallationRequestMutation
+  approveInstallationRequest(input: ReviewInstallationRequestInput!): ApproveInstallationRequestMutation
+  rejectInstallationRequest(input: ReviewInstallationRequestInput!): RejectInstallationRequestMutation
+  retractInstallationRequest(requestId: ID!): RetractInstallationRequestMutation
+  setAssetInstallations(input: SetAssetInstallationsInput!): SetAssetInstallationsMutation
+  removeAssetInstallations(input: RemoveAssetInstallationsInput!): RemoveAssetInstallationsMutation
+  updateSkillsSettings(input: UpdateSkillsSettingsInput!): UpdateSkillsSettingsMutation
+
+  """Import an external (non-managed) asset as a new managed asset."""
+  importAssetAsManaged(
+    """GID of the external asset to import"""
+    assetId: ID!
+  ): ImportAssetAsManagedMutation
+
+  """Create a new asset profile."""
+  createAssetProfile(input: CreateAssetProfileInput!): CreateAssetProfileMutation
+
+  """Update an existing asset profile."""
+  updateAssetProfile(input: UpdateAssetProfileInput!): UpdateAssetProfileMutation
+
+  """Delete an asset profile."""
+  deleteAssetProfile(input: DeleteAssetProfileInput!): DeleteAssetProfileMutation
+
+  """Add assets to a profile."""
+  addAssetsToProfile(input: ModifyAssetProfileAssetsInput!): AddAssetsToProfileMutation
+
+  """Remove assets from a profile."""
+  removeAssetsFromProfile(input: ModifyAssetProfileAssetsInput!): RemoveAssetsFromProfileMutation
+
+  """Compare skill files with the source repository to see differences."""
+  compareSkillWithRepository(
+    """GID of the skill to compare"""
+    skillId: ID!
+  ): CompareSkillWithRepositoryMutation
+
+  """Generate a unified diff patch for skill changes to download."""
+  generateSkillPatch(input: GenerateSkillPatchInput!): GenerateSkillPatchMutation
+
+  """Set or clear the active skill profile for the current user."""
+  setActiveSkillProfile(
+    """GID of the skill profile, or null to clear"""
+    skillProfileId: ID
+  ): SetActiveSkillProfileMutation
+
+  """Import an asset from a public catalog (skills.sh, Smithery, etc.)."""
+  importFromCatalog(
+    """JSON array of installation dicts (entity_type, entity_id, ...)"""
+    installations: String
+
+    """Provider-specific unique key"""
+    key: String!
+
+    """Catalog source key (e.g. 'skills_sh')"""
+    source: String!
+  ): ImportFromCatalogMutation
+
+  """Trigger an update of a catalog-sourced asset from upstream."""
+  updateFromCatalog(
+    """GID of the asset to update"""
+    assetGid: ID!
+  ): UpdateFromCatalogMutation
+  renameAsset(input: RenameAssetInput!): RenameAssetMutation
+  refreshGitAsset(assetId: ID!): RefreshGitAssetMutation
+
+  """Activate (rollback to) a specific skill version."""
+  activateSkillVersion(
+    """GID of the skill"""
+    assetId: ID!
+
+    """Version number to activate"""
+    versionNumber: Int!
+  ): ActivateSkillVersionMutation
+
+  """Create a new pull request for a skill."""
+  createAssetPullRequest(input: CreateAssetPullRequestInput!): CreateAssetPullRequestMutation
+
+  """Close/reject a pull request without merging."""
+  closeAssetPullRequest(
+    """GID of the pull request"""
+    pullRequestId: ID!
+  ): CloseAssetPullRequestMutation
+
+  """Add or update a file change in a pull request."""
+  addAssetPullRequestFileChange(input: AddAssetPullRequestFileChangeInput!): AddAssetPullRequestFileChangeMutation
+
+  """Merge a pull request into a new skill version."""
+  mergeAssetPullRequest(
+    """GID of the pull request"""
+    pullRequestId: ID!
+  ): MergeAssetPullRequestMutation
+  createAsset(input: CreateAssetInput!): CreateAssetMutation
+  updateAsset(input: UpdateAssetInput!): UpdateAssetMutation
+  deleteAsset(id: ID!): DeleteAssetMutation
+  toggleAssetStatus(id: ID!): ToggleAssetStatusMutation
+  clearManagementSession: ClearManagementSessionMutation
+
+  """
+  Wipe a managed asset's files, evals, and chat history, then start a fresh orchestration run.
+  """
+  regenerateAsset(
+    """GID of the asset to regenerate"""
+    id: ID!
+  ): RegenerateAssetMutation
+
+  """Clear an asset's chat history (event log) without affecting files."""
+  clearAssetChat(
+    """GID of the asset whose chat history to clear"""
+    id: ID!
+  ): ClearAssetChatMutation
+
+  """Evaluate an asset's quality, actionability, and completeness."""
+  evaluateAsset(
+    """GID of the asset to evaluate"""
+    id: ID!
+  ): EvaluateAssetMutation
+
+  """
+  Set an asset's status to a specific value (draft, published, or rejected).
+  """
+  setAssetStatus(
+    """GID of the asset to update"""
+    id: ID!
+
+    """New status (draft, published, or rejected)"""
+    status: SkillStatusEnum!
+  ): SetAssetStatusMutation
+
+  """
+  Remove a single installation from an asset (does not delete the asset).
+  """
+  uninstallAsset(input: UninstallAssetInput!): UninstallAssetMutation
+
+  """
+  Re-initialize skill discovery for a repository, deleting existing suggestions.
+  """
+  reinitializeRepositoryDiscovery(
+    """GID of the repository"""
+    repositoryGid: String!
+  ): ReinitializeRepositoryDiscoveryMutation
+
+  """
+  Generate more skill suggestions for a repository without deleting existing ones.
+  """
+  generateMoreRepositorySuggestions(
+    """GID of the repository"""
+    repositoryGid: String!
+  ): GenerateMoreRepositorySuggestionsMutation
+
+  """Update the status of a suggested skill (reject or unreject)."""
+  updateSuggestedSkillStatus(
+    """GID of the suggested skill"""
+    id: ID!
+
+    """New status (PENDING or REJECTED)"""
+    status: SuggestedSkillStatusEnum!
+  ): UpdateSuggestedSkillStatusMutation
+
+  """Trigger a re-scan of all repositories for AI assets."""
+  triggerAssetDiscovery: TriggerAssetDiscoveryMutation
+  createMonoRepoConfig(input: CreateMonoRepoConfigInput!): CreateMonoRepoConfigMutation
+  updateMonoRepoConfig(input: UpdateMonoRepoConfigInput!): UpdateMonoRepoConfigMutation
+  deleteMonoRepoConfig(id: ID!): DeleteMonoRepoConfigMutation
+  createNotification(input: CreateNotificationInput!): CreateNotificationMutation
+  deleteNotification(id: ID!): DeleteNotificationMutation
+  setDeveloperSalary(input: DeveloperSalaryInputType!): SetDeveloperSalaryMutation
+
+  """
+  NOTE: If the list of filters is empty, we will return `workPlanning: null`.
+  """
+  setNamedWorkCategory(input: NamedWorkCategoryInputType!): SetNamedWorkCategoryMutation
+
+  """
+  NOTE: If the list of filters is empty, we will return `workPlanning: null`.
+  """
+  setNamedWorkPlanning(input: NamedWorkPlanningInputType!): SetNamedWorkPlanningMutation
+  markSeen(name: String!, orgSlug: ID): SeenEventType
+  resendEmailConfirmation: ResendEmailConfirmationMutation
+  updateUser(email: String, firstName: String, lastName: String, timezone: String): UpdateUserMutation
+  createPersonalToken(label: String!): CreatePersonalTokenMutation
+  deletePersonalToken(tokenId: ID!): DeletePersonalTokenMutation
+  setCurrentUserWorkingHours(input: WorkingHoursInputType!): SetCurrentUserWorkingHoursMutation
+  deleteCurrentUserWorkingHours: DeleteCurrentUserWorkingHoursMutation
+  setOrganizationWorkingHours(input: WorkingHoursInputType!): SetOrganizationWorkingHoursMutation
+  deleteOrganizationWorkingHours: DeleteOrganizationWorkingHoursMutation
+  setBulkUserWorkingHours(input: BatchWorkingHoursInputType!): SetBulkUserWorkingHoursMutation
+  deleteBulkUserWorkingHours(input: BatchWorkingHoursDeleteInputType!): DeleteBulkUserWorkingHoursMutation
+  markUserOnboardingComplete: MarkUserOnboardingCompleteMutation
+  createDatadogIntegration(input: CreateDDIntegrationMutationInput!): CreateDDIntegrationMutationPayload
+  updateOrganization(input: UpdateOrganizationInputType!): UpdateOrganizationMutation
+  claimEmailDomain(enable: Boolean!, orgSlug: ID!): ClaimEmailDomainMutation
+  createTeam(input: CreateTeamInput!): CreateTeamMutation
+  updateTeam(input: UpdateTeamInput!): UpdateTeamMutation
+  deleteTeam(id: ID!): DeleteTeamMutation
+  removeTeamMember(input: RemoveTeamMemberInput!): RemoveTeamMemberMutation
+  setTeamAdmin(input: SetTeamAdminInput!): SetTeamAdminMutation
+  inviteMember(input: InviteMemberInput!): InviteMemberMutation
+  deleteMember(userId: ID!): DeleteMemberMutation
+  changeMemberRole(input: ChangeRoleMutationInput!): ChangeRoleMutation
+  setTeamsSyncStatus(input: TeamsSyncInputType!): TeamsSyncStatusMutation
+  triggerTeamsSync(input: TriggerTeamsSyncInputType!): TriggerTeamsSyncMutation
+  revokeInvitation(input: RevokeInvitationMutationInput!): RevokeInvitationMutationPayload
+  resendInvitation(input: ResendInvitationMutationInput!): ResendInvitationMutationPayload
+  deleteIntegrationAuthentication(input: DeleteIntegrationAuthenticationMutationInput!): DeleteIntegrationAuthenticationMutationPayload
+  linkExternalUsers(input: LinkExternalUserInputType!): LinkExternalUserMutation
+  unlinkExternalUsers(input: LinkExternalUserInputType!): UnlinkExternalUserMutation
+  createAccessToken(input: CreateAccessTokenInputType!): CreateAccessTokenMutation
+  deleteAccessToken(input: DeleteAccessTokenInputType!): DeleteAccessTokenMutation
+  markOrgOnboardingComplete: MarkOrgOnboardingCompleteMutation
+  createIntegration(input: CreateIntegrationMutationInput!): CreateIntegrationMutationPayload
+  updateIntegration(input: UpdateIntegrationMutationInput!): UpdateIntegrationMutationPayload
+  createWorkspace(input: CreateWorkspaceMutationInput!): CreateWorkspaceMutation
+  updateWorkspace(input: UpdateWorkspaceMutationInput!): UpdateWorkspaceMutation
+  deleteWorkspace(id: ID!): DeleteWorkspaceMutation
+  favoriteWorkspace(id: ID!): FavoriteWorkspaceMutation
+  unfavoriteWorkspace(id: ID!): UnfavoriteWorkspaceMutation
+  createReview(input: CreateReviewInput!): CreateReviewMutation
+  updateReview(input: UpdateReviewInput!): UpdateReviewMutation
+  setReviewStatus(input: SetReviewStatusInput!): SetReviewStatusMutation
+
+  """
+  Create a new review in this chain of reviews. The new review will link to the previous review and the previous review will link to the new review.
+  """
+  repeatReview(input: RepeatReviewInput!): RepeatReviewMutation
+
+  """
+  Creates a new review that starts a new review chain. The new review will have no link to the blueprint review, except that all the widgets were copied over.
+  """
+  copyReview(input: CopyReviewInput!): CopyReviewMutation
+  deleteReview(id: ID!): DeleteReviewMutation
+  deleteReviewChain(id: ID!): DeleteReviewChainMutation
+  createWidget(input: CreateWidgetInput!): CreateWidgetMutation
+  updateWidget(input: UpdateWidgetInput!): UpdateWidgetMutation
+  moveWidget(input: MoveInput!): MoveWidgetMutation
+  deleteWidget(id: ID!): DeleteWidgetMutation
+  addUsersToScope(input: AddUsersToScopeMutationInput!): AddUsersToScopeMutation
+  removeUsersFromScope(input: RemoveUsersFromScopeMutationInput!): RemoveUsersFromScopeMutation
+  customizeAssessment(input: AssessmentMutationInput!): CustomizeAssessmentMutation
+  generateAssessment(
+    """Assessable object ID. (Review or Section)"""
+    id: ID!
+  ): GenerateAssessmentMutation
+  createComment(input: CreateCommentInput!): CreateCommentMutation
+  deleteComment(id: ID!): DeleteCommentMutation
+  editComment(input: EditCommentInput!): EditCommentMutation
+  createSection(input: CreateSectionInput!): CreateSectionMutation
+  updateSection(input: UpdateSectionInput!): UpdateSectionMutation
+  moveSection(input: MoveInput!): MoveSectionMutation
+  setSectionStatus(input: SetSectionStatusInput!): SetSectionStatusMutation
+  deleteSection(id: ID!): DeleteSectionMutation
+  addTeamsOrUsersToScope(input: AddTeamsOrUsersToScopeMutationInput!): AddTeamsOrUsersToScopeMutation
+  removeTeamsOrUsersFromScope(input: RemoveTeamsOrUsersFromScopeMutationInput!): RemoveTeamsOrUsersFromScopeMutation
+  upload(files: [Upload!]!): UploadMutation
+  trackView(targetId: ID!, targetType: ViewTargetType!): TrackViewMutation
+  createBitbucketIntegration(input: CreateBitbucketIntegrationMutationInput!): CreateBitbucketIntegrationMutationPayload
+  createBitbucketPipelinesIntegration(input: CreateBitbucketPipelinesIntegrationMutationInput!): CreateBitbucketPipelinesIntegrationMutationPayload
+  createCircleciIntegration(input: CreateCircleCiIntegrationMutationInput!): CreateCircleCiIntegrationMutationPayload
+  createClubhouseIntegration(input: CreateClubhouseIntegrationMutationInput!): CreateClubhouseIntegrationMutationPayload
+  createGithubEnterpriseIntegration(input: CreateGithubEnterpriseIntegrationMutationInput!): CreateGithubEnterpriseIntegrationMutationPayload
+  createGitlabIntegration(input: CreateGitlabIntegrationMutationInput!): CreateGitlabIntegrationMutationPayload
+  createJenkinsIntegration(input: CreateJenkinsIntegrationMutationInput!): CreateJenkinsIntegrationMutationPayload
+  createJiraDatacenterIntegration(input: CreateJiraDatacenterIntegrationMutationInput!): CreateJiraDatacenterIntegrationMutationPayload
+  createLegacyIntegration(input: CreateLegacyIntegrationMutationInput!): CreateLegacyIntegrationMutationPayload
+  validateDeviceCode(userCode: String!): ValidateDeviceCodeMutation
+  approveDevice(approve: Boolean!, botGid: String, clientId: String!, userCode: String!): ApproveDeviceMutation
+}
+
+type CreateBotMutation {
+  bot: ManagedBot
+  botKey: String
+  errors: [ErrorType!]!
+}
+
+type ErrorType {
+  field: String!
+  messages: [String!]!
+}
+
+input CreateBotInput {
+  name: String!
+  description: String
+  teamIds: [ID!]
+}
+
+type UpdateBotMutation {
+  bot: ManagedBot
+  errors: [ErrorType!]!
+}
+
+input UpdateBotInput {
+  id: ID!
+  name: String
+  description: String
+  teamIds: [ID!]
+}
+
+type DeleteBotMutation {
+  bot: ManagedBot
+  errors: [ErrorType!]!
+}
+
+type CreateBotApiKeyMutation {
+  botKey: String
+  errors: [ErrorType!]!
+}
+
+type DeleteBotApiKeyMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+type InstallSkillToBotMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+type UninstallSkillFromBotMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+type ToggleLLMFeaturesMutation {
+  success: Boolean!
+}
+
+type RunEvalBenchmarkMutation {
+  benchmark: EvalBenchmark
+  errors: [ErrorType!]!
+}
+
+input RunEvalBenchmarkInput {
+  skillGid: ID!
+  runsPerConfig: Int
+
+  """Subset of eval GIDs to run"""
+  evalGids: [ID!]
+}
+
+type TriggerDescriptionOptimizationMutation {
+  optimization: DescriptionOptimization
+  errors: [ErrorType!]!
+}
+
+input TriggerDescriptionOptimizationInput {
+  skillGid: ID!
+  maxIterations: Int
+}
+
+type ApplyOptimizedDescriptionMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+input ApplyOptimizedDescriptionInput {
+  optimizationGid: ID!
+}
+
+type ImproveEvalsMutation {
+  ok: Boolean!
+  errors: [ErrorType!]!
+}
+
+input ImproveEvalsInput {
+  skillGid: ID!
+}
+
+type CreateAssetEvalMutation {
+  eval: AssetEval
+  errors: [ErrorType!]!
+}
+
+input CreateAssetEvalInput {
+  skillGid: ID!
+  evalKey: String!
+  prompt: String!
+  expectedOutput: String
+  expectations: [String!]
+  category: String
+}
+
+type UpdateAssetEvalMutation {
+  eval: AssetEval
+  errors: [ErrorType!]!
+}
+
+input UpdateAssetEvalInput {
+  evalGid: ID!
+  prompt: String
+  expectedOutput: String
+  expectations: [String!]
+  category: String
+  isActive: Boolean
+}
+
+type DeleteAssetEvalMutation {
+  ok: Boolean!
+  errors: [ErrorType!]!
+}
+
+input DeleteAssetEvalInput {
+  evalGid: ID!
+}
+
+type ImportAssetEvalsMutation {
+  evals: [AssetEval!]
+  importedCount: Int
+  errors: [ErrorType!]!
+}
+
+input ImportAssetEvalsInput {
+  skillGid: ID!
+
+  """JSON string in Anthropic evals.json format"""
+  evalsJson: String!
+}
+
+type ExportAssetEvalsMutation {
+  evalsJson: String
+  errors: [ErrorType!]!
+}
+
+input ExportAssetEvalsInput {
+  skillGid: ID!
+}
+
+type RegenerateEvalsMutation {
+  ok: Boolean
+  errors: [ErrorType!]!
+}
+
+input RegenerateEvalsInput {
+  skillGid: ID!
+
+  """Number of evals to generate (default 3)"""
+  count: Int
+}
+
+"""Delete a file from an asset, creating a new asset version without it."""
+type DeleteSkillFileMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+"""
+Save a new version of a file, creating a new asset version with the updated content.
+"""
+type SaveSkillFileVersionMutation {
+  file: SkillFile
+  errors: [ErrorType!]!
+}
+
+input SaveSkillFileVersionInput {
+  assetId: ID!
+  fileId: ID!
+  content: String!
+  changeSummary: String
+}
+
+"""
+Create a new file on an asset and seed it with an initial content version.
+"""
+type CreateSkillFileMutation {
+  file: SkillFile
+  errors: [ErrorType!]!
+}
+
+input CreateSkillFileInput {
+  assetId: ID!
+  name: String!
+  path: String
+  content: String!
+  changeSummary: String
+}
+
+type CreateInstallationRequestMutation {
+  installationRequest: AssetInstallationRequest
+  errors: [ErrorType!]!
+}
+
+input CreateInstallationRequestInput {
+  """GID of the asset"""
+  assetId: ID!
+
+  """'team', 'organization', or 'repository'"""
+  targetType: String!
+
+  """GID of the target team (required if target_type is 'team')"""
+  targetTeamId: ID
+
+  """GID of the target repository"""
+  targetEntityId: String
+}
+
+type ApproveInstallationRequestMutation {
+  installationRequest: AssetInstallationRequest
+  errors: [ErrorType!]!
+}
+
+input ReviewInstallationRequestInput {
+  requestId: ID!
+
+  """Optional note (used for rejections)"""
+  note: String
+}
+
+type RejectInstallationRequestMutation {
+  installationRequest: AssetInstallationRequest
+  errors: [ErrorType!]!
+}
+
+type RetractInstallationRequestMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+type SetAssetInstallationsMutation {
+  asset: VaultAsset
+  errors: [ErrorType!]!
+}
+
+input SetAssetInstallationsInput {
+  assetName: String!
+  assetVersion: String
+  repositories: [RepositoryInstallationInput!]!
+  personalOnly: Boolean
+}
+
+input RepositoryInstallationInput {
+  url: String!
+  paths: [String!]
+}
+
+type RemoveAssetInstallationsMutation {
+  success: Boolean
+  errors: [ErrorType!]!
+}
+
+input RemoveAssetInstallationsInput {
+  assetName: String!
+  delete: Boolean = false
+}
+
+type UpdateSkillsSettingsMutation {
+  skillsSettings: SkillsSettings
+  errors: [ErrorType!]!
+}
+
+input UpdateSkillsSettingsInput {
+  """Whether to automatically publish skills"""
+  autoPublishEnabled: Boolean
+
+  """Minimum confidence percentage for auto-publishing (0-100)"""
+  autoPublishThreshold: Int
+
+  """
+  Whether skill PRs should be automatically created based on code changes in GitHub PRs
+  """
+  autoCreateSkillPullRequests: Boolean
+}
+
+"""Import an external (non-managed) asset as a new managed asset."""
+type ImportAssetAsManagedMutation {
+  success: Boolean!
+
+  """GID of the newly created managed asset"""
+  newAssetGid: ID
+  errors: [ErrorType!]!
+}
+
+"""Create a new asset profile."""
+type CreateAssetProfileMutation {
+  profile: VaultAssetProfile
+  errors: [ErrorType!]!
+}
+
+input CreateAssetProfileInput {
+  """Profile name (must be unique within org)"""
+  name: String!
+
+  """Profile description"""
+  description: String
+}
+
+"""Update an existing asset profile."""
+type UpdateAssetProfileMutation {
+  profile: VaultAssetProfile
+  errors: [ErrorType!]!
+}
+
+input UpdateAssetProfileInput {
+  """Profile GID"""
+  gid: ID!
+
+  """New profile name"""
+  name: String
+
+  """New profile description"""
+  description: String
+}
+
+"""Delete an asset profile."""
+type DeleteAssetProfileMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+input DeleteAssetProfileInput {
+  """Profile GID to delete"""
+  gid: ID!
+}
+
+"""Add assets to a profile."""
+type AddAssetsToProfileMutation {
+  profile: VaultAssetProfile
+  errors: [ErrorType!]!
+}
+
+input ModifyAssetProfileAssetsInput {
+  """Profile GID"""
+  profileGid: ID!
+
+  """List of asset GIDs to add/remove"""
+  assetGids: [ID!]!
+}
+
+"""Remove assets from a profile."""
+type RemoveAssetsFromProfileMutation {
+  profile: VaultAssetProfile
+  errors: [ErrorType!]!
+}
+
+"""Compare skill files with the source repository to see differences."""
+type CompareSkillWithRepositoryMutation {
+  comparison: SkillComparisonResult
+  errors: [ErrorType!]!
+}
+
+"""Result of comparing skill files with repository content."""
+type SkillComparisonResult {
+  hasDifferences: Boolean!
+  fileDiffs: [SkillFileDiff!]!
+  error: String
+  filesAdded: Int!
+  filesModified: Int!
+  filesDeleted: Int!
+  filesUnchanged: Int!
+  versionChanges: [VersionChange!]!
+  suggestedDescription: String!
+}
+
+"""Information about a single file difference."""
+type SkillFileDiff {
+  filePath: String!
+  fileName: String!
+  action: String!
+}
+
+"""Information about a skill version change."""
+type VersionChange {
+  versionNumber: Int!
+  changeSummary: String!
+}
+
+"""Generate a unified diff patch for skill changes to download."""
+type GenerateSkillPatchMutation {
+  patchContent: String
+  filename: String
+  errors: [ErrorType!]!
+}
+
+input GenerateSkillPatchInput {
+  """GID of the skill to generate patch for"""
+  skillId: ID!
+
+  """Action: UPDATE to sync changes, DELETE to remove skill from repo"""
+  actionType: SkillPatchActionTypeEnum!
+}
+
+"""Action type for skill patch generation."""
+enum SkillPatchActionTypeEnum {
+  UPDATE
+  DELETE
+}
+
+"""Set or clear the active skill profile for the current user."""
+type SetActiveSkillProfileMutation {
+  user: User
+}
+
+"""Import an asset from a public catalog (skills.sh, Smithery, etc.)."""
+type ImportFromCatalogMutation {
+  asset: VaultAsset
+  errors: [ErrorType!]!
+}
+
+"""Trigger an update of a catalog-sourced asset from upstream."""
+type UpdateFromCatalogMutation {
+  asset: VaultAsset
+  errors: [ErrorType!]!
+}
+
+type RenameAssetMutation {
+  success: Boolean
+  errors: [ErrorType!]!
+}
+
+input RenameAssetInput {
+  oldName: String!
+  newName: String!
+}
+
+type RefreshGitAssetMutation {
+  success: Boolean
+  errors: [ErrorType!]!
+}
+
+"""Activate (rollback to) a specific skill version."""
+type ActivateSkillVersionMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+"""Create a new pull request for a skill."""
+type CreateAssetPullRequestMutation {
+  pullRequest: SkillPullRequest
+  errors: [ErrorType!]!
+}
+
+input CreateAssetPullRequestInput {
+  """GID of the skill"""
+  assetId: ID!
+
+  """Pull request title"""
+  title: String!
+
+  """Pull request description"""
+  description: String
+}
+
+"""Close/reject a pull request without merging."""
+type CloseAssetPullRequestMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+"""Add or update a file change in a pull request."""
+type AddAssetPullRequestFileChangeMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+input AddAssetPullRequestFileChangeInput {
+  """GID of the pull request"""
+  pullRequestId: ID!
+
+  """File name"""
+  name: String!
+
+  """File path"""
+  path: String
+
+  """File action type"""
+  action: SkillPullRequestFileActionEnum!
+
+  """New file content"""
+  content: String
+
+  """Original content before editing (for diffs)"""
+  previousContent: String
+}
+
+"""File action type for pull request changes."""
+enum SkillPullRequestFileActionEnum {
+  ADD
+  MODIFY
+  DELETE
+}
+
+"""Merge a pull request into a new skill version."""
+type MergeAssetPullRequestMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+type CreateAssetMutation {
+  asset: VaultAsset
+  errors: [ErrorType!]!
+}
+
+input CreateAssetInput {
+  name: String!
+
+  """Type: skill, rule, agent, command, mcp, hook, plugin"""
+  assetType: String!
+  description: String
+  originalPrompt: String
+
+  """Initial installations for the asset (empty/null = org-wide)"""
+  installations: [AssetInstallationInput!]
+
+  """GID of the SuggestedSkill this was created from"""
+  suggestionId: ID
+
+  """Direct file content (skips orchestration)"""
+  rawContent: String
+  mcpTransport: String
+  mcpUrl: String
+  mcpCommand: String
+  mcpArgs: [String!]
+  mcpEnv: JSONString
+  mcpIntegrationId: ID
+  mcpToolNames: [McpToolInput!]
+  mcpSecured: Boolean
+  hookEvent: String
+  hookCommand: String
+  hookArgs: [String!]
+  hookTimeout: Int
+  hookMatcher: String
+  ruleTitle: String
+  ruleGlobs: [String!]
+  pluginMarketplaceUrl: String
+}
+
+input AssetInstallationInput {
+  """organization, repository, team, user, or bot"""
+  entityType: String!
+
+  """GID of the entity (null for organization-wide)"""
+  entityId: ID
+  entityName: String
+  entityProvider: String
+
+  """GID of the mono-repo config (repository targets only)"""
+  monoRepoConfigId: ID
+  monoRepoConfigName: String
+}
+
+input McpToolInput {
+  name: String!
+  description: String
+  estimatedTokens: Int
+}
+
+type UpdateAssetMutation {
+  asset: VaultAsset
+  errors: [ErrorType!]!
+}
+
+input UpdateAssetInput {
+  id: ID!
+  name: String
+  description: String
+
+  """Replace the asset's installations entirely. Empty list = org-wide."""
+  installations: [AssetInstallationInput!]
+
+  """Rule asset globs"""
+  ruleGlobs: [String!]
+  mcpUrl: String
+  mcpTransport: String
+  mcpToolNames: [McpToolInput!]
+  hookEvent: String
+  hookCommand: String
+  hookArgs: [String!]
+  hookTimeout: Int
+  hookMatcher: String
+}
+
+type DeleteAssetMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+type ToggleAssetStatusMutation {
+  asset: VaultAsset
+  errors: [ErrorType!]!
+}
+
+type ClearManagementSessionMutation {
+  success: Boolean!
+}
+
+"""
+Wipe a managed asset's files, evals, and chat history, then start a fresh orchestration run.
+"""
+type RegenerateAssetMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+"""Clear an asset's chat history (event log) without affecting files."""
+type ClearAssetChatMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+"""Evaluate an asset's quality, actionability, and completeness."""
+type EvaluateAssetMutation {
+  asset: VaultAsset
+  errors: [ErrorType!]!
+}
+
+"""
+Set an asset's status to a specific value (draft, published, or rejected).
+"""
+type SetAssetStatusMutation {
+  asset: VaultAsset
+  errors: [ErrorType!]!
+}
+
+"""
+Remove a single installation from an asset (does not delete the asset).
+"""
+type UninstallAssetMutation {
+  asset: VaultAsset
+  errors: [ErrorType!]!
+}
+
+input UninstallAssetInput {
+  """GID of the asset to uninstall from a target"""
+  id: ID!
+
+  """Installation entity type (organization, repository, team, user, bot)"""
+  entityType: String!
+
+  """GID of the entity (null for organization-wide installs)"""
+  entityId: ID
+
+  """GID of the mono-repo config (only for repository targets)"""
+  monoRepoConfigId: ID
+}
+
+"""
+Re-initialize skill discovery for a repository, deleting existing suggestions.
+"""
+type ReinitializeRepositoryDiscoveryMutation {
+  repositoryGid: String
+  errors: [ErrorType!]!
+}
+
+"""
+Generate more skill suggestions for a repository without deleting existing ones.
+"""
+type GenerateMoreRepositorySuggestionsMutation {
+  repositoryGid: String
+  errors: [ErrorType!]!
+}
+
+"""Update the status of a suggested skill (reject or unreject)."""
+type UpdateSuggestedSkillStatusMutation {
+  suggestedSkill: SuggestedSkill
+  errors: [ErrorType!]!
+}
+
+"""Trigger a re-scan of all repositories for AI assets."""
+type TriggerAssetDiscoveryMutation {
+  success: Boolean
+  errors: [ErrorType!]!
+}
+
+type CreateMonoRepoConfigMutation {
+  monoRepoConfig: MonoRepoConfigOutputType
+  errors: [ErrorType!]!
+}
+
+"""Output type for mono repo config mutations"""
+type MonoRepoConfigOutputType {
+  id: ID
+  name: String
+  sourcePathPrefixIncludes: [String]
+  sourcePathPrefixExcludes: [String]
+  issueTeamKeys: [String]
+  issueProvider: Provider
+}
+
+input CreateMonoRepoConfigInput {
+  repositoryId: ID!
+  name: String!
+  sourcePathPrefixIncludes: [String]
+  sourcePathPrefixExcludes: [String]
+  issueTeamKeys: [String]
+  issueProvider: Provider
+}
+
+type UpdateMonoRepoConfigMutation {
+  monoRepoConfig: MonoRepoConfigOutputType
+  errors: [ErrorType!]!
+}
+
+input UpdateMonoRepoConfigInput {
+  id: ID!
+  name: String
+  sourcePathPrefixIncludes: [String]
+  sourcePathPrefixExcludes: [String]
+  issueTeamKeys: [String]
+  issueProvider: Provider
+}
+
+type DeleteMonoRepoConfigMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+  affectedTeams: [ID]
+}
+
+type CreateNotificationMutation {
+  notification: Notification
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+input CreateNotificationInput {
+  event: NotificationEvent = null
+  provider: NotificationProviderType!
+  integrationAuthId: ID
+}
+
+type DeleteNotificationMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+type SetDeveloperSalaryMutation {
+  salary: DeveloperSalaryType
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+input DeveloperSalaryInputType {
+  id: ID
+  level: SalaryLevel!
+  currency: Currency!
+  annualRate: Decimal!
+}
+
+"""
+NOTE: If the list of filters is empty, we will return `workPlanning: null`.
+"""
+type SetNamedWorkCategoryMutation {
+  workCategories: [NamedWorkCategoryGqlType!]!
+  success: Boolean!
+  errors: [ErrorType!]
+}
+
+input NamedWorkCategoryInputType {
+  workspaceId: ID!
+  bucketKey: NamedWorkCategory!
+  pqlFilterGroups: [PQLFilterGroupsGQLInput!]!
+}
+
+input PQLFilterGroupsGQLInput {
+  pqlFilters: [PQLFilterInput!]!
+}
+
+"""
+NOTE: If the list of filters is empty, we will return `workPlanning: null`.
+"""
+type SetNamedWorkPlanningMutation {
+  workPlanning: [NamedWorkPlanningGqlType!]!
+  success: Boolean!
+  errors: [ErrorType!]
+}
+
+input NamedWorkPlanningInputType {
+  id: ID
+  workspaceId: ID!
+  bucketKey: NamedWorkPlanningType!
+  pqlFilterGroups: [PQLFilterGroupsGQLInput!]!
+}
+
+type ResendEmailConfirmationMutation {
+  success: Boolean!
+}
+
+type UpdateUserMutation {
+  user: User
+}
+
+type CreatePersonalTokenMutation {
+  token: String!
+  errors: [String!]
+}
+
+type DeletePersonalTokenMutation {
+  success: Boolean!
+  errors: [String!]
+}
+
+type SetCurrentUserWorkingHoursMutation {
+  success: Boolean!
+  errors: [String!]
+}
+
+input WorkingHoursInputType {
+  startTime: Time!
+  duration: String!
+  recurrence: String!
+}
+
+type DeleteCurrentUserWorkingHoursMutation {
+  success: Boolean!
+  errors: [String!]
+}
+
+type SetOrganizationWorkingHoursMutation {
+  success: Boolean!
+  errors: [String!]
+}
+
+type DeleteOrganizationWorkingHoursMutation {
+  success: Boolean!
+  errors: [String!]
+}
+
+type SetBulkUserWorkingHoursMutation {
+  success: Boolean!
+  errors: [String!]
+}
+
+input BatchWorkingHoursInputType {
+  startTime: Time!
+  duration: String!
+  recurrence: String!
+  userIds: [String!]!
+}
+
+type DeleteBulkUserWorkingHoursMutation {
+  success: Boolean!
+  errors: [String!]
+}
+
+input BatchWorkingHoursDeleteInputType {
+  userIds: [String!]!
+}
+
+type MarkUserOnboardingCompleteMutation {
+  success: Boolean!
+}
+
+type CreateDDIntegrationMutationPayload {
+  errors: [ErrorType]
+  integration: IntegrationAuthenticationType
+}
+
+input CreateDDIntegrationMutationInput {
+  """
+  Your <a href='https://app.datadoghq.com/organization-settings/api-keys' target='_blank'>generated</a> API key
+  """
+  apiToken: String!
+
+  """
+  Your <a href='https://app.datadoghq.com/organization-settings/application-keys' target='_blank'>generated</a> Application key
+  """
+  apiSecondaryToken: String!
+  inEurope: Boolean
+  description: String
+
+  """
+  URL of your Datadog instance, only required if you are using a custom subdomain.
+  """
+  url: String
+  provider: String
+}
+
+type UpdateOrganizationMutation {
+  success: Boolean!
+}
+
+input UpdateOrganizationInputType {
+  name: String
+  description: String
+  url: String
+  loginMethods: [LoginMethodInputType!]
+  emailDomain: String
+  addressLine1: String
+  addressLine2: String
+  addressCity: String
+  addressCountry: String
+  addressState: String
+  addressPostalCode: String
+  defaultRole: Role
+  timezone: String
+  iconUrl: String
+}
+
+input LoginMethodInputType {
+  type: AllowedLoginMethodType!
+  provider: SocialLoginProviderType = null
+}
+
+type ClaimEmailDomainMutation {
+  success: Boolean!
+}
+
+type CreateTeamMutation {
+  team: Team
+  errors: [ErrorType!]!
+}
+
+input CreateTeamInput {
+  name: String!
+  parent: ID
+  members: [ID!]!
+  skillsRepositories: [SkillsRepositoryInput!]
+}
+
+"""Input for team-repository association with optional mono_repo_config"""
+input SkillsRepositoryInput {
+  repositoryId: ID!
+  monoRepoConfigId: ID
+}
+
+type UpdateTeamMutation {
+  team: Team
+  errors: [ErrorType!]!
+}
+
+input UpdateTeamInput {
+  id: ID!
+  name: String
+  parent: ID
+  members: [ID!]
+  skillsRepositories: [SkillsRepositoryInput!]
+}
+
+type DeleteTeamMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+type RemoveTeamMemberMutation {
+  team: Team
+  errors: [ErrorType!]!
+}
+
+input RemoveTeamMemberInput {
+  teamId: ID!
+  memberId: ID!
+}
+
+type SetTeamAdminMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+input SetTeamAdminInput {
+  teamId: ID!
+  userId: ID!
+  isAdmin: Boolean!
+}
+
+type InviteMemberMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+input InviteMemberInput {
+  email: String!
+  role: Role! = DEV
+}
+
+type DeleteMemberMutation {
+  success: Boolean!
+}
+
+type ChangeRoleMutation {
+  success: Boolean!
+}
+
+input ChangeRoleMutationInput {
+  userId: ID!
+  role: Role!
+}
+
+type TeamsSyncStatusMutation {
+  success: Boolean!
+}
+
+input TeamsSyncInputType {
+  orgSlug: ID!
+
+  """
+  Desired Teams provider. Leave empty for manual control over Sleuth Teams
+  """
+  provider: TeamsSyncProviderType = null
+
+  """
+  Slug of the integration used for teams sync in case of multiple integrations configured.
+  """
+  integrationSlug: String
+}
+
+enum TeamsSyncProviderType {
+  """Github"""
+  GITHUB
+
+  """Sleuth Dora"""
+  SLEUTH_DORA
+}
+
+type TriggerTeamsSyncMutation {
+  success: Boolean!
+  errors: [String]
+}
+
+input TriggerTeamsSyncInputType {
+  orgSlug: ID!
+  integrationSlugs: [ID!]
+}
+
+type RevokeInvitationMutationPayload {
+  errors: [ErrorType]
+  success: Boolean!
+}
+
+input RevokeInvitationMutationInput {
+  invitationId: ID!
+}
+
+type ResendInvitationMutationPayload {
+  errors: [ErrorType]
+  success: Boolean!
+}
+
+input ResendInvitationMutationInput {
+  invitationId: ID!
+}
+
+type DeleteIntegrationAuthenticationMutationPayload {
+  errors: [ErrorType]
+  success: Boolean!
+}
+
+input DeleteIntegrationAuthenticationMutationInput {
+  provider: String!
+  slug: String
+}
+
+type LinkExternalUserMutation {
+  success: Boolean!
+  errors: [ErrorType!]
+}
+
+input LinkExternalUserInputType {
+  userId: ID!
+  externalUserIds: [ID!]!
+}
+
+type UnlinkExternalUserMutation {
+  success: Boolean!
+  errors: [ErrorType!]
+}
+
+type CreateAccessTokenMutation {
+  token: String
+  errors: [String!]
+}
+
+input CreateAccessTokenInputType {
+  orgSlug: ID!
+  scope: OAuthScopeType!
+  label: String!
+}
+
+type DeleteAccessTokenMutation {
+  success: Boolean!
+  errors: [String!]
+}
+
+input DeleteAccessTokenInputType {
+  orgSlug: ID!
+  tokenId: ID!
+}
+
+type MarkOrgOnboardingCompleteMutation {
+  success: Boolean!
+}
+
+type CreateIntegrationMutationPayload {
+  errors: [ErrorType]
+  integration: IntegrationAuthenticationType
+}
+
+input CreateIntegrationMutationInput {
+  provider: String!
+
+  """The username of the user used to create the API token"""
+  username: String
+  apiToken: String
+  apiSecondaryToken: String
+  description: String
+
+  """
+  Coma separated list of custom headers Sleuth will send with every request. Specify in the format: my-header=my-value,my-other-header=value2
+  """
+  extraHeaders: String
+
+  """
+  Whether only read operations will be allowed or not. If enabled, some features may be unavailable.
+  """
+  readOnly: Boolean
+
+  """The fully qualified url of your instance."""
+  url: String
+  extraData: String
+}
+
+type UpdateIntegrationMutationPayload {
+  errors: [ErrorType]
+  integration: IntegrationAuthenticationType
+}
+
+input UpdateIntegrationMutationInput {
+  slug: String!
+  provider: String
+
+  """The username of the user used to create the API token"""
+  username: String
+  apiToken: String
+  apiSecondaryToken: String
+  description: String
+
+  """
+  Coma separated list of custom headers Sleuth will send with every request. Specify in the format: my-header=my-value,my-other-header=value2
+  """
+  extraHeaders: String
+
+  """
+  Whether only read operations will be allowed or not. If enabled, some features may be unavailable.
+  """
+  readOnly: Boolean
+
+  """The fully qualified url of your instance."""
+  url: String
+  extraData: String
+}
+
+type CreateWorkspaceMutation {
+  workspace: Workspace
+  errors: [ErrorType!]
+}
+
+input CreateWorkspaceMutationInput {
+  name: String!
+  marker: WorkspaceMarkerInput = null
+}
+
+input WorkspaceMarkerInput {
+  type: WorkspaceMarkerType!
+  name: String!
+  color: String
+}
+
+type UpdateWorkspaceMutation {
+  workspace: Workspace
+  errors: [ErrorType!]
+}
+
+input UpdateWorkspaceMutationInput {
+  id: ID!
+  name: String
+  marker: WorkspaceMarkerInput = null
+}
+
+type DeleteWorkspaceMutation {
+  success: Boolean!
+  errors: [ErrorType!]
+}
+
+type FavoriteWorkspaceMutation {
+  success: Boolean!
+  errors: [ErrorType!]
+}
+
+type UnfavoriteWorkspaceMutation {
+  success: Boolean!
+  errors: [ErrorType!]
+}
+
+type CreateReviewMutation {
+  review: Review
+  errors: [ErrorType!]
+}
+
+input CreateReviewInput {
+  workspaceId: ID!
+  templateId: String!
+  start: DateTime
+  end: DateTime
+}
+
+type UpdateReviewMutation {
+  review: Review
+  errors: [ErrorType!]
+}
+
+input UpdateReviewInput {
+  id: ID!
+  name: String
+  start: DateTime
+  end: DateTime
+  dueOn: DateTime
+  sectionSubmissionDeadline: DateTime
+  onlyOwnerCanChangeStatus: Boolean
+  requireApproval: Boolean
+  owner: ID
+}
+
+type SetReviewStatusMutation {
+  review: Review
+  errors: [ErrorType!]
+}
+
+input SetReviewStatusInput {
+  id: ID!
+  status: ReviewStatus!
+}
+
+"""
+Create a new review in this chain of reviews. The new review will link to the previous review and the previous review will link to the new review.
+"""
+type RepeatReviewMutation {
+  review: Review
+  errors: [ErrorType!]
+}
+
+input RepeatReviewInput {
+  fromReview: ID!
+
+  """
+  The title of the new review. Defaults to the title of the previous review.
+  """
+  newTitle: String
+}
+
+"""
+Creates a new review that starts a new review chain. The new review will have no link to the blueprint review, except that all the widgets were copied over.
+"""
+type CopyReviewMutation {
+  review: Review
+  errors: [ErrorType!]
+}
+
+input CopyReviewInput {
+  fromReview: ID!
+
+  """
+  The title of the new review, defaults to the title of the previous review.
+  """
+  newTitle: String
+
+  """
+  The workspace to create the new review in. Defaults to the same workspace.
+  """
+  toWorkspace: ID
+}
+
+type DeleteReviewMutation {
+  success: Boolean!
+  errors: [ErrorType!]
+}
+
+type DeleteReviewChainMutation {
+  success: Boolean!
+  errors: [ErrorType!]
+}
+
+type CreateWidgetMutation {
+  widget: Widget
+  errors: [ErrorType!]
+}
+
+input CreateWidgetInput {
+  sectionId: ID!
+  name: String!
+  position: Int
+  size: WidgetSize
+  widgetType: String!
+  parameters: JSONString
+  renderer: FormatRenderer
+
+  """
+  All possible values are: Current month breakdown, Current quarter breakdown, Details, Manual chart, Manual stacked chart, Percentages, Period breakdown, Period vs last period trend, Period vs period last year, Previous comparison, Priorities, Proportions, Rating, Single number, Six months trend, Six period proportions trend, Six period trend, Survey answer list, Text, Trend, Twelve months trend, Twelve period proportions trend, Twelve period trend, Two months trend. But not every widget supports all of them. Each widget has a different default.
+  """
+  valueType: String
+}
+
+type UpdateWidgetMutation {
+  widget: Widget
+  errors: [ErrorType!]
+}
+
+input UpdateWidgetInput {
+  id: ID!
+  name: String
+  parameters: JSONString
+  size: WidgetSize
+  renderer: FormatRenderer
+
+  """
+  All possible values are: Current month breakdown, Current quarter breakdown, Details, Manual chart, Manual stacked chart, Percentages, Period breakdown, Period vs last period trend, Period vs period last year, Previous comparison, Priorities, Proportions, Rating, Single number, Six months trend, Six period proportions trend, Six period trend, Survey answer list, Text, Trend, Twelve months trend, Twelve period proportions trend, Twelve period trend, Two months trend. But not every widget supports all of them.
+  """
+  valueType: String
+}
+
+type MoveWidgetMutation {
+  widget: Widget
+  errors: [ErrorType!]
+}
+
+input MoveInput {
+  id: ID!
+  newPosition: Int!
+  newSectionId: ID
+}
+
+type DeleteWidgetMutation {
+  success: Boolean!
+  errors: [ErrorType!]
+}
+
+type AddUsersToScopeMutation {
+  instance: UserScoped!
+  errors: [ErrorType!]
+}
+
+input AddUsersToScopeMutationInput {
+  id: ID!
+
+  """List of user IDs to be added"""
+  users: [ID]!
+}
+
+type RemoveUsersFromScopeMutation {
+  instance: UserScoped!
+  errors: [ErrorType!]
+}
+
+input RemoveUsersFromScopeMutationInput {
+  id: ID!
+
+  """List of user IDs to be removed"""
+  users: [ID]!
+}
+
+type CustomizeAssessmentMutation {
+  instance: Assessment
+  errors: [ErrorType!]
+}
+
+input AssessmentMutationInput {
+  """Assessable object ID. (Review or Section)"""
+  id: ID!
+  summary: HTMLString
+  score: Score
+  resetScore: Boolean
+  userInputRefinement: String
+}
+
+type GenerateAssessmentMutation {
+  errors: [ErrorType!]
+}
+
+type CreateCommentMutation {
+  comment: Comment
+  errors: [ErrorType!]
+}
+
+input CreateCommentInput {
+  sectionId: ID
+  reviewId: ID
+  text: HTMLString!
+}
+
+type DeleteCommentMutation {
+  success: Boolean!
+  errors: [ErrorType!]
+}
+
+type EditCommentMutation {
+  comment: Comment
+  errors: [ErrorType!]
+}
+
+input EditCommentInput {
+  id: ID!
+  text: HTMLString!
+}
+
+type CreateSectionMutation {
+  section: Section
+  errors: [ErrorType!]
+}
+
+input CreateSectionInput {
+  reviewId: ID!
+  name: String!
+  position: Int
+  hasAssessment: Boolean = true
+}
+
+type UpdateSectionMutation {
+  section: Section
+  errors: [ErrorType!]
+}
+
+input UpdateSectionInput {
+  id: ID!
+  name: String
+  hasAssessment: Boolean
+  assessmentSummaryIsMandatory: Boolean
+  assessmentScoreIsMandatory: Boolean
+  owners: [ID!]
+}
+
+type MoveSectionMutation {
+  section: Section
+  errors: [ErrorType!]
+}
+
+type SetSectionStatusMutation {
+  section: Section
+  errors: [ErrorType!]
+}
+
+input SetSectionStatusInput {
+  id: ID!
+  status: SectionStatus!
+}
+
+type DeleteSectionMutation {
+  success: Boolean!
+  errors: [ErrorType!]
+}
+
+type AddTeamsOrUsersToScopeMutation {
+  instance: TeamOrUsersScoped!
+  errors: [ErrorType!]
+}
+
+input AddTeamsOrUsersToScopeMutationInput {
+  id: ID!
+
+  """List of TeamOrUser IDs to be added"""
+  teamOrUserIds: [ID!]!
+}
+
+type RemoveTeamsOrUsersFromScopeMutation {
+  instance: TeamOrUsersScoped!
+  errors: [ErrorType!]
+}
+
+input RemoveTeamsOrUsersFromScopeMutationInput {
+  id: ID!
+
+  """List of TeamOrUser IDs to be removed"""
+  teamOrUserIds: [ID!]!
+}
+
+type UploadMutation {
+  urls: [String!]!
+  errors: [ErrorType!]!
+}
+
+"""
+Create scalar that ignores normal serialization/deserialization, since
+that will be handled by the multipart request spec
+"""
+scalar Upload
+
+type TrackViewMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+enum ViewTargetType {
+  REVIEW
+  WORKSPACE
+}
+
+type CreateBitbucketIntegrationMutationPayload {
+  errors: [ErrorType]
+  integration: IntegrationAuthenticationType
+}
+
+input CreateBitbucketIntegrationMutationInput {
+  provider: String!
+
+  """The username of the user used to create the API token"""
+  username: String
+  apiToken: String
+  apiSecondaryToken: String
+  description: String
+
+  """
+  Coma separated list of custom headers Sleuth will send with every request. Specify in the format: my-header=my-value,my-other-header=value2
+  """
+  extraHeaders: String
+
+  """
+  Whether only read operations will be allowed or not. If enabled, some features may be unavailable.
+  """
+  readOnly: Boolean
+
+  """The fully qualified url of your instance."""
+  url: String
+  extraData: String
+}
+
+type CreateBitbucketPipelinesIntegrationMutationPayload {
+  errors: [ErrorType]
+  integration: IntegrationAuthenticationType
+}
+
+input CreateBitbucketPipelinesIntegrationMutationInput {
+  provider: String!
+
+  """The username of the user used to create the API token"""
+  username: String
+  apiToken: String
+  apiSecondaryToken: String
+  description: String
+
+  """
+  Coma separated list of custom headers Sleuth will send with every request. Specify in the format: my-header=my-value,my-other-header=value2
+  """
+  extraHeaders: String
+
+  """
+  Whether only read operations will be allowed or not. If enabled, some features may be unavailable.
+  """
+  readOnly: Boolean
+
+  """The fully qualified url of your instance."""
+  url: String
+  extraData: String
+}
+
+type CreateCircleCiIntegrationMutationPayload {
+  errors: [ErrorType]
+  integration: IntegrationAuthenticationType
+}
+
+input CreateCircleCiIntegrationMutationInput {
+  provider: String!
+
+  """The username of the user used to create the API token"""
+  username: String
+  apiToken: String
+  apiSecondaryToken: String
+  description: String
+
+  """
+  Coma separated list of custom headers Sleuth will send with every request. Specify in the format: my-header=my-value,my-other-header=value2
+  """
+  extraHeaders: String
+
+  """
+  Whether only read operations will be allowed or not. If enabled, some features may be unavailable.
+  """
+  readOnly: Boolean
+
+  """The fully qualified url of your instance."""
+  url: String
+  extraData: String
+}
+
+type CreateClubhouseIntegrationMutationPayload {
+  errors: [ErrorType]
+  integration: IntegrationAuthenticationType
+}
+
+input CreateClubhouseIntegrationMutationInput {
+  provider: String!
+
+  """The username of the user used to create the API token"""
+  username: String
+  apiToken: String
+  apiSecondaryToken: String
+  description: String
+
+  """
+  Coma separated list of custom headers Sleuth will send with every request. Specify in the format: my-header=my-value,my-other-header=value2
+  """
+  extraHeaders: String
+
+  """
+  Whether only read operations will be allowed or not. If enabled, some features may be unavailable.
+  """
+  readOnly: Boolean
+
+  """The fully qualified url of your instance."""
+  url: String
+  extraData: String
+}
+
+type CreateGithubEnterpriseIntegrationMutationPayload {
+  errors: [ErrorType]
+  integration: IntegrationAuthenticationType
+}
+
+input CreateGithubEnterpriseIntegrationMutationInput {
+  provider: String!
+
+  """The username of the user used to create the API token"""
+  username: String
+  apiToken: String
+  apiSecondaryToken: String
+  description: String
+
+  """
+  Coma separated list of custom headers Sleuth will send with every request. Specify in the format: my-header=my-value,my-other-header=value2
+  """
+  extraHeaders: String
+
+  """
+  Whether only read operations will be allowed or not. If enabled, some features may be unavailable.
+  """
+  readOnly: Boolean
+
+  """The fully qualified url of your instance."""
+  url: String
+  extraData: String
+}
+
+type CreateGitlabIntegrationMutationPayload {
+  errors: [ErrorType]
+  integration: IntegrationAuthenticationType
+}
+
+input CreateGitlabIntegrationMutationInput {
+  provider: String!
+
+  """The username of the user used to create the API token"""
+  username: String
+  apiToken: String
+  apiSecondaryToken: String
+  description: String
+
+  """
+  Coma separated list of custom headers Sleuth will send with every request. Specify in the format: my-header=my-value,my-other-header=value2
+  """
+  extraHeaders: String
+
+  """
+  Whether only read operations will be allowed or not. If enabled, some features may be unavailable.
+  """
+  readOnly: Boolean
+
+  """The fully qualified url of your instance."""
+  url: String
+  extraData: String
+}
+
+type CreateJenkinsIntegrationMutationPayload {
+  errors: [ErrorType]
+  integration: IntegrationAuthenticationType
+}
+
+input CreateJenkinsIntegrationMutationInput {
+  provider: String!
+
+  """The username of the user used to create the API token"""
+  username: String
+  apiToken: String
+  apiSecondaryToken: String
+  description: String
+
+  """
+  Coma separated list of custom headers Sleuth will send with every request. Specify in the format: my-header=my-value,my-other-header=value2
+  """
+  extraHeaders: String
+
+  """
+  Whether only read operations will be allowed or not. If enabled, some features may be unavailable.
+  """
+  readOnly: Boolean
+
+  """The fully qualified url of your instance."""
+  url: String
+  extraData: String
+}
+
+type CreateJiraDatacenterIntegrationMutationPayload {
+  errors: [ErrorType]
+  integration: IntegrationAuthenticationType
+}
+
+input CreateJiraDatacenterIntegrationMutationInput {
+  provider: String!
+
+  """The username of the user used to create the API token"""
+  username: String
+  apiToken: String
+  apiSecondaryToken: String
+  description: String
+
+  """
+  Coma separated list of custom headers Sleuth will send with every request. Specify in the format: my-header=my-value,my-other-header=value2
+  """
+  extraHeaders: String
+
+  """
+  Whether only read operations will be allowed or not. If enabled, some features may be unavailable.
+  """
+  readOnly: Boolean
+
+  """The fully qualified url of your instance."""
+  url: String
+  extraData: String
+}
+
+type CreateLegacyIntegrationMutationPayload {
+  errors: [ErrorType]
+  integration: IntegrationAuthenticationType
+}
+
+input CreateLegacyIntegrationMutationInput {
+  provider: String!
+
+  """The username of the user used to create the API token"""
+  username: String
+  apiToken: String
+  apiSecondaryToken: String
+  description: String
+
+  """
+  Coma separated list of custom headers Sleuth will send with every request. Specify in the format: my-header=my-value,my-other-header=value2
+  """
+  extraHeaders: String
+
+  """
+  Whether only read operations will be allowed or not. If enabled, some features may be unavailable.
+  """
+  readOnly: Boolean
+
+  """The fully qualified url of your instance."""
+  url: String
+  extraData: String
+}
+
+type ValidateDeviceCodeMutation {
+  result: ValidateDeviceCodeResult!
+}
+
+type ValidateDeviceCodeResult {
+  clientId: String
+  error: String
+}
+
+type ApproveDeviceMutation {
+  result: ApproveDeviceResult!
+}
+
+type ApproveDeviceResult {
+  success: Boolean!
+  error: String
+}

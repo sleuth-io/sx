@@ -1,0 +1,14 @@
+mutation CreateBot($input: CreateBotInput!) {
+  createBot(input: $input) {
+    bot {
+      id
+      name
+      slug
+    }
+    botKey
+    errors {
+      field
+      messages
+    }
+  }
+}

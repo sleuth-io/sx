@@ -1,0 +1,18 @@
+query ListTeams($first: Int!) {
+  teams(first: $first) {
+    nodes {
+      id
+      name
+      adminMemberIds
+      members(first: $first) {
+        nodes {
+          id
+          email
+        }
+      }
+      skillsRepositories {
+        repositoryId
+      }
+    }
+  }
+}

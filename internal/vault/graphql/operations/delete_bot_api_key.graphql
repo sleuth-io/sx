@@ -1,0 +1,9 @@
+mutation DeleteBotApiKey($keyId: ID!) {
+  deleteBotApiKey(keyId: $keyId) {
+    success
+    errors {
+      field
+      messages
+    }
+  }
+}

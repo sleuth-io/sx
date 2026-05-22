@@ -1,0 +1,10 @@
+query AssetGID($search: String!) {
+  vault {
+    assets(search: $search, first: 25) {
+      nodes {
+        id
+        name
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+mutation InstallSkillToBot($botId: ID!, $skillId: ID!) {
+  installSkillToBot(botId: $botId, skillId: $skillId) {
+    success
+    errors {
+      field
+      messages
+    }
+  }
+}

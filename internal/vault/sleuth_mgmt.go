@@ -13,6 +13,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/mgmt"
+	vaultgql "github.com/sleuth-io/sx/internal/vault/graphql"
 )
 
 // Sleuth vault management methods. These call the existing pulse GraphQL
@@ -21,35 +22,18 @@ import (
 // descriptive error pointing users at the skills.new web UI.
 
 func (s *SleuthVault) CurrentActor(ctx context.Context) (mgmt.Actor, error) {
-	query := `query { user { id username email firstName lastName } }`
-	var resp struct {
-		Data struct {
-			User *struct {
-				ID        string `json:"id"`
-				Username  string `json:"username"`
-				Email     string `json:"email"`
-				FirstName string `json:"firstName"`
-				LastName  string `json:"lastName"`
-			} `json:"user"`
-		} `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
-	if err := s.executeGraphQLQuery(ctx, query, nil, &resp); err != nil {
+	resp, err := vaultgql.GetMe(ctx, s.gqlClient())
+	if err != nil {
 		return mgmt.Actor{}, err
 	}
-	if len(resp.Errors) > 0 {
-		return mgmt.Actor{}, fmt.Errorf("graphql: %s", resp.Errors[0].Message)
-	}
-	if resp.Data.User == nil {
+	if resp.User == nil {
 		return mgmt.Actor{}, errors.New("not authenticated")
 	}
-	name := strings.TrimSpace(resp.Data.User.FirstName + " " + resp.Data.User.LastName)
+	name := strings.TrimSpace(resp.User.FirstName + " " + resp.User.LastName)
 	if name == "" {
-		name = resp.Data.User.Username
+		name = resp.User.Username
 	}
-	return mgmt.Actor{Email: mgmt.NormalizeEmail(resp.Data.User.Email), Name: name}, nil
+	return mgmt.Actor{Email: mgmt.NormalizeEmail(resp.User.Email), Name: name}, nil
 }
 
 func (s *SleuthVault) ListTeams(ctx context.Context) ([]mgmt.Team, error) {
@@ -528,9 +512,18 @@ func (s *SleuthVault) DeleteBot(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	mutation := `mutation DeleteBot($id: ID!) { deleteBot(id: $id) { errors { field messages } } }`
-	vars := map[string]any{"id": gid}
-	return s.runMutation(ctx, mutation, vars, "deleteBot")
+	resp, err := vaultgql.DeleteBot(ctx, s.gqlClient(), gid)
+	if err != nil {
+		return err
+	}
+	if resp.DeleteBot == nil {
+		return nil
+	}
+	errs := make([]sleuthMutationError, len(resp.DeleteBot.Errors))
+	for i, e := range resp.DeleteBot.Errors {
+		errs[i] = sleuthMutationError{Field: e.Field, Messages: e.Messages}
+	}
+	return sleuthMutationErrorsToErr(errs)
 }
 
 // AddBotTeam appends a team to a bot's team set via UpdateBot. Sleuth's

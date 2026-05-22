@@ -1,0 +1,8 @@
+mutation RemoveTeamMember($input: RemoveTeamMemberInput!) {
+  removeTeamMember(input: $input) {
+    errors {
+      field
+      messages
+    }
+  }
+}

@@ -1,0 +1,14 @@
+query AssetAuditLog($first: Int) {
+  assetAuditLog(first: $first) {
+    nodes {
+      id
+      date
+      actorEmail
+      actorName
+      event
+      targetType
+      targetName
+      data
+    }
+  }
+}

@@ -1,0 +1,9 @@
+mutation RemoveAssetInstallations($input: RemoveAssetInstallationsInput!) {
+  removeAssetInstallations(input: $input) {
+    success
+    errors {
+      field
+      messages
+    }
+  }
+}

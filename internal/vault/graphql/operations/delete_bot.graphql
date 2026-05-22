@@ -1,0 +1,8 @@
+mutation DeleteBot($id: ID!) {
+  deleteBot(id: $id) {
+    errors {
+      field
+      messages
+    }
+  }
+}

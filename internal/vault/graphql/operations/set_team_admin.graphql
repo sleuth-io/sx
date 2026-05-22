@@ -1,0 +1,8 @@
+mutation SetTeamAdmin($input: SetTeamAdminInput!) {
+  setTeamAdmin(input: $input) {
+    errors {
+      field
+      messages
+    }
+  }
+}
