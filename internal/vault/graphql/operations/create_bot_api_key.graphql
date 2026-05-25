@@ -1,0 +1,9 @@
+mutation CreateBotApiKey($botId: ID!, $label: String) {
+  createBotApiKey(botId: $botId, label: $label) {
+    botKey
+    errors {
+      field
+      messages
+    }
+  }
+}

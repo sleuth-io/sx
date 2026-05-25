@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Khan/genqlient/graphql"
+
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/cache"
@@ -24,6 +26,32 @@ import (
 	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/version"
 )
+
+// authDoer wraps an http.Client to add the Sleuth auth + User-Agent headers
+// on every request. Used to back the genqlient client so generated query
+// functions share the same auth path as [SleuthVault.executeGraphQLQuery].
+type authDoer struct {
+	client    *http.Client
+	authToken string
+}
+
+func (d *authDoer) Do(req *http.Request) (*http.Response, error) {
+	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
+	if d.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+d.authToken)
+	}
+	return d.client.Do(req)
+}
+
+// gqlClient builds a genqlient client that reuses the vault's httpClient
+// and auth. Cheap to construct; called per request rather than cached so
+// authToken changes (e.g. bot key swaps) are picked up.
+func (s *SleuthVault) gqlClient() graphql.Client {
+	return graphql.NewClient(s.serverURL+"/graphql", &authDoer{
+		client:    s.httpClient,
+		authToken: s.authToken,
+	})
+}
 
 // scopeEntityPersonal is the scope entity value for personal (user-only) installations.
 const scopeEntityPersonal = "personal"

@@ -1,0 +1,10 @@
+query BotApiKeys($slug: String!) {
+  bot(slug: $slug) {
+    apiKeys {
+      id
+      label
+      maskedToken
+      createdAt
+    }
+  }
+}

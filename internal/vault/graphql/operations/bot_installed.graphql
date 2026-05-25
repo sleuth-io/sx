@@ -1,0 +1,7 @@
+query BotInstalled($slug: String!) {
+  bot(slug: $slug) {
+    installedSkills {
+      name
+    }
+  }
+}

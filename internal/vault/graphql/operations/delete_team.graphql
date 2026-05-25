@@ -1,0 +1,8 @@
+mutation DeleteTeam($id: ID!) {
+  deleteTeam(id: $id) {
+    errors {
+      field
+      messages
+    }
+  }
+}

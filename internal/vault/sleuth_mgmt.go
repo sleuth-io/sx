@@ -13,6 +13,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/mgmt"
+	vaultgql "github.com/sleuth-io/sx/internal/vault/graphql"
 )
 
 // Sleuth vault management methods. These call the existing pulse GraphQL
@@ -21,35 +22,18 @@ import (
 // descriptive error pointing users at the skills.new web UI.
 
 func (s *SleuthVault) CurrentActor(ctx context.Context) (mgmt.Actor, error) {
-	query := `query { user { id username email firstName lastName } }`
-	var resp struct {
-		Data struct {
-			User *struct {
-				ID        string `json:"id"`
-				Username  string `json:"username"`
-				Email     string `json:"email"`
-				FirstName string `json:"firstName"`
-				LastName  string `json:"lastName"`
-			} `json:"user"`
-		} `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
-	if err := s.executeGraphQLQuery(ctx, query, nil, &resp); err != nil {
+	resp, err := vaultgql.GetMe(ctx, s.gqlClient())
+	if err != nil {
 		return mgmt.Actor{}, err
 	}
-	if len(resp.Errors) > 0 {
-		return mgmt.Actor{}, fmt.Errorf("graphql: %s", resp.Errors[0].Message)
-	}
-	if resp.Data.User == nil {
+	if resp.User == nil {
 		return mgmt.Actor{}, errors.New("not authenticated")
 	}
-	name := strings.TrimSpace(resp.Data.User.FirstName + " " + resp.Data.User.LastName)
+	name := strings.TrimSpace(resp.User.FirstName + " " + resp.User.LastName)
 	if name == "" {
-		name = resp.Data.User.Username
+		name = resp.User.Username
 	}
-	return mgmt.Actor{Email: mgmt.NormalizeEmail(resp.Data.User.Email), Name: name}, nil
+	return mgmt.Actor{Email: mgmt.NormalizeEmail(resp.User.Email), Name: name}, nil
 }
 
 func (s *SleuthVault) ListTeams(ctx context.Context) ([]mgmt.Team, error) {
@@ -141,31 +125,17 @@ func (s *SleuthVault) CreateTeam(ctx context.Context, team mgmt.Team) error {
 	if err != nil {
 		return err
 	}
-	mutation := `mutation CreateTeam($input: CreateTeamInput!) {
-		createTeam(input: $input) { team { id name } errors { field messages } }
-	}`
-	vars := map[string]any{
-		"input": map[string]any{
-			"name":    team.Name,
-			"members": memberIDs,
-		},
-	}
-	var resp struct {
-		Data struct {
-			CreateTeam struct {
-				Team   *sleuthTeamNode       `json:"team"`
-				Errors []sleuthMutationError `json:"errors"`
-			} `json:"createTeam"`
-		} `json:"data"`
-		Errors []sleuthGraphQLError `json:"errors"`
-	}
-	if err := s.executeGraphQLQuery(ctx, mutation, vars, &resp); err != nil {
+	resp, err := vaultgql.CreateTeam(ctx, s.gqlClient(), vaultgql.CreateTeamInput{
+		Name:    team.Name,
+		Members: memberIDs,
+	})
+	if err != nil {
 		return err
 	}
-	if err := sleuthErrorsToErr(resp.Errors); err != nil {
-		return err
+	if resp.CreateTeam == nil {
+		return nil
 	}
-	return sleuthMutationErrorsToErr(resp.Data.CreateTeam.Errors)
+	return gqlMutationErrors(resp.CreateTeam.Errors)
 }
 
 func (s *SleuthVault) UpdateTeam(ctx context.Context, team mgmt.Team) error {
@@ -180,17 +150,18 @@ func (s *SleuthVault) UpdateTeam(ctx context.Context, team mgmt.Team) error {
 	if err != nil {
 		return err
 	}
-	mutation := `mutation UpdateTeam($input: UpdateTeamInput!) {
-		updateTeam(input: $input) { team { id name } errors { field messages } }
-	}`
-	vars := map[string]any{
-		"input": map[string]any{
-			"id":      gid,
-			"name":    team.Name,
-			"members": memberIDs,
-		},
+	resp, err := vaultgql.UpdateTeam(ctx, s.gqlClient(), vaultgql.UpdateTeamInput{
+		Id:      gid,
+		Name:    &team.Name,
+		Members: memberIDs,
+	})
+	if err != nil {
+		return err
 	}
-	return s.runMutation(ctx, mutation, vars, "updateTeam")
+	if resp.UpdateTeam == nil {
+		return nil
+	}
+	return gqlMutationErrors(resp.UpdateTeam.Errors)
 }
 
 func (s *SleuthVault) DeleteTeam(ctx context.Context, name string) error {
@@ -198,9 +169,14 @@ func (s *SleuthVault) DeleteTeam(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	mutation := `mutation DeleteTeam($id: ID!) { deleteTeam(id: $id) { errors { field messages } } }`
-	vars := map[string]any{"id": gid}
-	return s.runMutation(ctx, mutation, vars, "deleteTeam")
+	resp, err := vaultgql.DeleteTeam(ctx, s.gqlClient(), gid)
+	if err != nil {
+		return err
+	}
+	if resp.DeleteTeam == nil {
+		return nil
+	}
+	return gqlMutationErrors(resp.DeleteTeam.Errors)
 }
 
 // AddTeamMember adds a user to a team via the UpdateTeam mutation. Known
@@ -238,13 +214,17 @@ func (s *SleuthVault) RemoveTeamMember(ctx context.Context, team, email string) 
 	if err != nil {
 		return err
 	}
-	mutation := `mutation RemoveTeamMember($input: RemoveTeamMemberInput!) {
-		removeTeamMember(input: $input) { errors { field messages } }
-	}`
-	vars := map[string]any{
-		"input": map[string]any{"teamId": teamGID, "memberId": memberGID},
+	resp, err := vaultgql.RemoveTeamMember(ctx, s.gqlClient(), vaultgql.RemoveTeamMemberInput{
+		TeamId:   teamGID,
+		MemberId: memberGID,
+	})
+	if err != nil {
+		return err
 	}
-	return s.runMutation(ctx, mutation, vars, "removeTeamMember")
+	if resp.RemoveTeamMember == nil {
+		return nil
+	}
+	return gqlMutationErrors(resp.RemoveTeamMember.Errors)
 }
 
 func (s *SleuthVault) SetTeamAdmin(ctx context.Context, team, email string, admin bool) error {
@@ -256,13 +236,18 @@ func (s *SleuthVault) SetTeamAdmin(ctx context.Context, team, email string, admi
 	if err != nil {
 		return err
 	}
-	mutation := `mutation SetTeamAdmin($input: SetTeamAdminInput!) {
-		setTeamAdmin(input: $input) { errors { field messages } }
-	}`
-	vars := map[string]any{
-		"input": map[string]any{"teamId": teamGID, "userId": userGID, "isAdmin": admin},
+	resp, err := vaultgql.SetTeamAdmin(ctx, s.gqlClient(), vaultgql.SetTeamAdminInput{
+		TeamId:  teamGID,
+		UserId:  userGID,
+		IsAdmin: admin,
+	})
+	if err != nil {
+		return err
 	}
-	return s.runMutation(ctx, mutation, vars, "setTeamAdmin")
+	if resp.SetTeamAdmin == nil {
+		return nil
+	}
+	return gqlMutationErrors(resp.SetTeamAdmin.Errors)
 }
 
 func (s *SleuthVault) AddTeamRepository(ctx context.Context, team, repoURL string) error {
@@ -278,9 +263,9 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 	case InstallKindOrg:
 		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false)
 	case InstallKindRepo:
-		return s.setAssetInstallationsGraphQL(ctx, assetName, []map[string]any{{"url": target.Repo}}, false)
+		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo}}, false)
 	case InstallKindPath:
-		return s.setAssetInstallationsGraphQL(ctx, assetName, []map[string]any{{"url": target.Repo, "paths": target.Paths}}, false)
+		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo, Paths: target.Paths}}, false)
 	case InstallKindUser:
 		// Sleuth's setAssetInstallations GraphQL mutation supports exactly
 		// one user-scoped shape: personalOnly=true with empty repositories,
@@ -502,25 +487,28 @@ func (s *SleuthVault) UpdateBot(ctx context.Context, bot mgmt.Bot) error {
 	if err != nil {
 		return err
 	}
-	mutation := `mutation UpdateBot($input: UpdateBotInput!) {
-		updateBot(input: $input) { bot { id name } errors { field messages } }
-	}`
 	// Always include description in the input so an empty value clears
 	// the field server-side. Skipping it on `bot.Description == ""`
 	// silently dropped `sx bot update <name> --description ""` — the
 	// CLI's PreRun guard already distinguishes "flag absent" from
 	// "flag set to empty", so by the time we get here the empty value
 	// is intentional.
-	input := map[string]any{
-		"id":          gid,
-		"name":        bot.Name,
-		"description": bot.Description,
+	input := vaultgql.UpdateBotInput{
+		Id:          gid,
+		Name:        &bot.Name,
+		Description: &bot.Description,
 	}
 	if bot.Teams != nil {
-		input["teamIds"] = teamIDs
+		input.TeamIds = teamIDs
 	}
-	vars := map[string]any{"input": input}
-	return s.runMutation(ctx, mutation, vars, "updateBot")
+	resp, err := vaultgql.UpdateBot(ctx, s.gqlClient(), input)
+	if err != nil {
+		return err
+	}
+	if resp.UpdateBot == nil {
+		return nil
+	}
+	return gqlMutationErrors(resp.UpdateBot.Errors)
 }
 
 func (s *SleuthVault) DeleteBot(ctx context.Context, name string) error {
@@ -528,9 +516,14 @@ func (s *SleuthVault) DeleteBot(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	mutation := `mutation DeleteBot($id: ID!) { deleteBot(id: $id) { errors { field messages } } }`
-	vars := map[string]any{"id": gid}
-	return s.runMutation(ctx, mutation, vars, "deleteBot")
+	resp, err := vaultgql.DeleteBot(ctx, s.gqlClient(), gid)
+	if err != nil {
+		return err
+	}
+	if resp.DeleteBot == nil {
+		return nil
+	}
+	return gqlMutationErrors(resp.DeleteBot.Errors)
 }
 
 // AddBotTeam appends a team to a bot's team set via UpdateBot. Sleuth's
@@ -641,57 +634,38 @@ func (s *SleuthVault) installSkillToBot(ctx context.Context, assetName, botName 
 	if err != nil {
 		return err
 	}
-	mutation := `mutation InstallSkillToBot($botId: ID!, $skillId: ID!) {
-		installSkillToBot(botId: $botId, skillId: $skillId) { success errors { field messages } }
-	}`
-	vars := map[string]any{"botId": botGID, "skillId": skillGID}
-	return s.runSuccessMutation(ctx, mutation, vars, "installSkillToBot")
+	resp, err := vaultgql.InstallSkillToBot(ctx, s.gqlClient(), botGID, skillGID)
+	if err != nil {
+		return err
+	}
+	if resp.InstallSkillToBot == nil {
+		return errors.New("missing installSkillToBot payload in response")
+	}
+	if err := gqlMutationErrors(resp.InstallSkillToBot.Errors); err != nil {
+		return err
+	}
+	if !resp.InstallSkillToBot.Success {
+		return errors.New("installSkillToBot reported success=false with no errors — possible schema drift")
+	}
+	return nil
 }
 
 // uninstallSkillFromBot is the inverse of installSkillToBot. Used by
 // ClearAssetInstallations to drop bot installs alongside the
 // non-bot scopes that removeAssetInstallations handles.
 func (s *SleuthVault) uninstallSkillFromBot(ctx context.Context, skillGID, botGID string) error {
-	mutation := `mutation UninstallSkillFromBot($botId: ID!, $skillId: ID!) {
-		uninstallSkillFromBot(botId: $botId, skillId: $skillId) { success errors { field messages } }
-	}`
-	vars := map[string]any{"botId": botGID, "skillId": skillGID}
-	return s.runSuccessMutation(ctx, mutation, vars, "uninstallSkillFromBot")
-}
-
-// runSuccessMutation runs a mutation whose payload includes both
-// `success: Boolean!` and `errors`. It enforces both: errors must be
-// empty AND success must be true. Use this for mutations whose payload
-// type is `{ success errors }` rather than `{ asset/bot/team errors }`,
-// so a server bug or schema drift that returns success=false with no
-// errors does not surface as a silent pass.
-func (s *SleuthVault) runSuccessMutation(ctx context.Context, mutation string, vars map[string]any, rootField string) error {
-	resp := struct {
-		Data   map[string]json.RawMessage `json:"data"`
-		Errors []sleuthGraphQLError       `json:"errors"`
-	}{}
-	if err := s.executeGraphQLQuery(ctx, mutation, vars, &resp); err != nil {
+	resp, err := vaultgql.UninstallSkillFromBot(ctx, s.gqlClient(), botGID, skillGID)
+	if err != nil {
 		return err
 	}
-	if err := sleuthErrorsToErr(resp.Errors); err != nil {
+	if resp.UninstallSkillFromBot == nil {
+		return errors.New("missing uninstallSkillFromBot payload in response")
+	}
+	if err := gqlMutationErrors(resp.UninstallSkillFromBot.Errors); err != nil {
 		return err
 	}
-	payload, ok := resp.Data[rootField]
-	if !ok || len(payload) == 0 {
-		return fmt.Errorf("missing %s payload in response", rootField)
-	}
-	var env struct {
-		Success bool                  `json:"success"`
-		Errors  []sleuthMutationError `json:"errors"`
-	}
-	if err := json.Unmarshal(payload, &env); err != nil {
-		return fmt.Errorf("unexpected %s mutation response shape: %w", rootField, err)
-	}
-	if err := sleuthMutationErrorsToErr(env.Errors); err != nil {
-		return err
-	}
-	if !env.Success {
-		return fmt.Errorf("%s reported success=false with no errors — possible schema drift", rootField)
+	if !resp.UninstallSkillFromBot.Success {
+		return errors.New("uninstallSkillFromBot reported success=false with no errors — possible schema drift")
 	}
 	return nil
 }
@@ -903,11 +877,20 @@ func (s *SleuthVault) DeleteBotApiKey(ctx context.Context, botName, keyID string
 	if !matched {
 		return fmt.Errorf("api key %q is not owned by bot %q", keyID, botName)
 	}
-	mutation := `mutation DeleteBotApiKey($keyId: ID!) {
-		deleteBotApiKey(keyId: $keyId) { success errors { field messages } }
-	}`
-	vars := map[string]any{"keyId": keyID}
-	return s.runSuccessMutation(ctx, mutation, vars, "deleteBotApiKey")
+	resp, err := vaultgql.DeleteBotApiKey(ctx, s.gqlClient(), keyID)
+	if err != nil {
+		return err
+	}
+	if resp.DeleteBotApiKey == nil {
+		return errors.New("missing deleteBotApiKey payload in response")
+	}
+	if err := gqlMutationErrors(resp.DeleteBotApiKey.Errors); err != nil {
+		return err
+	}
+	if !resp.DeleteBotApiKey.Success {
+		return errors.New("deleteBotApiKey reported success=false with no errors — possible schema drift")
+	}
+	return nil
 }
 
 func (s *SleuthVault) ClearAssetInstallations(ctx context.Context, assetName string) error {
@@ -934,11 +917,16 @@ func (s *SleuthVault) ClearAssetInstallations(ctx context.Context, assetName str
 		}
 	}
 
-	mutation := `mutation RemoveAssetInstallations($input: RemoveAssetInstallationsInput!) {
-		removeAssetInstallations(input: $input) { success errors { field messages } }
-	}`
-	vars := map[string]any{"input": map[string]any{"assetName": assetName}}
-	return s.runMutation(ctx, mutation, vars, "removeAssetInstallations")
+	resp, err := vaultgql.RemoveAssetInstallations(ctx, s.gqlClient(), vaultgql.RemoveAssetInstallationsInput{
+		AssetName: assetName,
+	})
+	if err != nil {
+		return err
+	}
+	if resp.RemoveAssetInstallations == nil {
+		return nil
+	}
+	return gqlMutationErrors(resp.RemoveAssetInstallations.Errors)
 }
 
 func (s *SleuthVault) RecordUsageEvents(ctx context.Context, events []mgmt.UsageEvent) error {
@@ -1130,6 +1118,38 @@ func sleuthTeamToMgmt(node sleuthTeamNode) mgmt.Team {
 	return team
 }
 
+// gqlErrItemPtr is the constraint over generated *ErrorType pointer types
+// every mutation response returns. Together with gqlMutationErrors, it lets
+// migration call sites convert generated error slices into sleuthMutationError
+// in one line, despite each mutation having its own distinct ErrorType.
+type gqlErrItemPtr[T any] interface {
+	*T
+	GetField() string
+	GetMessages() []string
+}
+
+// gqlMutationErrors converts a generated mutation's `errors { field messages }`
+// slice into the existing sleuthMutationError shape so all call sites can keep
+// using sleuthMutationErrorsToErr for consistent error formatting.
+//
+// Shape assumption: this helper only works for mutations whose payload type
+// exposes `errors: [ErrorType!]!` where ErrorType has `field: String` and
+// `messages: [String!]!`. If a future mutation deviates (e.g. a non-list
+// `error: ErrorType` or a renamed field), the call site simply won't satisfy
+// gqlErrItemPtr and won't compile — by design. Either reshape the operation
+// to match, or write a dedicated handler at the call site.
+func gqlMutationErrors[T any, PT gqlErrItemPtr[T]](errs []T) error {
+	if len(errs) == 0 {
+		return nil
+	}
+	out := make([]sleuthMutationError, len(errs))
+	for i := range errs {
+		var p PT = &errs[i]
+		out[i] = sleuthMutationError{Field: p.GetField(), Messages: p.GetMessages()}
+	}
+	return sleuthMutationErrorsToErr(out)
+}
+
 func sleuthErrorsToErr(errs []sleuthGraphQLError) error {
 	if len(errs) == 0 {
 		return nil
@@ -1150,37 +1170,6 @@ func sleuthMutationErrorsToErr(errs []sleuthMutationError) error {
 		parts = append(parts, fmt.Sprintf("%s: %s", e.Field, strings.Join(e.Messages, ", ")))
 	}
 	return errors.New(strings.Join(parts, "; "))
-}
-
-// runMutation executes a mutation that has a {errors { field messages }}
-// payload under the named root field, decoding and surfacing errors.
-// A payload shape that no longer matches the expected schema (e.g. the
-// server renamed the errors field) is propagated as an error rather
-// than silently swallowed — silently dropping schema drift here would
-// turn a failed mutation into an apparent success.
-func (s *SleuthVault) runMutation(ctx context.Context, mutation string, vars map[string]any, rootField string) error {
-	raw := json.RawMessage{}
-	resp := struct {
-		Data   map[string]json.RawMessage `json:"data"`
-		Errors []sleuthGraphQLError       `json:"errors"`
-	}{Data: map[string]json.RawMessage{rootField: raw}}
-	if err := s.executeGraphQLQuery(ctx, mutation, vars, &resp); err != nil {
-		return err
-	}
-	if err := sleuthErrorsToErr(resp.Errors); err != nil {
-		return err
-	}
-	payload, ok := resp.Data[rootField]
-	if !ok || len(payload) == 0 {
-		return nil
-	}
-	var errEnv struct {
-		Errors []sleuthMutationError `json:"errors"`
-	}
-	if err := json.Unmarshal(payload, &errEnv); err != nil {
-		return fmt.Errorf("unexpected %s mutation response shape: %w", rootField, err)
-	}
-	return sleuthMutationErrorsToErr(errEnv.Errors)
 }
 
 // teamGIDByName looks up a team's GID by name. Reuses the same query as
@@ -1253,24 +1242,22 @@ func (s *SleuthVault) resolveUserGIDs(ctx context.Context, emails []string) ([]s
 // empty". Callers must route through SetAssetInstallation, which picks
 // the right arguments per InstallKind and never collapses an intended
 // repo/path/user install into the empty-empty shape.
-func (s *SleuthVault) setAssetInstallationsGraphQL(ctx context.Context, assetName string, repositories []map[string]any, personalOnly bool) error {
-	mutation := `mutation SetAssetInstallations($input: SetAssetInstallationsInput!) {
-		setAssetInstallations(input: $input) {
-			asset { name }
-			errors { field messages }
-		}
-	}`
+func (s *SleuthVault) setAssetInstallationsGraphQL(ctx context.Context, assetName string, repositories []vaultgql.RepositoryInstallationInput, personalOnly bool) error {
 	if repositories == nil {
-		repositories = []map[string]any{}
+		repositories = []vaultgql.RepositoryInstallationInput{}
 	}
-	vars := map[string]any{
-		"input": map[string]any{
-			"assetName":    assetName,
-			"repositories": repositories,
-			"personalOnly": personalOnly,
-		},
+	resp, err := vaultgql.SetAssetInstallations(ctx, s.gqlClient(), vaultgql.SetAssetInstallationsInput{
+		AssetName:    assetName,
+		Repositories: repositories,
+		PersonalOnly: &personalOnly,
+	})
+	if err != nil {
+		return err
 	}
-	return s.runMutation(ctx, mutation, vars, "setAssetInstallations")
+	if resp.SetAssetInstallations == nil {
+		return nil
+	}
+	return gqlMutationErrors(resp.SetAssetInstallations.Errors)
 }
 
 func timeOrNow(t time.Time) time.Time {

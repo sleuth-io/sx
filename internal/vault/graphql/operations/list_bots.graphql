@@ -1,0 +1,13 @@
+query ListBots {
+  bots {
+    id
+    name
+    slug
+    description
+    status
+    teams {
+      id
+      name
+    }
+  }
+}

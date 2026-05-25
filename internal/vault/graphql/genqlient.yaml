@@ -1,0 +1,48 @@
+# For full documentation see:
+# https://github.com/Khan/genqlient/blob/main/docs/genqlient.yaml
+schema: schema_2026_05_22.graphql
+operations:
+  - "operations/*.graphql"
+generated: generated.go
+package: graphql
+
+# Map GraphQL scalars to Go types. Add entries as new scalars appear in the
+# schema; unmapped scalars are generated as `any`, which compiles but loses
+# type safety.
+bindings:
+  ID:
+    type: string
+  # DateTime is wire-serialized as an ISO-8601 string; bind to time.Time
+  # so Go callers get a real timestamp rather than a string they'd have to
+  # parse themselves. (The pulse frontend keeps it as string; we don't.)
+  DateTime:
+    type: time.Time
+  # Django Graphene's JSONString scalar is wire-serialized as a JSON-encoded
+  # string. Bind to RawMessage so callers can json.Unmarshal into a concrete
+  # type when they actually need to inspect the payload.
+  JSONString:
+    type: encoding/json.RawMessage
+  # Scalars mirrored from pulse/frontend/codegen.yml so new operations
+  # touching these fields generate without "unknown scalar" errors.
+  HTMLString:
+    type: string
+  Time:
+    type: string
+  FloatRoundedTo1:
+    type: float64
+  FloatRoundedTo2:
+    type: float64
+  Decimal:
+    type: string
+  DecimalRoundedTo1:
+    type: string
+  DecimalRoundedTo2:
+    type: string
+  PQLOperator:
+    type: string
+  NamedWorkCategory:
+    type: string
+
+# Use pointers for optional fields so "unset" is distinguishable from the
+# zero value. Matters for partial-update mutations (e.g. UpdateTeam).
+optional: pointer

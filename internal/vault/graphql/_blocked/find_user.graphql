@@ -1,0 +1,8 @@
+query FindUser($term: String!) {
+  users(term: $term, first: 25) {
+    nodes {
+      id
+      email
+    }
+  }
+}

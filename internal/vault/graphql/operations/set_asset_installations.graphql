@@ -1,0 +1,11 @@
+mutation SetAssetInstallations($input: SetAssetInstallationsInput!) {
+  setAssetInstallations(input: $input) {
+    asset {
+      name
+    }
+    errors {
+      field
+      messages
+    }
+  }
+}
