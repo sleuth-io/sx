@@ -4,7 +4,6 @@ query ListBots {
     name
     slug
     description
-    status
     teams {
       id
       name

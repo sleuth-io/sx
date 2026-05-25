@@ -5,10 +5,10 @@ type ManagedBot {
   description: String!
   status: BotsBotStatusChoices!
   id: ID!
-  teams: [Team!]
-  teamMemberships: [BotTeamMembership!]
-  installedSkills: [BotInstalledSkill!]
-  apiKeys: [BotApiKey!]
+  teams: [Team!]!
+  teamMemberships: [BotTeamMembership!]!
+  installedSkills: [BotInstalledSkill!]!
+  apiKeys: [BotApiKey!]!
 }
 
 """
@@ -275,7 +275,7 @@ type OrganizationType implements TeamOrUsersScoped {
 
   """EXPERIMENTAL FIELD, can change at any time."""
   workingHours: WorkingHoursType
-  bots: [ManagedBot!]
+  bots: [ManagedBot!]!
   llmFeaturesEnabled: Boolean!
   repositories(provider: IntegrationProvider, term: String, alwaysIncludeIds: [ID!], before: String, after: String, first: Int, last: Int): RepositoryConnection!
   developerSalaries: [DeveloperSalaryType!]!
@@ -4223,7 +4223,7 @@ enum ChangeRequestStatusEnum {
 }
 
 type Query {
-  bots: [ManagedBot!]
+  bots: [ManagedBot!]!
   bot(slug: String, id: ID): ManagedBot!
   managementSession: ManagementSession!
   myAssetCapabilities: MyAssetCapabilities!
@@ -4901,7 +4901,7 @@ type Mutation {
   createBot(input: CreateBotInput!): CreateBotMutation
   updateBot(input: UpdateBotInput!): UpdateBotMutation
   deleteBot(id: ID!): DeleteBotMutation
-  createBotApiKey(botId: ID!, label: String): CreateBotApiKeyMutation
+  createBotApiKey(botId: ID!, label: String!): CreateBotApiKeyMutation
   deleteBotApiKey(keyId: ID!): DeleteBotApiKeyMutation
   installSkillToBot(botId: ID!, skillId: ID!): InstallSkillToBotMutation
   uninstallSkillFromBot(botId: ID!, skillId: ID!): UninstallSkillFromBotMutation
@@ -5197,13 +5197,7 @@ type Mutation {
 
 type CreateBotMutation {
   bot: ManagedBot
-  botKey: String
-  errors: [ErrorType!]!
-}
-
-type ErrorType {
-  field: String!
-  messages: [String!]!
+  botKey: String!
 }
 
 input CreateBotInput {
@@ -5215,6 +5209,11 @@ input CreateBotInput {
 type UpdateBotMutation {
   bot: ManagedBot
   errors: [ErrorType!]!
+}
+
+type ErrorType {
+  field: String!
+  messages: [String!]!
 }
 
 input UpdateBotInput {
@@ -5230,8 +5229,7 @@ type DeleteBotMutation {
 }
 
 type CreateBotApiKeyMutation {
-  botKey: String
-  errors: [ErrorType!]!
+  botKey: String!
 }
 
 type DeleteBotApiKeyMutation {

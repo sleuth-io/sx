@@ -1,6 +1,6 @@
 # For full documentation see:
 # https://github.com/Khan/genqlient/blob/main/docs/genqlient.yaml
-schema: schema_2026_05_22.graphql
+schema: schema.graphql
 operations:
   - "operations/*.graphql"
 generated: generated.go
