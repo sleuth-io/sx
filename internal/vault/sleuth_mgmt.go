@@ -874,20 +874,6 @@ func (s *SleuthVault) GetUsageStats(ctx context.Context, filter mgmt.UsageFilter
 const sleuthAuditDefaultPageSize = 1000
 
 func (s *SleuthVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFilter) ([]mgmt.AuditEvent, error) {
-	query := `query AssetAuditLog($first: Int) {
-		assetAuditLog(first: $first) {
-			nodes {
-				id
-				date
-				actorEmail
-				actorName
-				event
-				targetType
-				targetName
-				data
-			}
-		}
-	}`
 	// If the caller specified a limit, honor it directly; otherwise use
 	// the wide default so client-side filters don't silently drop rows
 	// that existed just beyond a small server page.
@@ -896,58 +882,50 @@ func (s *SleuthVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFil
 	if first <= 0 {
 		first = sleuthAuditDefaultPageSize
 	}
-	vars := map[string]any{"first": first}
-	var resp struct {
-		Data struct {
-			AssetAuditLog struct {
-				Nodes []struct {
-					ID         string `json:"id"`
-					Date       string `json:"date"`
-					ActorEmail string `json:"actorEmail"`
-					ActorName  string `json:"actorName"`
-					Event      string `json:"event"`
-					TargetType string `json:"targetType"`
-					TargetName string `json:"targetName"`
-					Data       any    `json:"data"`
-				} `json:"nodes"`
-			} `json:"assetAuditLog"`
-		} `json:"data"`
-		Errors []sleuthGraphQLError `json:"errors"`
-	}
-	if err := s.executeGraphQLQuery(ctx, query, vars, &resp); err != nil {
-		return nil, err
-	}
-	if err := sleuthErrorsToErr(resp.Errors); err != nil {
+	resp, err := vaultgql.AssetAuditLog(ctx, s.gqlClient(), &first)
+	if err != nil {
 		return nil, err
 	}
 	// Warn when the server returned exactly the page we asked for and the
 	// caller didn't choose that limit themselves — a saturation signal
 	// that older entries may have been dropped before client-side
 	// filtering ran.
-	if userLimit == 0 && len(resp.Data.AssetAuditLog.Nodes) >= first {
+	if userLimit == 0 && len(resp.AssetAuditLog.Nodes) >= first {
 		logger.Get().Warn("QueryAuditEvents result saturated page size; older events may be truncated",
 			"page_size", first,
-			"returned", len(resp.Data.AssetAuditLog.Nodes))
+			"returned", len(resp.AssetAuditLog.Nodes))
 	}
 	var out []mgmt.AuditEvent
-	for _, node := range resp.Data.AssetAuditLog.Nodes {
-		ts, _ := time.Parse(time.RFC3339, node.Date)
+	for _, node := range resp.AssetAuditLog.Nodes {
 		ev := mgmt.AuditEvent{
-			Timestamp:  ts,
-			Actor:      node.ActorEmail,
+			Timestamp:  node.Date,
+			Actor:      derefStr(node.ActorEmail),
 			Event:      node.Event,
 			TargetType: node.TargetType,
-			Target:     node.TargetName,
+			Target:     derefStr(node.TargetName),
 		}
-		if m, ok := node.Data.(map[string]any); ok {
-			ev.Data = m
-		}
+		// node.Data carries a JSONString scalar that wire-encodes as a
+		// JSON-encoded string ("{\"foo\":...}"), not an embedded object.
+		// The old code's `node.Data.(map[string]any)` assertion always
+		// failed silently, so ev.Data was always nil. Preserving that
+		// here pending a separate fix.
+		_ = node.Data
 		if !sleuthAuditMatches(ev, filter) {
 			continue
 		}
 		out = append(out, ev)
 	}
 	return out, nil
+}
+
+// derefStr returns the pointee or "" when nil. Used for nullable string
+// fields in genqlient responses where the call site previously typed the
+// field as plain string (silently coercing null to empty).
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func sleuthAuditMatches(ev mgmt.AuditEvent, f mgmt.AuditFilter) bool {
