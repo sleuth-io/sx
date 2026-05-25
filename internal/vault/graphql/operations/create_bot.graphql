@@ -6,9 +6,5 @@ mutation CreateBot($input: CreateBotInput!) {
       slug
     }
     botKey
-    errors {
-      field
-      messages
-    }
   }
 }

@@ -297,33 +297,25 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 
 // ---- Bot management (via the existing skills.new GraphQL surface) ----
 
+// sleuthBotNode is the in-memory shape used by listBotNodes consumers
+// (ListBots, GetBot, botGIDByName, botSlugByName, botsWithAssetInstalled).
+// Populated from the generated ListBots response — see listBotNodes for
+// the conversion. Only the fields actually read by callers are kept;
+// status and apiKeys were dead fields under the old hand-rolled struct.
 type sleuthBotNode struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Slug        string `json:"slug"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-	Teams       []struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	} `json:"teams"`
-	APIKeys []struct {
-		ID          string    `json:"id"`
-		Label       string    `json:"label"`
-		MaskedToken string    `json:"maskedToken"`
-		CreatedAt   time.Time `json:"createdAt"`
-	} `json:"apiKeys"`
+	ID          string
+	Name        string
+	Slug        string
+	Description string
+	Teams       []string // team names
 }
 
 func sleuthBotToMgmt(node sleuthBotNode) mgmt.Bot {
-	bot := mgmt.Bot{
+	return mgmt.Bot{
 		Name:        node.Name,
 		Description: node.Description,
+		Teams:       node.Teams,
 	}
-	for _, t := range node.Teams {
-		bot.Teams = append(bot.Teams, t.Name)
-	}
-	return bot
 }
 
 // sleuthBotListSoftCap is the count at which we warn about possible
@@ -339,34 +331,30 @@ const sleuthBotListSoftCap = 1000
 // projects these to mgmt.Bot; helpers like botGIDByName scan for a
 // single row.
 func (s *SleuthVault) listBotNodes(ctx context.Context) ([]sleuthBotNode, error) {
-	query := `query ListBots {
-		bots {
-			id
-			name
-			slug
-			description
-			status
-			teams { id name }
+	resp, err := vaultgql.ListBots(ctx, s.gqlClient())
+	if err != nil {
+		return nil, err
+	}
+	nodes := make([]sleuthBotNode, len(resp.Bots))
+	for i, b := range resp.Bots {
+		teams := make([]string, len(b.Teams))
+		for j, t := range b.Teams {
+			teams[j] = t.Name
 		}
-	}`
-	var resp struct {
-		Data struct {
-			Bots []sleuthBotNode `json:"bots"`
-		} `json:"data"`
-		Errors []sleuthGraphQLError `json:"errors"`
+		nodes[i] = sleuthBotNode{
+			ID:          b.Id,
+			Name:        b.Name,
+			Slug:        b.Slug,
+			Description: b.Description,
+			Teams:       teams,
+		}
 	}
-	if err := s.executeGraphQLQuery(ctx, query, nil, &resp); err != nil {
-		return nil, err
-	}
-	if err := sleuthErrorsToErr(resp.Errors); err != nil {
-		return nil, err
-	}
-	if len(resp.Data.Bots) >= sleuthBotListSoftCap {
+	if len(nodes) >= sleuthBotListSoftCap {
 		logger.Get().Warn("ListBots result reached the soft cap; some bots may be truncated by an undeclared server-side limit",
 			"soft_cap", sleuthBotListSoftCap,
-			"returned", len(resp.Data.Bots))
+			"returned", len(nodes))
 	}
-	return resp.Data.Bots, nil
+	return nodes, nil
 }
 
 func (s *SleuthVault) ListBots(ctx context.Context) ([]mgmt.Bot, error) {
@@ -435,47 +423,27 @@ func (s *SleuthVault) CreateBot(ctx context.Context, bot mgmt.Bot) (string, erro
 	if err != nil {
 		return "", err
 	}
-	mutation := `mutation CreateBot($input: CreateBotInput!) {
-		createBot(input: $input) {
-			bot { id name slug }
-			botKey
-			errors { field messages }
-		}
-	}`
-	input := map[string]any{"name": bot.Name}
+	input := vaultgql.CreateBotInput{Name: bot.Name}
 	if bot.Description != "" {
-		input["description"] = bot.Description
+		input.Description = &bot.Description
 	}
 	if len(teamIDs) > 0 {
-		input["teamIds"] = teamIDs
+		input.TeamIds = teamIDs
 	}
-	vars := map[string]any{"input": input}
 	// createBot auto-issues a default API key on the server and returns
 	// the raw token under `botKey` (only available on this single
 	// response — there is no follow-up API to fetch it again). Capture
 	// it so the CLI can print it once; otherwise the auto-issued key
 	// would be wasted and the user would have to immediately call
 	// `sx bot key create` to get a usable token.
-	var resp struct {
-		Data struct {
-			CreateBot struct {
-				Bot    *sleuthBotNode        `json:"bot"`
-				BotKey string                `json:"botKey"`
-				Errors []sleuthMutationError `json:"errors"`
-			} `json:"createBot"`
-		} `json:"data"`
-		Errors []sleuthGraphQLError `json:"errors"`
-	}
-	if err := s.executeGraphQLQuery(ctx, mutation, vars, &resp); err != nil {
+	resp, err := vaultgql.CreateBot(ctx, s.gqlClient(), input)
+	if err != nil {
 		return "", err
 	}
-	if err := sleuthErrorsToErr(resp.Errors); err != nil {
-		return "", err
+	if resp.CreateBot == nil {
+		return "", errors.New("missing createBot payload in response")
 	}
-	if err := sleuthMutationErrorsToErr(resp.Data.CreateBot.Errors); err != nil {
-		return "", err
-	}
-	return resp.Data.CreateBot.BotKey, nil
+	return resp.CreateBot.BotKey, nil
 }
 
 func (s *SleuthVault) UpdateBot(ctx context.Context, bot mgmt.Bot) error {
@@ -588,32 +556,16 @@ func (s *SleuthVault) resolveTeamGIDs(ctx context.Context, names []string) ([]st
 // assets search. Used for installSkillToBot/uninstallSkillFromBot, which
 // take skill GIDs rather than slugs.
 func (s *SleuthVault) assetGIDByName(ctx context.Context, name string) (string, error) {
-	query := `query AssetGID($search: String!) {
-		vault { assets(search: $search, first: 25) { nodes { id name } } }
-	}`
-	vars := map[string]any{"search": name}
-	var resp struct {
-		Data struct {
-			Vault struct {
-				Assets struct {
-					Nodes []struct {
-						ID   string `json:"id"`
-						Name string `json:"name"`
-					} `json:"nodes"`
-				} `json:"assets"`
-			} `json:"vault"`
-		} `json:"data"`
-		Errors []sleuthGraphQLError `json:"errors"`
-	}
-	if err := s.executeGraphQLQuery(ctx, query, vars, &resp); err != nil {
+	resp, err := vaultgql.AssetGID(ctx, s.gqlClient(), name)
+	if err != nil {
 		return "", err
 	}
-	if err := sleuthErrorsToErr(resp.Errors); err != nil {
-		return "", err
-	}
-	for _, n := range resp.Data.Vault.Assets.Nodes {
-		if n.Name == name {
-			return n.ID, nil
+	// VaultAsset is a GraphQL interface with concrete subtypes
+	// (Skill, MCP, Agent, ClaudeCodePlugin, ...). Use the interface
+	// getters to avoid switching on every variant.
+	for _, n := range resp.Vault.Assets.Nodes {
+		if n.GetName() == name {
+			return n.GetId(), nil
 		}
 	}
 	return "", fmt.Errorf("asset %q not found", name)
@@ -783,36 +735,18 @@ func (s *SleuthVault) CreateBotApiKey(ctx context.Context, botName, label string
 	if err != nil {
 		return "", mgmt.BotApiKey{}, err
 	}
-	mutation := `mutation CreateBotApiKey($botId: ID!, $label: String) {
-		createBotApiKey(botId: $botId, label: $label) {
-			botKey
-			errors { field messages }
-		}
-	}`
-	vars := map[string]any{"botId": gid, "label": label}
-	var resp struct {
-		Data struct {
-			CreateBotApiKey struct {
-				BotKey string                `json:"botKey"`
-				Errors []sleuthMutationError `json:"errors"`
-			} `json:"createBotApiKey"`
-		} `json:"data"`
-		Errors []sleuthGraphQLError `json:"errors"`
-	}
-	if err := s.executeGraphQLQuery(ctx, mutation, vars, &resp); err != nil {
+	resp, err := vaultgql.CreateBotApiKey(ctx, s.gqlClient(), gid, label)
+	if err != nil {
 		return "", mgmt.BotApiKey{}, err
 	}
-	if err := sleuthErrorsToErr(resp.Errors); err != nil {
-		return "", mgmt.BotApiKey{}, err
-	}
-	if err := sleuthMutationErrorsToErr(resp.Data.CreateBotApiKey.Errors); err != nil {
-		return "", mgmt.BotApiKey{}, err
+	if resp.CreateBotApiKey == nil {
+		return "", mgmt.BotApiKey{}, errors.New("missing createBotApiKey payload in response")
 	}
 	// The GraphQL response omits the per-key metadata (id/maskedToken/
 	// createdAt) since the raw token is the only useful payload at
 	// creation time. Callers that need to display the masked form should
 	// follow up with ListBotApiKeys.
-	return resp.Data.CreateBotApiKey.BotKey, mgmt.BotApiKey{Label: label}, nil
+	return resp.CreateBotApiKey.BotKey, mgmt.BotApiKey{Label: label}, nil
 }
 
 func (s *SleuthVault) ListBotApiKeys(ctx context.Context, botName string) ([]mgmt.BotApiKey, error) {
