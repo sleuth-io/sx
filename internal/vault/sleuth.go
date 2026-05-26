@@ -765,51 +765,6 @@ func (s *SleuthVault) QueryIntegrationStream(
 	return finalResult, nil
 }
 
-// executeGraphQLQuery executes a GraphQL query against the Sleuth server
-func (s *SleuthVault) executeGraphQLQuery(ctx context.Context, query string, variables map[string]any, result any) error {
-	endpoint := s.serverURL + "/graphql"
-
-	// Build request body
-	reqBody := map[string]any{
-		"query":     query,
-		"variables": variables,
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
-	if err != nil {
-		return fmt.Errorf("failed to marshal GraphQL request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", buildinfo.GetUserAgent())
-	if s.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+s.authToken)
-	}
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to execute GraphQL query: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Parse response
-	if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
-		return fmt.Errorf("failed to parse GraphQL response: %w", err)
-	}
-
-	return nil
-}
-
 // SetInstallations sets the installation scopes for an asset using GraphQL mutation
 func (s *SleuthVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, scopeEntity string) error {
 	// Build repositories list from asset scopes. Empty slice means global install

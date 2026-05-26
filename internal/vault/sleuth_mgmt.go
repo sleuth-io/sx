@@ -965,10 +965,6 @@ type sleuthTeamNode struct {
 	SkillsRepositories []sleuthSkillsRepoRef
 }
 
-type sleuthGraphQLError struct {
-	Message string `json:"message"`
-}
-
 type sleuthMutationError struct {
 	Field    string   `json:"field"`
 	Messages []string `json:"messages"`
@@ -1026,17 +1022,6 @@ func gqlMutationErrors[T any, PT gqlErrItemPtr[T]](errs []T) error {
 	return sleuthMutationErrorsToErr(out)
 }
 
-func sleuthErrorsToErr(errs []sleuthGraphQLError) error {
-	if len(errs) == 0 {
-		return nil
-	}
-	msgs := make([]string, len(errs))
-	for i, e := range errs {
-		msgs[i] = e.Message
-	}
-	return fmt.Errorf("graphql: %s", strings.Join(msgs, "; "))
-}
-
 func sleuthMutationErrorsToErr(errs []sleuthMutationError) error {
 	if len(errs) == 0 {
 		return nil
@@ -1065,31 +1050,14 @@ func (s *SleuthVault) teamGIDByName(ctx context.Context, name string) (string, e
 
 // userGIDByEmail finds an org user's GID by email, via the users() search.
 func (s *SleuthVault) userGIDByEmail(ctx context.Context, email string) (string, error) {
-	query := `query FindUser($term: String!) {
-		users(term: $term, first: 25) { nodes { id email } }
-	}`
 	normalized := mgmt.NormalizeEmail(email)
-	vars := map[string]any{"term": normalized}
-	var resp struct {
-		Data struct {
-			Users struct {
-				Nodes []struct {
-					ID    string `json:"id"`
-					Email string `json:"email"`
-				} `json:"nodes"`
-			} `json:"users"`
-		} `json:"data"`
-		Errors []sleuthGraphQLError `json:"errors"`
-	}
-	if err := s.executeGraphQLQuery(ctx, query, vars, &resp); err != nil {
+	resp, err := vaultgql.FindUser(ctx, s.gqlClient(), normalized)
+	if err != nil {
 		return "", err
 	}
-	if err := sleuthErrorsToErr(resp.Errors); err != nil {
-		return "", err
-	}
-	for _, u := range resp.Data.Users.Nodes {
+	for _, u := range resp.Organization.Users.Nodes {
 		if mgmt.NormalizeEmail(u.Email) == normalized {
-			return u.ID, nil
+			return u.Id, nil
 		}
 	}
 	return "", fmt.Errorf("user %q not found in org", email)

@@ -812,6 +812,52 @@ func (v *DeleteTeamResponse) GetDeleteTeam() *DeleteTeamDeleteTeamDeleteTeamMuta
 	return v.DeleteTeam
 }
 
+// FindUserOrganizationOrganizationType includes the requested fields of the GraphQL type OrganizationType.
+type FindUserOrganizationOrganizationType struct {
+	Users FindUserOrganizationOrganizationTypeUsersUserConnection `json:"users"`
+}
+
+// GetUsers returns FindUserOrganizationOrganizationType.Users, and is useful for accessing the field via an interface.
+func (v *FindUserOrganizationOrganizationType) GetUsers() FindUserOrganizationOrganizationTypeUsersUserConnection {
+	return v.Users
+}
+
+// FindUserOrganizationOrganizationTypeUsersUserConnection includes the requested fields of the GraphQL type UserConnection.
+type FindUserOrganizationOrganizationTypeUsersUserConnection struct {
+	Nodes []FindUserOrganizationOrganizationTypeUsersUserConnectionNodesUser `json:"nodes"`
+}
+
+// GetNodes returns FindUserOrganizationOrganizationTypeUsersUserConnection.Nodes, and is useful for accessing the field via an interface.
+func (v *FindUserOrganizationOrganizationTypeUsersUserConnection) GetNodes() []FindUserOrganizationOrganizationTypeUsersUserConnectionNodesUser {
+	return v.Nodes
+}
+
+// FindUserOrganizationOrganizationTypeUsersUserConnectionNodesUser includes the requested fields of the GraphQL type User.
+type FindUserOrganizationOrganizationTypeUsersUserConnectionNodesUser struct {
+	Id    string `json:"id"`
+	Email string `json:"email"`
+}
+
+// GetId returns FindUserOrganizationOrganizationTypeUsersUserConnectionNodesUser.Id, and is useful for accessing the field via an interface.
+func (v *FindUserOrganizationOrganizationTypeUsersUserConnectionNodesUser) GetId() string {
+	return v.Id
+}
+
+// GetEmail returns FindUserOrganizationOrganizationTypeUsersUserConnectionNodesUser.Email, and is useful for accessing the field via an interface.
+func (v *FindUserOrganizationOrganizationTypeUsersUserConnectionNodesUser) GetEmail() string {
+	return v.Email
+}
+
+// FindUserResponse is returned by FindUser on success.
+type FindUserResponse struct {
+	Organization FindUserOrganizationOrganizationType `json:"organization"`
+}
+
+// GetOrganization returns FindUserResponse.Organization, and is useful for accessing the field via an interface.
+func (v *FindUserResponse) GetOrganization() FindUserOrganizationOrganizationType {
+	return v.Organization
+}
+
 // GetMeResponse is returned by GetMe on success.
 type GetMeResponse struct {
 	User *GetMeUser `json:"user"`
@@ -3145,6 +3191,14 @@ type __DeleteTeamInput struct {
 // GetId returns __DeleteTeamInput.Id, and is useful for accessing the field via an interface.
 func (v *__DeleteTeamInput) GetId() string { return v.Id }
 
+// __FindUserInput is used internally by genqlient
+type __FindUserInput struct {
+	Term string `json:"term"`
+}
+
+// GetTerm returns __FindUserInput.Term, and is useful for accessing the field via an interface.
+func (v *__FindUserInput) GetTerm() string { return v.Term }
+
 // __InstallSkillToBotInput is used internally by genqlient
 type __InstallSkillToBotInput struct {
 	BotId   string `json:"botId"`
@@ -3632,6 +3686,45 @@ func DeleteTeam(
 	}
 
 	data_ = &DeleteTeamResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The query executed by FindUser.
+const FindUser_Operation = `
+query FindUser ($term: String!) {
+	organization {
+		users(term: $term, first: 25) {
+			nodes {
+				id
+				email
+			}
+		}
+	}
+}
+`
+
+func FindUser(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	term string,
+) (data_ *FindUserResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "FindUser",
+		Query:  FindUser_Operation,
+		Variables: &__FindUserInput{
+			Term: term,
+		},
+	}
+
+	data_ = &FindUserResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(
