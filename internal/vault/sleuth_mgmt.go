@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -898,19 +899,29 @@ func (s *SleuthVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFil
 			TargetType: node.TargetType,
 			Target:     derefStr(node.TargetName),
 		}
-		// node.Data is a JSONString scalar that wire-encodes as a
-		// JSON-encoded string ("{\"foo\":...}"). Unmarshal the outer
-		// string first, then the inner JSON object into ev.Data.
+		// node.Data is a JSONString scalar that normally wire-encodes as a
+		// JSON-encoded string ("{\"foo\":...}"), but older payloads may
+		// wire the object directly. Dispatch on the first non-whitespace
+		// byte so both shapes are handled explicitly.
 		if node.Data != nil {
-			var inner string
-			if err := json.Unmarshal(*node.Data, &inner); err == nil && inner != "" {
-				if err := json.Unmarshal([]byte(inner), &ev.Data); err != nil {
-					logger.Get().Warn("audit log: failed to decode Data payload", "err", err)
+			raw := bytes.TrimSpace(*node.Data)
+			switch {
+			case len(raw) == 0, bytes.Equal(raw, []byte("null")):
+				// empty payload — nothing to decode
+			case raw[0] == '"':
+				var inner string
+				if err := json.Unmarshal(raw, &inner); err != nil || inner == "" {
+					if err != nil {
+						logger.Get().Warn("audit log: malformed JSONString Data", "err", err)
+					}
+					break
 				}
-			} else if err != nil {
-				// Older payloads may wire the object directly; try that.
-				if err := json.Unmarshal(*node.Data, &ev.Data); err != nil {
-					logger.Get().Warn("audit log: failed to decode Data payload", "err", err)
+				if err := json.Unmarshal([]byte(inner), &ev.Data); err != nil {
+					logger.Get().Warn("audit log: failed to decode inner Data object", "err", err)
+				}
+			default:
+				if err := json.Unmarshal(raw, &ev.Data); err != nil {
+					logger.Get().Warn("audit log: failed to decode Data object", "err", err)
 				}
 			}
 		}

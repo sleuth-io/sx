@@ -58,6 +58,12 @@ func (s *SleuthVault) gqlClient() graphql.Client {
 // scopeEntityPersonal is the scope entity value for personal (user-only) installations.
 const scopeEntityPersonal = "personal"
 
+// vaultAssetsByNamePageSize must mirror the `first:` value in
+// internal/vault/graphql/operations/vault_assets_by_name.graphql. Used to
+// detect a saturated result page so the caller can be told that more
+// matches exist beyond the page.
+const vaultAssetsByNamePageSize = 50
+
 // SleuthVault implements Vault for Sleuth HTTP servers
 type SleuthVault struct {
 	serverURL       string
@@ -622,6 +628,13 @@ func (s *SleuthVault) GetAssetDetails(ctx context.Context, name string) (*AssetD
 		}
 	}
 	if match == nil {
+		if len(resp.Vault.Assets.Nodes) >= vaultAssetsByNamePageSize {
+			logger.Get().Warn(
+				"VaultAssetsByName result saturated page size; exact match may exist beyond the page",
+				"page_size", vaultAssetsByNamePageSize,
+				"search", name,
+			)
+		}
 		return nil, fmt.Errorf("asset '%s' not found", name)
 	}
 
