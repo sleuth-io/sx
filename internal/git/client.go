@@ -106,15 +106,30 @@ func WithCommitActor(name, email string) ClientOption {
 }
 
 func WithHTTPSBasicAuth(host, username, password string) ClientOption {
+	return WithHTTPBasicAuth("https", host, username, password)
+}
+
+func WithHTTPBasicAuth(scheme, host, username, password string) ClientOption {
+	scheme = strings.TrimSpace(strings.ToLower(scheme))
+	if scheme == "" {
+		scheme = "https"
+	}
 	if host == "" || username == "" || password == "" {
 		return nil
 	}
 	encoded := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
 	return WithEnv(
 		"GIT_CONFIG_COUNT=1",
-		"GIT_CONFIG_KEY_0=http.https://"+host+"/.extraheader",
+		"GIT_CONFIG_KEY_0=http."+scheme+"://"+host+"/.extraheader",
 		"GIT_CONFIG_VALUE_0=AUTHORIZATION: basic "+encoded,
 	)
+}
+
+func (c *Client) ExtraEnv() []string {
+	if c == nil {
+		return nil
+	}
+	return append([]string(nil), c.extraEnv...)
 }
 
 func (c *Client) command(ctx context.Context, args ...string) *exec.Cmd {

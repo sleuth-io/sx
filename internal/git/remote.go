@@ -7,23 +7,25 @@ import (
 
 // RemoteAuthInfo describes the host and transport parsed from a git remote URL.
 type RemoteAuthInfo struct {
-	Host  string
-	HTTPS bool
-	SSH   bool
+	Host   string
+	Scheme string
+	HTTP   bool
+	SSH    bool
 }
 
 // ParseRemoteAuthInfo extracts the auth-relevant host and transport from a
-// git remote URL. It supports HTTPS URLs, ssh:// URLs, and scp-like SSH remotes
-// such as git@github.com:owner/repo.git.
+// git remote URL. It supports HTTP(S) URLs, ssh:// URLs, and scp-like SSH
+// remotes such as git@github.com:owner/repo.git.
 func ParseRemoteAuthInfo(repoURL string) RemoteAuthInfo {
 	repoURL = strings.TrimSpace(repoURL)
 	u, err := url.Parse(repoURL)
 	if err == nil && u.Host != "" {
-		switch strings.ToLower(u.Scheme) {
-		case "https":
-			return RemoteAuthInfo{Host: u.Host, HTTPS: true}
+		scheme := strings.ToLower(u.Scheme)
+		switch scheme {
+		case "http", "https":
+			return RemoteAuthInfo{Host: u.Host, Scheme: scheme, HTTP: true}
 		case "ssh", "git+ssh":
-			return RemoteAuthInfo{Host: u.Host, SSH: true}
+			return RemoteAuthInfo{Host: u.Host, Scheme: scheme, SSH: true}
 		}
 	}
 	if host := scpLikeSSHHost(repoURL); host != "" {
@@ -32,10 +34,11 @@ func ParseRemoteAuthInfo(repoURL string) RemoteAuthInfo {
 	return RemoteAuthInfo{}
 }
 
-// LooksLikeHTTPSRemote reports whether repoURL uses an HTTPS scheme even when
+// LooksLikeHTTPRemote reports whether repoURL uses an HTTP(S) scheme even when
 // the URL is malformed enough that ParseRemoteAuthInfo cannot extract a host.
-func LooksLikeHTTPSRemote(repoURL string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(repoURL)), "https://")
+func LooksLikeHTTPRemote(repoURL string) bool {
+	repoURL = strings.ToLower(strings.TrimSpace(repoURL))
+	return strings.HasPrefix(repoURL, "https://") || strings.HasPrefix(repoURL, "http://")
 }
 
 // DefaultHTTPSAuthUsername returns a reasonable basic-auth username for a git

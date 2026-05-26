@@ -37,9 +37,15 @@ type GitOptions struct {
 	Actor Actor
 }
 
+type SkillsNewOptions struct {
+	AuthToken string
+	Actor     Actor
+}
+
 type Client struct {
-	v     vault.Vault
-	actor Actor
+	v           vault.Vault
+	actor       Actor
+	gitExtraEnv []string
 }
 
 type Bot struct {
@@ -79,11 +85,15 @@ type AssetSummary struct {
 }
 
 func OpenSkillsNew(serverURL, authToken string) (*Client, error) {
+	return OpenSkillsNewWithOptions(serverURL, SkillsNewOptions{AuthToken: authToken})
+}
+
+func OpenSkillsNewWithOptions(serverURL string, opts SkillsNewOptions) (*Client, error) {
 	serverURL = strings.TrimRight(strings.TrimSpace(serverURL), "/")
 	if serverURL == "" {
 		serverURL = DefaultSkillsNewURL
 	}
-	authToken = strings.TrimSpace(authToken)
+	authToken := strings.TrimSpace(opts.AuthToken)
 	if authToken == "" {
 		return nil, errors.New("sxvault: skills.new auth token required")
 	}
@@ -94,7 +104,7 @@ func OpenSkillsNew(serverURL, authToken string) (*Client, error) {
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return nil, fmt.Errorf("sxvault: invalid skills.new server URL scheme %q", u.Scheme)
 	}
-	return &Client{v: vault.NewSleuthVault(serverURL, authToken)}, nil
+	return &Client{v: vault.NewSleuthVault(serverURL, authToken), actor: opts.Actor}, nil
 }
 
 func OpenGit(repoURL string, opts GitOptions) (*Client, error) {
@@ -105,17 +115,18 @@ func OpenGit(repoURL string, opts GitOptions) (*Client, error) {
 	gitOpts := []git.ClientOption{git.WithCommitActor(opts.Actor.Name, opts.Actor.Email)}
 	if tok := strings.TrimSpace(opts.AuthToken); tok != "" {
 		info := git.ParseRemoteAuthInfo(repoURL)
-		if info.HTTPS {
-			gitOpts = append(gitOpts, git.WithHTTPSBasicAuth(info.Host, git.DefaultHTTPSAuthUsername(info.Host, opts.AuthUsername), tok))
-		} else if git.LooksLikeHTTPSRemote(repoURL) {
+		if info.HTTP {
+			gitOpts = append(gitOpts, git.WithHTTPBasicAuth(info.Scheme, info.Host, git.DefaultHTTPSAuthUsername(info.Host, opts.AuthUsername), tok))
+		} else if git.LooksLikeHTTPRemote(repoURL) {
 			return nil, fmt.Errorf("sxvault: cannot derive git auth host from %q", repoURL)
 		}
 	}
-	gv, err := vault.NewGitVaultWithOptions(repoURL, vault.WithGitClient(git.NewClientWithOptions(gitOpts...)))
+	gitClient := git.NewClientWithOptions(gitOpts...)
+	gv, err := vault.NewGitVaultWithOptions(repoURL, vault.WithGitClient(gitClient))
 	if err != nil {
 		return nil, err
 	}
-	return &Client{v: gv, actor: opts.Actor}, nil
+	return &Client{v: gv, actor: opts.Actor, gitExtraEnv: gitClient.ExtraEnv()}, nil
 }
 
 // EnsureBot creates the named bot if missing and updates its description when
@@ -216,10 +227,24 @@ func (c *Client) InstallAssetToBot(ctx context.Context, assetName, botName strin
 }
 
 func (c *Client) ListAssets(ctx context.Context, typ string) ([]AssetSummary, error) {
+	return c.ListAssetsWithOptions(ctx, ListOptions{Type: typ})
+}
+
+type ListOptions struct {
+	Type   string
+	Search string
+	Limit  int
+}
+
+func (c *Client) ListAssetsWithOptions(ctx context.Context, opts ListOptions) ([]AssetSummary, error) {
 	if c == nil || c.v == nil {
 		return nil, errors.New("sxvault: nil client")
 	}
-	res, err := c.v.ListAssets(c.actorContext(ctx), vault.ListAssetsOptions{Type: strings.TrimSpace(typ), Limit: 200})
+	res, err := c.v.ListAssets(c.actorContext(ctx), vault.ListAssetsOptions{
+		Type:   strings.TrimSpace(opts.Type),
+		Search: strings.TrimSpace(opts.Search),
+		Limit:  opts.Limit,
+	})
 	if err != nil {
 		return nil, err
 	}

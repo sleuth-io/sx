@@ -30,8 +30,9 @@ func NewFromConfig(cfg Config) (Vault, error) {
 		opts := []GitVaultOption(nil)
 		if tok := strings.TrimSpace(cfg.GetAuthToken()); tok != "" {
 			info := git.ParseRemoteAuthInfo(cfg.GetRepositoryURL())
-			if info.HTTPS {
-				opts = append(opts, WithGitClient(git.NewClientWithOptions(git.WithHTTPSBasicAuth(
+			if info.HTTP {
+				opts = append(opts, WithGitClient(git.NewClientWithOptions(git.WithHTTPBasicAuth(
+					info.Scheme,
 					info.Host,
 					git.DefaultHTTPSAuthUsername(info.Host, authUsername(cfg)),
 					tok,

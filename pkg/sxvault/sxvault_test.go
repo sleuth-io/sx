@@ -129,6 +129,36 @@ func TestPutSkillZipWithAndWithoutBotInstall(t *testing.T) {
 	}
 }
 
+func TestListAssetsWithOptionsHonorsLimit(t *testing.T) {
+	ctx := context.Background()
+	_, client := newGitVaultClient(t)
+
+	for _, name := range []string{"lint-helper", "test-helper"} {
+		if err := client.PutSkillZip(ctx, SkillZipSpec{
+			Name:    name,
+			Version: "1.0.0",
+			ZipData: skillZip(t, name),
+		}, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	allSkills, err := client.ListAssets(ctx, "skill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(allSkills) != 2 {
+		t.Fatalf("ListAssets returned %d skills, want 2: %+v", len(allSkills), allSkills)
+	}
+	limited, err := client.ListAssetsWithOptions(ctx, ListOptions{Type: "skill", Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(limited) != 1 {
+		t.Fatalf("ListAssetsWithOptions limit returned %d skills, want 1: %+v", len(limited), limited)
+	}
+}
+
 func TestPutAgentValidationErrors(t *testing.T) {
 	ctx := context.Background()
 	_, client := newGitVaultClient(t)
@@ -153,14 +183,35 @@ func TestOpenSkillsNewValidation(t *testing.T) {
 	if _, err := OpenSkillsNew("https://app.skills.new", "token"); err != nil {
 		t.Fatalf("OpenSkillsNew valid input: %v", err)
 	}
+	client, err := OpenSkillsNewWithOptions("https://app.skills.new", SkillsNewOptions{
+		AuthToken: "token",
+		Actor:     Actor{Name: "Admin", Email: "admin@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("OpenSkillsNewWithOptions valid input: %v", err)
+	}
+	if client.actor.Email != "admin@example.com" {
+		t.Fatalf("OpenSkillsNewWithOptions actor email = %q", client.actor.Email)
+	}
 }
 
 func TestOpenGitAuthTokenWithSSHRemoteDoesNotRequireHTTPSHost(t *testing.T) {
-	if _, err := OpenGit("git@gitlab.com:org/repo.git", GitOptions{AuthToken: "token"}); err != nil {
+	client, err := OpenGit("git@gitlab.com:org/repo.git", GitOptions{AuthToken: "token"})
+	if err != nil {
 		t.Fatalf("OpenGit ssh remote with token: %v", err)
+	}
+	if hasGitBasicAuthEnv(client.gitExtraEnv) {
+		t.Fatalf("SSH remote configured HTTPS basic auth env: %v", client.gitExtraEnv)
 	}
 	if _, err := OpenGit("https:///org/repo.git", GitOptions{AuthToken: "token"}); err == nil {
 		t.Fatal("OpenGit malformed HTTPS remote with token succeeded, want error")
+	}
+	httpClient, err := OpenGit("http://git.example.test/org/repo.git", GitOptions{AuthToken: "token"})
+	if err != nil {
+		t.Fatalf("OpenGit http remote with token: %v", err)
+	}
+	if !strings.Contains(strings.Join(httpClient.gitExtraEnv, "\n"), "http.http://git.example.test/.extraheader") {
+		t.Fatalf("HTTP remote did not configure HTTP basic auth env: %v", httpClient.gitExtraEnv)
 	}
 }
 
@@ -213,6 +264,15 @@ func skillZip(t *testing.T, prompt string) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func hasGitBasicAuthEnv(env []string) bool {
+	for _, v := range env {
+		if strings.Contains(v, "extraheader") || strings.HasPrefix(v, "GIT_CONFIG_COUNT=") {
+			return true
+		}
+	}
+	return false
 }
 
 func runGit(t *testing.T, dir string, args ...string) {
