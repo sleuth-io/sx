@@ -34,6 +34,12 @@ type GitOptions struct {
 	// GitLab hosts, which use "oauth2".
 	AuthUsername string
 
+	// SSHKeyPath, when non-empty, points the underlying git client at this
+	// SSH private key for SSH remotes. It bypasses the process-global SSH
+	// key path set by the CLI's --ssh-key flag / SX_SSH_KEY env var, letting
+	// library consumers scope SSH auth to a single Client.
+	SSHKeyPath string
+
 	Actor Actor
 }
 
@@ -122,6 +128,9 @@ func OpenGit(repoURL string, opts GitOptions) (*Client, error) {
 			return nil, fmt.Errorf("sxvault: cannot derive git auth host from %q", repoURL)
 		}
 	}
+	if sshKey := strings.TrimSpace(opts.SSHKeyPath); sshKey != "" {
+		gitOpts = append(gitOpts, git.WithSSHKey(sshKey))
+	}
 	gitClient := git.NewClientWithOptions(gitOpts...)
 	gv, err := vault.NewGitVaultWithOptions(repoURL, vault.WithGitClient(gitClient))
 	if err != nil {
@@ -160,6 +169,16 @@ func (c *Client) EnsureBot(ctx context.Context, bot Bot) (string, error) {
 	})
 }
 
+// PutAgent uploads an agent asset and installs it (plus any listed skills)
+// on the named bot.
+//
+// Re-publishing an existing AssetName@Version is idempotent for the manifest:
+// the version is listed once and installations are re-run, which also makes
+// this the recovery path for a publish that failed midway. The stored zip
+// bytes themselves follow the vault backend — Sleuth vaults preserve the
+// original (any new Prompt / Description in spec is silently discarded); Git
+// vaults overwrite the stored bytes. Bump the version when you need a
+// guaranteed update across all backends.
 func (c *Client) PutAgent(ctx context.Context, spec AgentSpec) (AgentResult, error) {
 	spec.BotName = strings.TrimSpace(spec.BotName)
 	spec.AssetName = strings.TrimSpace(spec.AssetName)
@@ -191,6 +210,16 @@ func (c *Client) PutAgent(ctx context.Context, spec AgentSpec) (AgentResult, err
 	return AgentResult{BotKey: botKey}, nil
 }
 
+// PutSkillZip uploads a skill zip and, when botName is non-empty, installs
+// the skill on that bot.
+//
+// Re-publishing an existing Name@Version is idempotent for the manifest: the
+// version is listed once and installations are re-run, which also makes this
+// the recovery path for a publish that failed midway. The stored zip bytes
+// themselves follow the vault backend — Sleuth vaults preserve the original
+// (new ZipData on a re-publish is silently discarded); Git vaults overwrite
+// the stored bytes. Bump the version when you need a guaranteed update
+// across all backends.
 func (c *Client) PutSkillZip(ctx context.Context, spec SkillZipSpec, botName string) error {
 	spec.Name = strings.TrimSpace(spec.Name)
 	spec.Version = strings.TrimSpace(spec.Version)
@@ -263,11 +292,14 @@ func (c *Client) ListAssetsWithOptions(ctx context.Context, opts ListOptions) ([
 
 func (c *Client) addAsset(ctx context.Context, ast *lockfile.Asset, zipData []byte) error {
 	if err := c.v.AddAsset(ctx, ast, zipData); err != nil {
+		// Re-publishing an existing name@version is intentionally a no-op
+		// for stored content. We still fall through to InheritInstallations
+		// so a retry after a half-failed prior publish (asset bytes
+		// written, manifest update never ran) can complete the install.
 		var exists *vault.ErrVersionExists
-		if errors.As(err, &exists) {
-			return nil
+		if !errors.As(err, &exists) {
+			return err
 		}
-		return err
 	}
 	if ast.SourcePath == nil && ast.SourceHTTP == nil && ast.SourceGit == nil {
 		ast.SourcePath = &lockfile.SourcePath{Path: "assets/" + ast.Name + "/" + ast.Version}

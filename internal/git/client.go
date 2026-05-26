@@ -94,6 +94,16 @@ func WithEnv(env ...string) ClientOption {
 	}
 }
 
+// WithSSHKey overrides the SSH key path that would otherwise be inherited
+// from the process-global value set by SetSSHKeyPath. Library consumers that
+// don't go through the CLI flag/env wiring should use this to scope an SSH
+// key to a single git.Client.
+func WithSSHKey(path string) ClientOption {
+	return func(c *Client) {
+		c.sshKeyPath = path
+	}
+}
+
 func WithCommitActor(name, email string) ClientOption {
 	env := []string{}
 	if name != "" {

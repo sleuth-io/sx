@@ -159,6 +159,24 @@ func TestPushSetUpstream(t *testing.T) {
 	}
 }
 
+func TestWithSSHKeyOverridesGlobal(t *testing.T) {
+	// Snapshot and restore the global so other tests aren't affected by
+	// our temporary override.
+	prev := globalSSHKeyPath
+	t.Cleanup(func() { globalSSHKeyPath = prev })
+	globalSSHKeyPath = "/from/global"
+
+	defaultClient := NewClientWithOptions()
+	if defaultClient.sshKeyPath != "/from/global" {
+		t.Fatalf("NewClientWithOptions sshKeyPath = %q, want global value", defaultClient.sshKeyPath)
+	}
+
+	overridden := NewClientWithOptions(WithSSHKey("/from/option"))
+	if overridden.sshKeyPath != "/from/option" {
+		t.Fatalf("WithSSHKey did not override global: got %q", overridden.sshKeyPath)
+	}
+}
+
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)

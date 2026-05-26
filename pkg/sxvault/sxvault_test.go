@@ -93,6 +93,70 @@ func TestPutAgentSameVersionIsIdempotent(t *testing.T) {
 	assertFileContains(t, filepath.Join(clone, "assets", "reviewer", "1.0.0", "AGENT.md"), "You are Reviewer.")
 }
 
+func TestPutSkillZipSameVersionIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	remote, client := newGitVaultClient(t)
+	spec := SkillZipSpec{
+		Name:        "lint-helper",
+		Version:     "1.0.0",
+		Description: "Helps with lint fixes.",
+		ZipData:     skillZip(t, "Lint carefully."),
+	}
+	if err := client.PutSkillZip(ctx, spec, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.PutSkillZip(ctx, spec, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	clone := cloneRemote(t, remote)
+	list := readFile(t, filepath.Join(clone, "assets", "lint-helper", "list.txt"))
+	if count := strings.Count(list, "1.0.0"); count != 1 {
+		t.Fatalf("version list contains 1.0.0 %d times:\n%s", count, list)
+	}
+	assertFileContains(t, filepath.Join(clone, "assets", "lint-helper", "1.0.0", "SKILL.md"), "Lint carefully.")
+}
+
+func TestPutSkillZipDescriptionPrecedence(t *testing.T) {
+	ctx := context.Background()
+	remote, client := newGitVaultClient(t)
+
+	// Empty SkillZipSpec.Description preserves the description embedded in
+	// the zip's metadata.toml.
+	preservedZip := skillZipWithMetadata(t, "Lint carefully.", "Embedded description.")
+	if err := client.PutSkillZip(ctx, SkillZipSpec{
+		Name:    "lint-helper",
+		Version: "1.0.0",
+		ZipData: preservedZip,
+	}, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// Non-empty SkillZipSpec.Description overrides the embedded description.
+	overrideZip := skillZipWithMetadata(t, "Test carefully.", "Embedded description.")
+	if err := client.PutSkillZip(ctx, SkillZipSpec{
+		Name:        "test-helper",
+		Version:     "1.0.0",
+		Description: "Spec description wins.",
+		ZipData:     overrideZip,
+	}, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	clone := cloneRemote(t, remote)
+	preserved := readFile(t, filepath.Join(clone, "assets", "lint-helper", "1.0.0", "metadata.toml"))
+	if !strings.Contains(preserved, `description = "Embedded description."`) {
+		t.Fatalf("empty spec description did not preserve embedded description:\n%s", preserved)
+	}
+	overridden := readFile(t, filepath.Join(clone, "assets", "test-helper", "1.0.0", "metadata.toml"))
+	if !strings.Contains(overridden, `description = "Spec description wins."`) {
+		t.Fatalf("non-empty spec description did not override embedded description:\n%s", overridden)
+	}
+	if strings.Contains(overridden, `description = "Embedded description."`) {
+		t.Fatalf("override left embedded description in metadata.toml:\n%s", overridden)
+	}
+}
+
 func TestPutSkillZipWithAndWithoutBotInstall(t *testing.T) {
 	ctx := context.Background()
 	remote, client := newGitVaultClient(t)
@@ -278,6 +342,43 @@ func skillZip(t *testing.T, prompt string) []byte {
 		t.Fatal(err)
 	}
 	if _, err := w.Write([]byte(prompt)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// skillZipWithMetadata produces a skill zip containing both SKILL.md and a
+// metadata.toml whose [asset].description is the supplied value. Used to
+// exercise normalizeSkillZip's description-merge rule.
+func skillZipWithMetadata(t *testing.T, prompt, description string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	skillW, err := zw.Create("SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := skillW.Write([]byte(prompt)); err != nil {
+		t.Fatal(err)
+	}
+	metaW, err := zw.Create("metadata.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The Name/Version/Type fields are overwritten by normalizeSkillZip from
+	// SkillZipSpec, so placeholder values are fine here.
+	metaBody := "metadata-version = \"1.0\"\n\n" +
+		"[asset]\n" +
+		"name = \"placeholder\"\n" +
+		"version = \"0.0.0\"\n" +
+		"type = \"skill\"\n" +
+		"description = \"" + description + "\"\n\n" +
+		"[skill]\n" +
+		"prompt-file = \"SKILL.md\"\n"
+	if _, err := metaW.Write([]byte(metaBody)); err != nil {
 		t.Fatal(err)
 	}
 	if err := zw.Close(); err != nil {
