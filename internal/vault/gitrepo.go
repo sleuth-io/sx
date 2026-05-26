@@ -74,14 +74,6 @@ func WithGitClient(client *git.Client) GitVaultOption {
 	}
 }
 
-// GitExtraEnv returns the additional environment passed to git commands.
-func (g *GitVault) GitExtraEnv() []string {
-	if g == nil || g.gitClient == nil {
-		return nil
-	}
-	return g.gitClient.ExtraEnv()
-}
-
 // NewGitVault creates a new Git repository
 func NewGitVault(repoURL string) (*GitVault, error) {
 	return NewGitVaultWithOptions(repoURL)

@@ -20,7 +20,12 @@ import (
 const DefaultSkillsNewURL = "https://app.skills.new"
 
 type Actor struct {
-	Name  string
+	// Name is the human-readable name used for git commit attribution by
+	// OpenGit. The Sleuth backend (OpenSkillsNewWithOptions) ignores it and
+	// identifies the actor solely by Email.
+	Name string
+	// Email identifies the actor for audit/identity context across both
+	// backends. The git backend also uses it for commit attribution.
 	Email string
 }
 
@@ -62,7 +67,6 @@ type AgentSpec struct {
 	BotName     string
 	AssetName   string
 	Version     string
-	DisplayName string
 	Description string
 	Prompt      string
 	Skills      []string
@@ -119,6 +123,23 @@ func OpenGit(repoURL string, opts GitOptions) (*Client, error) {
 	if repoURL == "" {
 		return nil, errors.New("sxvault: git repo URL required")
 	}
+	gitOpts, err := buildGitClientOptions(repoURL, opts)
+	if err != nil {
+		return nil, err
+	}
+	gitClient := git.NewClientWithOptions(gitOpts...)
+	gv, err := vault.NewGitVaultWithOptions(repoURL, vault.WithGitClient(gitClient))
+	if err != nil {
+		return nil, err
+	}
+	return &Client{v: gv, actor: opts.Actor}, nil
+}
+
+// buildGitClientOptions translates a sxvault.GitOptions plus the target repo
+// URL into the git.ClientOption list used to construct the underlying client.
+// Extracted so tests can assert on the resulting client env via the public
+// git.Client.ExtraEnv accessor without reaching into vault internals.
+func buildGitClientOptions(repoURL string, opts GitOptions) ([]git.ClientOption, error) {
 	gitOpts := []git.ClientOption{git.WithCommitActor(opts.Actor.Name, opts.Actor.Email)}
 	if tok := strings.TrimSpace(opts.AuthToken); tok != "" {
 		info := git.ParseRemoteAuthInfo(repoURL)
@@ -131,12 +152,7 @@ func OpenGit(repoURL string, opts GitOptions) (*Client, error) {
 	if sshKey := strings.TrimSpace(opts.SSHKeyPath); sshKey != "" {
 		gitOpts = append(gitOpts, git.WithSSHKey(sshKey))
 	}
-	gitClient := git.NewClientWithOptions(gitOpts...)
-	gv, err := vault.NewGitVaultWithOptions(repoURL, vault.WithGitClient(gitClient))
-	if err != nil {
-		return nil, err
-	}
-	return &Client{v: gv, actor: opts.Actor}, nil
+	return gitOpts, nil
 }
 
 // EnsureBot creates the named bot if missing and updates its description when

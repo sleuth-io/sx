@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sleuth-io/sx/internal/vault"
+	"github.com/sleuth-io/sx/internal/git"
 )
 
 func TestGitPutAgentWritesSXVaultFormat(t *testing.T) {
@@ -21,7 +21,6 @@ func TestGitPutAgentWritesSXVaultFormat(t *testing.T) {
 		BotName:     "reviewer",
 		AssetName:   "reviewer",
 		Version:     "1.0.0",
-		DisplayName: "Reviewer",
 		Description: "Reviews pull requests.",
 		Prompt:      "You are Reviewer.",
 	}); err != nil {
@@ -74,7 +73,6 @@ func TestPutAgentSameVersionIsIdempotent(t *testing.T) {
 		BotName:     "reviewer",
 		AssetName:   "reviewer",
 		Version:     "1.0.0",
-		DisplayName: "Reviewer",
 		Description: "Reviews pull requests.",
 		Prompt:      "You are Reviewer.",
 	}
@@ -268,35 +266,27 @@ func TestOpenSkillsNewValidation(t *testing.T) {
 	}
 }
 
-func TestOpenGitAuthTokenWithSSHRemoteDoesNotRequireHTTPSHost(t *testing.T) {
-	client, err := OpenGit("git@gitlab.com:org/repo.git", GitOptions{AuthToken: "token"})
-	if err != nil {
-		t.Fatalf("OpenGit ssh remote with token: %v", err)
+func TestBuildGitClientOptionsAuthTokenRouting(t *testing.T) {
+	sshEnv := envFromOptions(t, "git@gitlab.com:org/repo.git", GitOptions{AuthToken: "token"})
+	if hasGitBasicAuthEnv(sshEnv) {
+		t.Fatalf("SSH remote configured HTTP basic auth env: %v", sshEnv)
 	}
-	if hasGitBasicAuthEnv(gitEnv(client)) {
-		t.Fatalf("SSH remote configured HTTP basic auth env: %v", gitEnv(client))
+	if _, err := buildGitClientOptions("https:///org/repo.git", GitOptions{AuthToken: "token"}); err == nil {
+		t.Fatal("malformed HTTPS remote with token succeeded, want error")
 	}
-	if _, err := OpenGit("https:///org/repo.git", GitOptions{AuthToken: "token"}); err == nil {
-		t.Fatal("OpenGit malformed HTTPS remote with token succeeded, want error")
-	}
-	httpClient, err := OpenGit("http://git.example.test/org/repo.git", GitOptions{AuthToken: "token"})
-	if err != nil {
-		t.Fatalf("OpenGit http remote with token: %v", err)
-	}
-	if !strings.Contains(strings.Join(gitEnv(httpClient), "\n"), "http.http://git.example.test/.extraheader") {
-		t.Fatalf("HTTP remote did not configure HTTP basic auth env: %v", gitEnv(httpClient))
+	httpEnv := envFromOptions(t, "http://git.example.test/org/repo.git", GitOptions{AuthToken: "token"})
+	if !strings.Contains(strings.Join(httpEnv, "\n"), "http.http://git.example.test/.extraheader") {
+		t.Fatalf("HTTP remote did not configure HTTP basic auth env: %v", httpEnv)
 	}
 }
 
-func gitEnv(client *Client) []string {
-	if client == nil {
-		return nil
+func envFromOptions(t *testing.T, repoURL string, opts GitOptions) []string {
+	t.Helper()
+	gitOpts, err := buildGitClientOptions(repoURL, opts)
+	if err != nil {
+		t.Fatalf("buildGitClientOptions(%q): %v", repoURL, err)
 	}
-	gv, ok := client.v.(*vault.GitVault)
-	if !ok {
-		return nil
-	}
-	return gv.GitExtraEnv()
+	return git.NewClientWithOptions(gitOpts...).ExtraEnv()
 }
 
 func newGitVaultClient(t *testing.T) (string, *Client) {
