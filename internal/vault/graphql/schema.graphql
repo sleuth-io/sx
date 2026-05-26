@@ -30,7 +30,15 @@ type Team {
   provider: IntegrationProvider
   integrationSlug: String
   id: ID!
-  members(before: String, after: String, first: Int, last: Int): UserConnection!
+  members(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
   adminMemberIds: [ID!]
   integrationDescription: String
   hasSubteams: Boolean!
@@ -41,7 +49,15 @@ type Team {
   URL to the external provider's page for this team (only set for teams synced from an external provider).
   """
   externalTeamUrl: String
-  repositories(before: String, after: String, first: Int, last: Int): RepositoryConnection!
+  repositories(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): RepositoryConnection!
 }
 
 enum IntegrationProvider {
@@ -179,8 +195,24 @@ type User {
   email: String!
   timezone: String
   favoriteWorkspaces: [FavoriteWorkspaceType!]!
-  notifications(before: String, after: String, first: Int, last: Int): NotificationConnection!
-  personalTokens(before: String, after: String, first: Int, last: Int): AccessTokenConnection!
+  notifications(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): NotificationConnection!
+  personalTokens(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): AccessTokenConnection!
   activeSkillProfile: VaultAssetProfile
 }
 
@@ -253,17 +285,69 @@ type OrganizationType implements TeamOrUsersScoped {
     Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
     """
     excludeId: ID = null
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): TeamOrUsersConnection!
   teamsSyncStatuses: [TeamsSyncStatusType!]!
-  teams(childless: Boolean = false, parent: TeamParentInputType, term: String, alwaysIncludeIds: [ID!] = null, before: String, after: String, first: Int, last: Int): TeamsConnection!
+  teams(
+    childless: Boolean = false
+    parent: TeamParentInputType
+    term: String
+    alwaysIncludeIds: [ID!] = null
+
+    """Maximum allowed value is 300."""
+    first: Int
+
+    """Maximum allowed value is 300."""
+    last: Int
+    before: String
+    after: String
+  ): TeamsConnection!
   team(id: ID!): Team!
-  users(term: String!, excludeTeamSlug: ID = "", userType: UsersType = MEMBERS, userRole: Role = null, ids: [ID!] = null, alwaysIncludeIds: [ID!] = null, before: String, after: String, first: Int, last: Int): UserConnection!
-  externalUsers(excludeLinked: Boolean = false, term: String = null, provider: String = null, before: String, after: String, first: Int, last: Int): ExternalUsersConnection!
-  pendingInvites(before: String, after: String, first: Int, last: Int): InvitationConnection!
+  users(
+    term: String!
+    excludeTeamSlug: ID = ""
+    userType: UsersType = MEMBERS
+    userRole: Role = null
+    ids: [ID!] = null
+    alwaysIncludeIds: [ID!] = null
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
+  externalUsers(
+    excludeLinked: Boolean = false
+    term: String = null
+    provider: String = null
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): ExternalUsersConnection!
+  pendingInvites(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): InvitationConnection!
   allowedLoginMethods: [OrgAllowedLoginMethodType!]!
   flagEnabled(flagName: String!): Boolean!
   apiKey: String! @deprecated(reason: "Use `accessTokens` field instead.")
@@ -271,13 +355,33 @@ type OrganizationType implements TeamOrUsersScoped {
   isActive: Boolean!
   timezone: String
   planType: PlanType!
-  accessTokens(before: String, after: String, first: Int, last: Int): AccessTokenConnection!
+  accessTokens(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): AccessTokenConnection!
 
   """EXPERIMENTAL FIELD, can change at any time."""
   workingHours: WorkingHoursType
   bots: [ManagedBot!]!
   llmFeaturesEnabled: Boolean!
-  repositories(provider: IntegrationProvider, term: String, alwaysIncludeIds: [ID!], before: String, after: String, first: Int, last: Int): RepositoryConnection!
+  repositories(
+    provider: IntegrationProvider
+    term: String
+    alwaysIncludeIds: [ID!]
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): RepositoryConnection!
   developerSalaries: [DeveloperSalaryType!]!
   skillsSettings: SkillsSettings!
   skillsDashboard: Dashboard
@@ -292,10 +396,14 @@ interface TeamOrUsersScoped {
     Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
     """
     excludeId: ID = null
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): TeamOrUsersConnection!
 }
 
@@ -1464,7 +1572,17 @@ type Dashboard implements Assessable & UserScoped & TeamOrUsersScoped & Commenta
   owner: User
   workspace: Workspace!
   assessment: DelayedAssessment!
-  users(term: String = "", before: String, after: String, first: Int, last: Int): UserConnection!
+  users(
+    term: String = ""
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
   teamsOrUsers(
     term: String = null
 
@@ -1472,20 +1590,48 @@ type Dashboard implements Assessable & UserScoped & TeamOrUsersScoped & Commenta
     Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
     """
     excludeId: ID = null
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): TeamOrUsersConnection!
   comment(id: ID!): Comment
-  comments(before: String, after: String, first: Int, last: Int): CommentConnection!
+  comments(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): CommentConnection!
   commentsCount: Int!
-  commentAuthors(before: String, after: String, first: Int, last: Int): UserConnection!
+  commentAuthors(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
   id: ID!
   createdOn: DateTime!
   modifiedOn: DateTime!
   section(id: ID!): Section
-  sections(before: String, after: String, first: Int, last: Int): SectionConnection!
+  sections(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): SectionConnection!
   highlightWidget: Widget
 }
 
@@ -1530,14 +1676,40 @@ The `HTMLString` scalar type represents HTML data. It is an extension of the Str
 scalar HTMLString
 
 interface UserScoped {
-  users(term: String = "", before: String, after: String, first: Int, last: Int): UserConnection!
+  users(
+    term: String = ""
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
 }
 
 interface Commentable {
   comment(id: ID!): Comment
-  comments(before: String, after: String, first: Int, last: Int): CommentConnection!
+  comments(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): CommentConnection!
   commentsCount: Int!
-  commentAuthors(before: String, after: String, first: Int, last: Int): UserConnection!
+  commentAuthors(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
 }
 
 type CommentConnection {
@@ -1561,8 +1733,30 @@ type Workspace implements UserScoped & TeamOrUsersScoped {
   """Every org has one global workspace, this workspace cannot be deleted."""
   isGlobal: Boolean!
   marker: WorkspaceMarkerField
-  reviews(published: Boolean, term: String, reviewType: ReviewType = REVIEW, before: String, after: String, first: Int, last: Int): ReviewConnection!
-  users(term: String = "", before: String, after: String, first: Int, last: Int): UserConnection!
+  reviews(
+    published: Boolean
+    term: String
+    reviewType: ReviewType = REVIEW
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): ReviewConnection!
+  users(
+    term: String = ""
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
   teamsOrUsers(
     term: String = null
 
@@ -1570,17 +1764,43 @@ type Workspace implements UserScoped & TeamOrUsersScoped {
     Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
     """
     excludeId: ID = null
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): TeamOrUsersConnection!
   id: ID!
   review(id: ID!): Review
   survey(id: ID!): Survey
-  surveys(published: Boolean, term: String, before: String, after: String, first: Int, last: Int): SurveyConnection!
+  surveys(
+    published: Boolean
+    term: String
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): SurveyConnection!
   dashboard(id: ID!): Dashboard
-  dashboards(published: Boolean, term: String, before: String, after: String, first: Int, last: Int): DashboardConnection!
+  dashboards(
+    published: Boolean
+    term: String
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): DashboardConnection!
   chain(id: ID, reviewId: ID): ReviewChain
   parameterOptions(
     """
@@ -1606,10 +1826,14 @@ type Workspace implements UserScoped & TeamOrUsersScoped {
     """
     pqlFragmentName: String!
     includeRelatedTags: Boolean
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): ParameterValueOptionConnection!
   workCategoryBuckets(defaultToGlobal: Boolean = false): [NamedWorkCategoryGqlType!]
   workPlanningBuckets(defaultToGlobal: Boolean = false): [NamedWorkPlanningGqlType!]
@@ -1661,9 +1885,27 @@ type Review implements Assessable & UserScoped & TeamOrUsersScoped & Commentable
   status: ReviewStatus!
   onlyOwnerCanChangeStatus: Boolean!
   requireApproval: Boolean!
-  comments(before: String, after: String, first: Int, last: Int): CommentConnection!
+  comments(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): CommentConnection!
   assessment: DelayedAssessment!
-  users(term: String = "", before: String, after: String, first: Int, last: Int): UserConnection!
+  users(
+    term: String = ""
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
   teamsOrUsers(
     term: String = null
 
@@ -1671,19 +1913,39 @@ type Review implements Assessable & UserScoped & TeamOrUsersScoped & Commentable
     Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
     """
     excludeId: ID = null
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): TeamOrUsersConnection!
   comment(id: ID!): Comment
   commentsCount: Int!
-  commentAuthors(before: String, after: String, first: Int, last: Int): UserConnection!
+  commentAuthors(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
   id: ID!
   createdOn: DateTime!
   modifiedOn: DateTime!
   section(id: ID!): Section
-  sections(before: String, after: String, first: Int, last: Int): SectionConnection!
+  sections(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): SectionConnection!
   highlightWidget: Widget
   previousReview: Review
   nextReview: Review
@@ -1722,14 +1984,38 @@ type Section implements Assessable & Commentable {
   assessmentSummaryIsMandatory: Boolean!
   assessmentScoreIsMandatory: Boolean!
   status: SectionStatus!
-  comments(before: String, after: String, first: Int, last: Int): CommentConnection!
+  comments(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): CommentConnection!
   assessment: DelayedAssessment!
   comment(id: ID!): Comment
   commentsCount: Int!
-  commentAuthors(before: String, after: String, first: Int, last: Int): UserConnection!
+  commentAuthors(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
   id: ID!
   widget(id: ID!): Widget
-  widgets(before: String, after: String, first: Int, last: Int): WidgetConnection!
+  widgets(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): WidgetConnection!
   parameterOptions(
     """Widget type slug."""
     slug: String!
@@ -1751,12 +2037,24 @@ type Section implements Assessable & Commentable {
     These are the values already selected for this field. We will return a subset of these values, limiting them to the valid ones.
     """
     selectedValues: [String]
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): ParameterValueOptionConnection!
-  owners(before: String, after: String, first: Int, last: Int): UserConnection!
+  owners(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
 }
 
 enum SectionStatus {
@@ -1785,10 +2083,14 @@ type Widget implements Assessable & TeamOrUsersScoped {
     Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
     """
     excludeId: ID = null
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): TeamOrUsersConnection!
   id: ID!
   createdOn: DateTime!
@@ -2096,10 +2398,14 @@ type ReviewChain {
   chainReviews(
     """Include the top review (review with no next review) in the chain"""
     includeTopLink: Boolean = false
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): ReviewConnection!
 }
 
@@ -2114,9 +2420,27 @@ type Survey implements Assessable & UserScoped & TeamOrUsersScoped & Commentable
   dueOn: DateTime!
   status: ReviewStatus!
   onlyOwnerCanChangeStatus: Boolean!
-  comments(before: String, after: String, first: Int, last: Int): CommentConnection!
+  comments(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): CommentConnection!
   assessment: DelayedAssessment!
-  users(term: String = "", before: String, after: String, first: Int, last: Int): UserConnection!
+  users(
+    term: String = ""
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
   teamsOrUsers(
     term: String = null
 
@@ -2124,19 +2448,39 @@ type Survey implements Assessable & UserScoped & TeamOrUsersScoped & Commentable
     Specify an ID of a Workspace, Review or Widget to exclude its existing memberships from the results.
     """
     excludeId: ID = null
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): TeamOrUsersConnection!
   comment(id: ID!): Comment
   commentsCount: Int!
-  commentAuthors(before: String, after: String, first: Int, last: Int): UserConnection!
+  commentAuthors(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): UserConnection!
   id: ID!
   createdOn: DateTime!
   modifiedOn: DateTime!
   section(id: ID!): Section
-  sections(before: String, after: String, first: Int, last: Int): SectionConnection!
+  sections(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): SectionConnection!
   highlightWidget: Widget
   previousSurvey: Survey
   nextSurvey: Survey
@@ -2150,10 +2494,14 @@ type SurveyChain {
   chainReviews(
     """Include the top survey (survey with no next survey) in the chain"""
     includeTopLink: Boolean = false
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): SurveyConnection!
 }
 
@@ -3030,10 +3378,14 @@ type Vault {
 
     """Filter by source: MANAGED or GIT"""
     sourceType: AssetSourceType
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): VaultAssetsConnection!
   asset(id: ID!): VaultAsset
 }
@@ -3303,7 +3655,15 @@ type VaultAssetProfile {
   id: ID!
   createdAt: DateTime!
   updatedAt: DateTime!
-  assets(before: String, after: String, first: Int, last: Int): VaultAssetsConnection!
+  assets(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): VaultAssetsConnection!
 }
 
 """An entry from a public catalog (skills.sh, Smithery, etc.)."""
@@ -4290,10 +4650,14 @@ type Query {
 
     """Search by PR title or asset name"""
     search: String
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): SkillPullRequestConnection!
   skillDiscoveryStatus(repositoryGid: ID!): SkillDiscoveryStatus!
   assetDiscoveryStatus: AssetDiscoveryStatus!
@@ -4307,16 +4671,31 @@ type Query {
     """Version to compare to"""
     toVersion: Int!
   ): SkillVersionDiff!
-  mcpIntegrationTools(integrationId: ID, url: String, before: String, after: String, first: Int, last: Int): McpIntegrationToolsConnection!
+  mcpIntegrationTools(
+    integrationId: ID
+    url: String
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): McpIntegrationToolsConnection!
   mcpProviderUrls: [McpProviderUrl!]!
   profile(id: ID!): VaultAssetProfile
   profiles(
     """Filter by name (case-insensitive contains)"""
     name: String
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): VaultAssetProfileConnection!
   remoteMarketplacePlugins(url: String!): [RemoteMarketplacePlugin!]!
   catalogEntries(
@@ -4380,10 +4759,14 @@ type Query {
 
     """Filter by actor type (user, bot, system)"""
     actorType: String
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): AssetAuditEventConnection!
   skillUsageTimeSeries(
     timeRange: SkillUsageTimeRange = DAYS_30
@@ -4420,10 +4803,14 @@ type Query {
 
     """Filter PRs by source URL"""
     sourceUrl: String
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
     before: String
     after: String
-    first: Int
-    last: Int
   ): ChangeRequestConnection!
   installationRequests(
     """Filter: pending, approved, rejected"""
@@ -4469,18 +4856,73 @@ type Query {
     """
     isGlobal: Boolean
   ): Workspace!
-  workspaces(term: String = "", globalOnly: Boolean, before: String, after: String, first: Int, last: Int): WorkspaceConnection!
+  workspaces(
+    term: String = ""
+    globalOnly: Boolean
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): WorkspaceConnection!
   widgetType(slug: ID!): WidgetType!
-  widgetTypes(skillsOnly: Boolean, before: String, after: String, first: Int, last: Int): WidgetTypeConnection!
+  widgetTypes(
+    skillsOnly: Boolean
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): WidgetTypeConnection!
   widget(id: ID!): Widget
   reviewTemplates(reviewType: ReviewType = REVIEW, isSkillsDashboard: Boolean = false): [ReviewTemplateGqlType!]!
   review(id: ID!): Review
-  surveys(published: Boolean, term: String, before: String, after: String, first: Int, last: Int): SurveyConnection!
+  surveys(
+    published: Boolean
+    term: String
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): SurveyConnection!
   survey(id: ID!): Survey
   dashboard(id: ID!): Dashboard
-  dashboards(published: Boolean, term: String, before: String, after: String, first: Int, last: Int): DashboardConnection!
+  dashboards(
+    published: Boolean
+    term: String
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): DashboardConnection!
   deviceGrant(clientId: String!, userCode: String!): DeviceGrant
-  search(term: String = null, resultType: SearchResultType, workspaceId: ID, before: String, after: String, first: Int, last: Int): SearchResultConnection!
+  search(
+    term: String = null
+    resultType: SearchResultType
+    workspaceId: ID
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): SearchResultConnection!
 }
 
 """Input for querying integrations with natural language."""

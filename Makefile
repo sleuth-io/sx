@@ -119,6 +119,10 @@ init: ## Initialize development environment (download deps)
 # self-contained — no -config flag drift between dev and CI.
 GQL_DIR=internal/vault/graphql
 
+gql-copy-pulse-schema: ## Copy schema.graphql from the sibling pulse repo into the vault
+	@cp ../pulse/schema.graphql $(GQL_DIR)/schema.graphql
+	@echo "Copied ../pulse/schema.graphql -> $(GQL_DIR)/schema.graphql"
+
 gql-generate: ## Regenerate GraphQL client code from .graphql files
 	@echo "Regenerating GraphQL client..."
 	@cd $(GQL_DIR) && go tool genqlient
