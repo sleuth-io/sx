@@ -29,7 +29,7 @@ build-darwin-amd64: ## Build for macOS (amd64/Intel)
 	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(MAIN_PATH)
 	@echo "Built: $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64"
 
-install: build ## Install binary to ~/.local/bin
+install: gql-generate build ## Install binary to ~/.local/bin
 	@echo "Installing $(BINARY_NAME)..."
 	@mkdir -p $(HOME)/.local/bin
 	@rm -f $(HOME)/.local/bin/$(BINARY_NAME) && cp $(BUILD_DIR)/$(BINARY_NAME) $(HOME)/.local/bin/

@@ -72,22 +72,40 @@ func requireTeamAdminInTx(m *manifest.Manifest, teamName string, actor mgmt.Acto
 		return nil, err
 	}
 	if !team.IsAdmin(actor.Email) {
-		return nil, fmt.Errorf("%s is not an admin of team %s", actor.Email, teamName)
+		return nil, fmt.Errorf("you (%s) are not an admin of team %s — only admins can modify a team", actor.Email, teamName)
 	}
 	return team, nil
 }
 
-// commonListTeams returns a copy of every team in the vault's manifest.
-func commonListTeams(vaultRoot string) ([]mgmt.Team, error) {
+const defaultListTeamsLimit = 20
+
+func commonListTeams(vaultRoot string, opts ListTeamsOptions) (*ListTeamsResult, error) {
 	m, err := loadManifest(vaultRoot)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]mgmt.Team, len(m.Teams))
-	for i, t := range m.Teams {
-		out[i] = manifestTeamToMgmt(t)
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = defaultListTeamsLimit
 	}
-	return out, nil
+	var matched []mgmt.Team
+	for _, t := range m.Teams {
+		team := manifestTeamToMgmt(t)
+		if opts.Filter != "" && !strings.Contains(strings.ToLower(team.Name), strings.ToLower(opts.Filter)) {
+			continue
+		}
+		matched = append(matched, team)
+	}
+	total := len(matched)
+	hasMore := total > limit
+	if hasMore {
+		matched = matched[:limit]
+	}
+	return &ListTeamsResult{
+		Teams:      matched,
+		TotalCount: total,
+		HasMore:    hasMore,
+	}, nil
 }
 
 // commonGetTeam returns a single team by name.
@@ -104,20 +122,28 @@ func commonGetTeam(vaultRoot, name string) (*mgmt.Team, error) {
 	return &out, nil
 }
 
-// commonCreateTeam adds a new team. The caller is always added to both
-// Members and Admins so every team has at least one admin — prevents the
-// "delete all admins then take over" attack.
+// commonCreateTeam adds a new team. If the caller did not specify any
+// admins, they are added as both a member and an admin so the team isn't
+// born orphaned — the same "≥1 admin" invariant we enforce on member
+// removal. When the caller explicitly names another admin, we trust that
+// delegation and don't force the caller into the roster: they can always
+// remove themselves anyway via team member remove, so the auto-add was
+// just an extra step.
 func commonCreateTeam(vaultRoot string, actor mgmt.Actor, team mgmt.Team) error {
 	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
 		if _, err := m.FindTeam(team.Name); err == nil {
 			return nil, fmt.Errorf("%w: %s", manifest.ErrTeamExists, team.Name)
 		}
 		mt := mgmtTeamToManifest(team)
-		if !slices.Contains(mt.Members, actor.Email) {
-			mt.Members = append(mt.Members, actor.Email)
-		}
-		if !slices.Contains(mt.Admins, actor.Email) {
+		if len(mt.Admins) == 0 {
 			mt.Admins = append(mt.Admins, actor.Email)
+		}
+		// Admins must be members — being admin of a team you don't belong
+		// to is nonsensical and breaks team member listings.
+		for _, a := range mt.Admins {
+			if !slices.Contains(mt.Members, a) {
+				mt.Members = append(mt.Members, a)
+			}
 		}
 		if _, err := m.UpsertTeam(mt); err != nil {
 			return nil, err
@@ -805,6 +831,7 @@ func manifestTeamToMgmt(t manifest.Team) mgmt.Team {
 		Name:         t.Name,
 		Description:  t.Description,
 		Members:      append([]string(nil), t.Members...),
+		MemberCount:  len(t.Members),
 		Admins:       append([]string(nil), t.Admins...),
 		Repositories: append([]string(nil), t.Repositories...),
 	}

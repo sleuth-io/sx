@@ -39,7 +39,7 @@ type Team {
     before: String
     after: String
   ): UserConnection!
-  adminMemberIds: [ID!]
+  adminMembers: [SimpleUserType!]
   integrationDescription: String
   hasSubteams: Boolean!
   skillsRepositories: [SkillsRepositoryType!]
@@ -2711,11 +2711,20 @@ enum NotificationProviderType {
   SLACK
 }
 
+type SimpleUserType {
+  id: ID!
+  email: String!
+  display: String!
+  gravatar: String!
+}
+
 """
 GraphQL type for team-repository configuration with optional mono_repo_config
 """
 type SkillsRepositoryType {
   repositoryId: String!
+  owner: String!
+  name: String!
   monoRepoConfigId: ID
 }
 
@@ -3305,6 +3314,10 @@ enum WSEventType {
   error
   discovery_asset_found
   discovery_completed
+  managed_import_candidate_found
+  managed_import_scan_completed
+  managed_import_item_completed
+  managed_import_run_completed
   asset_loading_status
 }
 
@@ -3546,6 +3559,46 @@ type AssetDiscoveryEntry {
   repoName: String!
   isNew: Boolean!
   sourceClient: String!
+}
+
+type ManagedImportScanStatus {
+  isRunning: Boolean!
+  isComplete: Boolean!
+  candidates: [ManagedImportCandidate!]!
+}
+
+type ManagedImportCandidate {
+  assetName: String!
+  assetType: String!
+  sourceClient: String!
+  repoId: ID!
+  repoName: String!
+  path: String!
+  content: String!
+  contentHash: String!
+  files: [ManagedImportCandidateFile!]!
+}
+
+type ManagedImportCandidateFile {
+  name: String!
+  path: String
+  content: String!
+}
+
+type ManagedImportRunStatus {
+  isRunning: Boolean!
+  isComplete: Boolean!
+  items: [ManagedImportRunItem!]!
+}
+
+type ManagedImportRunItem {
+  assetName: String!
+  assetType: String!
+
+  """pending | done | error"""
+  status: String!
+  assetGid: ID
+  error: String
 }
 
 """A tool available from an MCP integration."""
@@ -4046,7 +4099,7 @@ type InstalledAssetInstallStatus {
 
 """Installation location for an installed asset."""
 type InstalledAssetInstallation {
-  entityType: String!
+  entityType: VaultAssetInstallationEntityType!
   entityId: String
   entityName: String!
   entityProvider: String
@@ -4661,6 +4714,9 @@ type Query {
   ): SkillPullRequestConnection!
   skillDiscoveryStatus(repositoryGid: ID!): SkillDiscoveryStatus!
   assetDiscoveryStatus: AssetDiscoveryStatus!
+  managedImportScanStatus: ManagedImportScanStatus!
+  managedImportRunStatus: ManagedImportRunStatus!
+  aiAssetCleanupRoots: [String!]!
   skillVersionDiff(
     """Skill GID"""
     skillId: ID!
@@ -5530,6 +5586,26 @@ type Mutation {
 
   """Trigger a re-scan of all repositories for AI assets."""
   triggerAssetDiscovery: TriggerAssetDiscoveryMutation
+
+  """
+  Start a managed-import scan over the user-selected repositories.
+  
+  Resets prior scan state, queues one celery task per repo, and returns
+  immediately. Frontend reads progress from ``managedImportScanStatus`` and
+  listens to ``MANAGED_IMPORT_CANDIDATE_FOUND`` / ``MANAGED_IMPORT_SCAN_COMPLETED``
+  websocket events.
+  """
+  triggerManagedImportScan(repositoryIds: [ID!]!): TriggerManagedImportScanMutation
+
+  """
+  Kick off background import of confirmed candidates.
+  
+  Returns immediately. Frontend watches ``managedImportRunStatus`` (polling)
+  and ``MANAGED_IMPORT_ITEM_COMPLETED`` / ``MANAGED_IMPORT_RUN_COMPLETED``
+  WebSocket events for progress. The scan status in Redis is cleared so a
+  subsequent re-scan starts fresh.
+  """
+  confirmManagedImport(items: [ManagedImportItemInput!]!): ConfirmManagedImportMutation
   createMonoRepoConfig(input: CreateMonoRepoConfigInput!): CreateMonoRepoConfigMutation
   updateMonoRepoConfig(input: UpdateMonoRepoConfigInput!): UpdateMonoRepoConfigMutation
   deleteMonoRepoConfig(id: ID!): DeleteMonoRepoConfigMutation
@@ -6192,8 +6268,7 @@ input CreateAssetInput {
 }
 
 input AssetInstallationInput {
-  """organization, repository, team, user, or bot"""
-  entityType: String!
+  entityType: VaultAssetInstallationEntityType!
 
   """GID of the entity (null for organization-wide)"""
   entityId: ID
@@ -6289,9 +6364,7 @@ type UninstallAssetMutation {
 input UninstallAssetInput {
   """GID of the asset to uninstall from a target"""
   id: ID!
-
-  """Installation entity type (organization, repository, team, user, bot)"""
-  entityType: String!
+  entityType: VaultAssetInstallationEntityType!
 
   """GID of the entity (null for organization-wide installs)"""
   entityId: ID
@@ -6326,6 +6399,45 @@ type UpdateSuggestedSkillStatusMutation {
 type TriggerAssetDiscoveryMutation {
   success: Boolean!
   errors: [ErrorType!]!
+}
+
+"""
+Start a managed-import scan over the user-selected repositories.
+
+Resets prior scan state, queues one celery task per repo, and returns
+immediately. Frontend reads progress from ``managedImportScanStatus`` and
+listens to ``MANAGED_IMPORT_CANDIDATE_FOUND`` / ``MANAGED_IMPORT_SCAN_COMPLETED``
+websocket events.
+"""
+type TriggerManagedImportScanMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+"""
+Kick off background import of confirmed candidates.
+
+Returns immediately. Frontend watches ``managedImportRunStatus`` (polling)
+and ``MANAGED_IMPORT_ITEM_COMPLETED`` / ``MANAGED_IMPORT_RUN_COMPLETED``
+WebSocket events for progress. The scan status in Redis is cleared so a
+subsequent re-scan starts fresh.
+"""
+type ConfirmManagedImportMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+input ManagedImportItemInput {
+  name: String!
+  assetType: AssetType!
+  repositoryIds: [ID!]!
+  files: [ManagedImportFileInput!]!
+}
+
+input ManagedImportFileInput {
+  name: String!
+  path: String
+  content: String!
 }
 
 type CreateMonoRepoConfigMutation {

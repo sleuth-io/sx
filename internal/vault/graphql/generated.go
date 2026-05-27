@@ -989,7 +989,21 @@ func (v *ListTeamsOrganizationOrganizationType) GetTeams() ListTeamsOrganization
 
 // ListTeamsOrganizationOrganizationTypeTeamsTeamsConnection includes the requested fields of the GraphQL type TeamsConnection.
 type ListTeamsOrganizationOrganizationTypeTeamsTeamsConnection struct {
-	Nodes []ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeam `json:"nodes"`
+	// Total count of edges.
+	TotalCount int `json:"totalCount"`
+	// Pagination data for this connection.
+	PageInfo ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionPageInfo    `json:"pageInfo"`
+	Nodes    []ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeam `json:"nodes"`
+}
+
+// GetTotalCount returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnection.TotalCount, and is useful for accessing the field via an interface.
+func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnection) GetTotalCount() int {
+	return v.TotalCount
+}
+
+// GetPageInfo returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnection.PageInfo, and is useful for accessing the field via an interface.
+func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnection) GetPageInfo() ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionPageInfo {
+	return v.PageInfo
 }
 
 // GetNodes returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnection.Nodes, and is useful for accessing the field via an interface.
@@ -1001,7 +1015,7 @@ func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnection) GetNodes() [
 type ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeam struct {
 	Id                 string                                                                                                     `json:"id"`
 	Name               string                                                                                                     `json:"name"`
-	AdminMemberIds     []string                                                                                                   `json:"adminMemberIds"`
+	AdminMembers       []ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamAdminMembersSimpleUserType             `json:"adminMembers"`
 	Members            ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamMembersUserConnection                    `json:"members"`
 	SkillsRepositories []ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamSkillsRepositoriesSkillsRepositoryType `json:"skillsRepositories"`
 }
@@ -1016,9 +1030,9 @@ func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeam) Get
 	return v.Name
 }
 
-// GetAdminMemberIds returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeam.AdminMemberIds, and is useful for accessing the field via an interface.
-func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeam) GetAdminMemberIds() []string {
-	return v.AdminMemberIds
+// GetAdminMembers returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeam.AdminMembers, and is useful for accessing the field via an interface.
+func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeam) GetAdminMembers() []ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamAdminMembersSimpleUserType {
+	return v.AdminMembers
 }
 
 // GetMembers returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeam.Members, and is useful for accessing the field via an interface.
@@ -1031,9 +1045,32 @@ func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeam) Get
 	return v.SkillsRepositories
 }
 
+// ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamAdminMembersSimpleUserType includes the requested fields of the GraphQL type SimpleUserType.
+type ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamAdminMembersSimpleUserType struct {
+	Id    string `json:"id"`
+	Email string `json:"email"`
+}
+
+// GetId returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamAdminMembersSimpleUserType.Id, and is useful for accessing the field via an interface.
+func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamAdminMembersSimpleUserType) GetId() string {
+	return v.Id
+}
+
+// GetEmail returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamAdminMembersSimpleUserType.Email, and is useful for accessing the field via an interface.
+func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamAdminMembersSimpleUserType) GetEmail() string {
+	return v.Email
+}
+
 // ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamMembersUserConnection includes the requested fields of the GraphQL type UserConnection.
 type ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamMembersUserConnection struct {
-	Nodes []ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamMembersUserConnectionNodesUser `json:"nodes"`
+	// Total count of edges.
+	TotalCount int                                                                                                `json:"totalCount"`
+	Nodes      []ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamMembersUserConnectionNodesUser `json:"nodes"`
+}
+
+// GetTotalCount returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamMembersUserConnection.TotalCount, and is useful for accessing the field via an interface.
+func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamMembersUserConnection) GetTotalCount() int {
+	return v.TotalCount
 }
 
 // GetNodes returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamMembersUserConnection.Nodes, and is useful for accessing the field via an interface.
@@ -1063,11 +1100,44 @@ func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamMembe
 // GraphQL type for team-repository configuration with optional mono_repo_config
 type ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamSkillsRepositoriesSkillsRepositoryType struct {
 	RepositoryId string `json:"repositoryId"`
+	Owner        string `json:"owner"`
+	Name         string `json:"name"`
 }
 
 // GetRepositoryId returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamSkillsRepositoriesSkillsRepositoryType.RepositoryId, and is useful for accessing the field via an interface.
 func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamSkillsRepositoriesSkillsRepositoryType) GetRepositoryId() string {
 	return v.RepositoryId
+}
+
+// GetOwner returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamSkillsRepositoriesSkillsRepositoryType.Owner, and is useful for accessing the field via an interface.
+func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamSkillsRepositoriesSkillsRepositoryType) GetOwner() string {
+	return v.Owner
+}
+
+// GetName returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamSkillsRepositoriesSkillsRepositoryType.Name, and is useful for accessing the field via an interface.
+func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeamSkillsRepositoriesSkillsRepositoryType) GetName() string {
+	return v.Name
+}
+
+// ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionPageInfo includes the requested fields of the GraphQL type PageInfo.
+// The GraphQL type's documentation follows.
+//
+// The Relay compliant `PageInfo` type, containing data necessary to paginate this connection.
+type ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionPageInfo struct {
+	// When paginating forwards, are there more items?
+	HasNextPage bool `json:"hasNextPage"`
+	// When paginating forwards, the cursor to continue.
+	EndCursor *string `json:"endCursor"`
+}
+
+// GetHasNextPage returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionPageInfo.HasNextPage, and is useful for accessing the field via an interface.
+func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionPageInfo) GetHasNextPage() bool {
+	return v.HasNextPage
+}
+
+// GetEndCursor returns ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionPageInfo.EndCursor, and is useful for accessing the field via an interface.
+func (v *ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionPageInfo) GetEndCursor() *string {
+	return v.EndCursor
 }
 
 // ListTeamsResponse is returned by ListTeams on success.
@@ -3213,11 +3283,19 @@ func (v *__InstallSkillToBotInput) GetSkillId() string { return v.SkillId }
 
 // __ListTeamsInput is used internally by genqlient
 type __ListTeamsInput struct {
-	First int `json:"first"`
+	First       int     `json:"first"`
+	Term        *string `json:"term"`
+	MemberFirst int     `json:"memberFirst"`
 }
 
 // GetFirst returns __ListTeamsInput.First, and is useful for accessing the field via an interface.
 func (v *__ListTeamsInput) GetFirst() int { return v.First }
+
+// GetTerm returns __ListTeamsInput.Term, and is useful for accessing the field via an interface.
+func (v *__ListTeamsInput) GetTerm() *string { return v.Term }
+
+// GetMemberFirst returns __ListTeamsInput.MemberFirst, and is useful for accessing the field via an interface.
+func (v *__ListTeamsInput) GetMemberFirst() int { return v.MemberFirst }
 
 // __RemoveAssetInstallationsInput is used internally by genqlient
 type __RemoveAssetInstallationsInput struct {
@@ -3849,14 +3927,23 @@ func ListBots(
 
 // The query executed by ListTeams.
 const ListTeams_Operation = `
-query ListTeams ($first: Int!) {
+query ListTeams ($first: Int!, $term: String, $memberFirst: Int!) {
 	organization {
-		teams(first: $first) {
+		teams(first: $first, term: $term, parent: {any:true}) {
+			totalCount
+			pageInfo {
+				hasNextPage
+				endCursor
+			}
 			nodes {
 				id
 				name
-				adminMemberIds
-				members(first: $first) {
+				adminMembers {
+					id
+					email
+				}
+				members(first: $memberFirst) {
+					totalCount
 					nodes {
 						id
 						email
@@ -3864,6 +3951,8 @@ query ListTeams ($first: Int!) {
 				}
 				skillsRepositories {
 					repositoryId
+					owner
+					name
 				}
 			}
 		}
@@ -3875,12 +3964,16 @@ func ListTeams(
 	ctx_ context.Context,
 	client_ graphql.Client,
 	first int,
+	term *string,
+	memberFirst int,
 ) (data_ *ListTeamsResponse, err_ error) {
 	req_ := &graphql.Request{
 		OpName: "ListTeams",
 		Query:  ListTeams_Operation,
 		Variables: &__ListTeamsInput{
-			First: first,
+			First:       first,
+			Term:        term,
+			MemberFirst: memberFirst,
 		},
 	}
 

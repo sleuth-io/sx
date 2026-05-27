@@ -37,78 +37,86 @@ func (s *SleuthVault) CurrentActor(ctx context.Context) (mgmt.Actor, error) {
 	return mgmt.Actor{Email: mgmt.NormalizeEmail(resp.User.Email), Name: name}, nil
 }
 
-func (s *SleuthVault) ListTeams(ctx context.Context) ([]mgmt.Team, error) {
-	nodes, err := s.listTeamNodes(ctx)
+func (s *SleuthVault) ListTeams(ctx context.Context, opts ListTeamsOptions) (*ListTeamsResult, error) {
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = defaultListTeamsLimit
+	}
+	var term *string
+	if opts.Filter != "" {
+		term = &opts.Filter
+	}
+	resp, err := vaultgql.ListTeams(ctx, s.gqlClient(), limit, term, sleuthMemberPageSize)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]mgmt.Team, 0, len(nodes))
-	for _, node := range nodes {
-		out = append(out, sleuthTeamToMgmt(node))
+	conn := resp.Organization.Teams
+	teams := make([]mgmt.Team, 0, len(conn.Nodes))
+	for _, n := range conn.Nodes {
+		teams = append(teams, sleuthTeamToMgmt(gqlTeamNodeToSleuthNode(n)))
 	}
-	return out, nil
+	return &ListTeamsResult{
+		Teams:      teams,
+		TotalCount: conn.TotalCount,
+		HasMore:    conn.PageInfo.HasNextPage,
+	}, nil
 }
 
-// sleuthTeamListPageSize caps the per-page team and per-team-member fetch
-// counts. Set high enough to cover every realistic org in a single call
-// (the Sleuth API's internal default is ~200, and the largest observed
-// deployments have well under 1000 teams). If a response saturates the
-// cap we emit a warning so we notice truncation before users do; we do
-// not silently paginate via cursor because the GraphQL schema does not
-// currently expose pageInfo for these connections and blindly paging
-// could infinite-loop against older server versions.
-const sleuthTeamListPageSize = 1000
+const sleuthMemberPageSize = 50
 
-// listTeamNodes fetches the raw team nodes (including GIDs) from the
-// server. ListTeams projects these to mgmt.Team; teamGIDByName scans for
-// a single row — keeping a single query text in one place.
+// listTeamNodes fetches raw team nodes for internal lookups (teamGIDByName,
+// resolveTeamGIDs). Uses a high limit since these need to search the full list.
 func (s *SleuthVault) listTeamNodes(ctx context.Context) ([]sleuthTeamNode, error) {
-	resp, err := vaultgql.ListTeams(ctx, s.gqlClient(), sleuthTeamListPageSize)
+	return s.listTeamNodesFiltered(ctx, nil, sleuthTeamLookupPageSize)
+}
+
+const sleuthTeamLookupPageSize = 300
+
+func (s *SleuthVault) listTeamNodesFiltered(ctx context.Context, term *string, first int) ([]sleuthTeamNode, error) {
+	resp, err := vaultgql.ListTeams(ctx, s.gqlClient(), first, term, sleuthMemberPageSize)
 	if err != nil {
 		return nil, err
 	}
 	gqlNodes := resp.Organization.Teams.Nodes
 	nodes := make([]sleuthTeamNode, len(gqlNodes))
 	for i, n := range gqlNodes {
-		node := sleuthTeamNode{
-			ID:             n.Id,
-			Name:           n.Name,
-			AdminMemberIDs: n.AdminMemberIds,
-		}
-		for _, m := range n.Members.Nodes {
-			node.Members = append(node.Members, sleuthTeamMember{ID: m.Id, Email: m.Email})
-		}
-		for _, r := range n.SkillsRepositories {
-			node.SkillsRepositories = append(node.SkillsRepositories, sleuthSkillsRepoRef{RepositoryID: r.RepositoryId})
-		}
-		nodes[i] = node
+		nodes[i] = gqlTeamNodeToSleuthNode(n)
 	}
-	if len(nodes) >= sleuthTeamListPageSize {
-		logger.Get().Warn("ListTeams result saturated page size; some teams may be truncated",
-			"page_size", sleuthTeamListPageSize,
-			"returned", len(nodes))
-	}
-	for _, node := range nodes {
-		if len(node.Members) >= sleuthTeamListPageSize {
-			logger.Get().Warn("team member list saturated page size; some members may be truncated",
-				"team", node.Name,
-				"page_size", sleuthTeamListPageSize,
-				"returned", len(node.Members))
-		}
+	if resp.Organization.Teams.PageInfo.HasNextPage {
+		logger.Get().Warn("ListTeams result has more pages; some teams may be missing",
+			"first", first,
+			"returned", len(nodes),
+			"totalCount", resp.Organization.Teams.TotalCount)
 	}
 	return nodes, nil
 }
 
+func gqlTeamNodeToSleuthNode(n vaultgql.ListTeamsOrganizationOrganizationTypeTeamsTeamsConnectionNodesTeam) sleuthTeamNode {
+	node := sleuthTeamNode{
+		ID:          n.Id,
+		Name:        n.Name,
+		MemberCount: n.Members.TotalCount,
+	}
+	for _, a := range n.AdminMembers {
+		node.Admins = append(node.Admins, a.Email)
+	}
+	for _, m := range n.Members.Nodes {
+		node.Members = append(node.Members, sleuthTeamMember{ID: m.Id, Email: m.Email})
+	}
+	for _, r := range n.SkillsRepositories {
+		node.Repositories = append(node.Repositories, r.Owner+"/"+r.Name)
+	}
+	return node
+}
+
 func (s *SleuthVault) GetTeam(ctx context.Context, name string) (*mgmt.Team, error) {
-	// GraphQL's team() takes an ID, not a name, so we fetch the full list
-	// and filter. This is fine for typical orgs (tens of teams).
-	teams, err := s.ListTeams(ctx)
+	result, err := s.ListTeams(ctx, ListTeamsOptions{Filter: name, Limit: 300})
 	if err != nil {
 		return nil, err
 	}
-	for i := range teams {
-		if teams[i].Name == name {
-			t := teams[i]
+	for i := range result.Teams {
+		if result.Teams[i].Name == name {
+			t := result.Teams[i]
 			return &t, nil
 		}
 	}
@@ -127,10 +135,17 @@ func (s *SleuthVault) CreateTeam(ctx context.Context, team mgmt.Team) error {
 	if err != nil {
 		return err
 	}
-	if resp.CreateTeam == nil {
-		return nil
+	if resp.CreateTeam != nil {
+		if err := gqlMutationErrors(resp.CreateTeam.Errors); err != nil {
+			return err
+		}
 	}
-	return gqlMutationErrors(resp.CreateTeam.Errors)
+	for _, admin := range team.Admins {
+		if err := s.SetTeamAdmin(ctx, team.Name, admin, true); err != nil {
+			return fmt.Errorf("failed to set admin %s: %w", admin, err)
+		}
+	}
+	return nil
 }
 
 func (s *SleuthVault) UpdateTeam(ctx context.Context, team mgmt.Team) error {
@@ -969,21 +984,16 @@ type sleuthTeamMember struct {
 	Email string
 }
 
-type sleuthSkillsRepoRef struct {
-	RepositoryID string
-}
-
 // sleuthTeamNode is the in-memory shape used by listTeamNodes consumers
 // (ListTeams, GetTeam, teamGIDByName, etc.). Populated from the generated
-// ListTeams response — see listTeamNodes for the conversion. Field shape
-// no longer needs to mirror the GraphQL wire format since genqlient
-// handles unmarshaling.
+// ListTeams response — see listTeamNodes for the conversion.
 type sleuthTeamNode struct {
-	ID                 string
-	Name               string
-	AdminMemberIDs     []string
-	Members            []sleuthTeamMember
-	SkillsRepositories []sleuthSkillsRepoRef
+	ID           string
+	Name         string
+	Admins       []string // emails from adminMembers
+	Members      []sleuthTeamMember
+	MemberCount  int
+	Repositories []string // owner/name slugs
 }
 
 type sleuthMutationError struct {
@@ -992,22 +1002,14 @@ type sleuthMutationError struct {
 }
 
 func sleuthTeamToMgmt(node sleuthTeamNode) mgmt.Team {
-	team := mgmt.Team{Name: node.Name}
+	team := mgmt.Team{Name: node.Name, MemberCount: node.MemberCount}
 	for _, m := range node.Members {
 		team.Members = append(team.Members, mgmt.NormalizeEmail(m.Email))
 	}
-	adminIDs := make(map[string]struct{}, len(node.AdminMemberIDs))
-	for _, id := range node.AdminMemberIDs {
-		adminIDs[id] = struct{}{}
+	for _, email := range node.Admins {
+		team.Admins = append(team.Admins, mgmt.NormalizeEmail(email))
 	}
-	for _, m := range node.Members {
-		if _, ok := adminIDs[m.ID]; ok {
-			team.Admins = append(team.Admins, mgmt.NormalizeEmail(m.Email))
-		}
-	}
-	for _, r := range node.SkillsRepositories {
-		team.Repositories = append(team.Repositories, r.RepositoryID)
-	}
+	team.Repositories = append(team.Repositories, node.Repositories...)
 	return team
 }
 

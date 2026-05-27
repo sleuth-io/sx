@@ -2,9 +2,11 @@ package vault
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -69,15 +71,15 @@ func TestPathVault_TeamUserLifecycleE2E(t *testing.T) {
 	}
 
 	// 2. List teams and verify.
-	teams, err := v.ListTeams(ctx)
+	teamResult, err := v.ListTeams(ctx, ListTeamsOptions{})
 	if err != nil {
 		t.Fatalf("ListTeams failed: %v", err)
 	}
-	if len(teams) != 1 || teams[0].Name != "platform" {
-		t.Fatalf("expected 1 team 'platform', got %+v", teams)
+	if len(teamResult.Teams) != 1 || teamResult.Teams[0].Name != "platform" {
+		t.Fatalf("expected 1 team 'platform', got %+v", teamResult.Teams)
 	}
-	if len(teams[0].Members) != 2 {
-		t.Errorf("expected 2 members, got %d", len(teams[0].Members))
+	if len(teamResult.Teams[0].Members) != 2 {
+		t.Errorf("expected 2 members, got %d", len(teamResult.Teams[0].Members))
 	}
 
 	// 3. Add a second repository via AddTeamRepository.
@@ -194,12 +196,12 @@ func TestPathVault_TeamUserLifecycleE2E(t *testing.T) {
 	if err := v.DeleteTeam(ctx, "platform"); err != nil {
 		t.Fatalf("DeleteTeam failed: %v", err)
 	}
-	teams, err = v.ListTeams(ctx)
+	teamResult, err = v.ListTeams(ctx, ListTeamsOptions{})
 	if err != nil {
 		t.Fatalf("ListTeams after delete failed: %v", err)
 	}
-	if len(teams) != 0 {
-		t.Errorf("expected no teams, got %d", len(teams))
+	if len(teamResult.Teams) != 0 {
+		t.Errorf("expected no teams, got %d", len(teamResult.Teams))
 	}
 
 	m, _, err = manifest.LoadOrMigrate(dir)
@@ -555,7 +557,7 @@ func TestPathVault_TeamMutationsRequireAdmin(t *testing.T) {
 			t.Errorf("%s: expected admin check to reject, got nil", label)
 			return
 		}
-		if !strings.Contains(err.Error(), "is not an admin of team") {
+		if !strings.Contains(err.Error(), "are not an admin of team") {
 			t.Errorf("%s: unexpected error: %v", label, err)
 		}
 	}
@@ -604,7 +606,7 @@ type = "skill"
 	}
 
 	// Any read-side call triggers LoadOrMigrate.
-	if _, err := v.ListTeams(context.Background()); err != nil {
+	if _, err := v.ListTeams(context.Background(), ListTeamsOptions{}); err != nil {
 		t.Fatalf("ListTeams (triggers migration) failed: %v", err)
 	}
 
@@ -664,5 +666,171 @@ func runGit(t *testing.T, dir string, args ...string) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
+	}
+}
+
+func newPathVaultWithTeams(t *testing.T, count int) (Vault, string) {
+	t.Helper()
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice")
+
+	if err := manifest.Save(dir, &manifest.Manifest{SchemaVersion: manifest.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("seed manifest: %v", err)
+	}
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	ctx := context.Background()
+	for i := range count {
+		name := fmt.Sprintf("team-%d", i)
+		if err := v.CreateTeam(ctx, mgmt.Team{
+			Name:    name,
+			Members: []string{"alice@example.com"},
+			Admins:  []string{"alice@example.com"},
+		}); err != nil {
+			t.Fatalf("CreateTeam %s: %v", name, err)
+		}
+	}
+	return v, dir
+}
+
+func TestPathVault_ListTeams_DefaultLimit(t *testing.T) {
+	v, _ := newPathVaultWithTeams(t, 25)
+	ctx := context.Background()
+
+	result, err := v.ListTeams(ctx, ListTeamsOptions{})
+	if err != nil {
+		t.Fatalf("ListTeams: %v", err)
+	}
+	if len(result.Teams) != 20 {
+		t.Errorf("expected 20 teams, got %d", len(result.Teams))
+	}
+	if result.TotalCount != 25 {
+		t.Errorf("expected TotalCount=25, got %d", result.TotalCount)
+	}
+	if !result.HasMore {
+		t.Error("expected HasMore=true")
+	}
+}
+
+func TestPathVault_ListTeams_FilterClientSide(t *testing.T) {
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice")
+
+	if err := manifest.Save(dir, &manifest.Manifest{SchemaVersion: manifest.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("seed manifest: %v", err)
+	}
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	ctx := context.Background()
+
+	for _, name := range []string{"platform-api", "platform-web", "infra", "data-eng"} {
+		if err := v.CreateTeam(ctx, mgmt.Team{
+			Name:    name,
+			Members: []string{"alice@example.com"},
+			Admins:  []string{"alice@example.com"},
+		}); err != nil {
+			t.Fatalf("CreateTeam %s: %v", name, err)
+		}
+	}
+
+	result, err := v.ListTeams(ctx, ListTeamsOptions{Filter: "platform"})
+	if err != nil {
+		t.Fatalf("ListTeams: %v", err)
+	}
+	if len(result.Teams) != 2 {
+		t.Errorf("expected 2 teams matching 'platform', got %d: %+v", len(result.Teams), result.Teams)
+	}
+	if result.TotalCount != 2 {
+		t.Errorf("expected TotalCount=2, got %d", result.TotalCount)
+	}
+	if result.HasMore {
+		t.Error("expected HasMore=false")
+	}
+	for _, team := range result.Teams {
+		if !strings.Contains(team.Name, "platform") {
+			t.Errorf("team %q does not match filter 'platform'", team.Name)
+		}
+	}
+}
+
+func TestPathVault_CreateTeam_NoAdminsDefaultsToCaller(t *testing.T) {
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice")
+
+	if err := manifest.Save(dir, &manifest.Manifest{SchemaVersion: manifest.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("seed manifest: %v", err)
+	}
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	ctx := context.Background()
+
+	if err := v.CreateTeam(ctx, mgmt.Team{
+		Name: "no-admins",
+	}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+
+	team, err := v.GetTeam(ctx, "no-admins")
+	if err != nil {
+		t.Fatalf("GetTeam: %v", err)
+	}
+	if !slices.Contains(team.Admins, "alice@example.com") {
+		t.Errorf("caller should be auto-added as admin, got admins=%v", team.Admins)
+	}
+	if !slices.Contains(team.Members, "alice@example.com") {
+		t.Errorf("caller should be auto-added as member, got members=%v", team.Members)
+	}
+}
+
+func TestPathVault_CreateTeam_ExplicitAdminNotCaller(t *testing.T) {
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice")
+
+	if err := manifest.Save(dir, &manifest.Manifest{SchemaVersion: manifest.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("seed manifest: %v", err)
+	}
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	ctx := context.Background()
+
+	if err := v.CreateTeam(ctx, mgmt.Team{
+		Name:   "explicit-admin",
+		Admins: []string{"bob@example.com"},
+	}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+
+	team, err := v.GetTeam(ctx, "explicit-admin")
+	if err != nil {
+		t.Fatalf("GetTeam: %v", err)
+	}
+	if !slices.Contains(team.Admins, "bob@example.com") {
+		t.Errorf("explicit admin should be set, got admins=%v", team.Admins)
+	}
+	if slices.Contains(team.Admins, "alice@example.com") {
+		t.Errorf("caller should not be auto-added as admin when explicit admins given, got admins=%v", team.Admins)
+	}
+	if !slices.Contains(team.Members, "bob@example.com") {
+		t.Errorf("admin should be auto-added as member, got members=%v", team.Members)
 	}
 }

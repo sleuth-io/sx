@@ -117,7 +117,7 @@ type Vault interface {
 	CurrentActor(ctx context.Context) (mgmt.Actor, error)
 
 	// Team management
-	ListTeams(ctx context.Context) ([]mgmt.Team, error)
+	ListTeams(ctx context.Context, opts ListTeamsOptions) (*ListTeamsResult, error)
 	GetTeam(ctx context.Context, name string) (*mgmt.Team, error)
 	CreateTeam(ctx context.Context, team mgmt.Team) error
 	UpdateTeam(ctx context.Context, team mgmt.Team) error
@@ -263,6 +263,19 @@ type SourceHandler interface {
 }
 
 // ListAssetsOptions contains options for listing vault assets
+// ListTeamsOptions controls the ListTeams query.
+type ListTeamsOptions struct {
+	Filter string // Server-side term search (substring match on team name)
+	Limit  int    // Max teams to return (default 20)
+}
+
+// ListTeamsResult holds the paginated team list and total count.
+type ListTeamsResult struct {
+	Teams      []mgmt.Team
+	TotalCount int  // Total teams matching the filter (-1 if unknown)
+	HasMore    bool // True when more teams exist beyond Limit
+}
+
 type ListAssetsOptions struct {
 	Type   string // Filter by asset type (skill, mcp, etc.)
 	Search string // Search query for filtering assets

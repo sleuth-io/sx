@@ -14,6 +14,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/ui"
+	"github.com/sleuth-io/sx/internal/vault"
 )
 
 // NewStatsCommand creates the `sx stats` command.
@@ -61,12 +62,12 @@ Time range is controlled with --since (7d, 30d, 90d, or all). Default is 30d.`,
 				summary = &mgmt.UsageSummary{}
 			}
 
-			teams, err := v.ListTeams(ctx)
+			teamResult, err := v.ListTeams(ctx, vault.ListTeamsOptions{Limit: 300})
 			if err != nil {
 				return err
 			}
 
-			report := buildStatsReport(summary, teams, since, limit)
+			report := buildStatsReport(summary, teamResult.Teams, since, limit)
 
 			if jsonOutput {
 				return emitStatsJSON(cmd, report, assetsOnly, teamsOnly)

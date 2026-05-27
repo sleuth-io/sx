@@ -35,6 +35,7 @@ type Team struct {
 	Members      []string `toml:"members,omitempty"`
 	Admins       []string `toml:"admins,omitempty"`
 	Repositories []string `toml:"repositories,omitempty"`
+	MemberCount  int      `toml:"-"` // total members (may exceed len(Members) when paginated)
 }
 
 // IsMember returns true if the given email is in the team's member list.
