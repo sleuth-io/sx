@@ -177,3 +177,102 @@ func TestAddFileToZipPreservesExecutableBit(t *testing.T) {
 		t.Errorf("expected extracted script to be executable, got mode %o", info.Mode())
 	}
 }
+
+func TestRemoveFilesFromZip(t *testing.T) {
+	zipData := createTestZip(t, map[string]string{
+		"keep.md":  "k",
+		"drop.md":  "d",
+		"drop2.md": "d2",
+	})
+
+	got, err := RemoveFilesFromZip(zipData, "drop.md", "drop2.md", "absent.md")
+	if err != nil {
+		t.Fatalf("RemoveFilesFromZip: %v", err)
+	}
+
+	files, err := ListZipFiles(got)
+	if err != nil {
+		t.Fatalf("ListZipFiles: %v", err)
+	}
+	names := map[string]bool{}
+	for _, f := range files {
+		names[f] = true
+	}
+	if !names["keep.md"] {
+		t.Errorf("expected keep.md present, got %v", files)
+	}
+	if names["drop.md"] || names["drop2.md"] {
+		t.Errorf("expected drop.md/drop2.md absent, got %v", files)
+	}
+
+	// Empty names list is a no-op (zip bytes unchanged).
+	got2, err := RemoveFilesFromZip(zipData)
+	if err != nil {
+		t.Fatalf("RemoveFilesFromZip empty: %v", err)
+	}
+	if !bytes.Equal(got2, zipData) {
+		t.Error("expected RemoveFilesFromZip with no names to be a no-op")
+	}
+}
+
+func TestRenameFileInZip(t *testing.T) {
+	t.Run("renames matched entry and drops collision", func(t *testing.T) {
+		zipData := createTestZip(t, map[string]string{
+			"skill.md":  "# lowercase body",
+			"README.md": "readme",
+		})
+
+		got, err := RenameFileInZip(zipData, "skill.md", "SKILL.md")
+		if err != nil {
+			t.Fatalf("RenameFileInZip: %v", err)
+		}
+
+		files, err := ListZipFiles(got)
+		if err != nil {
+			t.Fatalf("ListZipFiles: %v", err)
+		}
+		names := map[string]bool{}
+		for _, f := range files {
+			names[f] = true
+		}
+		if !names["SKILL.md"] {
+			t.Errorf("expected SKILL.md in renamed zip, got %v", files)
+		}
+		if names["skill.md"] {
+			t.Errorf("did not expect skill.md to remain in zip, got %v", files)
+		}
+		if !names["README.md"] {
+			t.Errorf("expected README.md untouched, got %v", files)
+		}
+
+		content, err := ReadZipFile(got, "SKILL.md")
+		if err != nil {
+			t.Fatalf("ReadZipFile: %v", err)
+		}
+		if string(content) != "# lowercase body" {
+			t.Errorf("content not preserved through rename: %q", content)
+		}
+	})
+
+	t.Run("no-op when source absent", func(t *testing.T) {
+		zipData := createTestZip(t, map[string]string{"README.md": "x"})
+		got, err := RenameFileInZip(zipData, "missing.md", "SKILL.md")
+		if err != nil {
+			t.Fatalf("RenameFileInZip: %v", err)
+		}
+		if !bytes.Equal(got, zipData) {
+			t.Error("expected zip bytes unchanged when source file is absent")
+		}
+	})
+
+	t.Run("no-op when names equal", func(t *testing.T) {
+		zipData := createTestZip(t, map[string]string{"SKILL.md": "x"})
+		got, err := RenameFileInZip(zipData, "SKILL.md", "SKILL.md")
+		if err != nil {
+			t.Fatalf("RenameFileInZip: %v", err)
+		}
+		if !bytes.Equal(got, zipData) {
+			t.Error("expected zip bytes unchanged when old == new")
+		}
+	})
+}

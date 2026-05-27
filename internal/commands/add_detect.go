@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
@@ -15,6 +16,165 @@ import (
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 	versionpkg "github.com/sleuth-io/sx/internal/version"
 )
+
+// canonicalPromptFilenames maps prompt-file asset types to their canonical
+// (uppercase) filename per the metadata spec. Used to normalize zip contents
+// when a non-canonical case (e.g. "skill.md" as authored by Claude Code) is
+// detected, so every client and the metadata.toml agree on a single filename.
+var canonicalPromptFilenames = map[string]string{
+	asset.TypeSkill.Key:   "SKILL.md",
+	asset.TypeAgent.Key:   "AGENT.md",
+	asset.TypeCommand.Key: "COMMAND.md",
+	asset.TypeRule.Key:    "RULE.md",
+}
+
+// normalizePromptFileCase rewrites zipData so both the prompt file and any
+// metadata.toml reference to it use the canonical uppercase form for the
+// given asset type. It is a no-op for asset types that don't have a
+// prompt-file convention (MCP, hooks, plugins). When metadata.toml declares
+// the lowercase form, its prompt-file field is silently rewritten — keeping
+// file and metadata in lockstep ensures every client (some of which only
+// recognize the canonical name) sees a working install.
+//
+// Collision rules when multiple case-insensitive variants are present (rare,
+// only possible on case-sensitive filesystems):
+//   - The canonical entry, if present, always wins — its content is preserved
+//     and any stray variants are dropped.
+//   - If only variants exist, the lexicographically first one is renamed to
+//     canonical and the rest are dropped, so the chosen content is deterministic.
+func normalizePromptFileCase(zipData []byte, assetType asset.Type) ([]byte, error) {
+	canonical, ok := canonicalPromptFilenames[assetType.Key]
+	if !ok {
+		return zipData, nil
+	}
+
+	files, err := utils.ListZipFiles(zipData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list zip files: %w", err)
+	}
+
+	var variants []string
+	canonicalPresent := false
+	for _, f := range files {
+		if f == canonical {
+			canonicalPresent = true
+			continue
+		}
+		if strings.EqualFold(f, canonical) {
+			variants = append(variants, f)
+		}
+	}
+
+	switch {
+	case canonicalPresent:
+		// Canonical wins — drop any stray variants so the install isn't
+		// littered with duplicate prompt files.
+		if len(variants) > 0 {
+			zipData, err = utils.RemoveFilesFromZip(zipData, variants...)
+			if err != nil {
+				return nil, err
+			}
+		}
+	case len(variants) > 0:
+		// No canonical entry — pick a deterministic source, rename it, and
+		// drop the rest.
+		sort.Strings(variants)
+		source := variants[0]
+		if extras := variants[1:]; len(extras) > 0 {
+			zipData, err = utils.RemoveFilesFromZip(zipData, extras...)
+			if err != nil {
+				return nil, err
+			}
+		}
+		zipData, err = utils.RenameFileInZip(zipData, source, canonical)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		// Nothing to align — no prompt file (canonical or otherwise) in the zip.
+		return zipData, nil
+	}
+
+	return alignMetadataPromptFile(zipData, assetType, canonical)
+}
+
+// alignMetadataPromptFile rewrites the prompt-file field in metadata.toml to
+// canonical when it case-insensitively matches but isn't already canonical.
+// Other prompt-file values (e.g. a deliberately custom filename) are left
+// alone. No-op when the zip has no metadata.toml.
+func alignMetadataPromptFile(zipData []byte, assetType asset.Type, canonical string) ([]byte, error) {
+	metaBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
+	if err != nil {
+		// metadata.toml is optional — auto-generated downstream when missing.
+		return zipData, nil
+	}
+
+	meta, err := metadata.Parse(metaBytes)
+	if err != nil {
+		// Let the regular validation path surface parse errors with context.
+		return zipData, nil
+	}
+
+	current := currentPromptFile(meta, assetType)
+	if !strings.EqualFold(current, canonical) || current == canonical {
+		return zipData, nil
+	}
+
+	setPromptFile(meta, assetType, canonical)
+
+	updated, err := metadata.Marshal(meta)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+	return utils.ReplaceFileInZip(zipData, "metadata.toml", updated)
+}
+
+func currentPromptFile(meta *metadata.Metadata, assetType asset.Type) string {
+	switch assetType.Key {
+	case asset.TypeSkill.Key:
+		if meta.Skill != nil {
+			return meta.Skill.PromptFile
+		}
+	case asset.TypeAgent.Key:
+		if meta.Agent != nil {
+			return meta.Agent.PromptFile
+		}
+	case asset.TypeCommand.Key:
+		if meta.Command != nil {
+			return meta.Command.PromptFile
+		}
+	case asset.TypeRule.Key:
+		if meta.Rule != nil {
+			return meta.Rule.PromptFile
+		}
+	}
+	return ""
+}
+
+func setPromptFile(meta *metadata.Metadata, assetType asset.Type, value string) {
+	switch assetType.Key {
+	case asset.TypeSkill.Key:
+		if meta.Skill == nil {
+			meta.Skill = &metadata.SkillConfig{}
+		}
+		meta.Skill.PromptFile = value
+	case asset.TypeAgent.Key:
+		if meta.Agent == nil {
+			meta.Agent = &metadata.AgentConfig{}
+		}
+		meta.Agent.PromptFile = value
+	case asset.TypeCommand.Key:
+		if meta.Command == nil {
+			meta.Command = &metadata.CommandConfig{}
+		}
+		meta.Command.PromptFile = value
+	case asset.TypeRule.Key:
+		if meta.Rule == nil {
+			meta.Rule = &metadata.RuleConfig{}
+		}
+		meta.Rule.PromptFile = value
+	}
+}
 
 // detectAssetInfo extracts or detects asset name and type, then confirms with user
 func detectAssetInfo(out *outputHelper, status *components.Status, zipFile string, zipData []byte, opts addOptions) (name string, assetType asset.Type, metadataExists bool, err error) {

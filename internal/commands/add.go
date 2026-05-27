@@ -233,6 +233,18 @@ func addFromZipSource(ctx context.Context, cmd *cobra.Command, out *outputHelper
 		return err
 	}
 
+	// Normalize the prompt file to the canonical uppercase form (e.g. skill.md
+	// -> SKILL.md). Clients install the zip verbatim and the metadata spec
+	// defines the uppercase form as canonical, so this guarantees every client
+	// sees a filename it recognizes regardless of how the asset was authored.
+	// If a user-supplied metadata.toml also declares the lowercase form, its
+	// prompt-file field is rewritten to match — the file and metadata are kept
+	// in lockstep.
+	zipData, err = normalizePromptFileCase(zipData, assetType)
+	if err != nil {
+		return err
+	}
+
 	// Check for context cancellation before expensive vault operations
 	if ctx.Err() != nil {
 		return ctx.Err()

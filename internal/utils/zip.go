@@ -431,6 +431,125 @@ func ReplaceFileInZip(zipData []byte, filename string, content []byte) ([]byte, 
 	return AddFileToZip(zipData, filename, content)
 }
 
+// RemoveFilesFromZip returns a copy of zipData with every entry whose name is
+// in names omitted. Unknown names are ignored.
+func RemoveFilesFromZip(zipData []byte, names ...string) ([]byte, error) {
+	if len(names) == 0 {
+		return zipData, nil
+	}
+	if !IsZipFile(zipData) {
+		return nil, errors.New("invalid zip file: missing magic bytes")
+	}
+
+	drop := make(map[string]bool, len(names))
+	for _, n := range names {
+		drop[n] = true
+	}
+
+	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read zip: %w", err)
+	}
+
+	buf := new(bytes.Buffer)
+	writer := zip.NewWriter(buf)
+	for _, file := range reader.File {
+		if drop[file.Name] {
+			continue
+		}
+		if err := copyZipFile(writer, file); err != nil {
+			return nil, fmt.Errorf("failed to copy file %s: %w", file.Name, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close zip writer: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// RenameFileInZip rewrites zipData with oldName renamed to newName. It is a
+// no-op when oldName is absent or already equals newName. If newName already
+// exists alongside oldName, the existing newName entry is dropped in favor of
+// the renamed oldName (matches the "replace if collision" behavior of
+// AddFileToZip).
+func RenameFileInZip(zipData []byte, oldName, newName string) ([]byte, error) {
+	if oldName == newName {
+		return zipData, nil
+	}
+	if !IsZipFile(zipData) {
+		return nil, errors.New("invalid zip file: missing magic bytes")
+	}
+
+	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read zip: %w", err)
+	}
+
+	var oldEntry *zip.File
+	for _, file := range reader.File {
+		if file.Name == oldName {
+			oldEntry = file
+			break
+		}
+	}
+	if oldEntry == nil {
+		return zipData, nil
+	}
+
+	buf := new(bytes.Buffer)
+	writer := zip.NewWriter(buf)
+
+	for _, file := range reader.File {
+		if file.Name == oldName || file.Name == newName {
+			continue
+		}
+		if err := copyZipFile(writer, file); err != nil {
+			return nil, fmt.Errorf("failed to copy file %s: %w", file.Name, err)
+		}
+	}
+
+	renamed := *oldEntry
+	if err := copyZipFileAs(writer, &renamed, newName); err != nil {
+		return nil, fmt.Errorf("failed to rename %s -> %s: %w", oldName, newName, err)
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close zip writer: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// copyZipFileAs copies file into writer using overrideName instead of file.Name.
+func copyZipFileAs(writer *zip.Writer, file *zip.File, overrideName string) error {
+	r, err := file.Open()
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	header := &zip.FileHeader{
+		Name:     overrideName,
+		Method:   file.Method,
+		Modified: file.Modified,
+	}
+	header.SetMode(file.Mode())
+	if file.FileInfo().IsDir() {
+		header.Name = strings.TrimSuffix(header.Name, "/") + "/"
+	}
+
+	w, err := writer.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data)
+	return err
+}
+
 // CompareZipContents compares two zip files by computing and comparing their hashes
 // Excludes metadata.toml from comparison to focus on actual content
 func CompareZipContents(zipData1, zipData2 []byte) (bool, error) {
