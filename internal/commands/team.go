@@ -34,7 +34,8 @@ func NewTeamCommand() *cobra.Command {
 }
 
 func newTeamListCommand() *cobra.Command {
-	return &cobra.Command{
+	var filter string
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List teams",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -45,13 +46,15 @@ func newTeamListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			teams, err := v.ListTeams(ctx)
+			result, err := v.ListTeams(ctx, vault.ListTeamsOptions{Filter: filter})
 			if err != nil {
 				return err
 			}
-			return printTeamList(cmd, teams)
+			return printTeamList(cmd, result, filter)
 		},
 	}
+	cmd.Flags().StringVar(&filter, "filter", "", "Filter teams by name")
+	return cmd
 }
 
 func newTeamShowCommand() *cobra.Command {
@@ -69,7 +72,7 @@ func newTeamShowCommand() *cobra.Command {
 			}
 			team, err := v.GetTeam(ctx, args[0])
 			if err != nil {
-				return err
+				return fmt.Errorf("team %q not found", args[0])
 			}
 			return printTeamDetails(cmd, team)
 		},
@@ -87,9 +90,10 @@ func newTeamCreateCommand() *cobra.Command {
 		Short: "Create a new team",
 		Long: `Create a new team in the active profile's vault.
 
-Every team must have at least one admin to manage it, so the caller is
-automatically added as both a member and an admin. Use --member / --admin
-to add others alongside yourself.`,
+Every team must have at least one admin to manage it. If you do not name
+an admin via --admin, you are added as a member and admin so the team
+isn't born orphaned. If you do supply --admin, only your named admins
+are added — you are not added automatically.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -135,11 +139,15 @@ to add others alongside yourself.`,
 			}
 			status.Done("Created team " + team.Name)
 
-			// CreateTeam always adds the caller as member+admin so every
-			// team has at least one admin. Surface this so the user isn't
-			// surprised by a roster they didn't explicitly request.
+			// CreateTeam adds the caller as member+admin only when no other
+			// admin was supplied (every team needs ≥1 admin). When the
+			// caller named an admin we trust the delegation and stay out
+			// of the roster. Surface whichever branch ran so the user
+			// isn't guessing at the resulting roster.
 			out := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
-			out.Info(fmt.Sprintf("You (%s) were added as a member and admin — every team needs at least one admin.", actor.Email))
+			if len(admins) == 0 {
+				out.Info(fmt.Sprintf("You (%s) were added as a member and admin — every team needs at least one admin.", actor.Email))
+			}
 			return nil
 		},
 	}
@@ -341,10 +349,10 @@ func requireTeamAdmin(ctx context.Context, v vault.Vault, teamName string) error
 	}
 	team, err := v.GetTeam(ctx, teamName)
 	if err != nil {
-		return err
+		return fmt.Errorf("team %q not found", teamName)
 	}
 	if !team.IsAdmin(actor.Email) {
-		return fmt.Errorf("%s is not an admin of team %s", actor.Email, teamName)
+		return fmt.Errorf("you (%s) are not an admin of team %s — only admins can modify a team", actor.Email, teamName)
 	}
 	return nil
 }
@@ -357,24 +365,48 @@ func loadVault() (vault.Vault, error) {
 	return v, err
 }
 
-func printTeamList(cmd *cobra.Command, teams []mgmt.Team) error {
+func printTeamList(cmd *cobra.Command, result *vault.ListTeamsResult, filter string) error {
 	out := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
-	if len(teams) == 0 {
-		out.Muted("No teams defined yet. Create one with 'sx team create <name>'.")
+	if len(result.Teams) == 0 {
+		if filter != "" {
+			out.Muted(fmt.Sprintf("No teams matching %q.", filter))
+		} else {
+			out.Muted("No teams found. Create one with 'sx team create <name>'.")
+		}
 		return nil
 	}
 	out.Header("Teams")
 	out.Newline()
-	for _, t := range teams {
+	for _, t := range result.Teams {
+		memberCount := t.MemberCount
+		if memberCount == 0 {
+			memberCount = len(t.Members)
+		}
 		line := fmt.Sprintf("  %s %s",
 			out.BoldText(t.Name),
 			out.MutedText(fmt.Sprintf("%d members, %d repos",
-				len(t.Members), len(t.Repositories))),
+				memberCount, len(t.Repositories))),
 		)
 		out.Println(line)
+		if len(t.Admins) > 0 {
+			adminSummary := t.Admins[0]
+			if len(t.Admins) > 2 {
+				adminSummary = strings.Join(t.Admins[:2], ", ") + fmt.Sprintf(" +%d more", len(t.Admins)-2)
+			} else if len(t.Admins) == 2 {
+				adminSummary = strings.Join(t.Admins[:2], ", ")
+			}
+			out.Muted(fmt.Sprintf("    admins: %s", adminSummary))
+		}
 		if t.Description != "" {
 			out.Muted("    " + t.Description)
 		}
+	}
+	out.Newline()
+	if result.HasMore {
+		out.Muted(fmt.Sprintf("Showing %d of %d teams. Use --filter to narrow results.",
+			len(result.Teams), result.TotalCount))
+	} else {
+		out.Muted(fmt.Sprintf("%d teams total.", result.TotalCount))
 	}
 	out.Newline()
 	return nil
@@ -382,23 +414,25 @@ func printTeamList(cmd *cobra.Command, teams []mgmt.Team) error {
 
 func printTeamDetails(cmd *cobra.Command, team *mgmt.Team) error {
 	out := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
-	out.Newline()
-	out.Header(team.Name)
+	out.Bold("Team: " + team.Name)
 	if team.Description != "" {
 		out.Println(team.Description)
 	}
-	out.Newline()
 
-	if len(team.Members) > 0 {
-		out.Bold("Members")
-		for _, m := range team.Members {
-			marker := " "
-			if team.IsAdmin(m) {
-				marker = "*"
-			}
-			out.Println(fmt.Sprintf("  %s %s", marker, m))
+	memberCount := team.MemberCount
+	if memberCount == 0 {
+		memberCount = len(team.Members)
+	}
+	out.Bold(fmt.Sprintf("Members (%d)", memberCount))
+	for _, m := range team.Members {
+		marker := " "
+		if team.IsAdmin(m) {
+			marker = "*"
 		}
-		out.Newline()
+		out.Println(fmt.Sprintf("  %s %s", marker, m))
+	}
+	if memberCount > len(team.Members) {
+		out.Muted(fmt.Sprintf("  … and %d more", memberCount-len(team.Members)))
 	}
 
 	if len(team.Repositories) > 0 {
@@ -406,7 +440,6 @@ func printTeamDetails(cmd *cobra.Command, team *mgmt.Team) error {
 		for _, r := range team.Repositories {
 			out.ListItem("•", r)
 		}
-		out.Newline()
 	}
 
 	return nil

@@ -556,7 +556,7 @@ func TestPathVault_TeamMutationsRequireAdmin(t *testing.T) {
 			t.Errorf("%s: expected admin check to reject, got nil", label)
 			return
 		}
-		if !strings.Contains(err.Error(), "is not an admin of team") {
+		if !strings.Contains(err.Error(), "are not an admin of team") {
 			t.Errorf("%s: unexpected error: %v", label, err)
 		}
 	}

@@ -68,14 +68,14 @@ func (p *PathVault) CurrentActor(ctx context.Context) (mgmt.Actor, error) {
 	return mgmt.CurrentGitActor(ctx, p.repoPath)
 }
 
-func (p *PathVault) ListTeams(ctx context.Context) ([]mgmt.Team, error) {
-	var out []mgmt.Team
+func (p *PathVault) ListTeams(ctx context.Context, opts ListTeamsOptions) (*ListTeamsResult, error) {
+	var out *ListTeamsResult
 	err := p.withReadLock(ctx, func() error {
-		teams, err := commonListTeams(p.repoPath)
+		result, err := commonListTeams(p.repoPath, opts)
 		if err != nil {
 			return err
 		}
-		out = teams
+		out = result
 		return nil
 	})
 	return out, err

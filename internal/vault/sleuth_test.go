@@ -76,15 +76,18 @@ func TestSleuthVault_ListTeams_QueryShape(t *testing.T) {
 							map[string]any{
 								"id":             "team-1",
 								"name":           "platform",
-								"adminMemberIds": []any{"u1"},
+								"adminMembers": []any{
+									map[string]any{"id": "u1", "email": "a@example.com"},
+								},
 								"members": map[string]any{
+									"totalCount": 2,
 									"nodes": []any{
 										map[string]any{"id": "u1", "email": "a@example.com"},
 										map[string]any{"id": "u2", "email": "b@example.com"},
 									},
 								},
 								"skillsRepositories": []any{
-									map[string]any{"repositoryId": "repo-9"},
+									map[string]any{"repositoryId": "repo-9", "owner": "org", "name": "repo-9"},
 								},
 							},
 						},
@@ -223,8 +226,8 @@ func makeTeamNodes(count int, prefix string) []any {
 		nodes[i] = map[string]any{
 			"id":             fmt.Sprintf("team-%d", i),
 			"name":           fmt.Sprintf("%s-%d", prefix, i),
-			"adminMemberIds": []any{},
-			"members":        map[string]any{"nodes": []any{}},
+			"adminMembers":       []any{},
+			"members":            map[string]any{"totalCount": 0, "nodes": []any{}},
 			"skillsRepositories": []any{},
 		}
 	}

@@ -129,11 +129,11 @@ func (g *GitVault) CurrentActor(ctx context.Context) (mgmt.Actor, error) {
 	return mgmt.CurrentGitActor(ctx, g.repoPath)
 }
 
-func (g *GitVault) ListTeams(ctx context.Context) ([]mgmt.Team, error) {
+func (g *GitVault) ListTeams(ctx context.Context, opts ListTeamsOptions) (*ListTeamsResult, error) {
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return nil, err
 	}
-	return commonListTeams(g.repoPath)
+	return commonListTeams(g.repoPath, opts)
 }
 
 func (g *GitVault) GetTeam(ctx context.Context, name string) (*mgmt.Team, error) {
