@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
+
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/lockfile"
@@ -215,9 +217,12 @@ type PathOptions struct {
 
 // OpenPath opens a file-backed vault rooted at dir. The directory must
 // already exist; the underlying PathVault treats absent directories as a
-// hard error rather than auto-creating.
+// hard error rather than auto-creating. dir may be either a bare directory
+// path (/vault/data) or a file:// URL (file:///vault/data) — the leading
+// scheme is stripped before normalization.
 func OpenPath(dir string, opts PathOptions) (*Client, error) {
 	dir = strings.TrimSpace(dir)
+	dir = strings.TrimPrefix(dir, "file://")
 	if dir == "" {
 		return nil, errors.New("sxvault: path required")
 	}
@@ -290,12 +295,18 @@ func (c *Client) EnsureBot(ctx context.Context, bot Bot) (string, error) {
 	if c == nil || c.v == nil {
 		return "", errors.New("sxvault: nil client")
 	}
+	return c.ensureBot(c.actorContext(ctx), bot)
+}
+
+// ensureBot is the actor-wrapped-context internal form of EnsureBot. Public
+// methods wrap ctx with actorContext once at entry and call this directly,
+// so cross-method calls inside the facade don't re-wrap.
+func (c *Client) ensureBot(ctx context.Context, bot Bot) (string, error) {
 	name := strings.TrimSpace(bot.Name)
 	if name == "" {
 		return "", errors.New("sxvault: bot name required")
 	}
 	desc := strings.TrimSpace(bot.Description)
-	ctx = c.actorContext(ctx)
 	existing, err := c.v.GetBot(ctx, name)
 	if err == nil {
 		if desc == "" || existing.Description == desc {
@@ -327,11 +338,11 @@ func (c *Client) EnsureBot(ctx context.Context, bot Bot) (string, error) {
 // vaults overwrite the stored bytes. Bump the version when you need a
 // guaranteed update across all backends.
 //
-// PutAgent is NOT transactional. The flow runs as: validate skills →
-// EnsureBot → upload asset → install agent on bot → install each skill on
-// bot. If any step after the asset upload fails (e.g. a transient git push
-// race on the Nth skill), partial install state is left in the vault. Every
-// step is idempotent, so the caller should retry the same PutAgent call to
+// PutAgent is NOT transactional. The flow runs as: EnsureBot → validate
+// skills → upload asset → install agent on bot → install each skill on bot.
+// If any step after the asset upload fails (e.g. a transient git push race
+// on the Nth skill), partial install state is left in the vault. Every step
+// is idempotent, so the caller should retry the same PutAgent call to
 // converge — the asset upload no-ops on version match and the install path
 // is an upsert.
 func (c *Client) PutAgent(ctx context.Context, spec AgentSpec) (AgentResult, error) {
@@ -349,33 +360,18 @@ func (c *Client) PutAgent(ctx context.Context, spec AgentSpec) (AgentResult, err
 		return AgentResult{}, errors.New("sxvault: agent prompt is required")
 	}
 	ctx = c.actorContext(ctx)
-	skills := cleanNames(spec.Skills)
-	for _, skill := range skills {
-		// Per-skill GetVersionList + GetMetadata on the latest entry is
-		// 2 round-trips per skill, but the alternative (bulk ListAssets
-		// of type=skill) silently caps at 50 on Sleuth-backed vaults and
-		// would false-negative for any vault with more skills than that.
-		// The previous bulk approach traded correctness for speed; this
-		// keeps correctness. Each skill in spec.Skills costs 2 calls —
-		// keep the list modest or expect the validation to scale linearly.
-		versions, vErr := c.v.GetVersionList(ctx, skill)
-		if vErr != nil {
-			return AgentResult{}, fmt.Errorf("sxvault: checking skill %q: %w", skill, vErr)
-		}
-		if len(versions) == 0 {
-			return AgentResult{}, fmt.Errorf("sxvault: skill %q not found in vault", skill)
-		}
-		meta, mErr := c.v.GetMetadata(ctx, skill, versions[len(versions)-1])
-		if mErr != nil {
-			return AgentResult{}, fmt.Errorf("sxvault: reading metadata for %q: %w", skill, mErr)
-		}
-		if meta.Asset.Type.Key != asset.TypeSkill.Key {
-			return AgentResult{}, fmt.Errorf("sxvault: %q is type %q, not skill", skill, meta.Asset.Type.Key)
-		}
-	}
-	botKey, err := c.EnsureBot(ctx, Bot{Name: spec.BotName, Description: spec.BotDescription})
+	// Ensure the bot first so a misnamed BotName or missing BotDescription
+	// fails in 1 round-trip, before the N×2 skill validation cost. EnsureBot
+	// is idempotent and cheap when the bot already exists.
+	botKey, err := c.ensureBot(ctx, Bot{Name: spec.BotName, Description: spec.BotDescription})
 	if err != nil {
 		return AgentResult{}, err
+	}
+	skills := cleanNames(spec.Skills)
+	for _, skill := range skills {
+		if err := c.validateSkillExists(ctx, skill); err != nil {
+			return AgentResult{}, err
+		}
 	}
 	zipData, err := agentZip(spec)
 	if err != nil {
@@ -385,15 +381,60 @@ func (c *Client) PutAgent(ctx context.Context, spec AgentSpec) (AgentResult, err
 	if err := c.addAsset(ctx, ast, zipData); err != nil {
 		return AgentResult{}, err
 	}
-	if err := c.InstallAssetToBot(ctx, spec.AssetName, spec.BotName); err != nil {
+	if err := c.installAssetToBot(ctx, spec.AssetName, spec.BotName); err != nil {
 		return AgentResult{}, err
 	}
 	for _, skill := range skills {
-		if err := c.InstallAssetToBot(ctx, skill, spec.BotName); err != nil {
+		if err := c.installAssetToBot(ctx, skill, spec.BotName); err != nil {
 			return AgentResult{}, err
 		}
 	}
 	return AgentResult{BotKey: botKey}, nil
+}
+
+// validateSkillExists asserts the named asset is a published skill in the
+// vault. It costs 1 list + 1 metadata call per skill — the metadata fetch
+// targets the HIGHEST-semver version, not the last entry in the version
+// list (which is on-disk append order, not release order, so a backport
+// published after a newer release would otherwise gate on the wrong
+// metadata).
+func (c *Client) validateSkillExists(ctx context.Context, skill string) error {
+	versions, vErr := c.v.GetVersionList(ctx, skill)
+	if vErr != nil {
+		return fmt.Errorf("sxvault: checking skill %q: %w", skill, vErr)
+	}
+	if len(versions) == 0 {
+		return fmt.Errorf("sxvault: skill %q not found in vault", skill)
+	}
+	latest := highestSemver(versions)
+	meta, mErr := c.v.GetMetadata(ctx, skill, latest)
+	if mErr != nil {
+		return fmt.Errorf("sxvault: reading metadata for %q: %w", skill, mErr)
+	}
+	if meta.Asset.Type.Key != asset.TypeSkill.Key {
+		return fmt.Errorf("sxvault: %q is type %q, not skill", skill, meta.Asset.Type.Key)
+	}
+	return nil
+}
+
+// highestSemver returns the highest-semver version from versions. Entries
+// that don't parse as semver fall to the bottom of the ordering; if no
+// entries parse, the last entry is returned (preserving the previous
+// last-appended behaviour as a fallback rather than failing the caller).
+func highestSemver(versions []string) string {
+	var best *semver.Version
+	bestStr := versions[len(versions)-1]
+	for _, v := range versions {
+		parsed, err := semver.NewVersion(v)
+		if err != nil {
+			continue
+		}
+		if best == nil || parsed.GreaterThan(best) {
+			best = parsed
+			bestStr = v
+		}
+	}
+	return bestStr
 }
 
 // PutSkillZip uploads a skill zip and, when spec.BotName is non-empty,
@@ -447,12 +488,19 @@ func (c *Client) InstallAssetToBot(ctx context.Context, assetName, botName strin
 	if c == nil || c.v == nil {
 		return errors.New("sxvault: nil client")
 	}
+	return c.installAssetToBot(c.actorContext(ctx), assetName, botName)
+}
+
+// installAssetToBot is the actor-wrapped-context internal form. Callers
+// that already wrapped ctx via actorContext should use this directly so the
+// wrap doesn't run twice.
+func (c *Client) installAssetToBot(ctx context.Context, assetName, botName string) error {
 	assetName = strings.TrimSpace(assetName)
 	botName = strings.TrimSpace(botName)
 	if assetName == "" || botName == "" {
 		return errors.New("sxvault: asset name and bot name are required")
 	}
-	return c.v.SetAssetInstallation(c.actorContext(ctx), assetName, vault.InstallTarget{
+	return c.v.SetAssetInstallation(ctx, assetName, vault.InstallTarget{
 		Kind: vault.InstallKindBot,
 		Bot:  botName,
 	})

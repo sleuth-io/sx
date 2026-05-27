@@ -335,6 +335,67 @@ func TestOpenPathRoundTrip(t *testing.T) {
 	if _, err := OpenPath(filepath.Join(dir, "missing-dir"), PathOptions{}); err == nil {
 		t.Fatal("OpenPath against nonexistent dir succeeded, want error")
 	}
+	// Callers passing a file:// URL (matching the internal vault factory's
+	// shape) must not double-prefix and fail.
+	urlClient, err := OpenPath("file://"+dir, PathOptions{})
+	if err != nil {
+		t.Fatalf("OpenPath with file:// prefix: %v", err)
+	}
+	if urlClient == nil {
+		t.Fatal("OpenPath with file:// prefix returned nil client")
+	}
+}
+
+func TestPutAgentSkillCheckUsesHighestSemver(t *testing.T) {
+	ctx := context.Background()
+	_, client := newGitVaultClient(t)
+
+	// Publish a skill at 1.0.0, then an agent (same name) at 0.9.0, then a
+	// skill again at 2.0.0. list.txt ends in the agent because 0.9.0 was
+	// the last append — but the highest semver is 2.0.0, type=skill, so
+	// the type check must accept.
+	for _, pub := range []struct {
+		version string
+		isAgent bool
+	}{
+		{"1.0.0", false},
+		{"0.9.0", true},
+		{"2.0.0", false},
+	} {
+		if pub.isAgent {
+			if _, err := client.PutAgent(ctx, AgentSpec{
+				BotName:        "holder",
+				AssetName:      "shape-shifter",
+				Version:        pub.version,
+				BotDescription: "Holder bot.",
+				Prompt:         "agent prompt",
+			}); err != nil {
+				t.Fatalf("seed agent %s: %v", pub.version, err)
+			}
+		} else {
+			if err := client.PutSkillZip(ctx, SkillZipSpec{
+				Name:    "shape-shifter",
+				Version: pub.version,
+				ZipData: skillZip(t, "skill prompt"),
+			}); err != nil {
+				t.Fatalf("seed skill %s: %v", pub.version, err)
+			}
+		}
+	}
+
+	// Highest semver (2.0.0) is type=skill, so an agent that lists
+	// shape-shifter under Skills must publish cleanly even though list.txt
+	// ends in the agent entry.
+	if _, err := client.PutAgent(ctx, AgentSpec{
+		BotName:        "user",
+		AssetName:      "uses-shape-shifter",
+		Version:        "1.0.0",
+		BotDescription: "User bot.",
+		Prompt:         "use prompt",
+		Skills:         []string{"shape-shifter"},
+	}); err != nil {
+		t.Fatalf("PutAgent with semver-resolved skill: %v", err)
+	}
 }
 
 func TestPutSkillZipRejectsUnknownBot(t *testing.T) {
