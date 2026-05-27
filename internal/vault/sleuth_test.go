@@ -213,6 +213,36 @@ func TestSleuthVault_CreateBotRuntimeToken_QueryShape(t *testing.T) {
 	}
 }
 
+func TestSleuthVault_ListBots_ProjectsSlug(t *testing.T) {
+	srv, _ := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
+		"ListBots": func(vars map[string]any) any {
+			return map[string]any{
+				"bots": []any{
+					map[string]any{
+						"id":          "bot-1",
+						"name":        "Reviewer",
+						"slug":        "reviewer",
+						"description": "Reviews pull requests.",
+						"teams":       []any{},
+					},
+				},
+			}
+		},
+	})
+
+	v := NewSleuthVault(srv.URL, "test-token")
+	bots, err := v.ListBots(context.Background())
+	if err != nil {
+		t.Fatalf("ListBots failed: %v", err)
+	}
+	if len(bots) != 1 {
+		t.Fatalf("ListBots returned %d bots, want 1", len(bots))
+	}
+	if bots[0].Slug != "reviewer" {
+		t.Fatalf("bots[0].Slug = %q, want reviewer", bots[0].Slug)
+	}
+}
+
 // TestSleuthVault_SetInstallations_OmitsEmptyVersion verifies that the
 // SetAssetInstallations mutation omits assetVersion when asset.Version is
 // "" (the optional field must not be sent as the empty string). Also

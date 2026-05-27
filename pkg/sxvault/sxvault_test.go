@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,9 +83,12 @@ func TestListBotsAndRuntimeTokens(t *testing.T) {
 	if len(bots) != 1 || bots[0].Name != "ci" || bots[0].Description != "CI bot." {
 		t.Fatalf("ListBots returned %+v, want CI bot", bots)
 	}
-	if _, err := client.CreateBotRuntimeToken(ctx, BotRuntimeTokenSpec{BotName: "ci", Label: "test"}); err == nil ||
-		!strings.Contains(err.Error(), "only supported by skills.new") {
-		t.Fatalf("CreateBotRuntimeToken on git vault err = %v, want unsupported error", err)
+	if bots[0].Slug != "" {
+		t.Fatalf("git vault bots[0].Slug = %q, want empty (manifest bots have no slug)", bots[0].Slug)
+	}
+	_, err = client.CreateBotRuntimeToken(ctx, BotRuntimeTokenSpec{BotName: "ci", Label: "test"})
+	if !errors.Is(err, ErrBotRuntimeTokensUnsupported) {
+		t.Fatalf("CreateBotRuntimeToken on git vault err = %v, want ErrBotRuntimeTokensUnsupported", err)
 	}
 }
 

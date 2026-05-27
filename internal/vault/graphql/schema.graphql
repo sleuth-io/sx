@@ -3569,7 +3569,7 @@ type ManagedImportScanStatus {
 
 type ManagedImportCandidate {
   assetName: String!
-  assetType: AssetType!
+  assetType: String!
   sourceClient: String!
   repoId: ID!
   repoName: String!
@@ -3593,7 +3593,7 @@ type ManagedImportRunStatus {
 
 type ManagedImportRunItem {
   assetName: String!
-  assetType: AssetType!
+  assetType: String!
 
   """pending | done | error"""
   status: String!
@@ -5401,7 +5401,6 @@ type Mutation {
   deleteBot(id: ID!): DeleteBotMutation
   createBotApiKey(botId: ID!, label: String!): CreateBotApiKeyMutation
   createBotRuntimeToken(botId: ID!, label: String, ttlSeconds: Int): CreateBotRuntimeTokenMutation
-  revokeBotRuntimeTokens(botId: ID!): RevokeBotRuntimeTokensMutation
   deleteBotApiKey(keyId: ID!): DeleteBotApiKeyMutation
   installSkillToBot(botId: ID!, skillId: ID!): InstallSkillToBotMutation
   uninstallSkillFromBot(botId: ID!, skillId: ID!): UninstallSkillFromBotMutation
@@ -5755,10 +5754,6 @@ type CreateBotApiKeyMutation {
 type CreateBotRuntimeTokenMutation {
   botKey: String!
   expiresAt: DateTime!
-}
-
-type RevokeBotRuntimeTokensMutation {
-  revokedCount: Int!
 }
 
 type DeleteBotApiKeyMutation {

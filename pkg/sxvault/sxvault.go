@@ -178,6 +178,11 @@ type BotRuntimeTokenResult struct {
 	ExpiresAt time.Time
 }
 
+// ErrBotRuntimeTokensUnsupported is returned by CreateBotRuntimeToken when the
+// underlying vault does not implement runtime tokens (i.e., any non-skills.new
+// backend). Callers should match with errors.Is to detect this case.
+var ErrBotRuntimeTokensUnsupported = errors.New("sxvault: bot runtime tokens are only supported by skills.new vaults")
+
 type SkillZipSpec struct {
 	Name    string
 	Version string
@@ -537,7 +542,7 @@ func (c *Client) CreateBotRuntimeToken(ctx context.Context, spec BotRuntimeToken
 	}
 	manager, ok := c.v.(vault.BotRuntimeTokenManager)
 	if !ok {
-		return BotRuntimeTokenResult{}, errors.New("sxvault: bot runtime tokens are only supported by skills.new vaults")
+		return BotRuntimeTokenResult{}, ErrBotRuntimeTokensUnsupported
 	}
 	token, expiresAt, err := manager.CreateBotRuntimeToken(
 		c.actorContext(ctx),
