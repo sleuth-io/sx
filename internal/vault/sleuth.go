@@ -247,9 +247,10 @@ func (s *SleuthVault) AddAssetWithResult(ctx context.Context, asset *lockfile.As
 		Success bool   `json:"success"`
 		Error   string `json:"error"`
 		Asset   struct {
-			Name    string `json:"name"`
-			Version string `json:"version"`
-			URL     string `json:"url"`
+			Name           string `json:"name"`
+			Version        string `json:"version"`
+			URL            string `json:"url"`
+			IsFirstVersion bool   `json:"is_first_version"`
 		} `json:"asset"`
 	}
 
@@ -290,9 +291,10 @@ func (s *SleuthVault) AddAssetWithResult(ctx context.Context, asset *lockfile.As
 	}
 
 	return AddAssetResult{
-		Name:    uploadResp.Asset.Name,
-		Version: uploadResp.Asset.Version,
-		URL:     uploadResp.Asset.URL,
+		Name:           uploadResp.Asset.Name,
+		Version:        uploadResp.Asset.Version,
+		URL:            uploadResp.Asset.URL,
+		IsFirstVersion: uploadResp.Asset.IsFirstVersion,
 	}, nil
 }
 

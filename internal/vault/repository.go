@@ -38,10 +38,13 @@ func (e *ErrVersionExists) Error() string {
 // AddAssetResult contains canonical asset information returned by a vault
 // after upload. Server-backed vaults may normalize the requested name into a
 // persisted slug; callers should use Name for follow-up operations.
+// IsFirstVersion is true when the upload created the first stored version of
+// the asset, which lets callers distinguish new-asset setup from re-publish.
 type AddAssetResult struct {
-	Name    string
-	Version string
-	URL     string
+	Name           string
+	Version        string
+	URL            string
+	IsFirstVersion bool
 }
 
 // Vault represents a source of assets with read and write capabilities

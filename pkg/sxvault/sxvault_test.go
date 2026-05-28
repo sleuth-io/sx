@@ -335,6 +335,142 @@ func TestPutSkillZipWithResultReturnsServerAssetName(t *testing.T) {
 	}
 }
 
+func TestPutSkillZipWithBotClearsDefaultUploadInstall(t *testing.T) {
+	ctx := context.Background()
+	var ops []string
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/skills/assets":
+			if r.Method != http.MethodPost {
+				http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"success": true,
+				"asset": map[string]any{
+					"name":             "copied-skill",
+					"version":          "1",
+					"url":              srv.URL + "/api/skills/assets/copied-skill/1/archive.zip",
+					"is_first_version": true,
+				},
+			})
+		case "/graphql":
+			var req struct {
+				OperationName string         `json:"operationName"`
+				Variables     map[string]any `json:"variables"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			ops = append(ops, req.OperationName)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": sxvaultTestGraphQLResponse(t, req.OperationName, req.Variables)})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := OpenSkillsNew(srv.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.PutSkillZipWithResult(ctx, SkillZipSpec{
+		Name:        "copied-skill",
+		Version:     "1",
+		Description: "Copied skill.",
+		BotName:     "testers",
+		ZipData:     skillZip(t, "Use copied skill."),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsFirstVersion {
+		t.Fatalf("PutSkillZipWithResult IsFirstVersion = false, want true")
+	}
+	wantOps := "ListBots,ListBots,BotInstalled,RemoveAssetInstallations,ListBots,AssetGID,InstallSkillToBot"
+	if gotOps := strings.Join(ops, ","); gotOps != wantOps {
+		t.Fatalf("GraphQL ops = %s, want %s", gotOps, wantOps)
+	}
+}
+
+func sxvaultTestGraphQLResponse(t *testing.T, operation string, vars map[string]any) any {
+	t.Helper()
+	switch operation {
+	case "ListBots":
+		return map[string]any{
+			"bots": []any{
+				map[string]any{
+					"id":              "bot-1",
+					"name":            "testers",
+					"slug":            "testers",
+					"description":     "Tests stuff",
+					"teams":           []any{},
+					"installedSkills": []any{},
+				},
+			},
+		}
+	case "RemoveAssetInstallations":
+		input, _ := vars["input"].(map[string]any)
+		if got := input["assetName"]; got != "copied-skill" {
+			t.Fatalf("RemoveAssetInstallations assetName = %v, want copied-skill", got)
+		}
+		return map[string]any{
+			"removeAssetInstallations": map[string]any{
+				"success": true,
+				"errors":  []any{},
+			},
+		}
+	case "BotInstalled":
+		if got := vars["slug"]; got != "testers" {
+			t.Fatalf("BotInstalled slug = %v, want testers", got)
+		}
+		return map[string]any{
+			"bot": map[string]any{
+				"installedSkills": []any{},
+			},
+		}
+	case "AssetGID":
+		if got := vars["search"]; got != "copied-skill" {
+			t.Fatalf("AssetGID search = %v, want copied-skill", got)
+		}
+		return map[string]any{
+			"vault": map[string]any{
+				"assets": map[string]any{
+					"nodes": []any{
+						map[string]any{
+							"__typename": "Skill",
+							"id":         "skill-1",
+							"name":       "Copied Skill",
+							"slug":       "copied-skill",
+						},
+					},
+				},
+			},
+		}
+	case "InstallSkillToBot":
+		if got := vars["botId"]; got != "bot-1" {
+			t.Fatalf("InstallSkillToBot botId = %v, want bot-1", got)
+		}
+		if got := vars["skillId"]; got != "skill-1" {
+			t.Fatalf("InstallSkillToBot skillId = %v, want skill-1", got)
+		}
+		return map[string]any{
+			"installSkillToBot": map[string]any{
+				"success": true,
+				"errors":  []any{},
+			},
+		}
+	default:
+		t.Fatalf("unexpected GraphQL operation %q", operation)
+		return nil
+	}
+}
+
 func TestPutSkillZipDescriptionPrecedence(t *testing.T) {
 	ctx := context.Background()
 	remote, client := newGitVaultClient(t)

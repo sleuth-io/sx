@@ -218,17 +218,21 @@ type SkillZipSpec struct {
 	Description string
 	ZipData     []byte
 	// BotName, when non-empty, installs the published skill onto that bot
-	// after the asset upload completes. Leave empty to publish the skill
-	// without attaching it to any bot.
+	// after the asset upload completes. For a new Skills.new asset, this
+	// makes the first upload bot-scoped instead of inheriting the upload
+	// endpoint's org-wide default. Leave empty to publish the skill without
+	// attaching it to any bot.
 	BotName string
 }
 
 // SkillZipResult contains the persisted skill identity after PutSkillZip.
 // Server-backed vaults may normalize spec.Name into a slug; use Name for
-// follow-up install/uninstall calls against the same vault.
+// follow-up install/uninstall calls against the same vault. IsFirstVersion is
+// true when the upload created the first stored version of this skill.
 type SkillZipResult struct {
-	Name    string
-	Version string
+	Name           string
+	Version        string
+	IsFirstVersion bool
 }
 
 type AssetSummary struct {
@@ -567,7 +571,11 @@ func (c *Client) PutSkillZipWithResult(ctx context.Context, spec SkillZipSpec) (
 	if err != nil {
 		return SkillZipResult{}, err
 	}
-	result := SkillZipResult{Name: strings.TrimSpace(upload.Name), Version: strings.TrimSpace(upload.Version)}
+	result := SkillZipResult{
+		Name:           strings.TrimSpace(upload.Name),
+		Version:        strings.TrimSpace(upload.Version),
+		IsFirstVersion: upload.IsFirstVersion,
+	}
 	if result.Name == "" {
 		result.Name = spec.Name
 	}
@@ -576,6 +584,11 @@ func (c *Client) PutSkillZipWithResult(ctx context.Context, spec SkillZipSpec) (
 	}
 	if spec.BotName == "" {
 		return result, nil
+	}
+	if upload.IsFirstVersion {
+		if err := c.v.ClearAssetInstallations(ctx, result.Name); err != nil {
+			return SkillZipResult{}, fmt.Errorf("sxvault: clearing default installations for %q: %w", result.Name, err)
+		}
 	}
 	// ctx is already actor-wrapped above; use the internal form so the wrap
 	// doesn't run twice (mirrors PutAgent).
