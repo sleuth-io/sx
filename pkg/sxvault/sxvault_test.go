@@ -377,7 +377,7 @@ func TestBotTeamFacadeRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	_, client := newGitVaultClient(t)
 
-	if err := client.v.CreateTeam(ctx, mgmt.Team{Name: "Dev", Description: "Development team"}); err != nil {
+	if err := client.v.CreateTeam(client.actorContext(ctx), mgmt.Team{Name: "Dev", Description: "Development team"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := client.EnsureBot(ctx, Bot{Name: "reviewer", Description: "Reviews pull requests."}); err != nil {
