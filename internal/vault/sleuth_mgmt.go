@@ -521,6 +521,9 @@ func (s *SleuthVault) UpdateBot(ctx context.Context, bot mgmt.Bot) error {
 		Description: &bot.Description,
 	}
 	if bot.Teams != nil {
+		if teamIDs == nil {
+			teamIDs = []string{}
+		}
 		input.TeamIds = teamIDs
 	}
 	resp, err := vaultgql.UpdateBot(ctx, s.gqlClient(), input)

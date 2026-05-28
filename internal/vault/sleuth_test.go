@@ -122,6 +122,57 @@ func TestSleuthVault_ListTeams_QueryShape(t *testing.T) {
 	}
 }
 
+func TestSleuthVault_RemoveBotTeamSendsEmptyTeamIDs(t *testing.T) {
+	srv, records := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
+		"ListBots": func(vars map[string]any) any {
+			return map[string]any{
+				"bots": []any{
+					map[string]any{
+						"id":              "bot-1",
+						"name":            "testers",
+						"slug":            "testers",
+						"description":     "Tests stuff",
+						"teams":           []any{map[string]any{"id": "team-1", "name": "Dev"}},
+						"installedSkills": []any{},
+					},
+				},
+			}
+		},
+		"UpdateBot": func(vars map[string]any) any {
+			input, ok := vars["input"].(map[string]any)
+			if !ok {
+				t.Fatalf("UpdateBot input = %T, want object", vars["input"])
+			}
+			teamIDs, ok := input["teamIds"].([]any)
+			if !ok {
+				t.Fatalf("UpdateBot teamIds = %#v (%T), want empty list", input["teamIds"], input["teamIds"])
+			}
+			if len(teamIDs) != 0 {
+				t.Fatalf("UpdateBot teamIds = %#v, want empty list", teamIDs)
+			}
+			return map[string]any{
+				"updateBot": map[string]any{
+					"bot":    map[string]any{"id": "bot-1", "name": "testers"},
+					"errors": []any{},
+				},
+			}
+		},
+	})
+
+	v := NewSleuthVault(srv.URL, "test-token")
+	if err := v.RemoveBotTeam(context.Background(), "testers", "Dev"); err != nil {
+		t.Fatalf("RemoveBotTeam failed: %v", err)
+	}
+
+	var ops []string
+	for _, rec := range *records {
+		ops = append(ops, rec.OperationName)
+	}
+	if got := strings.Join(ops, ","); got != "ListBots,ListBots,UpdateBot" {
+		t.Fatalf("operations = %s", got)
+	}
+}
+
 // TestSleuthVault_FindUser_QueryShape locks in the PR142 bug fix: the
 // FindUser query nests under organization { users(term:) }. Tested via
 // userGIDByEmail, the only call site.
