@@ -536,7 +536,9 @@ func (c *Client) PutSkillZip(ctx context.Context, spec SkillZipSpec) error {
 	if spec.BotName == "" {
 		return nil
 	}
-	return c.InstallAssetToBot(ctx, spec.Name, spec.BotName)
+	// ctx is already actor-wrapped above; use the internal form so the wrap
+	// doesn't run twice (mirrors PutAgent).
+	return c.installAssetToBot(ctx, spec.Name, spec.BotName)
 }
 
 func (c *Client) ListBots(ctx context.Context) ([]BotSummary, error) {

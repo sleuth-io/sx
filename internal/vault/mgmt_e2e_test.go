@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -384,6 +385,43 @@ func TestPathVault_PathInstall_LegacyUnsortedRow(t *testing.T) {
 	}
 	if pathScopes := countPathScopes(m.FindAsset("my-skill")); pathScopes != 0 {
 		t.Fatalf("legacy unsorted path scope was not removed, %d remain", pathScopes)
+	}
+}
+
+// TestPathVault_RemoveOrgInstall_Rejected verifies removing an org-wide
+// install returns ErrNotImplemented rather than silently no-opping — an
+// org install is stored as an empty scope list, so there is no row to
+// match and callers must use ClearAssetInstallations instead.
+func TestPathVault_RemoveOrgInstall_Rejected(t *testing.T) {
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice")
+
+	if err := manifest.Save(dir, &manifest.Manifest{
+		SchemaVersion: manifest.CurrentSchemaVersion,
+		Assets: []manifest.Asset{
+			{
+				Name:       "my-skill",
+				Version:    "1.0.0",
+				Type:       asset.TypeSkill,
+				SourceHTTP: &manifest.SourceHTTP{URL: "https://example.com/my-skill.zip"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed manifest: %v", err)
+	}
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	ctx := context.Background()
+
+	err = v.RemoveAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindOrg})
+	if !errors.Is(err, ErrNotImplemented) {
+		t.Fatalf("RemoveAssetInstallation org = %v, want ErrNotImplemented", err)
 	}
 }
 

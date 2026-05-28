@@ -905,7 +905,11 @@ func canonicalPaths(paths []string) []string {
 func installTargetScope(target InstallTarget, actor mgmt.Actor) (manifest.Scope, error) {
 	switch target.Kind {
 	case InstallKindOrg:
-		return manifest.Scope{Kind: manifest.ScopeKindOrg}, nil
+		// An org-wide install is stored as an empty scope list, not an org
+		// scope row, so there is no row for commonRemoveAssetInstallation to
+		// match — it would silently no-op. Reject it here and point callers
+		// at the operation that actually clears a global install.
+		return manifest.Scope{}, fmt.Errorf("%w: removing an org-wide install; use ClearAssetInstallations instead", ErrNotImplemented)
 	case InstallKindRepo:
 		if target.Repo == "" {
 			return manifest.Scope{}, errors.New("repo installation missing repo URL")

@@ -156,7 +156,10 @@ type Vault interface {
 	// references the target. The Sleuth backend additionally errors when
 	// the asset name doesn't resolve, rather than no-opping, and today
 	// only supports InstallKindBot targets — every other kind returns
-	// ErrNotImplemented (file-backed vaults support all kinds).
+	// ErrNotImplemented (file-backed vaults support all kinds). Removing an
+	// InstallKindOrg target is not supported on any backend (an org-wide
+	// install has no scope row to remove) and returns ErrNotImplemented —
+	// use ClearAssetInstallations to undo a global install.
 	RemoveAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error
 
 	// ClearAssetInstallations removes every installation target from an
