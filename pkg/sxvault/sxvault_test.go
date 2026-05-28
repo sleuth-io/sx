@@ -465,6 +465,19 @@ func TestListTeamsSendsServerMaximumLimit(t *testing.T) {
 	}
 }
 
+// TestUninstallAssetFromBotMissingBot pins that a missing bot surfaces as
+// the exported ErrBotNotFound sentinel, so library consumers can branch on
+// errors.Is(err, sxvault.ErrBotNotFound) rather than string-matching.
+func TestUninstallAssetFromBotMissingBot(t *testing.T) {
+	ctx := context.Background()
+	_, client := newGitVaultClient(t)
+
+	err := client.UninstallAssetFromBot(ctx, "any-skill", "missing-bot")
+	if !errors.Is(err, ErrBotNotFound) {
+		t.Fatalf("UninstallAssetFromBot missing bot = %v, want ErrBotNotFound", err)
+	}
+}
+
 // TestListTeamsErrorsWhenTruncated verifies ListTeams surfaces an error
 // rather than a silent partial slice when the backend reports more teams
 // beyond the requested limit.

@@ -838,6 +838,11 @@ func commonRemoveAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName
 				return nil, err
 			}
 		}
+		// Walk every entry for assetName, not just FindAsset's first match:
+		// repo/path scopes are inherited onto each new version row
+		// (inheritAssetScopesFromManifest), so the same scope can live on
+		// multiple same-name rows and all must be cleared. A row left with
+		// no scopes is dropped rather than reinterpreted as global.
 		changed := false
 		kept := m.Assets[:0]
 		for _, a := range m.Assets {
@@ -980,37 +985,14 @@ func commonRecordUsageEvents(vaultRoot string, actor mgmt.Actor, events []mgmt.U
 	return mgmt.AppendUsageEvents(vaultRoot, events)
 }
 
-// scopeExistsOnAsset returns true when needle is already among scopes,
-// after normalizing the repo URL for repo/path kinds.
+// scopeExistsOnAsset returns true when needle is already among scopes. It
+// shares installScopeMatches' per-kind comparison rules (repo URL / email
+// normalization, canonical path ordering) so set-time dedupe and
+// remove-time matching can never drift apart.
 func scopeExistsOnAsset(scopes []manifest.Scope, needle manifest.Scope) bool {
-	needleRepo := scope.NormalizeRepoURL(needle.Repo)
 	for _, s := range scopes {
-		if s.Kind != needle.Kind {
-			continue
-		}
-		switch s.Kind {
-		case manifest.ScopeKindOrg:
+		if installScopeMatches(s, needle) {
 			return true
-		case manifest.ScopeKindRepo:
-			if scope.NormalizeRepoURL(s.Repo) == needleRepo {
-				return true
-			}
-		case manifest.ScopeKindPath:
-			if scope.NormalizeRepoURL(s.Repo) == needleRepo && slices.Equal(canonicalPaths(s.Paths), canonicalPaths(needle.Paths)) {
-				return true
-			}
-		case manifest.ScopeKindTeam:
-			if s.Team == needle.Team {
-				return true
-			}
-		case manifest.ScopeKindUser:
-			if manifest.NormalizeEmail(s.User) == manifest.NormalizeEmail(needle.User) {
-				return true
-			}
-		case manifest.ScopeKindBot:
-			if s.Bot == needle.Bot {
-				return true
-			}
 		}
 	}
 	return false
