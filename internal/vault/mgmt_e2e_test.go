@@ -423,10 +423,10 @@ func TestPathVault_RemoveOrgInstall_Rejected(t *testing.T) {
 	if !errors.Is(err, ErrNotImplemented) {
 		t.Fatalf("RemoveAssetInstallation org = %v, want ErrNotImplemented", err)
 	}
-	// The message must keep pointing callers at the operation that does
-	// undo a global install, not just return a bare sentinel.
-	if !strings.Contains(err.Error(), "ClearAssetInstallations") {
-		t.Fatalf("error %q should point the caller at ClearAssetInstallations", err)
+	// The message must keep explaining how to actually stop distributing a
+	// globally-installed asset, not just return a bare sentinel.
+	if !strings.Contains(err.Error(), "remove the asset") {
+		t.Fatalf("error %q should tell the caller to remove the asset from the vault", err)
 	}
 }
 

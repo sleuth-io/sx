@@ -474,6 +474,9 @@ func (c *Client) validateSkillExists(ctx context.Context, skill string) error {
 	if mErr != nil {
 		return fmt.Errorf("sxvault: reading metadata for %q: %w", skill, mErr)
 	}
+	if meta == nil {
+		return fmt.Errorf("sxvault: metadata for %q@%s was nil", skill, latest)
+	}
 	if meta.Asset.Type.Key != asset.TypeSkill.Key {
 		return fmt.Errorf("sxvault: %q is type %q, not skill", skill, meta.Asset.Type.Key)
 	}

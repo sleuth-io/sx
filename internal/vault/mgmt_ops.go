@@ -912,9 +912,11 @@ func installTargetScope(target InstallTarget, actor mgmt.Actor) (manifest.Scope,
 	case InstallKindOrg:
 		// An org-wide install is stored as an empty scope list, not an org
 		// scope row, so there is no row for commonRemoveAssetInstallation to
-		// match — it would silently no-op. Reject it here and point callers
-		// at the operation that actually clears a global install.
-		return manifest.Scope{}, fmt.Errorf("%w: removing an org-wide install; use ClearAssetInstallations instead", ErrNotImplemented)
+		// match — it would silently no-op. ClearAssetInstallations can't undo
+		// it either (an already-empty scope list is its no-op case); the only
+		// way to stop distributing a globally-installed asset is to remove
+		// the asset from the vault.
+		return manifest.Scope{}, fmt.Errorf("%w: an org-wide install has no scope row to remove; remove the asset from the vault to stop distributing it", ErrNotImplemented)
 	case InstallKindRepo:
 		if target.Repo == "" {
 			return manifest.Scope{}, errors.New("repo installation missing repo URL")
