@@ -580,11 +580,17 @@ func (v *BotInstalledBotManagedBot) GetInstalledSkills() []BotInstalledBotManage
 //
 // Lightweight skill info for display on bot detail page.
 type BotInstalledBotManagedBotInstalledSkillsBotInstalledSkill struct {
-	Name string `json:"name"`
+	Name            string `json:"name"`
+	IsDirectInstall bool   `json:"isDirectInstall"`
 }
 
 // GetName returns BotInstalledBotManagedBotInstalledSkillsBotInstalledSkill.Name, and is useful for accessing the field via an interface.
 func (v *BotInstalledBotManagedBotInstalledSkillsBotInstalledSkill) GetName() string { return v.Name }
+
+// GetIsDirectInstall returns BotInstalledBotManagedBotInstalledSkillsBotInstalledSkill.IsDirectInstall, and is useful for accessing the field via an interface.
+func (v *BotInstalledBotManagedBotInstalledSkillsBotInstalledSkill) GetIsDirectInstall() bool {
+	return v.IsDirectInstall
+}
 
 // BotInstalledResponse is returned by BotInstalled on success.
 type BotInstalledResponse struct {
@@ -3643,6 +3649,7 @@ query BotInstalled ($slug: String!) {
 	bot(slug: $slug) {
 		installedSkills {
 			name
+			isDirectInstall
 		}
 	}
 }

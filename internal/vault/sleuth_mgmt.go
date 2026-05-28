@@ -742,10 +742,11 @@ func (s *SleuthVault) uninstallSkillFromBot(ctx context.Context, skillGID, botGI
 const botsInstalledLookupConcurrency = 8
 
 // botsWithAssetInstalled queries every bot in the org and returns the
-// GIDs of those whose installedSkills list contains assetName. Used by
-// ClearAssetInstallations to find which bots need an uninstall call —
-// the existing removeAssetInstallations mutation does NOT touch bot
-// installs (those live in a separate mutation pair).
+// GIDs of those whose installedSkills list contains assetName as a direct
+// bot install. Inherited org/team/repo skills are intentionally ignored:
+// ClearAssetInstallations is looking only for bot-scoped rows that require
+// the dedicated uninstallSkillFromBot mutation. Non-bot scopes are handled
+// later by removeAssetInstallations.
 //
 // Performance: the per-bot fan-out is bounded by botsInstalledLookupConcurrency
 // goroutines. The first error returned by any worker cancels its peers via
@@ -782,7 +783,7 @@ func (s *SleuthVault) botsWithAssetInstalled(ctx context.Context, assetName stri
 				return
 			}
 			for _, sk := range resp.Bot.InstalledSkills {
-				if sk.Name == assetName {
+				if sk.Name == assetName && sk.IsDirectInstall {
 					results <- result{idx: idx, gid: n.ID}
 					break
 				}

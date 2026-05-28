@@ -646,7 +646,12 @@ func sxvaultTestGraphQLResponse(t *testing.T, operation string, vars map[string]
 		}
 		return map[string]any{
 			"bot": map[string]any{
-				"installedSkills": []any{},
+				"installedSkills": []any{
+					map[string]any{
+						"name":            "copied-skill",
+						"isDirectInstall": false,
+					},
+				},
 			},
 		}
 	case "AssetGID":
