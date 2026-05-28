@@ -626,25 +626,37 @@ func (s *SleuthVault) assetGIDByName(ctx context.Context, name string) (string, 
 	// (Skill, MCP, Agent, ClaudeCodePlugin, ...). Use the interface
 	// getters to avoid switching on every variant.
 	name = strings.TrimSpace(name)
-	var slugMatch, nameMatch string
+	var slugMatch, nameMatch *assetIDMatch
 	for _, n := range resp.Vault.Assets.Nodes {
-		if n.GetSlug() == name && slugMatch == "" {
-			slugMatch = n.GetId()
+		if n.GetSlug() == name && slugMatch == nil {
+			slugMatch = &assetIDMatch{id: n.GetId(), slug: n.GetSlug()}
 		}
-		if n.GetName() == name && n.GetSlug() != name && nameMatch == "" {
-			nameMatch = n.GetId()
+		if n.GetName() == name && n.GetSlug() != name && nameMatch == nil {
+			nameMatch = &assetIDMatch{id: n.GetId(), slug: n.GetSlug()}
 		}
 	}
-	if slugMatch != "" && nameMatch != "" {
+	if slugMatch != nil && nameMatch != nil {
+		if isGeneratedSkillSlug(name, nameMatch.slug) {
+			return nameMatch.id, nil
+		}
 		return "", fmt.Errorf("asset %q is ambiguous: matches both a slug and a different display name", name)
 	}
-	if slugMatch != "" {
-		return slugMatch, nil
+	if slugMatch != nil {
+		return slugMatch.id, nil
 	}
-	if nameMatch != "" {
-		return nameMatch, nil
+	if nameMatch != nil {
+		return nameMatch.id, nil
 	}
 	return "", fmt.Errorf("asset %q not found", name)
+}
+
+type assetIDMatch struct {
+	id   string
+	slug string
+}
+
+func isGeneratedSkillSlug(name, slug string) bool {
+	return slug == name+"_skill"
 }
 
 // installSkillToBot installs an asset directly to a bot via the existing

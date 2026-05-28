@@ -485,6 +485,62 @@ func TestSleuthVault_InstallSkillToBot_SlugMatchOrderIndependent(t *testing.T) {
 	}
 }
 
+func TestSleuthVault_InstallSkillToBotPrefersGeneratedSkillSlugNameMatch(t *testing.T) {
+	srv, _ := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
+		"ListBots": func(vars map[string]any) any {
+			return map[string]any{
+				"bots": []any{
+					map[string]any{
+						"id":          "bot-1",
+						"name":        "testers",
+						"slug":        "testers",
+						"description": "Tests stuff",
+						"teams":       []any{},
+					},
+				},
+			}
+		},
+		"AssetGID": func(vars map[string]any) any {
+			return map[string]any{
+				"vault": map[string]any{
+					"assets": map[string]any{
+						"nodes": []any{
+							map[string]any{
+								"__typename": "Skill",
+								"id":         "slug-asset",
+								"name":       "Architecture Blueprint",
+								"slug":       "architecture-blueprint-generator",
+							},
+							map[string]any{
+								"__typename": "Skill",
+								"id":         "uploaded-skill",
+								"name":       "architecture-blueprint-generator",
+								"slug":       "architecture-blueprint-generator_skill",
+							},
+						},
+					},
+				},
+			}
+		},
+		"InstallSkillToBot": func(vars map[string]any) any {
+			if got := vars["skillId"]; got != "uploaded-skill" {
+				t.Fatalf("InstallSkillToBot skillId = %v, want uploaded-skill", got)
+			}
+			return map[string]any{
+				"installSkillToBot": map[string]any{
+					"success": true,
+					"errors":  []any{},
+				},
+			}
+		},
+	})
+
+	v := NewSleuthVault(srv.URL, "test-token")
+	if err := v.SetAssetInstallation(context.Background(), "architecture-blueprint-generator", InstallTarget{Kind: InstallKindBot, Bot: "testers"}); err != nil {
+		t.Fatalf("SetAssetInstallation: %v", err)
+	}
+}
+
 // TestSleuthVault_InstallSkillToBot_AmbiguousMatchErrors covers the case
 // where the asset-search response contains both a slug-matching asset and
 // a *different* display-name-matching asset. Without ambiguity detection,
