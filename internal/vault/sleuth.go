@@ -242,12 +242,17 @@ func (s *SleuthVault) AddAssetWithResult(ctx context.Context, asset *lockfile.As
 	}
 	defer resp.Body.Close()
 
-	// Parse response
+	// Parse response. Note: asset.name is the server-PERSISTED SLUG (e.g.
+	// "foo_skill"), not the requested display name — on both success and
+	// version-conflict responses. Callers rely on this to route follow-up
+	// operations (bot install) to the uploaded asset after collision
+	// resolution; if the server ever returned the display name here, a
+	// re-publish would silently mis-target a same-named asset.
 	var uploadResp struct {
 		Success bool   `json:"success"`
 		Error   string `json:"error"`
 		Asset   struct {
-			Name           string `json:"name"`
+			Name           string `json:"name"` // server-persisted slug
 			Version        string `json:"version"`
 			URL            string `json:"url"`
 			IsFirstVersion bool   `json:"is_first_version"`

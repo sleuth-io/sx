@@ -936,10 +936,7 @@ func (c *Client) addAssetWithResult(ctx context.Context, ast *lockfile.Asset, zi
 			result.Name = slug
 		}
 		if err := c.v.InheritInstallations(ctx, ast); err != nil {
-			// Preserve the resolved result alongside the error so a caller
-			// that logs both still sees the persisted slug; the error takes
-			// precedence either way.
-			return result, err
+			return vault.AddAssetResult{}, err
 		}
 		return result, nil
 	}
@@ -947,9 +944,7 @@ func (c *Client) addAssetWithResult(ctx context.Context, ast *lockfile.Asset, zi
 		ast.SourcePath = &lockfile.SourcePath{Path: "assets/" + ast.Name + "/" + ast.Version}
 	}
 	if err := c.v.InheritInstallations(ctx, ast); err != nil {
-		// Preserve the canonical result alongside the error (error still
-		// takes precedence), consistent with the conflict path above.
-		return result, err
+		return vault.AddAssetResult{}, err
 	}
 	return result, nil
 }

@@ -615,7 +615,12 @@ func (s *SleuthVault) resolveTeamGIDs(ctx context.Context, names []string) ([]st
 
 // assetGIDByName resolves an asset display name or slug to its server GID via
 // the vault assets search. ListAssets exposes slugs for Sleuth assets, while
-// older callers may still pass display names; bot install accepts both.
+// older callers may still pass display names; both are accepted.
+//
+// This resolver backs every install path that takes an asset reference
+// (SetAssetInstallation for org/repo/path/team/user/bot, plus uninstall), not
+// just bot installs — a regression here mis-targets all of them, so keep the
+// matching rules conservative.
 //
 // Slugs are unique and stable, so an exact slug match wins over display-name
 // matches from other assets. ListAssets and upload responses both return
