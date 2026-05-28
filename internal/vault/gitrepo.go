@@ -252,8 +252,7 @@ func (g *GitVault) GetVersionList(ctx context.Context, name string) ([]string, e
 	// Read list.txt for this asset
 	listPath := filepath.Join(g.repoPath, "assets", name, "list.txt")
 	if _, err := os.Stat(listPath); os.IsNotExist(err) {
-		// No versions exist for this asset
-		return []string{}, nil
+		return manifestAssetVersions(g.repoPath, name)
 	}
 
 	data, err := os.ReadFile(listPath)
@@ -276,6 +275,13 @@ func (g *GitVault) GetAssetByVersion(ctx context.Context, name, version string) 
 	// Check if asset directory exists
 	assetDir := filepath.Join(g.repoPath, "assets", name, version)
 	if _, err := os.Stat(assetDir); os.IsNotExist(err) {
+		asset, ok, manifestErr := findAssetVersionInManifest(g.repoPath, name, version)
+		if manifestErr != nil {
+			return nil, manifestErr
+		}
+		if ok {
+			return g.GetAsset(ctx, asset)
+		}
 		return nil, fmt.Errorf("asset %s@%s not found", name, version)
 	}
 
@@ -298,6 +304,15 @@ func (g *GitVault) GetMetadata(ctx context.Context, name, version string) (*meta
 	metadataPath := filepath.Join(g.repoPath, "assets", name, version, "metadata.toml")
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			asset, ok, manifestErr := findAssetVersionInManifest(g.repoPath, name, version)
+			if manifestErr != nil {
+				return nil, manifestErr
+			}
+			if ok {
+				return metadataFromAssetZip(ctx, g, asset)
+			}
+		}
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
 	return metadata.Parse(data)
