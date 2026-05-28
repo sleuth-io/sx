@@ -442,6 +442,22 @@ func TestPathVault_BotLifecycleE2E(t *testing.T) {
 		t.Fatalf("SetAssetInstallation (team): %v", err)
 	}
 
+	bots, err := v.ListBots(ctx)
+	if err != nil {
+		t.Fatalf("ListBots: %v", err)
+	}
+	if len(bots) != 1 {
+		t.Fatalf("ListBots returned %d bots, want 1", len(bots))
+	}
+	for _, name := range []string{"direct", "team-only", "global"} {
+		if !slices.Contains(bots[0].InstalledSkills, name) {
+			t.Errorf("bot summary missing resolved skill %s: %v", name, bots[0].InstalledSkills)
+		}
+	}
+	if slices.Contains(bots[0].InstalledSkills, "user-only") {
+		t.Errorf("bot summary should not include user-only skill: %v", bots[0].InstalledSkills)
+	}
+
 	// 4. Resolve the lock file as the bot identity (SX_BOT).
 	mgmt.ResetActorCache()
 	t.Setenv("SX_BOT", "python-backend")

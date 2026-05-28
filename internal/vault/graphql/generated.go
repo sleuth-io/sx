@@ -195,6 +195,7 @@ type AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent struct {
 	Typename *string `json:"__typename"`
 	Id       string  `json:"id"`
 	Name     string  `json:"name"`
+	Slug     string  `json:"slug"`
 }
 
 // GetTypename returns AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent.Typename, and is useful for accessing the field via an interface.
@@ -206,11 +207,15 @@ func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent) GetId() string { re
 // GetName returns AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent.Name, and is useful for accessing the field via an interface.
 func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent) GetName() string { return v.Name }
 
+// GetSlug returns AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent.Slug, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent) GetSlug() string { return v.Slug }
+
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
 type AssetGIDVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin struct {
 	Typename *string `json:"__typename"`
 	Id       string  `json:"id"`
 	Name     string  `json:"name"`
+	Slug     string  `json:"slug"`
 }
 
 // GetTypename returns AssetGIDVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Typename, and is useful for accessing the field via an interface.
@@ -226,11 +231,17 @@ func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetName(
 	return v.Name
 }
 
+// GetSlug returns AssetGIDVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Slug, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetSlug() string {
+	return v.Slug
+}
+
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesCommand includes the requested fields of the GraphQL type Command.
 type AssetGIDVaultAssetsVaultAssetsConnectionNodesCommand struct {
 	Typename *string `json:"__typename"`
 	Id       string  `json:"id"`
 	Name     string  `json:"name"`
+	Slug     string  `json:"slug"`
 }
 
 // GetTypename returns AssetGIDVaultAssetsVaultAssetsConnectionNodesCommand.Typename, and is useful for accessing the field via an interface.
@@ -244,11 +255,15 @@ func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesCommand) GetId() string { 
 // GetName returns AssetGIDVaultAssetsVaultAssetsConnectionNodesCommand.Name, and is useful for accessing the field via an interface.
 func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesCommand) GetName() string { return v.Name }
 
+// GetSlug returns AssetGIDVaultAssetsVaultAssetsConnectionNodesCommand.Slug, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesCommand) GetSlug() string { return v.Slug }
+
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesHook includes the requested fields of the GraphQL type Hook.
 type AssetGIDVaultAssetsVaultAssetsConnectionNodesHook struct {
 	Typename *string `json:"__typename"`
 	Id       string  `json:"id"`
 	Name     string  `json:"name"`
+	Slug     string  `json:"slug"`
 }
 
 // GetTypename returns AssetGIDVaultAssetsVaultAssetsConnectionNodesHook.Typename, and is useful for accessing the field via an interface.
@@ -260,11 +275,15 @@ func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesHook) GetId() string { ret
 // GetName returns AssetGIDVaultAssetsVaultAssetsConnectionNodesHook.Name, and is useful for accessing the field via an interface.
 func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesHook) GetName() string { return v.Name }
 
+// GetSlug returns AssetGIDVaultAssetsVaultAssetsConnectionNodesHook.Slug, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesHook) GetSlug() string { return v.Slug }
+
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesMcpServer includes the requested fields of the GraphQL type McpServer.
 type AssetGIDVaultAssetsVaultAssetsConnectionNodesMcpServer struct {
 	Typename *string `json:"__typename"`
 	Id       string  `json:"id"`
 	Name     string  `json:"name"`
+	Slug     string  `json:"slug"`
 }
 
 // GetTypename returns AssetGIDVaultAssetsVaultAssetsConnectionNodesMcpServer.Typename, and is useful for accessing the field via an interface.
@@ -278,11 +297,15 @@ func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesMcpServer) GetId() string 
 // GetName returns AssetGIDVaultAssetsVaultAssetsConnectionNodesMcpServer.Name, and is useful for accessing the field via an interface.
 func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesMcpServer) GetName() string { return v.Name }
 
+// GetSlug returns AssetGIDVaultAssetsVaultAssetsConnectionNodesMcpServer.Slug, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesMcpServer) GetSlug() string { return v.Slug }
+
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesRule includes the requested fields of the GraphQL type Rule.
 type AssetGIDVaultAssetsVaultAssetsConnectionNodesRule struct {
 	Typename *string `json:"__typename"`
 	Id       string  `json:"id"`
 	Name     string  `json:"name"`
+	Slug     string  `json:"slug"`
 }
 
 // GetTypename returns AssetGIDVaultAssetsVaultAssetsConnectionNodesRule.Typename, and is useful for accessing the field via an interface.
@@ -294,6 +317,9 @@ func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesRule) GetId() string { ret
 // GetName returns AssetGIDVaultAssetsVaultAssetsConnectionNodesRule.Name, and is useful for accessing the field via an interface.
 func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesRule) GetName() string { return v.Name }
 
+// GetSlug returns AssetGIDVaultAssetsVaultAssetsConnectionNodesRule.Slug, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesRule) GetSlug() string { return v.Slug }
+
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesSkill includes the requested fields of the GraphQL type Skill.
 // The GraphQL type's documentation follows.
 //
@@ -302,6 +328,7 @@ type AssetGIDVaultAssetsVaultAssetsConnectionNodesSkill struct {
 	Typename *string `json:"__typename"`
 	Id       string  `json:"id"`
 	Name     string  `json:"name"`
+	Slug     string  `json:"slug"`
 }
 
 // GetTypename returns AssetGIDVaultAssetsVaultAssetsConnectionNodesSkill.Typename, and is useful for accessing the field via an interface.
@@ -312,6 +339,9 @@ func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesSkill) GetId() string { re
 
 // GetName returns AssetGIDVaultAssetsVaultAssetsConnectionNodesSkill.Name, and is useful for accessing the field via an interface.
 func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesSkill) GetName() string { return v.Name }
+
+// GetSlug returns AssetGIDVaultAssetsVaultAssetsConnectionNodesSkill.Slug, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesSkill) GetSlug() string { return v.Slug }
 
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset includes the requested fields of the GraphQL interface VaultAsset.
 //
@@ -334,6 +364,8 @@ type AssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset interface {
 	GetId() string
 	// GetName returns the interface-field "name" from its implementation.
 	GetName() string
+	// GetSlug returns the interface-field "slug" from its implementation.
+	GetSlug() string
 }
 
 func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent) implementsGraphQLInterfaceAssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
@@ -961,11 +993,12 @@ func (v *InstallSkillToBotResponse) GetInstallSkillToBot() *InstallSkillToBotIns
 
 // ListBotsBotsManagedBot includes the requested fields of the GraphQL type ManagedBot.
 type ListBotsBotsManagedBot struct {
-	Id          string                            `json:"id"`
-	Name        string                            `json:"name"`
-	Slug        string                            `json:"slug"`
-	Description string                            `json:"description"`
-	Teams       []ListBotsBotsManagedBotTeamsTeam `json:"teams"`
+	Id              string                                                   `json:"id"`
+	Name            string                                                   `json:"name"`
+	Slug            string                                                   `json:"slug"`
+	Description     string                                                   `json:"description"`
+	Teams           []ListBotsBotsManagedBotTeamsTeam                        `json:"teams"`
+	InstalledSkills []ListBotsBotsManagedBotInstalledSkillsBotInstalledSkill `json:"installedSkills"`
 }
 
 // GetId returns ListBotsBotsManagedBot.Id, and is useful for accessing the field via an interface.
@@ -982,6 +1015,22 @@ func (v *ListBotsBotsManagedBot) GetDescription() string { return v.Description 
 
 // GetTeams returns ListBotsBotsManagedBot.Teams, and is useful for accessing the field via an interface.
 func (v *ListBotsBotsManagedBot) GetTeams() []ListBotsBotsManagedBotTeamsTeam { return v.Teams }
+
+// GetInstalledSkills returns ListBotsBotsManagedBot.InstalledSkills, and is useful for accessing the field via an interface.
+func (v *ListBotsBotsManagedBot) GetInstalledSkills() []ListBotsBotsManagedBotInstalledSkillsBotInstalledSkill {
+	return v.InstalledSkills
+}
+
+// ListBotsBotsManagedBotInstalledSkillsBotInstalledSkill includes the requested fields of the GraphQL type BotInstalledSkill.
+// The GraphQL type's documentation follows.
+//
+// Lightweight skill info for display on bot detail page.
+type ListBotsBotsManagedBotInstalledSkillsBotInstalledSkill struct {
+	Name string `json:"name"`
+}
+
+// GetName returns ListBotsBotsManagedBotInstalledSkillsBotInstalledSkill.Name, and is useful for accessing the field via an interface.
+func (v *ListBotsBotsManagedBotInstalledSkillsBotInstalledSkill) GetName() string { return v.Name }
 
 // ListBotsBotsManagedBotTeamsTeam includes the requested fields of the GraphQL type Team.
 type ListBotsBotsManagedBotTeamsTeam struct {
@@ -3511,6 +3560,7 @@ query AssetGID ($search: String!) {
 				__typename
 				id
 				name
+				slug
 			}
 		}
 	}
@@ -4007,6 +4057,9 @@ query ListBots {
 		description
 		teams {
 			id
+			name
+		}
+		installedSkills {
 			name
 		}
 	}

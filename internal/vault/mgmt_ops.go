@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/scope"
@@ -446,6 +447,7 @@ func commonListBots(vaultRoot string) ([]mgmt.Bot, error) {
 	out := make([]mgmt.Bot, len(m.Bots))
 	for i, b := range m.Bots {
 		out[i] = manifestBotToMgmt(b)
+		out[i].InstalledSkills = resolvedBotSkillNames(m, b.Name)
 	}
 	return out, nil
 }
@@ -461,7 +463,33 @@ func commonGetBot(vaultRoot, name string) (*mgmt.Bot, error) {
 		return nil, err
 	}
 	out := manifestBotToMgmt(*bot)
+	out.InstalledSkills = resolvedBotSkillNames(m, bot.Name)
 	return &out, nil
+}
+
+func resolvedBotSkillNames(m *manifest.Manifest, botName string) []string {
+	lf := manifest.Resolve(m, mgmt.Actor{Email: "bot:" + botName, Bot: botName})
+	if lf == nil || len(lf.Assets) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(lf.Assets))
+	out := make([]string, 0, len(lf.Assets))
+	for _, resolvedAsset := range lf.Assets {
+		if resolvedAsset.Type.Key != asset.TypeSkill.Key {
+			continue
+		}
+		name := strings.TrimSpace(resolvedAsset.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // findBotForMgmt wraps manifest.FindBot and translates manifest's

@@ -8,5 +8,8 @@ query ListBots {
       id
       name
     }
+    installedSkills {
+      name
+    }
   }
 }

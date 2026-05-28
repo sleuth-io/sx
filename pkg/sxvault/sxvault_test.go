@@ -31,13 +31,29 @@ func TestGitPutAgentWritesSXVaultFormat(t *testing.T) {
 	}
 
 	clone := cloneRemote(t, remote)
-	assertFileContains(t, filepath.Join(clone, "assets", "reviewer", "1.0.0", "AGENT.md"), "You are Reviewer.")
+	agentPath := filepath.Join(clone, "assets", "reviewer", "1.0.0", "AGENT.md")
+	assertFileContains(t, agentPath, "---\nname: reviewer\ndescription: Reviews pull requests.\n---")
+	assertFileContains(t, agentPath, "You are Reviewer.")
 	assertFileContains(t, filepath.Join(clone, "assets", "reviewer", "1.0.0", "metadata.toml"), `type = "agent"`)
 	manifest := readFile(t, filepath.Join(clone, "sx.toml"))
 	for _, want := range []string{`name = "reviewer"`, `kind = "bot"`, `bot = "reviewer"`} {
 		if !strings.Contains(manifest, want) {
 			t.Fatalf("sx.toml missing %q:\n%s", want, manifest)
 		}
+	}
+}
+
+func TestAgentMarkdownPreservesExistingFrontmatter(t *testing.T) {
+	got := agentMarkdown(AgentSpec{
+		AssetName:   "reviewer",
+		Description: "Reviews pull requests.",
+		Prompt:      "---\nname: custom-reviewer\ndescription: Custom description.\n---\n\nUse this body.",
+	})
+	if strings.Count(got, "---") != 2 {
+		t.Fatalf("agentMarkdown duplicated frontmatter:\n%s", got)
+	}
+	if !strings.Contains(got, "name: custom-reviewer") {
+		t.Fatalf("agentMarkdown did not preserve supplied frontmatter:\n%s", got)
 	}
 }
 
@@ -209,6 +225,13 @@ func TestPutSkillZipWithAndWithoutBotInstall(t *testing.T) {
 		BotName:     "reviewer",
 	}); err != nil {
 		t.Fatal(err)
+	}
+	bots, err := client.ListBots(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bots) != 1 || !slices.Contains(bots[0].InstalledSkills, "test-helper") {
+		t.Fatalf("ListBots returned installed skills %+v, want test-helper", bots)
 	}
 
 	clone := cloneRemote(t, remote)

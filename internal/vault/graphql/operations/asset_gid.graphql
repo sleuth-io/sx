@@ -4,6 +4,7 @@ query AssetGID($search: String!) {
       nodes {
         id
         name
+        slug
       }
     }
   }

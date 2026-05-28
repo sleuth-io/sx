@@ -156,10 +156,11 @@ type AgentResult struct {
 }
 
 type BotSummary struct {
-	Name        string
-	Slug        string
-	Description string
-	Teams       []string
+	Name            string
+	Slug            string
+	Description     string
+	Teams           []string
+	InstalledSkills []string
 }
 
 type BotRuntimeTokenSpec struct {
@@ -523,10 +524,11 @@ func (c *Client) ListBots(ctx context.Context) ([]BotSummary, error) {
 	out := make([]BotSummary, 0, len(bots))
 	for _, b := range bots {
 		out = append(out, BotSummary{
-			Name:        b.Name,
-			Slug:        b.Slug,
-			Description: b.Description,
-			Teams:       append([]string(nil), b.Teams...),
+			Name:            b.Name,
+			Slug:            b.Slug,
+			Description:     b.Description,
+			Teams:           append([]string(nil), b.Teams...),
+			InstalledSkills: append([]string(nil), b.InstalledSkills...),
 		})
 	}
 	return out, nil
@@ -674,7 +676,7 @@ func (c *Client) actorContext(ctx context.Context) context.Context {
 }
 
 func agentZip(spec AgentSpec) ([]byte, error) {
-	prompt := []byte(strings.TrimSpace(spec.Prompt) + "\n")
+	prompt := []byte(agentMarkdown(spec))
 	zipData, err := utils.CreateZipFromContent("AGENT.md", prompt)
 	if err != nil {
 		return nil, err
@@ -694,6 +696,56 @@ func agentZip(spec AgentSpec) ([]byte, error) {
 		return nil, err
 	}
 	return utils.AddFileToZip(zipData, "metadata.toml", metaBytes)
+}
+
+func agentMarkdown(spec AgentSpec) string {
+	prompt := strings.TrimSpace(spec.Prompt)
+	if strings.HasPrefix(prompt, "---") {
+		return prompt + "\n"
+	}
+	name := agentFrontmatterName(spec.AssetName)
+	description := agentFrontmatterDescription(spec.Description, spec.BotDescription, spec.AssetName)
+	return "---\nname: " + name + "\ndescription: " + description + "\n---\n\n" + prompt + "\n"
+}
+
+func agentFrontmatterName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		case r == '-' || r == '_' || r == ' ' || r == '.':
+			if !lastDash && b.Len() > 0 {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if len(out) > 64 {
+		out = strings.Trim(out[:64], "-")
+	}
+	if out == "" {
+		return "agent"
+	}
+	return out
+}
+
+func agentFrontmatterDescription(values ...string) string {
+	for _, value := range values {
+		value = strings.Join(strings.Fields(value), " ")
+		if value == "" {
+			continue
+		}
+		if len(value) > 1024 {
+			value = value[:1024]
+		}
+		return value
+	}
+	return "Custom agent"
 }
 
 func normalizeSkillZip(spec SkillZipSpec) ([]byte, error) {
