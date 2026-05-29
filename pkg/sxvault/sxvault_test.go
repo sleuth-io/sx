@@ -564,6 +564,27 @@ func TestPutSkillZipSameVersionIsIdempotent(t *testing.T) {
 	assertFileContains(t, filepath.Join(clone, "assets", "lint-helper", "1.0.0", "SKILL.md"), "Lint carefully.")
 }
 
+func TestPutSkillZipAcceptsSingleDirectoryUpload(t *testing.T) {
+	ctx := context.Background()
+	remote, client := newGitVaultClient(t)
+	if err := client.PutSkillZip(ctx, SkillZipSpec{
+		Name:        "graphql-field-skill",
+		Version:     "1",
+		Description: "Helps with GraphQL fields.",
+		ZipData:     skillZipInDirectory(t, "graphql-field", "Use GraphQL fields carefully."),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	clone := cloneRemote(t, remote)
+	assetDir := filepath.Join(clone, "assets", "graphql-field-skill", "1")
+	assertFileContains(t, filepath.Join(assetDir, "SKILL.md"), "Use GraphQL fields carefully.")
+	assertFileContains(t, filepath.Join(assetDir, "references", "guide.md"), "Field guide")
+	if _, err := os.Stat(filepath.Join(assetDir, "graphql-field", "SKILL.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("nested skill file stat error = %v, want not exist", err)
+	}
+}
+
 func TestPutSkillZipWithResultReturnsServerAssetName(t *testing.T) {
 	ctx := context.Background()
 	var postedName string
@@ -1810,6 +1831,28 @@ func skillZip(t *testing.T, prompt string) []byte {
 	}
 	if _, err := w.Write([]byte(prompt)); err != nil {
 		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func skillZipInDirectory(t *testing.T, dir, prompt string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range map[string]string{
+		dir + "/SKILL.md":            prompt,
+		dir + "/references/guide.md": "Field guide",
+	} {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := zw.Close(); err != nil {
 		t.Fatal(err)

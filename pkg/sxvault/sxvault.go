@@ -16,9 +16,12 @@
 package sxvault
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"slices"
 	"strings"
@@ -1139,6 +1142,10 @@ func normalizeSkillZip(spec SkillZipSpec) ([]byte, error) {
 	if !utils.IsZipFile(spec.ZipData) {
 		return nil, errors.New("sxvault: uploaded skill must be a zip file")
 	}
+	zipData, strippedRoot, err := stripSingleRootDirectoryFromZip(spec.ZipData)
+	if err != nil {
+		return nil, err
+	}
 	meta := &metadata.Metadata{
 		MetadataVersion: metadata.CurrentMetadataVersion,
 		Asset: metadata.Asset{
@@ -1149,7 +1156,7 @@ func normalizeSkillZip(spec SkillZipSpec) ([]byte, error) {
 		},
 		Skill: &metadata.SkillConfig{PromptFile: "SKILL.md"},
 	}
-	if raw, err := utils.ReadZipFile(spec.ZipData, "metadata.toml"); err == nil {
+	if raw, err := utils.ReadZipFile(zipData, "metadata.toml"); err == nil {
 		parsed, parseErr := metadata.Parse(raw)
 		if parseErr != nil {
 			return nil, parseErr
@@ -1167,15 +1174,118 @@ func normalizeSkillZip(spec SkillZipSpec) ([]byte, error) {
 		if strings.TrimSpace(meta.Skill.PromptFile) == "" {
 			meta.Skill.PromptFile = "SKILL.md"
 		}
+		meta.Skill.PromptFile = cleanUploadedZipName(meta.Skill.PromptFile)
+		if strippedRoot != "" {
+			meta.Skill.PromptFile = strings.TrimPrefix(meta.Skill.PromptFile, strippedRoot+"/")
+		}
 	}
-	if _, err := utils.ReadZipFile(spec.ZipData, meta.Skill.PromptFile); err != nil {
+	if _, err := utils.ReadZipFile(zipData, meta.Skill.PromptFile); err != nil {
 		return nil, fmt.Errorf("sxvault: skill prompt file %q missing from zip: %w", meta.Skill.PromptFile, err)
 	}
 	metaBytes, err := metadata.Marshal(meta)
 	if err != nil {
 		return nil, err
 	}
-	return utils.AddFileToZip(spec.ZipData, "metadata.toml", metaBytes)
+	return utils.AddFileToZip(zipData, "metadata.toml", metaBytes)
+}
+
+func stripSingleRootDirectoryFromZip(zipData []byte) ([]byte, string, error) {
+	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read zip: %w", err)
+	}
+
+	root := ""
+	hasFile := false
+	for _, file := range reader.File {
+		name := cleanUploadedZipName(file.Name)
+		if shouldIgnoreUploadedZipEntry(name) || file.FileInfo().IsDir() {
+			continue
+		}
+		parts := strings.SplitN(name, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return zipData, "", nil
+		}
+		if root == "" {
+			root = parts[0]
+		} else if root != parts[0] {
+			return zipData, "", nil
+		}
+		hasFile = true
+	}
+	if !hasFile || root == "" {
+		return zipData, "", nil
+	}
+
+	prefix := root + "/"
+	buf := new(bytes.Buffer)
+	writer := zip.NewWriter(buf)
+	for _, file := range reader.File {
+		name := cleanUploadedZipName(file.Name)
+		if shouldIgnoreUploadedZipEntry(name) {
+			continue
+		}
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		stripped := strings.TrimPrefix(name, prefix)
+		if stripped == "" {
+			continue
+		}
+		if err := copyZipFileAs(writer, file, stripped); err != nil {
+			_ = writer.Close()
+			return nil, "", fmt.Errorf("failed to copy file %s: %w", file.Name, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, "", fmt.Errorf("failed to close zip writer: %w", err)
+	}
+	return buf.Bytes(), root, nil
+}
+
+func cleanUploadedZipName(name string) string {
+	name = strings.TrimSpace(strings.ReplaceAll(name, "\\", "/"))
+	name = strings.TrimLeft(name, "/")
+	for strings.HasPrefix(name, "./") {
+		name = strings.TrimPrefix(name, "./")
+	}
+	return name
+}
+
+func shouldIgnoreUploadedZipEntry(name string) bool {
+	name = strings.TrimSuffix(name, "/")
+	return name == "" ||
+		name == ".DS_Store" ||
+		strings.HasSuffix(name, "/.DS_Store") ||
+		name == "__MACOSX" ||
+		strings.HasPrefix(name, "__MACOSX/")
+}
+
+func copyZipFileAs(writer *zip.Writer, file *zip.File, name string) error {
+	header := &zip.FileHeader{
+		Name:     name,
+		Method:   file.Method,
+		Modified: file.Modified,
+	}
+	header.SetMode(file.Mode())
+	if file.FileInfo().IsDir() {
+		header.Name = strings.TrimSuffix(header.Name, "/") + "/"
+		_, err := writer.CreateHeader(header)
+		return err
+	}
+
+	r, err := file.Open()
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	w, err := writer.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(w, r)
+	return err
 }
 
 func cleanNames(in []string) []string {
