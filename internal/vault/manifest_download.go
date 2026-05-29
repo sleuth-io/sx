@@ -3,8 +3,11 @@ package vault
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/metadata"
@@ -61,6 +64,54 @@ func findAssetVersionInManifest(vaultRoot, name, version string) (*lockfile.Asse
 		return found, true, nil
 	}
 	return nil, false, nil
+}
+
+func assetFromStorage(vaultRoot, name string) (*lockfile.Asset, bool, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, false, nil
+	}
+	listPath := filepath.Join(vaultRoot, "assets", name, "list.txt")
+	data, err := os.ReadFile(listPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("read version list for %q: %w", name, err)
+	}
+	versions := version.Sort(parseVersionList(data))
+	if len(versions) == 0 {
+		return nil, false, nil
+	}
+	latest := versions[len(versions)-1]
+	metaPath := filepath.Join(vaultRoot, "assets", name, latest, "metadata.toml")
+	metaBytes, err := os.ReadFile(metaPath)
+	if err != nil {
+		return nil, false, fmt.Errorf("read metadata for %q@%s: %w", name, latest, err)
+	}
+	meta, err := metadata.Parse(metaBytes)
+	if err != nil {
+		return nil, false, fmt.Errorf("parse metadata for %q@%s: %w", name, latest, err)
+	}
+	if meta.Asset.Type == (asset.Type{}) {
+		return nil, false, fmt.Errorf("metadata for %q@%s has no asset type", name, latest)
+	}
+	deps := make([]lockfile.Dependency, 0, len(meta.Asset.Dependencies))
+	for _, dep := range meta.Asset.Dependencies {
+		if dep = strings.TrimSpace(dep); dep != "" {
+			deps = append(deps, lockfile.Dependency{Name: dep})
+		}
+	}
+	return &lockfile.Asset{
+		Name:         name,
+		Version:      latest,
+		Type:         meta.Asset.Type,
+		Clients:      append([]string(nil), meta.Asset.Clients...),
+		Dependencies: deps,
+		SourcePath: &lockfile.SourcePath{
+			Path: filepath.ToSlash(filepath.Join("assets", name, latest)),
+		},
+	}, true, nil
 }
 
 func metadataFromAssetZip(ctx context.Context, repo Vault, asset *lockfile.Asset) (*metadata.Metadata, error) {

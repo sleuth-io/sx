@@ -791,7 +791,18 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
 		asset := m.FindAsset(assetName)
 		if asset == nil {
-			return nil, fmt.Errorf("asset %q not found", assetName)
+			recovered, ok, err := assetFromStorage(vaultRoot, assetName)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				return nil, fmt.Errorf("asset %q not found", assetName)
+			}
+			m.Assets = append(m.Assets, lockfileAssetToManifest(*recovered))
+			asset = m.FindAsset(assetName)
+			if asset == nil {
+				return nil, fmt.Errorf("asset %q not found after manifest repair", assetName)
+			}
 		}
 		// Re-check team admin membership inside the transaction to close
 		// the TOCTOU window between CLI pre-check and commit.

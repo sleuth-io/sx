@@ -770,6 +770,76 @@ func TestPathVault_BotLifecycleE2E(t *testing.T) {
 	}
 }
 
+func TestPathVault_SetAssetInstallationRepairsOrphanedStoredAsset(t *testing.T) {
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice Admin")
+
+	if err := manifest.Save(dir, &manifest.Manifest{
+		SchemaVersion: manifest.CurrentSchemaVersion,
+		Bots: []manifest.Bot{
+			{Name: "testy", Description: "Test bot"},
+		},
+	}); err != nil {
+		t.Fatalf("seed manifest: %v", err)
+	}
+
+	assetDir := filepath.Join(dir, "assets", "e2e-git-vault-skill-5524", "1")
+	if err := os.MkdirAll(assetDir, 0755); err != nil {
+		t.Fatalf("mkdir asset: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "assets", "e2e-git-vault-skill-5524", "list.txt"), []byte("1\n"), 0644); err != nil {
+		t.Fatalf("write list: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(assetDir, "SKILL.md"), []byte("---\nname: e2e-git-vault-skill-5524\ndescription: Test skill.\n---\n\n# Test\n"), 0644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(assetDir, "metadata.toml"), []byte(`metadata-version = "1.0"
+
+[asset]
+  name = "e2e-git-vault-skill-5524"
+  version = "1"
+  type = "skill"
+
+[skill]
+  prompt-file = "SKILL.md"
+`), 0644); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	if err := v.SetAssetInstallation(context.Background(), "e2e-git-vault-skill-5524", InstallTarget{
+		Kind: InstallKindBot,
+		Bot:  "testy",
+	}); err != nil {
+		t.Fatalf("SetAssetInstallation: %v", err)
+	}
+
+	m, _, err := manifest.LoadOrMigrate(dir)
+	if err != nil {
+		t.Fatalf("reload manifest: %v", err)
+	}
+	got := m.FindAsset("e2e-git-vault-skill-5524")
+	if got == nil {
+		t.Fatal("asset was not repaired into manifest")
+	}
+	if got.Version != "1" || got.Type != asset.TypeSkill {
+		t.Fatalf("manifest asset = %+v, want skill version 1", got)
+	}
+	if got.SourcePath == nil || got.SourcePath.Path != "assets/e2e-git-vault-skill-5524/1" {
+		t.Fatalf("source path = %+v, want stored asset path", got.SourcePath)
+	}
+	if len(got.Scopes) != 1 || got.Scopes[0].Kind != manifest.ScopeKindBot || got.Scopes[0].Bot != "testy" {
+		t.Fatalf("scopes = %+v, want bot testy", got.Scopes)
+	}
+}
+
 // TestPathVault_SetAssetInstallation_RejectsOtherUser verifies the user-
 // scoped install guard: only the authenticated caller may be the target.
 // Any write-access holder could otherwise force an asset to be "global"
