@@ -10,6 +10,7 @@ query ListBots {
     }
     installedSkills {
       name
+      assetType
       isDirectInstall
     }
   }

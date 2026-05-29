@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	vaultgql "github.com/sleuth-io/sx/internal/vault/graphql"
@@ -315,7 +316,7 @@ func (s *SleuthVault) RemoveAssetInstallation(ctx context.Context, assetName str
 	if err != nil {
 		return err
 	}
-	return s.uninstallSkillFromBot(ctx, skillGID, botGID)
+	return s.uninstallSkillFromBot(ctx, skillGID, botGID, false)
 }
 
 // ---- Bot management (via the existing skills.new GraphQL surface) ----
@@ -381,12 +382,17 @@ func (s *SleuthVault) listBotNodes(ctx context.Context) ([]sleuthBotNode, error)
 	return nodes, nil
 }
 
-// cleanBotSkills dedupes a bot's installed skills by name, OR-ing the
+// cleanBotSkills dedupes a bot's installed skill assets by name, OR-ing the
 // IsDirectInstall flag across duplicate entries, and returns them sorted by
-// name.
+// name. The server field is historically named installedSkills but may carry
+// non-skill assets; keep this projection skill-only so consumers don't render
+// installed agent prompt files as installed skills.
 func cleanBotSkills(skills []vaultgql.ListBotsBotsManagedBotInstalledSkillsBotInstalledSkill) []mgmt.BotSkill {
 	byName := make(map[string]bool, len(skills))
 	for _, skill := range skills {
+		if !isSleuthAssetType(skill.AssetType, asset.TypeSkill.Key) {
+			continue
+		}
 		name := strings.TrimSpace(skill.Name)
 		if name == "" {
 			continue
@@ -401,6 +407,10 @@ func cleanBotSkills(skills []vaultgql.ListBotsBotsManagedBotInstalledSkillsBotIn
 		return strings.Compare(a.Name, b.Name)
 	})
 	return out
+}
+
+func isSleuthAssetType(got, want string) bool {
+	return strings.EqualFold(strings.TrimSpace(got), strings.TrimSpace(want))
 }
 
 func warnIfBotListSoftCap(nodes []sleuthBotNode) {
@@ -521,6 +531,9 @@ func (s *SleuthVault) UpdateBot(ctx context.Context, bot mgmt.Bot) error {
 		Description: &bot.Description,
 	}
 	if bot.Teams != nil {
+		if teamIDs == nil {
+			teamIDs = []string{}
+		}
 		input.TeamIds = teamIDs
 	}
 	resp, err := vaultgql.UpdateBot(ctx, s.gqlClient(), input)
@@ -571,13 +584,17 @@ func (s *SleuthVault) RemoveBotTeam(ctx context.Context, botName, teamName strin
 	if !slices.Contains(bot.Teams, teamName) {
 		return nil
 	}
-	out := bot.Teams[:0]
+	// Build a fresh slice rather than reslicing bot.Teams in place, so we
+	// never mutate the backing array GetBot handed us (which a future cached
+	// GetBot could share). Stays non-nil empty when the last team is removed,
+	// so UpdateBot still emits teamIds: [].
+	remaining := make([]string, 0, len(bot.Teams))
 	for _, t := range bot.Teams {
 		if t != teamName {
-			out = append(out, t)
+			remaining = append(remaining, t)
 		}
 	}
-	bot.Teams = out
+	bot.Teams = remaining
 	return s.UpdateBot(ctx, *bot)
 }
 
@@ -608,40 +625,82 @@ func (s *SleuthVault) resolveTeamGIDs(ctx context.Context, names []string) ([]st
 
 // assetGIDByName resolves an asset display name or slug to its server GID via
 // the vault assets search. ListAssets exposes slugs for Sleuth assets, while
-// older callers may still pass display names; bot install accepts both.
+// older callers may still pass display names; both are accepted.
 //
-// Slugs are unique and stable, so we prefer slug matches over display-name
-// matches. If both a slug and a display-name match exist for different
-// assets, we return an ambiguity error rather than silently picking one
-// based on server ordering.
+// This resolver backs every install path that takes an asset reference
+// (SetAssetInstallation for org/repo/path/team/user/bot, plus uninstall), not
+// just bot installs — a regression here mis-targets all of them, so keep the
+// matching rules conservative.
+//
+// Slugs are unique and stable, so an exact slug match wins over display-name
+// matches from other assets. ListAssets and upload responses both return
+// slugs, so callers using the public API must be able to pass that value
+// back here without being blocked by another asset's display name.
 func (s *SleuthVault) assetGIDByName(ctx context.Context, name string) (string, error) {
-	resp, err := vaultgql.AssetGID(ctx, s.gqlClient(), name)
+	info, err := s.assetInfoByName(ctx, name)
 	if err != nil {
 		return "", err
+	}
+	return info.id, nil
+}
+
+func (s *SleuthVault) assetInfoByName(ctx context.Context, name string) (assetIDMatch, error) {
+	resp, err := vaultgql.AssetGID(ctx, s.gqlClient(), name)
+	if err != nil {
+		return assetIDMatch{}, err
 	}
 	// VaultAsset is a GraphQL interface with concrete subtypes
 	// (Skill, MCP, Agent, ClaudeCodePlugin, ...). Use the interface
 	// getters to avoid switching on every variant.
 	name = strings.TrimSpace(name)
-	var slugMatch, nameMatch string
+	var slugMatch assetIDMatch
+	var nameMatches []assetIDMatch
 	for _, n := range resp.Vault.Assets.Nodes {
-		if n.GetSlug() == name && slugMatch == "" {
-			slugMatch = n.GetId()
+		match := assetIDMatch{id: n.GetId(), slug: n.GetSlug(), typ: string(n.GetType())}
+		if n.GetSlug() == name && slugMatch.id == "" {
+			slugMatch = match
 		}
-		if n.GetName() == name && n.GetSlug() != name && nameMatch == "" {
-			nameMatch = n.GetId()
+		if n.GetName() == name && n.GetSlug() != name {
+			nameMatches = appendDistinctAssetMatch(nameMatches, match)
 		}
 	}
-	if slugMatch != "" && nameMatch != "" {
-		return "", fmt.Errorf("asset %q is ambiguous: matches both a slug and a different display name", name)
-	}
-	if slugMatch != "" {
+	// An exact slug match is unambiguous — slugs are unique and are what
+	// ListAssets / upload responses hand back — so it always wins.
+	if slugMatch.id != "" {
 		return slugMatch, nil
 	}
-	if nameMatch != "" {
-		return nameMatch, nil
+	switch len(nameMatches) {
+	case 0:
+		return assetIDMatch{}, fmt.Errorf("%w: asset %q", ErrAssetNotFound, name)
+	case 1:
+		return nameMatches[0], nil
+	default:
+		// Several distinct assets share this display name and none matched
+		// it as a slug. Surface the ambiguity (with the candidate slugs)
+		// rather than silently installing whichever the server listed first.
+		slugs := make([]string, 0, len(nameMatches))
+		for _, m := range nameMatches {
+			slugs = append(slugs, m.slug)
+		}
+		return assetIDMatch{}, fmt.Errorf("asset name %q is ambiguous; multiple assets share it (slugs: %s) — install by slug instead", name, strings.Join(slugs, ", "))
 	}
-	return "", fmt.Errorf("asset %q not found", name)
+}
+
+type assetIDMatch struct {
+	id   string
+	slug string
+	typ  string
+}
+
+// appendDistinctAssetMatch appends m unless an entry with the same id is
+// already present, so a duplicated search node doesn't read as ambiguity.
+func appendDistinctAssetMatch(matches []assetIDMatch, m assetIDMatch) []assetIDMatch {
+	for _, existing := range matches {
+		if existing.id == m.id {
+			return matches
+		}
+	}
+	return append(matches, m)
 }
 
 // installSkillToBot installs an asset directly to a bot via the existing
@@ -675,10 +734,13 @@ func (s *SleuthVault) installSkillToBot(ctx context.Context, assetName, botName 
 	return nil
 }
 
-// uninstallSkillFromBot is the inverse of installSkillToBot. Used by
-// ClearAssetInstallations to drop bot installs alongside the
-// non-bot scopes that removeAssetInstallations handles.
-func (s *SleuthVault) uninstallSkillFromBot(ctx context.Context, skillGID, botGID string) error {
+// uninstallSkillFromBot is the inverse of installSkillToBot. When
+// missingOK is true, a false/no-errors response is treated as an
+// idempotent no-op: Pulse reports success=false when no bot installation
+// row was deleted, which is acceptable during cleanup flows such as
+// ClearAssetInstallations. Explicit RemoveAssetInstallation calls pass
+// missingOK=false so unexpected no-op removals still surface.
+func (s *SleuthVault) uninstallSkillFromBot(ctx context.Context, skillGID, botGID string, missingOK bool) error {
 	resp, err := vaultgql.UninstallSkillFromBot(ctx, s.gqlClient(), botGID, skillGID)
 	if err != nil {
 		return err
@@ -690,6 +752,9 @@ func (s *SleuthVault) uninstallSkillFromBot(ctx context.Context, skillGID, botGI
 		return err
 	}
 	if !resp.UninstallSkillFromBot.Success {
+		if missingOK {
+			return nil
+		}
 		return errors.New("uninstallSkillFromBot reported success=false with no errors — possible schema drift")
 	}
 	return nil
@@ -703,17 +768,18 @@ func (s *SleuthVault) uninstallSkillFromBot(ctx context.Context, skillGID, botGI
 const botsInstalledLookupConcurrency = 8
 
 // botsWithAssetInstalled queries every bot in the org and returns the
-// GIDs of those whose installedSkills list contains assetName. Used by
-// ClearAssetInstallations to find which bots need an uninstall call —
-// the existing removeAssetInstallations mutation does NOT touch bot
-// installs (those live in a separate mutation pair).
+// GIDs of those whose installedSkills list contains assetName as a direct
+// bot install. Inherited org/team/repo skills are intentionally ignored:
+// ClearAssetInstallations is looking only for bot-scoped rows that require
+// the dedicated uninstallSkillFromBot mutation. Non-bot scopes are handled
+// later by removeAssetInstallations.
 //
 // Performance: the per-bot fan-out is bounded by botsInstalledLookupConcurrency
 // goroutines. The first error returned by any worker cancels its peers via
 // the local context; the function returns that error immediately so
 // ClearAssetInstallations doesn't continue against a possibly-inconsistent
 // view of the org.
-func (s *SleuthVault) botsWithAssetInstalled(ctx context.Context, assetName string) ([]string, error) {
+func (s *SleuthVault) botsWithAssetInstalled(ctx context.Context, assetName, assetType string) ([]string, error) {
 	nodes, err := s.listBotNodes(ctx)
 	if err != nil {
 		return nil, err
@@ -743,7 +809,7 @@ func (s *SleuthVault) botsWithAssetInstalled(ctx context.Context, assetName stri
 				return
 			}
 			for _, sk := range resp.Bot.InstalledSkills {
-				if sk.Name == assetName {
+				if sk.Name == assetName && sk.IsDirectInstall && isSleuthAssetType(sk.AssetType, assetType) {
 					results <- result{idx: idx, gid: n.ID}
 					break
 				}
@@ -902,6 +968,58 @@ func (s *SleuthVault) DeleteBotApiKey(ctx context.Context, botName, keyID string
 	return nil
 }
 
+func (s *SleuthVault) CreateAgentAsset(ctx context.Context, name, description, rawContent, botName string) (AddAssetResult, error) {
+	name = strings.TrimSpace(name)
+	rawContent = strings.TrimSpace(rawContent)
+	if name == "" || rawContent == "" {
+		return AddAssetResult{}, errors.New("agent name and raw content are required")
+	}
+	botGID, err := s.botGIDByName(ctx, botName)
+	if err != nil {
+		return AddAssetResult{}, fmt.Errorf("resolve bot for agent install: %w", err)
+	}
+	input := vaultgql.CreateAssetInput{
+		Name:      name,
+		AssetType: "agent",
+		Installations: []vaultgql.AssetInstallationInput{
+			{
+				EntityType: vaultgql.VaultAssetInstallationEntityTypeBot,
+				EntityId:   &botGID,
+			},
+		},
+		RawContent: &rawContent,
+	}
+	if description = strings.TrimSpace(description); description != "" {
+		input.Description = &description
+	}
+	resp, err := vaultgql.CreateAgentAsset(ctx, s.gqlClient(), input)
+	if err != nil {
+		return AddAssetResult{}, fmt.Errorf("create agent asset: %w", err)
+	}
+	if resp.CreateAsset == nil {
+		return AddAssetResult{}, errors.New("missing createAsset payload in response")
+	}
+	if err := gqlMutationErrors(resp.CreateAsset.Errors); err != nil {
+		return AddAssetResult{}, err
+	}
+	if resp.CreateAsset.Asset == nil {
+		return AddAssetResult{}, errors.New("createAsset returned no asset")
+	}
+	asset := *resp.CreateAsset.Asset
+	result := AddAssetResult{
+		Name:           strings.TrimSpace(asset.GetSlug()),
+		Version:        strings.TrimSpace(asset.GetLatestVersion()),
+		IsFirstVersion: true,
+	}
+	if result.Name == "" {
+		result.Name = name
+	}
+	if result.Version == "" {
+		result.Version = "1"
+	}
+	return result, nil
+}
+
 func (s *SleuthVault) ClearAssetInstallations(ctx context.Context, assetName string) error {
 	// Two-step clear: removeAssetInstallations handles repo/team/user/
 	// org scopes but does NOT touch bot installs (those live in a
@@ -910,19 +1028,17 @@ func (s *SleuthVault) ClearAssetInstallations(ctx context.Context, assetName str
 	// first; a partial failure here would leave us with neither the
 	// bot installs cleared nor the non-bot ones, so do bots first and
 	// only call the main clear if every bot uninstall succeeds.
-	botGIDs, err := s.botsWithAssetInstalled(ctx, assetName)
+	info, err := s.assetInfoByName(ctx, assetName)
+	if err != nil {
+		return err
+	}
+	botGIDs, err := s.botsWithAssetInstalled(ctx, assetName, info.typ)
 	if err != nil {
 		return fmt.Errorf("listing bots for asset %q: %w", assetName, err)
 	}
-	if len(botGIDs) > 0 {
-		skillGID, err := s.assetGIDByName(ctx, assetName)
-		if err != nil {
-			return err
-		}
-		for _, botGID := range botGIDs {
-			if err := s.uninstallSkillFromBot(ctx, skillGID, botGID); err != nil {
-				return fmt.Errorf("uninstalling %q from bot %s: %w", assetName, botGID, err)
-			}
+	for _, botGID := range botGIDs {
+		if err := s.uninstallSkillFromBot(ctx, info.id, botGID, true); err != nil {
+			return fmt.Errorf("uninstalling %q from bot %s: %w", assetName, botGID, err)
 		}
 	}
 

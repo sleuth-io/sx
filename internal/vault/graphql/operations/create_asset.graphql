@@ -1,0 +1,16 @@
+mutation CreateAgentAsset($input: CreateAssetInput!) {
+  createAsset(input: $input) {
+    asset {
+      __typename
+      id
+      slug
+      name
+      type
+      latestVersion
+    }
+    errors {
+      field
+      messages
+    }
+  }
+}

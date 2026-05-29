@@ -5,6 +5,7 @@ query AssetGID($search: String!) {
         id
         name
         slug
+        type
       }
     }
   }

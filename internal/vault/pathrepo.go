@@ -151,8 +151,7 @@ func (p *PathVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipData
 func (p *PathVault) GetVersionList(ctx context.Context, name string) ([]string, error) {
 	listPath := filepath.Join(p.repoPath, "assets", name, "list.txt")
 	if _, err := os.Stat(listPath); os.IsNotExist(err) {
-		// No versions exist for this asset
-		return []string{}, nil
+		return manifestAssetVersions(p.repoPath, name)
 	}
 
 	data, err := os.ReadFile(listPath)
@@ -169,6 +168,15 @@ func (p *PathVault) GetMetadata(ctx context.Context, name, version string) (*met
 	metadataPath := filepath.Join(p.repoPath, "assets", name, version, "metadata.toml")
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			asset, ok, manifestErr := findAssetVersionInManifest(p.repoPath, name, version)
+			if manifestErr != nil {
+				return nil, manifestErr
+			}
+			if ok {
+				return metadataFromAssetZip(ctx, p, asset)
+			}
+		}
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
 	return metadata.Parse(data)
@@ -179,6 +187,13 @@ func (p *PathVault) GetMetadata(ctx context.Context, name, version string) (*met
 func (p *PathVault) GetAssetByVersion(ctx context.Context, name, version string) ([]byte, error) {
 	assetDir := filepath.Join(p.repoPath, "assets", name, version)
 	if _, err := os.Stat(assetDir); os.IsNotExist(err) {
+		asset, ok, manifestErr := findAssetVersionInManifest(p.repoPath, name, version)
+		if manifestErr != nil {
+			return nil, manifestErr
+		}
+		if ok {
+			return p.GetAsset(ctx, asset)
+		}
 		return nil, fmt.Errorf("asset %s@%s not found", name, version)
 	}
 
@@ -228,8 +243,12 @@ func (p *PathVault) InheritInstallations(ctx context.Context, asset *lockfile.As
 // RemoveAsset removes an asset from the manifest. If delete is true, the
 // asset's files are also removed from the vault's storage directory.
 func (p *PathVault) RemoveAsset(ctx context.Context, assetName, version string, delete bool) error {
-	if err := removeAssetFromManifest(p.repoPath, assetName, version); err != nil {
+	removed, err := removeAssetFromManifest(p.repoPath, assetName, version)
+	if err != nil {
 		return err
+	}
+	if removed == 0 {
+		return ErrAssetNotFound
 	}
 
 	if delete {

@@ -33,7 +33,7 @@ func loadManifest(vaultRoot string) (*manifest.Manifest, error) {
 // "skip audit" (used by no-op paths). fn may return an error to abort.
 //
 // Atomicity contract: the manifest write and the audit append are
-// separate operations. If Save succeeds but AppendAuditEvent fails (disk
+// separate operations. If Save succeeds but audit append fails (disk
 // full, permission error, etc.) the mutation is durable but unaudited.
 // This is intentional — an already-committed state change cannot be
 // rolled back because its audit line failed, and the alternative (roll
@@ -41,6 +41,18 @@ func loadManifest(vaultRoot string) (*manifest.Manifest, error) {
 // keeps concurrent writers from racing; lost audit lines are treated as
 // an operational alarm, not a bug.
 func withManifest(vaultRoot string, actor mgmt.Actor, fn func(*manifest.Manifest) (*mgmt.AuditEvent, error)) error {
+	return withManifestEvents(vaultRoot, actor, func(m *manifest.Manifest) ([]mgmt.AuditEvent, error) {
+		event, err := fn(m)
+		if err != nil || event == nil {
+			return nil, err
+		}
+		return []mgmt.AuditEvent{*event}, nil
+	})
+}
+
+// withManifestEvents is the multi-audit-event variant used when one
+// manifest mutation should produce related audit rows.
+func withManifestEvents(vaultRoot string, actor mgmt.Actor, fn func(*manifest.Manifest) ([]mgmt.AuditEvent, error)) error {
 	if err := actor.RequireRealIdentity(); err != nil {
 		return fmt.Errorf("vault mutations require a real git identity (set git config user.email): %w", err)
 	}
@@ -48,18 +60,20 @@ func withManifest(vaultRoot string, actor mgmt.Actor, fn func(*manifest.Manifest
 	if err != nil {
 		return err
 	}
-	event, err := fn(m)
+	events, err := fn(m)
 	if err != nil {
 		return err
 	}
 	if err := manifest.Save(vaultRoot, m); err != nil {
 		return err
 	}
-	if event == nil {
+	if len(events) == 0 {
 		return nil
 	}
-	event.Actor = actor.Email
-	return mgmt.AppendAuditEvent(vaultRoot, *event)
+	for i := range events {
+		events[i].Actor = actor.Email
+	}
+	return mgmt.AppendAuditEvents(vaultRoot, events)
 }
 
 // requireTeamAdminInTx looks up teamName in the in-transaction manifest
@@ -788,10 +802,29 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 		return fmt.Errorf("unknown installation kind: %q", target.Kind)
 	}
 
-	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+	return withManifestEvents(vaultRoot, actor, func(m *manifest.Manifest) ([]mgmt.AuditEvent, error) {
 		asset := m.FindAsset(assetName)
+		var recoveredAuditData map[string]any
 		if asset == nil {
-			return nil, fmt.Errorf("asset %q not found", assetName)
+			recovered, ok, err := assetFromStorage(vaultRoot, assetName)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				return nil, fmt.Errorf("asset %q not found", assetName)
+			}
+			recoveredAuditData = map[string]any{
+				"recovered_from_storage": true,
+				"version":                recovered.Version,
+				"type":                   recovered.Type.Key,
+				"source":                 "path",
+				"path":                   filepath.ToSlash(filepath.Join("assets", recovered.Name, recovered.Version)),
+			}
+			m.Assets = append(m.Assets, lockfileAssetToManifest(*recovered))
+			asset = m.FindAsset(assetName)
+			if asset == nil {
+				return nil, fmt.Errorf("asset %q not found after manifest repair", assetName)
+			}
 		}
 		// Re-check team admin membership inside the transaction to close
 		// the TOCTOU window between CLI pre-check and commit.
@@ -810,12 +843,24 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 		} else if !scopeExistsOnAsset(asset.Scopes, s) {
 			asset.Scopes = append(asset.Scopes, s)
 		}
-		return &mgmt.AuditEvent{
+		installEvent := mgmt.AuditEvent{
 			Event:      mgmt.EventInstallSet,
 			TargetType: mgmt.TargetTypeInstallation,
 			Target:     assetName,
 			Data:       target.AuditData(),
-		}, nil
+		}
+		if recoveredAuditData != nil {
+			return []mgmt.AuditEvent{
+				{
+					Event:      mgmt.EventAssetRecovered,
+					TargetType: mgmt.TargetTypeAsset,
+					Target:     assetName,
+					Data:       recoveredAuditData,
+				},
+				installEvent,
+			}, nil
+		}
+		return []mgmt.AuditEvent{installEvent}, nil
 	})
 }
 

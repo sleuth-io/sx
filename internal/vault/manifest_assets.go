@@ -99,13 +99,13 @@ func inheritAssetScopesFromManifest(vaultRoot string, asset *lockfile.Asset) err
 
 // removeAssetFromManifest deletes every entry for the named asset, or
 // only rows matching version when non-empty.
-func removeAssetFromManifest(vaultRoot, name, version string) error {
+func removeAssetFromManifest(vaultRoot, name, version string) (int, error) {
 	m, err := loadManifest(vaultRoot)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	m.RemoveAsset(name, version)
-	return manifest.Save(vaultRoot, m)
+	removed := m.RemoveAsset(name, version)
+	return removed, manifest.Save(vaultRoot, m)
 }
 
 // renameAssetInManifest rewrites every entry with the old name.

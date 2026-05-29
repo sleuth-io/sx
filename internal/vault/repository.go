@@ -21,10 +21,20 @@ var ErrLockFileNotFound = errors.New("lock file not found")
 // management operation.
 var ErrNotImplemented = errors.New("operation not supported for this vault type")
 
+// ErrAssetNotFound is returned when a requested asset does not exist.
+var ErrAssetNotFound = errors.New("asset not found")
+
 // ErrVersionExists is returned when attempting to add an asset version that already exists
 type ErrVersionExists struct {
 	Name    string
 	Version string
+	// Slug is the server-persisted slug of the conflicting asset. Only the
+	// Sleuth vault populates it (from the upload-conflict response); the
+	// Git and Path vaults always leave it empty. Callers re-publishing a
+	// collision-resolved upload should prefer this over the requested Name
+	// when non-empty, so follow-up operations target the uploaded asset and
+	// not a same-named one — and must handle the empty case for other vaults.
+	Slug    string
 	Message string
 }
 
@@ -33,6 +43,18 @@ func (e *ErrVersionExists) Error() string {
 		return e.Message
 	}
 	return fmt.Sprintf("version %s already exists for asset %s", e.Version, e.Name)
+}
+
+// AddAssetResult contains canonical asset information returned by a vault
+// after upload. Server-backed vaults may normalize the requested name into a
+// persisted slug; callers should use Name for follow-up operations.
+// IsFirstVersion is true when the upload created the first stored version of
+// the asset, which lets callers distinguish new-asset setup from re-publish.
+type AddAssetResult struct {
+	Name           string
+	Version        string
+	URL            string
+	IsFirstVersion bool
 }
 
 // Vault represents a source of assets with read and write capabilities

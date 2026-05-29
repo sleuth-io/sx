@@ -189,8 +189,15 @@ func (s *SleuthVault) GetAsset(ctx context.Context, asset *lockfile.Asset) ([]by
 	}
 }
 
-// AddAsset uploads an asset to the Sleuth server
+// AddAsset uploads an asset to the Sleuth server.
 func (s *SleuthVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipData []byte) error {
+	_, err := s.AddAssetWithResult(ctx, asset, zipData)
+	return err
+}
+
+// AddAssetWithResult uploads an asset to the Sleuth server and returns the
+// persisted asset identifiers from the server response.
+func (s *SleuthVault) AddAssetWithResult(ctx context.Context, asset *lockfile.Asset, zipData []byte) (AddAssetResult, error) {
 	endpoint := s.serverURL + "/api/skills/assets"
 
 	// Create multipart writer
@@ -200,10 +207,10 @@ func (s *SleuthVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipDa
 	// Add file part
 	part, err := writer.CreateFormFile("file", fmt.Sprintf("%s-%s.zip", asset.Name, asset.Version))
 	if err != nil {
-		return fmt.Errorf("failed to create form file: %w", err)
+		return AddAssetResult{}, fmt.Errorf("failed to create form file: %w", err)
 	}
 	if _, err := part.Write(zipData); err != nil {
-		return fmt.Errorf("failed to write zip data: %w", err)
+		return AddAssetResult{}, fmt.Errorf("failed to write zip data: %w", err)
 	}
 
 	// Add metadata fields
@@ -213,13 +220,13 @@ func (s *SleuthVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipDa
 
 	// Close writer
 	if err := writer.Close(); err != nil {
-		return fmt.Errorf("failed to close writer: %w", err)
+		return AddAssetResult{}, fmt.Errorf("failed to close writer: %w", err)
 	}
 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, body)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return AddAssetResult{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -231,48 +238,70 @@ func (s *SleuthVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipDa
 	// Execute request
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to upload asset: %w", err)
+		return AddAssetResult{}, fmt.Errorf("failed to upload asset: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Parse response
+	// Parse response. Note: asset.name is the server-PERSISTED SLUG (e.g.
+	// "foo_skill"), not the requested display name — on both success and
+	// version-conflict responses. Callers rely on this to route follow-up
+	// operations (bot install) to the uploaded asset after collision
+	// resolution; if the server ever returned the display name here, a
+	// re-publish would silently mis-target a same-named asset.
 	var uploadResp struct {
 		Success bool   `json:"success"`
 		Error   string `json:"error"`
 		Asset   struct {
-			Name    string `json:"name"`
-			Version string `json:"version"`
-			URL     string `json:"url"`
+			Name           string `json:"name"` // server-persisted slug
+			Version        string `json:"version"`
+			URL            string `json:"url"`
+			IsFirstVersion bool   `json:"is_first_version"`
 		} `json:"asset"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&uploadResp); err != nil {
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return AddAssetResult{}, fmt.Errorf("failed to read upload response: %w", err)
+	}
+	if err := json.Unmarshal(respBody, &uploadResp); err != nil {
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-			return fmt.Errorf("HTTP %d", resp.StatusCode)
+			return AddAssetResult{}, httpStatusError(resp.StatusCode, respBody)
 		}
-		return fmt.Errorf("failed to parse response: %w", err)
+		return AddAssetResult{}, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		if uploadResp.Error != "" {
-			// Check for version conflict error
-			if strings.Contains(uploadResp.Error, "already exists") {
-				return &ErrVersionExists{
-					Name:    asset.Name,
-					Version: asset.Version,
-					Message: uploadResp.Error,
-				}
+		// HTTP 409 is the protocol-level version-conflict signal; the error
+		// string is a UI message and may be reworded. Treat the status as
+		// authoritative and keep the substring check as a fallback for
+		// servers that surface the conflict under a different status.
+		if resp.StatusCode == http.StatusConflict || strings.Contains(uploadResp.Error, "already exists") {
+			message := uploadResp.Error
+			if message == "" {
+				message = fmt.Sprintf("version %s already exists for asset %s", asset.Version, asset.Name)
 			}
-			return errors.New(uploadResp.Error)
+			return AddAssetResult{}, &ErrVersionExists{
+				Name:    asset.Name,
+				Version: asset.Version,
+				// Server-persisted slug, when the conflict response
+				// carries it — lets a re-publish route follow-up
+				// operations to the uploaded asset rather than a
+				// different one sharing the requested name.
+				Slug:    uploadResp.Asset.Name,
+				Message: message,
+			}
 		}
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+		if uploadResp.Error != "" {
+			return AddAssetResult{}, errors.New(uploadResp.Error)
+		}
+		return AddAssetResult{}, httpStatusError(resp.StatusCode, respBody)
 	}
 
 	if !uploadResp.Success {
 		if uploadResp.Error != "" {
-			return errors.New(uploadResp.Error)
+			return AddAssetResult{}, errors.New(uploadResp.Error)
 		}
-		return errors.New("upload failed: server returned success=false")
+		return AddAssetResult{}, errors.New("upload failed: server returned success=false")
 	}
 
 	// Update asset with source information if server returns URL
@@ -282,7 +311,20 @@ func (s *SleuthVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipDa
 		}
 	}
 
-	return nil
+	return AddAssetResult{
+		Name:           uploadResp.Asset.Name,
+		Version:        uploadResp.Asset.Version,
+		URL:            uploadResp.Asset.URL,
+		IsFirstVersion: uploadResp.Asset.IsFirstVersion,
+	}, nil
+}
+
+func httpStatusError(statusCode int, body []byte) error {
+	bodyText := strings.TrimSpace(string(body))
+	if bodyText == "" {
+		return fmt.Errorf("HTTP %d", statusCode)
+	}
+	return fmt.Errorf("HTTP %d: %s", statusCode, bodyText)
 }
 
 // GetVersionList retrieves available versions for an asset
@@ -307,7 +349,10 @@ func (s *SleuthVault) GetVersionList(ctx context.Context, name string) ([]string
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("%w: %s", ErrAssetNotFound, strings.TrimSpace(string(body)))
+		}
+		return nil, httpStatusError(resp.StatusCode, body)
 	}
 
 	// Read plain text response (newline-separated versions)
@@ -431,6 +476,13 @@ func (s *SleuthVault) PostUsageStats(ctx context.Context, jsonlData string) erro
 func (s *SleuthVault) RemoveAsset(ctx context.Context, assetName, version string, delete bool) error {
 	if version != "" {
 		return errors.New("version-specific removal is not supported for Sleuth vaults")
+	}
+	info, err := s.assetInfoByName(ctx, assetName)
+	if err != nil {
+		return err
+	}
+	if info.slug != "" {
+		assetName = info.slug
 	}
 
 	input := vaultgql.RemoveAssetInstallationsInput{AssetName: assetName}

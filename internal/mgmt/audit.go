@@ -14,8 +14,10 @@ import (
 // audit JSONL files.
 const AuditDirName = ".sx/audit"
 
-// Audit event names. These mirror the set skills.new emits so dashboards and
-// downstream consumers can treat the two streams interchangeably.
+// Audit event names. Most mirror the set skills.new emits so dashboards and
+// downstream consumers can treat the two streams interchangeably; local-only
+// vault maintenance events are explicit where they do not have a server
+// equivalent.
 const (
 	EventTeamCreated       = "team.created"
 	EventTeamUpdated       = "team.updated"
@@ -38,6 +40,7 @@ const (
 	// local constants are defined for those events to avoid implying
 	// audit coverage that the local log doesn't have. See docs/bots.md.
 	EventAssetCreated   = "asset.created"
+	EventAssetRecovered = "asset.recovered"
 	EventAssetUpdated   = "asset.updated"
 	EventAssetRemoved   = "asset.removed"
 	EventAssetRenamed   = "asset.renamed"
@@ -111,21 +114,47 @@ func getAuditProfileTag() string {
 // the active profile (when set via SetAuditProfileTag) so consumers can
 // correlate cross-profile activity.
 func AppendAuditEvent(vaultRoot string, event AuditEvent) error {
-	if event.Timestamp.IsZero() {
-		event.Timestamp = time.Now().UTC()
-	} else {
-		event.Timestamp = event.Timestamp.UTC()
+	return AppendAuditEvents(vaultRoot, []AuditEvent{event})
+}
+
+// AppendAuditEvents appends a batch of events to the monthly audit files.
+// Events without timestamps share a single timestamp so related audit rows
+// stay together in the log.
+func AppendAuditEvents(vaultRoot string, events []AuditEvent) error {
+	if len(events) == 0 {
+		return nil
 	}
-	if event.Profile == "" {
-		event.Profile = getAuditProfileTag()
+	now := time.Now().UTC()
+	profile := getAuditProfileTag()
+	byPath := make(map[string][]AuditEvent)
+	for _, event := range events {
+		if event.Timestamp.IsZero() {
+			event.Timestamp = now
+		} else {
+			event.Timestamp = event.Timestamp.UTC()
+		}
+		if event.Profile == "" {
+			event.Profile = profile
+		}
+		path := filepath.Join(vaultRoot, AuditDirName, monthFile(event.Timestamp))
+		byPath[path] = append(byPath[path], event)
 	}
 
 	dir := filepath.Join(vaultRoot, AuditDirName)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create audit directory: %w", err)
 	}
-	path := filepath.Join(dir, monthFile(event.Timestamp))
-	return appendJSONL(path, []AuditEvent{event})
+	paths := make([]string, 0, len(byPath))
+	for path := range byPath {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		if err := appendJSONL(path, byPath[path]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // QueryAuditEvents reads all monthly files under .sx/audit and returns the

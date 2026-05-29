@@ -20,6 +20,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/mgmt"
+	"github.com/sleuth-io/sx/internal/vault"
 )
 
 func TestGitPutAgentWritesSXVaultFormat(t *testing.T) {
@@ -67,6 +68,30 @@ func hasDirectBotSkill(skills []BotSkillSummary, name string) bool {
 	return false
 }
 
+func zipContains(t *testing.T, data []byte, path, want string) bool {
+	t.Helper()
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatalf("read zip: %v", err)
+	}
+	for _, file := range zr.File {
+		if file.Name != path {
+			continue
+		}
+		rc, err := file.Open()
+		if err != nil {
+			t.Fatalf("open %s: %v", path, err)
+		}
+		defer rc.Close()
+		body, err := io.ReadAll(rc)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		return strings.Contains(string(body), want)
+	}
+	return false
+}
+
 func TestAgentMarkdownPreservesExistingFrontmatter(t *testing.T) {
 	got := agentMarkdown(AgentSpec{
 		AssetName:   "reviewer",
@@ -93,6 +118,21 @@ func TestAgentMarkdownWrapsPromptStartingWithHorizontalRule(t *testing.T) {
 	})
 	if !strings.HasPrefix(got, "---\nname: reviewer\ndescription: \"Reviews PRs.\"\n---\n\n") {
 		t.Fatalf("agentMarkdown did not inject frontmatter:\n%s", got)
+	}
+}
+
+func TestAgentZipUsesAgentDescriptionFallbacks(t *testing.T) {
+	zipData, err := agentZip(AgentSpec{
+		AssetName:      "reviewer",
+		Version:        "1",
+		BotDescription: "Reviewer bot.",
+		Prompt:         "You are Reviewer.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !zipContains(t, zipData, "metadata.toml", `description = "Reviewer bot."`) {
+		t.Fatal("agent metadata did not fall back to bot description")
 	}
 }
 
@@ -237,6 +277,243 @@ func TestDeleteBotRemovesBotAndBotScopes(t *testing.T) {
 	assertFileContains(t, filepath.Join(clone, "assets", "lint-helper", "1", "SKILL.md"), "Lint carefully.")
 }
 
+func TestDeleteAssetRemovesGitVaultFilesAndManifest(t *testing.T) {
+	ctx := context.Background()
+	remote, client := newGitVaultClient(t)
+
+	if _, err := client.PutAgent(ctx, AgentSpec{
+		BotName:        "reviewer-bot",
+		AssetName:      "reviewer-agent",
+		Version:        "1",
+		Description:    "Reviews pull requests.",
+		BotDescription: "Reviewer bot.",
+		Prompt:         "You are Reviewer.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.DeleteAsset(ctx, "reviewer-agent"); err != nil {
+		t.Fatal(err)
+	}
+
+	clone := cloneRemote(t, remote)
+	manifest := readFile(t, filepath.Join(clone, "sx.toml"))
+	if strings.Contains(manifest, `name = "reviewer-agent"`) {
+		t.Fatalf("sx.toml still contains deleted asset:\n%s", manifest)
+	}
+	if _, err := os.Stat(filepath.Join(clone, "assets", "reviewer-agent")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("deleted asset directory stat error = %v, want not exist", err)
+	}
+}
+
+func TestDeleteAssetMissingGitVaultAssetReturnsNotFound(t *testing.T) {
+	_, client := newGitVaultClient(t)
+
+	err := client.DeleteAsset(context.Background(), "missing-agent")
+	if !errors.Is(err, vault.ErrAssetNotFound) {
+		t.Fatalf("DeleteAsset missing asset error = %v, want ErrAssetNotFound", err)
+	}
+}
+
+func TestDeleteAssetMissingPathVaultAssetReturnsNotFound(t *testing.T) {
+	client, err := OpenPath(t.TempDir(), PathOptions{
+		Actor: Actor{Email: "test@example.com"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = client.DeleteAsset(context.Background(), "missing-agent")
+	if !errors.Is(err, vault.ErrAssetNotFound) {
+		t.Fatalf("DeleteAsset missing asset error = %v, want ErrAssetNotFound", err)
+	}
+}
+
+func TestDeleteAssetMissingSkillsNewAssetReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	var ops []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/graphql" {
+			http.NotFound(w, r)
+			return
+		}
+		var req struct {
+			OperationName string `json:"operationName"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		ops = append(ops, req.OperationName)
+		w.Header().Set("Content-Type", "application/json")
+		switch req.OperationName {
+		case "AssetGID":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"vault": map[string]any{
+						"assets": map[string]any{"nodes": []any{}},
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected GraphQL operation %q", req.OperationName)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := OpenSkillsNew(srv.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = client.DeleteAsset(ctx, "missing-agent")
+	if !errors.Is(err, vault.ErrAssetNotFound) {
+		t.Fatalf("DeleteAsset missing asset error = %v, want ErrAssetNotFound", err)
+	}
+	if got := strings.Join(ops, ","); got != "AssetGID" {
+		t.Fatalf("GraphQL ops = %s, want AssetGID", got)
+	}
+}
+
+func TestDeleteAssetForSkillsNewRequestsPermanentDelete(t *testing.T) {
+	ctx := context.Background()
+	var ops []string
+	var sawDelete bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/graphql" {
+			http.NotFound(w, r)
+			return
+		}
+		var req struct {
+			OperationName string         `json:"operationName"`
+			Variables     map[string]any `json:"variables"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		ops = append(ops, req.OperationName)
+		w.Header().Set("Content-Type", "application/json")
+		switch req.OperationName {
+		case "AssetGID":
+			if got := req.Variables["search"]; got != "Reviewer Agent" {
+				t.Fatalf("AssetGID search = %v, want Reviewer Agent", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"vault": map[string]any{
+						"assets": map[string]any{
+							"nodes": []any{
+								map[string]any{
+									"__typename": "Agent",
+									"id":         "agent-1",
+									"name":       "Reviewer Agent",
+									"slug":       "reviewer-agent",
+									"type":       "AGENT",
+								},
+							},
+						},
+					},
+				},
+			})
+		case "RemoveAssetInstallations":
+			input, _ := req.Variables["input"].(map[string]any)
+			if got := input["assetName"]; got != "reviewer-agent" {
+				t.Fatalf("assetName = %v, want reviewer-agent", got)
+			}
+			if got := input["delete"]; got != true {
+				t.Fatalf("delete = %v, want true", got)
+			}
+			sawDelete = true
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"removeAssetInstallations": map[string]any{
+						"success": true,
+						"errors":  []any{},
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected GraphQL operation %q", req.OperationName)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := OpenSkillsNew(srv.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.DeleteAsset(ctx, "Reviewer Agent"); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(ops, ","); got != "AssetGID,RemoveAssetInstallations" {
+		t.Fatalf("GraphQL ops = %s, want AssetGID,RemoveAssetInstallations", got)
+	}
+	if !sawDelete {
+		t.Fatal("DeleteAsset did not call RemoveAssetInstallations")
+	}
+}
+
+func TestDeleteAssetForSkillsNewPropagatesMutationErrors(t *testing.T) {
+	ctx := context.Background()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/graphql" {
+			http.NotFound(w, r)
+			return
+		}
+		var req struct {
+			OperationName string         `json:"operationName"`
+			Variables     map[string]any `json:"variables"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch req.OperationName {
+		case "AssetGID":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"vault": map[string]any{
+						"assets": map[string]any{
+							"nodes": []any{
+								map[string]any{
+									"__typename": "Agent",
+									"id":         "agent-1",
+									"name":       "Reviewer Agent",
+									"slug":       "reviewer-agent",
+									"type":       "AGENT",
+								},
+							},
+						},
+					},
+				},
+			})
+		case "RemoveAssetInstallations":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"removeAssetInstallations": map[string]any{
+						"success": false,
+						"errors": []any{
+							map[string]any{"field": "assetName", "messages": []string{"cannot delete"}},
+						},
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected GraphQL operation %q", req.OperationName)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := OpenSkillsNew(srv.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = client.DeleteAsset(ctx, "Reviewer Agent")
+	if err == nil || !strings.Contains(err.Error(), "assetName: cannot delete") {
+		t.Fatalf("DeleteAsset error = %v, want mutation error", err)
+	}
+}
+
 func TestPutAgentSameVersionIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	remote, client := newGitVaultClient(t)
@@ -285,6 +562,598 @@ func TestPutSkillZipSameVersionIsIdempotent(t *testing.T) {
 		t.Fatalf("version list contains 1.0.0 %d times:\n%s", count, list)
 	}
 	assertFileContains(t, filepath.Join(clone, "assets", "lint-helper", "1.0.0", "SKILL.md"), "Lint carefully.")
+}
+
+func TestPutSkillZipAcceptsSingleDirectoryUpload(t *testing.T) {
+	ctx := context.Background()
+	remote, client := newGitVaultClient(t)
+	if err := client.PutSkillZip(ctx, SkillZipSpec{
+		Name:        "graphql-field-skill",
+		Version:     "1",
+		Description: "Helps with GraphQL fields.",
+		ZipData:     skillZipInDirectory(t, "graphql-field", "Use GraphQL fields carefully."),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	clone := cloneRemote(t, remote)
+	assetDir := filepath.Join(clone, "assets", "graphql-field-skill", "1")
+	assertFileContains(t, filepath.Join(assetDir, "SKILL.md"), "Use GraphQL fields carefully.")
+	assertFileContains(t, filepath.Join(assetDir, "references", "guide.md"), "Field guide")
+	if _, err := os.Stat(filepath.Join(assetDir, "graphql-field", "SKILL.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("nested skill file stat error = %v, want not exist", err)
+	}
+}
+
+func TestPutSkillZipWithResultReturnsServerAssetName(t *testing.T) {
+	ctx := context.Background()
+	var postedName string
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/skills/assets" {
+			http.Error(w, "unexpected request", http.StatusNotFound)
+			return
+		}
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		postedName = r.FormValue("name")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success": true,
+			"asset": map[string]any{
+				"name":    "architecture-blueprint-generator_skill",
+				"version": "1",
+				"url":     srv.URL + "/api/skills/assets/architecture-blueprint-generator_skill/1/archive.zip",
+			},
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := OpenSkillsNew(srv.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.PutSkillZipWithResult(ctx, SkillZipSpec{
+		Name:        "architecture-blueprint-generator",
+		Version:     "1",
+		Description: "Creates architecture blueprints.",
+		ZipData:     skillZip(t, "Create architecture blueprints."),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if postedName != "architecture-blueprint-generator" {
+		t.Fatalf("posted name = %q, want architecture-blueprint-generator", postedName)
+	}
+	if got.Name != "architecture-blueprint-generator_skill" || got.Version != "1" {
+		t.Fatalf("PutSkillZipWithResult = %+v, want server-returned name and version", got)
+	}
+}
+
+func TestPutSkillZipWithBotClearsDefaultUploadInstall(t *testing.T) {
+	ctx := context.Background()
+	var ops []string
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/skills/assets":
+			if r.Method != http.MethodPost {
+				http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"success": true,
+				"asset": map[string]any{
+					"name":             "copied-skill",
+					"version":          "1",
+					"url":              srv.URL + "/api/skills/assets/copied-skill/1/archive.zip",
+					"is_first_version": true,
+				},
+			})
+		case "/graphql":
+			var req struct {
+				OperationName string         `json:"operationName"`
+				Variables     map[string]any `json:"variables"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			ops = append(ops, req.OperationName)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": sxvaultTestGraphQLResponse(t, req.OperationName, req.Variables)})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := OpenSkillsNew(srv.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.PutSkillZipWithResult(ctx, SkillZipSpec{
+		Name:        "copied-skill",
+		Version:     "1",
+		Description: "Copied skill.",
+		BotName:     "testers",
+		ZipData:     skillZip(t, "Use copied skill."),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsFirstVersion {
+		t.Fatalf("PutSkillZipWithResult IsFirstVersion = false, want true")
+	}
+	wantOps := "ListBots,AssetGID,ListBots,BotInstalled,RemoveAssetInstallations,ListBots,AssetGID,InstallSkillToBot"
+	if gotOps := strings.Join(ops, ","); gotOps != wantOps {
+		t.Fatalf("GraphQL ops = %s, want %s", gotOps, wantOps)
+	}
+}
+
+// TestPutAgentCreatesSleuthAgentViaGraphQL verifies PutAgent uses the
+// Skills.new-native createAsset(rawContent, installations:[BOT]) path for
+// agent assets so the created asset is bot-scoped from birth and never needs a
+// default org install cleanup.
+func TestPutAgentCreatesSleuthAgentViaGraphQL(t *testing.T) {
+	ctx := context.Background()
+	var installTarget string
+	var ops []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/skills/assets/my-agent_agent/list.txt":
+			http.NotFound(w, r)
+		case "/graphql":
+			var req struct {
+				OperationName string         `json:"operationName"`
+				Variables     map[string]any `json:"variables"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			ops = append(ops, req.OperationName)
+			if req.OperationName == "CreateAgentAsset" {
+				input, _ := req.Variables["input"].(map[string]any)
+				installations, _ := input["installations"].([]any)
+				if len(installations) != 1 {
+					t.Fatalf("CreateAgentAsset installations = %#v, want one bot installation", input["installations"])
+				}
+				installation, _ := installations[0].(map[string]any)
+				if installation["entityType"] != "BOT" {
+					t.Fatalf("CreateAgentAsset entityType = %v, want BOT", installation["entityType"])
+				}
+				installTarget, _ = installation["entityId"].(string)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": sxvaultAgentGraphQLResponse(t, req.OperationName, req.Variables)})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := OpenSkillsNew(srv.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.PutAgent(ctx, AgentSpec{
+		BotName:   "reviewer",
+		AssetName: "my-agent_agent",
+		Version:   "1",
+		Prompt:    "You are an agent.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AgentName != "my-agent_agent" {
+		t.Fatalf("AgentName = %q, want server slug my-agent_agent", got.AgentName)
+	}
+	if installTarget != "bot-1" {
+		t.Fatalf("CreateAgentAsset bot install target = %q, want bot-1", installTarget)
+	}
+	wantOps := "ListBots,ListBots,CreateAgentAsset"
+	if gotOps := strings.Join(ops, ","); gotOps != wantOps {
+		t.Fatalf("GraphQL ops = %s, want %s", gotOps, wantOps)
+	}
+}
+
+func TestPutAgentRepublishesExistingSleuthAgentAndInstallsAdditively(t *testing.T) {
+	ctx := context.Background()
+	var ops []string
+	var postedName, postedVersion, postedType string
+	var postedZip []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/skills/assets/my-agent_agent/list.txt":
+			_, _ = w.Write([]byte("1\n"))
+		case "/api/skills/assets":
+			if r.Method != http.MethodPost {
+				http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+				return
+			}
+			if err := r.ParseMultipartForm(10 << 20); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			postedName = r.FormValue("name")
+			postedVersion = r.FormValue("version")
+			postedType = r.FormValue("type")
+			file, _, err := r.FormFile("file")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			defer file.Close()
+			postedZip, err = io.ReadAll(file)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"success": true,
+				"asset": map[string]any{
+					"name":    "my-agent_agent",
+					"version": "2",
+					"url":     "/api/skills/assets/my-agent_agent/2/archive.zip",
+				},
+			})
+		case "/graphql":
+			var req struct {
+				OperationName string         `json:"operationName"`
+				Variables     map[string]any `json:"variables"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			ops = append(ops, req.OperationName)
+			if req.OperationName == "InstallSkillToBot" {
+				if got := req.Variables["botId"]; got != "bot-1" {
+					t.Fatalf("InstallSkillToBot botId = %v, want bot-1", got)
+				}
+				if got := req.Variables["skillId"]; got != "agent-1" {
+					t.Fatalf("InstallSkillToBot skillId = %v, want agent-1", got)
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": sxvaultAgentGraphQLResponse(t, req.OperationName, req.Variables)})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := OpenSkillsNew(srv.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.PutAgent(ctx, AgentSpec{
+		BotName:   "reviewer",
+		AssetName: "my-agent_agent",
+		Version:   "2",
+		Prompt:    "You are an updated agent.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AgentName != "my-agent_agent" {
+		t.Fatalf("AgentName = %q, want requested existing asset name", got.AgentName)
+	}
+	if postedName != "my-agent_agent" || postedVersion != "2" || postedType != "agent" {
+		t.Fatalf("posted asset fields = name:%q version:%q type:%q", postedName, postedVersion, postedType)
+	}
+	if !zipContains(t, postedZip, "AGENT.md", "You are an updated agent.") {
+		t.Fatal("posted agent zip did not contain updated AGENT.md prompt")
+	}
+	wantOps := "ListBots,ListBots,AssetGID,InstallSkillToBot"
+	if gotOps := strings.Join(ops, ","); gotOps != wantOps {
+		t.Fatalf("GraphQL ops = %s, want %s", gotOps, wantOps)
+	}
+}
+
+func TestPutAgentPropagatesSleuthVersionListErrors(t *testing.T) {
+	ctx := context.Background()
+	var ops []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/skills/assets/my-agent_agent/list.txt":
+			http.Error(w, "upstream unavailable", http.StatusBadGateway)
+		case "/graphql":
+			var req struct {
+				OperationName string         `json:"operationName"`
+				Variables     map[string]any `json:"variables"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if req.OperationName == "CreateAgentAsset" {
+				t.Fatal("CreateAgentAsset should not run after a version-list failure")
+			}
+			ops = append(ops, req.OperationName)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": sxvaultAgentGraphQLResponse(t, req.OperationName, req.Variables)})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := OpenSkillsNew(srv.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.PutAgent(ctx, AgentSpec{
+		BotName:   "reviewer",
+		AssetName: "my-agent_agent",
+		Version:   "2",
+		Prompt:    "You are an agent.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "HTTP 502") {
+		t.Fatalf("PutAgent error = %v, want HTTP 502", err)
+	}
+	if gotOps := strings.Join(ops, ","); gotOps != "ListBots" {
+		t.Fatalf("GraphQL ops = %s, want only EnsureBot ListBots", gotOps)
+	}
+}
+
+func sxvaultAgentGraphQLResponse(t *testing.T, operation string, vars map[string]any) any {
+	t.Helper()
+	switch operation {
+	case "ListBots":
+		return map[string]any{
+			"bots": []any{
+				map[string]any{
+					"id":              "bot-1",
+					"name":            "reviewer",
+					"slug":            "reviewer",
+					"description":     "Reviews PRs",
+					"teams":           []any{},
+					"installedSkills": []any{},
+				},
+			},
+		}
+	case "BotInstalled":
+		return map[string]any{"bot": map[string]any{"installedSkills": []any{}}}
+	case "RemoveAssetInstallations":
+		return map[string]any{
+			"removeAssetInstallations": map[string]any{"success": true, "errors": []any{}},
+		}
+	case "CreateAgentAsset":
+		return map[string]any{
+			"createAsset": map[string]any{
+				"asset": map[string]any{
+					"__typename":    "Agent",
+					"id":            "agent-1",
+					"name":          "My Agent",
+					"slug":          "my-agent_agent",
+					"type":          "AGENT",
+					"latestVersion": "1",
+				},
+				"errors": []any{},
+			},
+		}
+	case "AssetGID":
+		return map[string]any{
+			"vault": map[string]any{
+				"assets": map[string]any{
+					"nodes": []any{
+						map[string]any{
+							"__typename": "Agent",
+							"id":         "agent-1",
+							"name":       "My Agent",
+							"slug":       "my-agent_agent",
+							"type":       "AGENT",
+						},
+					},
+				},
+			},
+		}
+	case "InstallSkillToBot":
+		return map[string]any{
+			"installSkillToBot": map[string]any{"success": true, "errors": []any{}},
+		}
+	default:
+		t.Fatalf("unexpected GraphQL operation %q", operation)
+		return nil
+	}
+}
+
+// TestPutSkillZipRepublishRoutesBotInstallToServerSlug pins the fix for the
+// re-publish case: when the upload conflicts (version already exists) the
+// server returns no fresh asset result, but if the conflict response carries
+// the persisted slug the bot install must route to that slug — not the
+// requested name, which could collide with a different same-named asset.
+func TestPutSkillZipRepublishRoutesBotInstallToServerSlug(t *testing.T) {
+	ctx := context.Background()
+	var assetGIDSearch string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/skills/assets":
+			// Version already exists — return the conflict plus the
+			// server-persisted slug for the asset.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"success": false,
+				"error":   "asset version already exists",
+				"asset": map[string]any{
+					"name":    "foo_skill",
+					"version": "1",
+				},
+			})
+		case "/graphql":
+			var req struct {
+				OperationName string         `json:"operationName"`
+				Variables     map[string]any `json:"variables"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if req.OperationName == "AssetGID" {
+				assetGIDSearch, _ = req.Variables["search"].(string)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": sxvaultRepublishGraphQLResponse(t, req.OperationName, req.Variables)})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := OpenSkillsNew(srv.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.PutSkillZipWithResult(ctx, SkillZipSpec{
+		Name:    "foo",
+		Version: "1",
+		BotName: "testers",
+		ZipData: skillZip(t, "Foo skill."),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "foo_skill" {
+		t.Fatalf("republish result Name = %q, want server slug foo_skill", got.Name)
+	}
+	if assetGIDSearch != "foo_skill" {
+		t.Fatalf("bot install resolved %q, want the server slug foo_skill", assetGIDSearch)
+	}
+}
+
+func sxvaultRepublishGraphQLResponse(t *testing.T, operation string, vars map[string]any) any {
+	t.Helper()
+	switch operation {
+	case "ListBots":
+		return map[string]any{
+			"bots": []any{
+				map[string]any{
+					"id":              "bot-1",
+					"name":            "testers",
+					"slug":            "testers",
+					"description":     "Tests stuff",
+					"teams":           []any{},
+					"installedSkills": []any{},
+				},
+			},
+		}
+	case "AssetGID":
+		return map[string]any{
+			"vault": map[string]any{
+				"assets": map[string]any{
+					"nodes": []any{
+						map[string]any{
+							"__typename": "Skill",
+							"id":         "skill-foo",
+							"name":       "Foo",
+							"slug":       "foo_skill",
+							"type":       "SKILL",
+						},
+					},
+				},
+			},
+		}
+	case "InstallSkillToBot":
+		return map[string]any{
+			"installSkillToBot": map[string]any{
+				"success": true,
+				"errors":  []any{},
+			},
+		}
+	default:
+		t.Fatalf("unexpected GraphQL operation %q", operation)
+		return nil
+	}
+}
+
+func sxvaultTestGraphQLResponse(t *testing.T, operation string, vars map[string]any) any {
+	t.Helper()
+	switch operation {
+	case "ListBots":
+		return map[string]any{
+			"bots": []any{
+				map[string]any{
+					"id":              "bot-1",
+					"name":            "testers",
+					"slug":            "testers",
+					"description":     "Tests stuff",
+					"teams":           []any{},
+					"installedSkills": []any{},
+				},
+			},
+		}
+	case "RemoveAssetInstallations":
+		input, _ := vars["input"].(map[string]any)
+		if got := input["assetName"]; got != "copied-skill" {
+			t.Fatalf("RemoveAssetInstallations assetName = %v, want copied-skill", got)
+		}
+		return map[string]any{
+			"removeAssetInstallations": map[string]any{
+				"success": true,
+				"errors":  []any{},
+			},
+		}
+	case "BotInstalled":
+		if got := vars["slug"]; got != "testers" {
+			t.Fatalf("BotInstalled slug = %v, want testers", got)
+		}
+		return map[string]any{
+			"bot": map[string]any{
+				"installedSkills": []any{
+					map[string]any{
+						"name":            "copied-skill",
+						"assetType":       "SKILL",
+						"isDirectInstall": false,
+					},
+				},
+			},
+		}
+	case "AssetGID":
+		if got := vars["search"]; got != "copied-skill" {
+			t.Fatalf("AssetGID search = %v, want copied-skill", got)
+		}
+		return map[string]any{
+			"vault": map[string]any{
+				"assets": map[string]any{
+					"nodes": []any{
+						map[string]any{
+							"__typename": "Skill",
+							"id":         "skill-1",
+							"name":       "Copied Skill",
+							"slug":       "copied-skill",
+							"type":       "SKILL",
+						},
+					},
+				},
+			},
+		}
+	case "InstallSkillToBot":
+		if got := vars["botId"]; got != "bot-1" {
+			t.Fatalf("InstallSkillToBot botId = %v, want bot-1", got)
+		}
+		if got := vars["skillId"]; got != "skill-1" {
+			t.Fatalf("InstallSkillToBot skillId = %v, want skill-1", got)
+		}
+		return map[string]any{
+			"installSkillToBot": map[string]any{
+				"success": true,
+				"errors":  []any{},
+			},
+		}
+	default:
+		t.Fatalf("unexpected GraphQL operation %q", operation)
+		return nil
+	}
 }
 
 func TestPutSkillZipDescriptionPrecedence(t *testing.T) {
@@ -962,6 +1831,28 @@ func skillZip(t *testing.T, prompt string) []byte {
 	}
 	if _, err := w.Write([]byte(prompt)); err != nil {
 		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func skillZipInDirectory(t *testing.T, dir, prompt string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range map[string]string{
+		dir + "/SKILL.md":            prompt,
+		dir + "/references/guide.md": "Field guide",
+	} {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := zw.Close(); err != nil {
 		t.Fatal(err)

@@ -2,7 +2,7 @@
 //
 // Scope: this facade currently covers the publish / manage write path
 // (OpenSkillsNew / OpenGit / OpenPath constructors; EnsureBot, DeleteBot,
-// PutAgent, PutSkillZip, InstallAssetToBot mutators) plus read-only browse
+// DeleteAsset, PutAgent, PutSkillZip, InstallAssetToBot mutators) plus read-only browse
 // and download (ListAssets, GetAssetZip). GetAssetZip is the one narrow
 // read path: it wraps the internal GetMetadata / GetAssetByVersion calls
 // and exposes only the asset type, description, and raw zip bytes through
@@ -16,9 +16,12 @@
 package sxvault
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"slices"
 	"strings"
@@ -156,10 +159,18 @@ type AgentSpec struct {
 }
 
 type AgentResult struct {
+	// AgentName is the canonical agent asset name persisted by the vault.
+	// Backends may normalize the requested AgentSpec.AssetName; callers
+	// should store this value as their persona asset reference when non-empty.
+	AgentName string
 	// BotKey is the one-time raw bot API token returned only when PutAgent
 	// creates a new bot in a vault type that issues bot tokens. It is empty
 	// when the bot already exists and for file-backed Git vaults.
 	BotKey string
+}
+
+type sleuthAgentAssetCreator interface {
+	CreateAgentAsset(ctx context.Context, name, description, rawContent, botName string) (vault.AddAssetResult, error)
 }
 
 type BotSummary struct {
@@ -218,9 +229,23 @@ type SkillZipSpec struct {
 	Description string
 	ZipData     []byte
 	// BotName, when non-empty, installs the published skill onto that bot
-	// after the asset upload completes. Leave empty to publish the skill
-	// without attaching it to any bot.
+	// after the asset upload completes. For a new Skills.new asset, this
+	// makes the first upload bot-scoped instead of inheriting the upload
+	// endpoint's org-wide default. Leave empty to publish the skill without
+	// attaching it to any bot.
 	BotName string
+}
+
+// SkillZipResult contains the persisted skill identity after PutSkillZip.
+// Server-backed vaults may normalize spec.Name into a slug; use Name for
+// follow-up install/uninstall calls against the same vault. Today only the
+// Sleuth vault normalizes the name — for git/path vaults Name is spec.Name
+// unchanged. IsFirstVersion is true when the upload created the first stored
+// version of this skill (Sleuth-only; git/path vaults always report false).
+type SkillZipResult struct {
+	Name           string
+	Version        string
+	IsFirstVersion bool
 }
 
 type AssetSummary struct {
@@ -390,8 +415,8 @@ func (c *Client) ensureBot(ctx context.Context, bot Bot) (string, error) {
 	})
 }
 
-// PutAgent uploads an agent asset and installs it (plus any listed skills)
-// on the named bot.
+// PutAgent uploads an agent asset, installs that agent asset on the named bot,
+// and installs any listed skills on the same bot.
 //
 // Re-publishing an existing AssetName@Version is idempotent for the manifest:
 // the version is listed once and installations are re-run, which also makes
@@ -408,6 +433,10 @@ func (c *Client) ensureBot(ctx context.Context, bot Bot) (string, error) {
 // is idempotent, so the caller should retry the same PutAgent call to
 // converge — the asset upload no-ops on version match and the install path
 // is an upsert.
+//
+// The returned AgentResult.AgentName is the canonical persisted agent asset
+// slug. Callers should keep only that light reference locally for later runtime
+// lookup instead of storing the full agent prompt.
 func (c *Client) PutAgent(ctx context.Context, spec AgentSpec) (AgentResult, error) {
 	if c == nil || c.v == nil {
 		return AgentResult{}, errors.New("sxvault: nil client")
@@ -436,23 +465,64 @@ func (c *Client) PutAgent(ctx context.Context, spec AgentSpec) (AgentResult, err
 			return AgentResult{}, err
 		}
 	}
-	zipData, err := agentZip(spec)
+	upload, agentInstalled, err := c.putAgentAsset(ctx, spec)
 	if err != nil {
 		return AgentResult{}, err
 	}
-	ast := &lockfile.Asset{Name: spec.AssetName, Version: spec.Version, Type: asset.TypeAgent}
-	if err := c.addAsset(ctx, ast, zipData); err != nil {
-		return AgentResult{}, err
+	// upload.Name is already canonical and non-empty (defaultAddAssetResult
+	// fills it from spec.AssetName when the vault didn't provide one).
+	agentName := upload.Name
+	// Mirror PutSkillZip for backends that publish with a default org-wide
+	// install. Skills.new agent creation uses an initial bot installation, so
+	// agentInstalled skips this clearing path even though it created version 1.
+	if upload.IsFirstVersion && !agentInstalled {
+		if err := c.v.ClearAssetInstallations(ctx, agentName); err != nil {
+			return AgentResult{}, fmt.Errorf("sxvault: clearing default installations for %q: %w", agentName, err)
+		}
 	}
-	if err := c.installAssetToBot(ctx, spec.AssetName, spec.BotName); err != nil {
-		return AgentResult{}, err
+	if !agentInstalled {
+		err = c.installAssetToBot(ctx, agentName, spec.BotName)
+		if err != nil {
+			return AgentResult{}, fmt.Errorf("sxvault: installing agent %q on bot %q: %w", agentName, spec.BotName, err)
+		}
 	}
 	for _, skill := range skills {
 		if err := c.installAssetToBot(ctx, skill, spec.BotName); err != nil {
-			return AgentResult{}, err
+			return AgentResult{}, fmt.Errorf("sxvault: installing skill %q on bot %q: %w", skill, spec.BotName, err)
 		}
 	}
-	return AgentResult{BotKey: botKey}, nil
+	return AgentResult{AgentName: agentName, BotKey: botKey}, nil
+}
+
+func (c *Client) putAgentAsset(ctx context.Context, spec AgentSpec) (vault.AddAssetResult, bool, error) {
+	if creator, ok := c.v.(sleuthAgentAssetCreator); ok {
+		versions, err := c.v.GetVersionList(ctx, spec.AssetName)
+		if err != nil && !errors.Is(err, vault.ErrAssetNotFound) {
+			return vault.AddAssetResult{}, false, err
+		}
+		if len(versions) > 0 {
+			zipData, err := agentZip(spec)
+			if err != nil {
+				return vault.AddAssetResult{}, false, err
+			}
+			ast := &lockfile.Asset{Name: spec.AssetName, Version: spec.Version, Type: asset.TypeAgent}
+			// addAssetWithResult returns the server-persisted slug when the
+			// upload response or conflict payload carries one. Otherwise it
+			// falls back to spec.AssetName; later installation still resolves
+			// that through the vault's slug/name lookup.
+			upload, err := c.addAssetWithResult(ctx, ast, zipData)
+			return upload, false, err
+		}
+		upload, err := creator.CreateAgentAsset(ctx, spec.AssetName, agentDescription(spec), agentMarkdown(spec), spec.BotName)
+		return upload, err == nil, err
+	}
+	zipData, err := agentZip(spec)
+	if err != nil {
+		return vault.AddAssetResult{}, false, err
+	}
+	ast := &lockfile.Asset{Name: spec.AssetName, Version: spec.Version, Type: asset.TypeAgent}
+	upload, err := c.addAssetWithResult(ctx, ast, zipData)
+	return upload, false, err
 }
 
 // validateSkillExists asserts the named asset is a published skill in the
@@ -514,18 +584,27 @@ func highestSemver(versions []string) string {
 // the stored bytes. Bump the version when you need a guaranteed update
 // across all backends.
 func (c *Client) PutSkillZip(ctx context.Context, spec SkillZipSpec) error {
+	_, err := c.PutSkillZipWithResult(ctx, spec)
+	return err
+}
+
+// PutSkillZipWithResult uploads a skill zip and returns the persisted skill
+// identity from the backing vault. For Skills.new this is the server-returned
+// slug, which may differ from spec.Name when the uploaded display name collides
+// with an existing asset slug.
+func (c *Client) PutSkillZipWithResult(ctx context.Context, spec SkillZipSpec) (SkillZipResult, error) {
 	if c == nil || c.v == nil {
-		return errors.New("sxvault: nil client")
+		return SkillZipResult{}, errors.New("sxvault: nil client")
 	}
 	spec.Name = strings.TrimSpace(spec.Name)
 	spec.Version = strings.TrimSpace(spec.Version)
 	spec.BotName = strings.TrimSpace(spec.BotName)
 	if spec.Name == "" || spec.Version == "" {
-		return errors.New("sxvault: skill name and version are required")
+		return SkillZipResult{}, errors.New("sxvault: skill name and version are required")
 	}
 	zipData, err := normalizeSkillZip(spec)
 	if err != nil {
-		return err
+		return SkillZipResult{}, err
 	}
 	ctx = c.actorContext(ctx)
 	// Validate the target bot exists before any side effects, mirroring
@@ -535,21 +614,42 @@ func (c *Client) PutSkillZip(ctx context.Context, spec SkillZipSpec) error {
 	if spec.BotName != "" {
 		if _, bErr := c.v.GetBot(ctx, spec.BotName); bErr != nil {
 			if errors.Is(bErr, mgmt.ErrBotNotFound) {
-				return fmt.Errorf("sxvault: bot %q not found in vault: %w", spec.BotName, ErrBotNotFound)
+				return SkillZipResult{}, fmt.Errorf("sxvault: bot %q not found in vault: %w", spec.BotName, ErrBotNotFound)
 			}
-			return fmt.Errorf("sxvault: checking bot %q: %w", spec.BotName, bErr)
+			return SkillZipResult{}, fmt.Errorf("sxvault: checking bot %q: %w", spec.BotName, bErr)
 		}
 	}
 	ast := &lockfile.Asset{Name: spec.Name, Version: spec.Version, Type: asset.TypeSkill}
-	if err := c.addAsset(ctx, ast, zipData); err != nil {
-		return err
+	upload, err := c.addAssetWithResult(ctx, ast, zipData)
+	if err != nil {
+		return SkillZipResult{}, err
+	}
+	// upload.Name / upload.Version are already canonical and non-empty
+	// (defaultAddAssetResult fills them from the spec when the vault didn't).
+	result := SkillZipResult{
+		Name:           upload.Name,
+		Version:        upload.Version,
+		IsFirstVersion: upload.IsFirstVersion,
 	}
 	if spec.BotName == "" {
-		return nil
+		return result, nil
+	}
+	// IsFirstVersion is only ever set by the Sleuth HTTP upload response;
+	// git/local vaults go through AddAsset and leave it false, so this clear
+	// is Sleuth-only by design. It strips the server's default org-wide
+	// install on a brand-new asset so a bot-targeted publish lands only on
+	// the bot, not everyone. Non-Sleuth vaults have no such default to clear.
+	if upload.IsFirstVersion {
+		if err := c.v.ClearAssetInstallations(ctx, result.Name); err != nil {
+			return SkillZipResult{}, fmt.Errorf("sxvault: clearing default installations for %q: %w", result.Name, err)
+		}
 	}
 	// ctx is already actor-wrapped above; use the internal form so the wrap
 	// doesn't run twice (mirrors PutAgent).
-	return c.installAssetToBot(ctx, spec.Name, spec.BotName)
+	if err := c.installAssetToBot(ctx, result.Name, spec.BotName); err != nil {
+		return SkillZipResult{}, err
+	}
+	return result, nil
 }
 
 func (c *Client) ListBots(ctx context.Context) ([]BotSummary, error) {
@@ -721,6 +821,25 @@ func (c *Client) UninstallAssetFromBot(ctx context.Context, assetName, botName s
 	})
 }
 
+// DeleteAsset removes all versions of the named asset from the vault.
+//
+// Git and path vaults remove the asset from sx.toml and delete the asset
+// files from the current vault tip. Skills.new removes the asset and its
+// installations server-side. All install scopes referenced by the asset
+// are removed with it; there is no separate uninstall step. This is the
+// permanent-delete variant of the underlying vault removal API. Git history
+// may still contain older commits.
+func (c *Client) DeleteAsset(ctx context.Context, assetName string) error {
+	if c == nil || c.v == nil {
+		return errors.New("sxvault: nil client")
+	}
+	assetName = strings.TrimSpace(assetName)
+	if assetName == "" {
+		return errors.New("sxvault: asset name required")
+	}
+	return c.v.RemoveAsset(c.actorContext(ctx), assetName, "", true)
+}
+
 // installAssetToBot is the actor-wrapped-context internal form. Callers
 // that already wrapped ctx via actorContext should use this directly so the
 // wrap doesn't run twice.
@@ -836,8 +955,22 @@ func (c *Client) GetAssetZip(ctx context.Context, name, version string) (AssetZi
 	}, nil
 }
 
-func (c *Client) addAsset(ctx context.Context, ast *lockfile.Asset, zipData []byte) error {
-	if err := c.v.AddAsset(ctx, ast, zipData); err != nil {
+type assetAdderWithResult interface {
+	AddAssetWithResult(ctx context.Context, asset *lockfile.Asset, zipData []byte) (vault.AddAssetResult, error)
+}
+
+func (c *Client) addAssetWithResult(ctx context.Context, ast *lockfile.Asset, zipData []byte) (vault.AddAssetResult, error) {
+	var result vault.AddAssetResult
+	var err error
+	if adder, ok := c.v.(assetAdderWithResult); ok {
+		result, err = adder.AddAssetWithResult(ctx, ast, zipData)
+	} else {
+		err = c.v.AddAsset(ctx, ast, zipData)
+	}
+	// defaultAddAssetResult trims and fills Name/Version from ast, so every
+	// return path below hands back a non-empty, canonical result.
+	result = defaultAddAssetResult(result, ast)
+	if err != nil {
 		// Re-publishing an existing name@version is intentionally a no-op
 		// for stored content. We still fall through to InheritInstallations
 		// so a retry after a half-failed prior publish (asset bytes
@@ -848,14 +981,51 @@ func (c *Client) addAsset(ctx context.Context, ast *lockfile.Asset, zipData []by
 		// the local assets/ tree the fallback fabricates.
 		var exists *vault.ErrVersionExists
 		if !errors.As(err, &exists) {
-			return err
+			return vault.AddAssetResult{}, err
 		}
-		return c.v.InheritInstallations(ctx, ast)
+		// On a version conflict the server returns no AddAssetResult, so
+		// result still carries the spec defaults (the requested Name). If
+		// the conflict response reported the persisted slug, prefer it so a
+		// re-publish of a collision-resolved upload routes the bot install
+		// to the uploaded asset, not a different one sharing the name.
+		if slug := strings.TrimSpace(exists.Slug); slug != "" {
+			result.Name = slug
+			// Keep ast in sync so a future non-Sleuth InheritInstallations
+			// that reads ast.Name sees the resolved slug, not the request.
+			ast.Name = slug
+		}
+		if err := c.v.InheritInstallations(ctx, ast); err != nil {
+			return vault.AddAssetResult{}, err
+		}
+		return result, nil
 	}
 	if ast.SourcePath == nil && ast.SourceHTTP == nil && ast.SourceGit == nil {
-		ast.SourcePath = &lockfile.SourcePath{Path: "assets/" + ast.Name + "/" + ast.Version}
+		// Use the canonical result.Name so a normalized slug propagates into
+		// the synthesized source path. (Today the only normalizing vault,
+		// Sleuth, always sets SourceHTTP itself, so this branch is git/path
+		// where result.Name == ast.Name — but don't depend on that here.)
+		ast.SourcePath = &lockfile.SourcePath{Path: "assets/" + result.Name + "/" + ast.Version}
 	}
-	return c.v.InheritInstallations(ctx, ast)
+	if err := c.v.InheritInstallations(ctx, ast); err != nil {
+		return vault.AddAssetResult{}, err
+	}
+	return result, nil
+}
+
+// defaultAddAssetResult is the single source of truth for the canonical
+// asset identity: it trims the vault-provided Name/Version and falls back to
+// the requested ast values when the vault left them empty. Callers can rely
+// on the returned Name/Version being non-empty and trimmed.
+func defaultAddAssetResult(result vault.AddAssetResult, ast *lockfile.Asset) vault.AddAssetResult {
+	result.Name = strings.TrimSpace(result.Name)
+	if result.Name == "" {
+		result.Name = strings.TrimSpace(ast.Name)
+	}
+	result.Version = strings.TrimSpace(result.Version)
+	if result.Version == "" {
+		result.Version = strings.TrimSpace(ast.Version)
+	}
+	return result
 }
 
 func (c *Client) actorContext(ctx context.Context) context.Context {
@@ -877,7 +1047,7 @@ func agentZip(spec AgentSpec) ([]byte, error) {
 			Name:        spec.AssetName,
 			Version:     spec.Version,
 			Type:        asset.TypeAgent,
-			Description: strings.TrimSpace(spec.Description),
+			Description: agentDescription(spec),
 		},
 		Agent: &metadata.AgentConfig{PromptFile: "AGENT.md"},
 	}
@@ -886,6 +1056,15 @@ func agentZip(spec AgentSpec) ([]byte, error) {
 		return nil, err
 	}
 	return utils.AddFileToZip(zipData, "metadata.toml", metaBytes)
+}
+
+func agentDescription(spec AgentSpec) string {
+	for _, value := range []string{spec.Description, spec.BotDescription} {
+		if out := strings.TrimSpace(value); out != "" {
+			return out
+		}
+	}
+	return strings.TrimSpace(spec.AssetName)
 }
 
 func agentMarkdown(spec AgentSpec) string {
@@ -963,6 +1142,10 @@ func normalizeSkillZip(spec SkillZipSpec) ([]byte, error) {
 	if !utils.IsZipFile(spec.ZipData) {
 		return nil, errors.New("sxvault: uploaded skill must be a zip file")
 	}
+	zipData, strippedRoot, err := stripSingleRootDirectoryFromZip(spec.ZipData)
+	if err != nil {
+		return nil, err
+	}
 	meta := &metadata.Metadata{
 		MetadataVersion: metadata.CurrentMetadataVersion,
 		Asset: metadata.Asset{
@@ -973,7 +1156,7 @@ func normalizeSkillZip(spec SkillZipSpec) ([]byte, error) {
 		},
 		Skill: &metadata.SkillConfig{PromptFile: "SKILL.md"},
 	}
-	if raw, err := utils.ReadZipFile(spec.ZipData, "metadata.toml"); err == nil {
+	if raw, err := utils.ReadZipFile(zipData, "metadata.toml"); err == nil {
 		parsed, parseErr := metadata.Parse(raw)
 		if parseErr != nil {
 			return nil, parseErr
@@ -991,15 +1174,118 @@ func normalizeSkillZip(spec SkillZipSpec) ([]byte, error) {
 		if strings.TrimSpace(meta.Skill.PromptFile) == "" {
 			meta.Skill.PromptFile = "SKILL.md"
 		}
+		meta.Skill.PromptFile = cleanUploadedZipName(meta.Skill.PromptFile)
+		if strippedRoot != "" {
+			meta.Skill.PromptFile = strings.TrimPrefix(meta.Skill.PromptFile, strippedRoot+"/")
+		}
 	}
-	if _, err := utils.ReadZipFile(spec.ZipData, meta.Skill.PromptFile); err != nil {
+	if _, err := utils.ReadZipFile(zipData, meta.Skill.PromptFile); err != nil {
 		return nil, fmt.Errorf("sxvault: skill prompt file %q missing from zip: %w", meta.Skill.PromptFile, err)
 	}
 	metaBytes, err := metadata.Marshal(meta)
 	if err != nil {
 		return nil, err
 	}
-	return utils.AddFileToZip(spec.ZipData, "metadata.toml", metaBytes)
+	return utils.AddFileToZip(zipData, "metadata.toml", metaBytes)
+}
+
+func stripSingleRootDirectoryFromZip(zipData []byte) ([]byte, string, error) {
+	reader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read zip: %w", err)
+	}
+
+	root := ""
+	hasFile := false
+	for _, file := range reader.File {
+		name := cleanUploadedZipName(file.Name)
+		if shouldIgnoreUploadedZipEntry(name) || file.FileInfo().IsDir() {
+			continue
+		}
+		parts := strings.SplitN(name, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return zipData, "", nil
+		}
+		if root == "" {
+			root = parts[0]
+		} else if root != parts[0] {
+			return zipData, "", nil
+		}
+		hasFile = true
+	}
+	if !hasFile || root == "" {
+		return zipData, "", nil
+	}
+
+	prefix := root + "/"
+	buf := new(bytes.Buffer)
+	writer := zip.NewWriter(buf)
+	for _, file := range reader.File {
+		name := cleanUploadedZipName(file.Name)
+		if shouldIgnoreUploadedZipEntry(name) {
+			continue
+		}
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		stripped := strings.TrimPrefix(name, prefix)
+		if stripped == "" {
+			continue
+		}
+		if err := copyZipFileAs(writer, file, stripped); err != nil {
+			_ = writer.Close()
+			return nil, "", fmt.Errorf("failed to copy file %s: %w", file.Name, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, "", fmt.Errorf("failed to close zip writer: %w", err)
+	}
+	return buf.Bytes(), root, nil
+}
+
+func cleanUploadedZipName(name string) string {
+	name = strings.TrimSpace(strings.ReplaceAll(name, "\\", "/"))
+	name = strings.TrimLeft(name, "/")
+	for strings.HasPrefix(name, "./") {
+		name = strings.TrimPrefix(name, "./")
+	}
+	return name
+}
+
+func shouldIgnoreUploadedZipEntry(name string) bool {
+	name = strings.TrimSuffix(name, "/")
+	return name == "" ||
+		name == ".DS_Store" ||
+		strings.HasSuffix(name, "/.DS_Store") ||
+		name == "__MACOSX" ||
+		strings.HasPrefix(name, "__MACOSX/")
+}
+
+func copyZipFileAs(writer *zip.Writer, file *zip.File, name string) error {
+	header := &zip.FileHeader{
+		Name:     name,
+		Method:   file.Method,
+		Modified: file.Modified,
+	}
+	header.SetMode(file.Mode())
+	if file.FileInfo().IsDir() {
+		header.Name = strings.TrimSuffix(header.Name, "/") + "/"
+		_, err := writer.CreateHeader(header)
+		return err
+	}
+
+	r, err := file.Open()
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	w, err := writer.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(w, r)
+	return err
 }
 
 func cleanNames(in []string) []string {

@@ -3,6 +3,7 @@ package vault
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -122,6 +123,57 @@ func TestSleuthVault_ListTeams_QueryShape(t *testing.T) {
 	}
 }
 
+func TestSleuthVault_RemoveBotTeamSendsEmptyTeamIDs(t *testing.T) {
+	srv, records := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
+		"ListBots": func(vars map[string]any) any {
+			return map[string]any{
+				"bots": []any{
+					map[string]any{
+						"id":              "bot-1",
+						"name":            "testers",
+						"slug":            "testers",
+						"description":     "Tests stuff",
+						"teams":           []any{map[string]any{"id": "team-1", "name": "Dev"}},
+						"installedSkills": []any{},
+					},
+				},
+			}
+		},
+		"UpdateBot": func(vars map[string]any) any {
+			input, ok := vars["input"].(map[string]any)
+			if !ok {
+				t.Fatalf("UpdateBot input = %T, want object", vars["input"])
+			}
+			teamIDs, ok := input["teamIds"].([]any)
+			if !ok {
+				t.Fatalf("UpdateBot teamIds = %#v (%T), want empty list", input["teamIds"], input["teamIds"])
+			}
+			if len(teamIDs) != 0 {
+				t.Fatalf("UpdateBot teamIds = %#v, want empty list", teamIDs)
+			}
+			return map[string]any{
+				"updateBot": map[string]any{
+					"bot":    map[string]any{"id": "bot-1", "name": "testers"},
+					"errors": []any{},
+				},
+			}
+		},
+	})
+
+	v := NewSleuthVault(srv.URL, "test-token")
+	if err := v.RemoveBotTeam(context.Background(), "testers", "Dev"); err != nil {
+		t.Fatalf("RemoveBotTeam failed: %v", err)
+	}
+
+	var ops []string
+	for _, rec := range *records {
+		ops = append(ops, rec.OperationName)
+	}
+	if got := strings.Join(ops, ","); got != "ListBots,ListBots,UpdateBot" {
+		t.Fatalf("operations = %s", got)
+	}
+}
+
 // TestSleuthVault_FindUser_QueryShape locks in the PR142 bug fix: the
 // FindUser query nests under organization { users(term:) }. Tested via
 // userGIDByEmail, the only call site.
@@ -171,8 +223,8 @@ func TestSleuthVault_CreateBotRuntimeToken_QueryShape(t *testing.T) {
 						"description": "Reviews pull requests.",
 						"teams":       []any{},
 						"installedSkills": []any{
-							map[string]any{"name": "fix-pr", "isDirectInstall": true},
-							map[string]any{"name": "webapp-testing", "isDirectInstall": false},
+							map[string]any{"name": "fix-pr", "assetType": "SKILL", "isDirectInstall": true},
+							map[string]any{"name": "webapp-testing", "assetType": "SKILL", "isDirectInstall": false},
 						},
 					},
 				},
@@ -230,8 +282,8 @@ func TestSleuthVault_RevokeBotRuntimeTokens_QueryShape(t *testing.T) {
 						"description": "Reviews pull requests.",
 						"teams":       []any{},
 						"installedSkills": []any{
-							map[string]any{"name": "fix-pr", "isDirectInstall": true},
-							map[string]any{"name": "webapp-testing", "isDirectInstall": false},
+							map[string]any{"name": "fix-pr", "assetType": "SKILL", "isDirectInstall": true},
+							map[string]any{"name": "webapp-testing", "assetType": "SKILL", "isDirectInstall": false},
 						},
 					},
 				},
@@ -264,8 +316,9 @@ func TestSleuthVault_RevokeBotRuntimeTokens_QueryShape(t *testing.T) {
 
 func TestSleuthVault_ListBots_ProjectsSlug(t *testing.T) {
 	// Server returns installedSkills in non-alphabetical order with a
-	// duplicate to verify the Sleuth path dedupes and sorts (matching the
-	// file-based path's contract on mgmt.Bot.InstalledSkills).
+	// duplicate plus an installed agent asset to verify the Sleuth path
+	// filters to skills, dedupes, and sorts (matching the file-based path's
+	// contract on mgmt.Bot.InstalledSkills).
 	srv, _ := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
 		"ListBots": func(vars map[string]any) any {
 			return map[string]any{
@@ -277,9 +330,10 @@ func TestSleuthVault_ListBots_ProjectsSlug(t *testing.T) {
 						"description": "Reviews pull requests.",
 						"teams":       []any{},
 						"installedSkills": []any{
-							map[string]any{"name": "webapp-testing", "isDirectInstall": false},
-							map[string]any{"name": "fix-pr", "isDirectInstall": true},
-							map[string]any{"name": "fix-pr", "isDirectInstall": true},
+							map[string]any{"name": "webapp-testing", "assetType": "SKILL", "isDirectInstall": false},
+							map[string]any{"name": "reviewer-agent", "assetType": "AGENT", "isDirectInstall": true},
+							map[string]any{"name": "fix-pr", "assetType": "SKILL", "isDirectInstall": true},
+							map[string]any{"name": "fix-pr", "assetType": "SKILL", "isDirectInstall": true},
 						},
 					},
 				},
@@ -434,12 +488,67 @@ func TestSleuthVault_InstallSkillToBot_SlugMatchOrderIndependent(t *testing.T) {
 	}
 }
 
-// TestSleuthVault_InstallSkillToBot_AmbiguousMatchErrors covers the case
+func TestSleuthVault_InstallSkillToBotPrefersExactSlug(t *testing.T) {
+	srv, _ := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
+		"ListBots": func(vars map[string]any) any {
+			return map[string]any{
+				"bots": []any{
+					map[string]any{
+						"id":          "bot-1",
+						"name":        "testers",
+						"slug":        "testers",
+						"description": "Tests stuff",
+						"teams":       []any{},
+					},
+				},
+			}
+		},
+		"AssetGID": func(vars map[string]any) any {
+			return map[string]any{
+				"vault": map[string]any{
+					"assets": map[string]any{
+						"nodes": []any{
+							map[string]any{
+								"__typename": "Skill",
+								"id":         "slug-asset",
+								"name":       "Architecture Blueprint",
+								"slug":       "architecture-blueprint-generator",
+							},
+							map[string]any{
+								"__typename": "Skill",
+								"id":         "uploaded-skill",
+								"name":       "architecture-blueprint-generator",
+								"slug":       "architecture-blueprint-generator_skill",
+							},
+						},
+					},
+				},
+			}
+		},
+		"InstallSkillToBot": func(vars map[string]any) any {
+			if got := vars["skillId"]; got != "slug-asset" {
+				t.Fatalf("InstallSkillToBot skillId = %v, want slug-asset", got)
+			}
+			return map[string]any{
+				"installSkillToBot": map[string]any{
+					"success": true,
+					"errors":  []any{},
+				},
+			}
+		},
+	})
+
+	v := NewSleuthVault(srv.URL, "test-token")
+	if err := v.SetAssetInstallation(context.Background(), "architecture-blueprint-generator", InstallTarget{Kind: InstallKindBot, Bot: "testers"}); err != nil {
+		t.Fatalf("SetAssetInstallation: %v", err)
+	}
+}
+
+// TestSleuthVault_InstallSkillToBot_PrefersSlugOverName covers the case
 // where the asset-search response contains both a slug-matching asset and
-// a *different* display-name-matching asset. Without ambiguity detection,
-// either could be returned depending on server ordering — instead the
-// install must surface a clear error.
-func TestSleuthVault_InstallSkillToBot_AmbiguousMatchErrors(t *testing.T) {
+// a *different* display-name-matching asset. The exact slug wins because
+// slugs are unique and are what SX exposes from list and upload calls.
+func TestSleuthVault_InstallSkillToBot_PrefersSlugOverName(t *testing.T) {
 	srv, _ := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
 		"ListBots": func(vars map[string]any) any {
 			return map[string]any{
@@ -476,15 +585,301 @@ func TestSleuthVault_InstallSkillToBot_AmbiguousMatchErrors(t *testing.T) {
 				},
 			}
 		},
+		"InstallSkillToBot": func(vars map[string]any) any {
+			if got := vars["skillId"]; got != "slug-asset" {
+				t.Fatalf("InstallSkillToBot skillId = %v, want slug-asset", got)
+			}
+			return map[string]any{
+				"installSkillToBot": map[string]any{
+					"success": true,
+					"errors":  []any{},
+				},
+			}
+		},
+	})
+
+	v := NewSleuthVault(srv.URL, "test-token")
+	if err := v.SetAssetInstallation(context.Background(), "fix-pr", InstallTarget{Kind: InstallKindBot, Bot: "testers"}); err != nil {
+		t.Fatalf("SetAssetInstallation: %v", err)
+	}
+}
+
+func TestSleuthVault_ClearAssetInstallationsIgnoresMissingBotInstall(t *testing.T) {
+	srv, records := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
+		"ListBots": func(vars map[string]any) any {
+			return map[string]any{
+				"bots": []any{
+					map[string]any{
+						"id":              "bot-1",
+						"name":            "testers",
+						"slug":            "testers",
+						"description":     "Tests stuff",
+						"teams":           []any{},
+						"installedSkills": []any{},
+					},
+				},
+			}
+		},
+		"BotInstalled": func(vars map[string]any) any {
+			if got := vars["slug"]; got != "testers" {
+				t.Fatalf("BotInstalled slug = %v, want testers", got)
+			}
+			return map[string]any{
+				"bot": map[string]any{
+					"installedSkills": []any{
+						map[string]any{
+							"name":            "database-migrations",
+							"assetType":       "SKILL",
+							"isDirectInstall": true,
+						},
+					},
+				},
+			}
+		},
+		"AssetGID": func(vars map[string]any) any {
+			if got := vars["search"]; got != "database-migrations" {
+				t.Fatalf("AssetGID search = %v, want database-migrations", got)
+			}
+			return map[string]any{
+				"vault": map[string]any{
+					"assets": map[string]any{
+						"nodes": []any{
+							map[string]any{
+								"__typename": "Skill",
+								"id":         "skill-1",
+								"name":       "Database migrations",
+								"slug":       "database-migrations",
+								"type":       "SKILL",
+							},
+						},
+					},
+				},
+			}
+		},
+		"UninstallSkillFromBot": func(vars map[string]any) any {
+			if got := vars["botId"]; got != "bot-1" {
+				t.Fatalf("UninstallSkillFromBot botId = %v, want bot-1", got)
+			}
+			if got := vars["skillId"]; got != "skill-1" {
+				t.Fatalf("UninstallSkillFromBot skillId = %v, want skill-1", got)
+			}
+			return map[string]any{
+				"uninstallSkillFromBot": map[string]any{
+					"success": false,
+					"errors":  []any{},
+				},
+			}
+		},
+		"RemoveAssetInstallations": func(vars map[string]any) any {
+			input, ok := vars["input"].(map[string]any)
+			if !ok {
+				t.Fatalf("RemoveAssetInstallations input = %T, want object", vars["input"])
+			}
+			if got := input["assetName"]; got != "database-migrations" {
+				t.Fatalf("RemoveAssetInstallations assetName = %v, want database-migrations", got)
+			}
+			return map[string]any{
+				"removeAssetInstallations": map[string]any{
+					"success": true,
+					"errors":  []any{},
+				},
+			}
+		},
+	})
+
+	v := NewSleuthVault(srv.URL, "test-token")
+	if err := v.ClearAssetInstallations(context.Background(), "database-migrations"); err != nil {
+		t.Fatalf("ClearAssetInstallations failed: %v", err)
+	}
+
+	var ops []string
+	for _, rec := range *records {
+		ops = append(ops, rec.OperationName)
+	}
+	if got := strings.Join(ops, ","); got != "AssetGID,ListBots,BotInstalled,UninstallSkillFromBot,RemoveAssetInstallations" {
+		t.Fatalf("operations = %s", got)
+	}
+}
+
+func TestSleuthVault_ClearAssetInstallationsFiltersBotInstallsByAssetType(t *testing.T) {
+	srv, records := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
+		"AssetGID": func(vars map[string]any) any {
+			return map[string]any{
+				"vault": map[string]any{
+					"assets": map[string]any{
+						"nodes": []any{
+							map[string]any{
+								"__typename": "Skill",
+								"id":         "skill-1",
+								"name":       "Foo",
+								"slug":       "foo",
+								"type":       "SKILL",
+							},
+						},
+					},
+				},
+			}
+		},
+		"ListBots": func(vars map[string]any) any {
+			return map[string]any{
+				"bots": []any{
+					map[string]any{
+						"id":              "bot-1",
+						"name":            "testers",
+						"slug":            "testers",
+						"description":     "Tests stuff",
+						"teams":           []any{},
+						"installedSkills": []any{},
+					},
+				},
+			}
+		},
+		"BotInstalled": func(vars map[string]any) any {
+			return map[string]any{
+				"bot": map[string]any{
+					"installedSkills": []any{
+						map[string]any{
+							"name":            "foo",
+							"assetType":       "AGENT",
+							"isDirectInstall": true,
+						},
+					},
+				},
+			}
+		},
+		"UninstallSkillFromBot": func(vars map[string]any) any {
+			t.Fatal("UninstallSkillFromBot should not run for a different asset type")
+			return nil
+		},
+		"RemoveAssetInstallations": func(vars map[string]any) any {
+			return map[string]any{
+				"removeAssetInstallations": map[string]any{
+					"success": true,
+					"errors":  []any{},
+				},
+			}
+		},
+	})
+
+	v := NewSleuthVault(srv.URL, "test-token")
+	if err := v.ClearAssetInstallations(context.Background(), "foo"); err != nil {
+		t.Fatalf("ClearAssetInstallations failed: %v", err)
+	}
+
+	var ops []string
+	for _, rec := range *records {
+		ops = append(ops, rec.OperationName)
+	}
+	if got := strings.Join(ops, ","); got != "AssetGID,ListBots,BotInstalled,RemoveAssetInstallations" {
+		t.Fatalf("operations = %s", got)
+	}
+}
+
+// TestSleuthVault_AddAsset_ConflictByStatusCarriesSlug verifies that an
+// HTTP 409 is treated as a version conflict even when the error message is
+// reworded (not containing "already exists"), and that the persisted slug
+// from the response propagates onto ErrVersionExists.
+func TestSleuthVault_AddAsset_ConflictByStatusCarriesSlug(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/skills/assets" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success": false,
+			"error":   "duplicate version", // reworded — no "already exists"
+			"asset":   map[string]any{"name": "foo_skill", "version": "1"},
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	// Server contract: this pins only the SX side — that we PARSE the
+	// conflict response's asset.name as the slug. The server must ALSO
+	// guarantee that field carries the persisted slug ("foo_skill"), not the
+	// display name ("foo"); if it ever returns the display name on conflict,
+	// the upload-collision re-publish fix silently regresses and this test
+	// would not catch it.
+	v := NewSleuthVault(srv.URL, "test-token")
+	_, err := v.AddAssetWithResult(context.Background(), &lockfile.Asset{Name: "foo", Version: "1"}, []byte("zip"))
+	var exists *ErrVersionExists
+	if !errors.As(err, &exists) {
+		t.Fatalf("AddAssetWithResult err = %v, want ErrVersionExists", err)
+	}
+	if exists.Slug != "foo_skill" {
+		t.Fatalf("ErrVersionExists.Slug = %q, want foo_skill", exists.Slug)
+	}
+}
+
+func TestSleuthVault_AddAssetHTTPErrorIncludesBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/skills/assets" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "agent install exploded", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	v := NewSleuthVault(srv.URL, "test-token")
+	_, err := v.AddAssetWithResult(context.Background(), &lockfile.Asset{Name: "foo", Version: "1"}, []byte("zip"))
+	if err == nil || !strings.Contains(err.Error(), "HTTP 500:") || !strings.Contains(err.Error(), "agent install exploded") {
+		t.Fatalf("AddAssetWithResult err = %v, want status plus response body", err)
+	}
+}
+
+// TestSleuthVault_InstallSkillToBot_AmbiguousNameErrors covers the case
+// where no asset matches the requested value as a slug but two distinct
+// assets share it as a display name. The resolver must surface an
+// ambiguity error rather than silently installing the first one.
+func TestSleuthVault_InstallSkillToBot_AmbiguousNameErrors(t *testing.T) {
+	srv, _ := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
+		"ListBots": func(vars map[string]any) any {
+			return map[string]any{
+				"bots": []any{
+					map[string]any{
+						"id":          "bot-1",
+						"name":        "testers",
+						"slug":        "testers",
+						"description": "Tests stuff",
+						"teams":       []any{},
+					},
+				},
+			}
+		},
+		"AssetGID": func(vars map[string]any) any {
+			return map[string]any{
+				"vault": map[string]any{
+					"assets": map[string]any{
+						"nodes": []any{
+							map[string]any{
+								"__typename": "Skill",
+								"id":         "asset-a",
+								"name":       "fix-pr",
+								"slug":       "fix-pr-one",
+							},
+							map[string]any{
+								"__typename": "Skill",
+								"id":         "asset-b",
+								"name":       "fix-pr",
+								"slug":       "fix-pr-two",
+							},
+						},
+					},
+				},
+			}
+		},
+		"InstallSkillToBot": func(vars map[string]any) any {
+			t.Fatal("InstallSkillToBot should not be called on an ambiguous name")
+			return nil
+		},
 	})
 
 	v := NewSleuthVault(srv.URL, "test-token")
 	err := v.SetAssetInstallation(context.Background(), "fix-pr", InstallTarget{Kind: InstallKindBot, Bot: "testers"})
-	if err == nil {
-		t.Fatalf("expected ambiguity error, got nil")
-	}
-	if !strings.Contains(err.Error(), "ambiguous") {
-		t.Fatalf("expected ambiguity error, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("SetAssetInstallation with ambiguous name = %v, want ambiguity error", err)
 	}
 }
 
