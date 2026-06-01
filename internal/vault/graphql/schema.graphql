@@ -4164,6 +4164,40 @@ type AssetAuditEventEdge {
   node: AssetAuditEvent!
 }
 
+"""
+A single raw asset usage event.
+
+Exposes the individual rows behind the aggregated usage dashboards so an
+external tool (the sx CLI) can export usage history losslessly — actor,
+timestamp, and asset coordinates included.
+"""
+type AssetUsageEvent {
+  timestamp: DateTime!
+  actorEmail: String
+  assetName: String!
+  assetVersion: String!
+  assetType: String!
+  botName: String
+}
+
+type AssetUsageEventConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [AssetUsageEventEdge!]!
+  nodes: [AssetUsageEvent!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type AssetUsageEventEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: AssetUsageEvent!
+}
+
 """Source metadata for a Pulse-managed asset."""
 type AssetManagedSource implements AssetSource {
   """Whether this asset is read-only"""
@@ -4825,6 +4859,30 @@ type Query {
     before: String
     after: String
   ): AssetAuditEventConnection!
+  assetUsageEvents(
+    """Filter by asset name (slug)"""
+    assetName: String
+
+    """Filter by asset type"""
+    assetType: String
+
+    """Filter by actor email"""
+    actor: String
+
+    """Only events at or after this time"""
+    since: DateTime
+
+    """Only events at or before this time"""
+    until: DateTime
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): AssetUsageEventConnection!
   skillUsageTimeSeries(
     timeRange: SkillUsageTimeRange = DAYS_30
     skillId: ID
@@ -5436,6 +5494,16 @@ type Mutation {
   retractInstallationRequest(requestId: ID!): RetractInstallationRequestMutation
   setAssetInstallations(input: SetAssetInstallationsInput!): SetAssetInstallationsMutation
   removeAssetInstallations(input: RemoveAssetInstallationsInput!): RemoveAssetInstallationsMutation
+
+  """
+  Import historical audit events from another vault, verbatim.
+  
+  Preserves the original timestamp, actor (resolved by email within the org;
+  unresolved actors fall back to the caller with the original email kept in
+  data), event name, target type, and payload — so migrating a vault into
+  skills.new doesn't lose its audit trail.
+  """
+  importAuditEvents(events: [ImportAuditEventInput!]!): ImportAuditEventsMutation
   updateSkillsSettings(input: UpdateSkillsSettingsInput!): UpdateSkillsSettingsMutation
 
   """Import an external (non-managed) asset as a new managed asset."""
@@ -5981,11 +6049,25 @@ input SetAssetInstallationsInput {
   assetVersion: String
   repositories: [RepositoryInstallationInput!]!
   personalOnly: Boolean
+  installations: [AssetInstallationInput!]
 }
 
 input RepositoryInstallationInput {
   url: String!
   paths: [String!]
+}
+
+input AssetInstallationInput {
+  entityType: VaultAssetInstallationEntityType!
+
+  """GID of the entity (null for organization-wide)"""
+  entityId: ID
+  entityName: String
+  entityProvider: String
+
+  """GID of the mono-repo config (repository targets only)"""
+  monoRepoConfigId: ID
+  monoRepoConfigName: String
 }
 
 type RemoveAssetInstallationsMutation {
@@ -5996,6 +6078,39 @@ type RemoveAssetInstallationsMutation {
 input RemoveAssetInstallationsInput {
   assetName: String!
   delete: Boolean = false
+}
+
+"""
+Import historical audit events from another vault, verbatim.
+
+Preserves the original timestamp, actor (resolved by email within the org;
+unresolved actors fall back to the caller with the original email kept in
+data), event name, target type, and payload — so migrating a vault into
+skills.new doesn't lose its audit trail.
+"""
+type ImportAuditEventsMutation {
+  importedCount: Int!
+  errors: [ErrorType!]!
+}
+
+input ImportAuditEventInput {
+  """When the event occurred (original timestamp)"""
+  timestamp: DateTime!
+
+  """Email of the original actor"""
+  actor: String
+
+  """Event name, stored verbatim (e.g. team.created)"""
+  event: String!
+
+  """Target type, stored verbatim (e.g. team, asset)"""
+  targetType: String!
+
+  """Target name/identifier"""
+  target: String
+
+  """Event-specific payload"""
+  data: JSONString
 }
 
 type UpdateSkillsSettingsMutation {
@@ -6277,19 +6392,6 @@ input CreateAssetInput {
   ruleTitle: String
   ruleGlobs: [String!]
   pluginMarketplaceUrl: String
-}
-
-input AssetInstallationInput {
-  entityType: VaultAssetInstallationEntityType!
-
-  """GID of the entity (null for organization-wide)"""
-  entityId: ID
-  entityName: String
-  entityProvider: String
-
-  """GID of the mono-repo config (repository targets only)"""
-  monoRepoConfigId: ID
-  monoRepoConfigName: String
 }
 
 input McpToolInput {

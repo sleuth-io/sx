@@ -270,30 +270,37 @@ func (s *SleuthVault) RemoveTeamRepository(ctx context.Context, team, repoURL st
 func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error {
 	switch target.Kind {
 	case InstallKindOrg:
-		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false)
+		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, nil)
 	case InstallKindRepo:
-		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo}}, false)
+		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo}}, false, nil)
 	case InstallKindPath:
-		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo, Paths: target.Paths}}, false)
+		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo, Paths: target.Paths}}, false, nil)
 	case InstallKindUser:
-		// Sleuth's setAssetInstallations GraphQL mutation supports exactly
-		// one user-scoped shape: personalOnly=true with empty repositories,
-		// which installs the asset for the authenticated caller ONLY.
-		// See sleuth/apps/skills/graphql/mutations.py:SetAssetInstallationsMutation.
-		// We must never pass repositories=[] with personalOnly=false — that
-		// would be interpreted as an org-wide install on the server, which
-		// is a silent privilege escalation. Reject if the target user does
-		// not match the caller so the intent is unambiguous.
+		// The setAssetInstallations `installations` input now accepts an explicit
+		// USER target by GID, so we can scope to any user in the org (not just the
+		// caller). personalOnly stays the lighter-weight path for self-installs.
 		actor, err := s.CurrentActor(ctx)
 		if err != nil {
 			return err
 		}
-		if mgmt.NormalizeEmail(target.User) != actor.Email {
-			return fmt.Errorf("%w: user-scoped installs on sleuth vaults can only target the authenticated caller (personalOnly)", ErrNotImplemented)
+		if mgmt.NormalizeEmail(target.User) == actor.Email {
+			return s.setAssetInstallationsGraphQL(ctx, assetName, nil, true, nil)
 		}
-		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, true)
+		userGID, err := s.userGIDByEmail(ctx, target.User)
+		if err != nil {
+			return err
+		}
+		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, []vaultgql.AssetInstallationInput{
+			{EntityType: vaultgql.VaultAssetInstallationEntityTypeUser, EntityId: &userGID},
+		})
 	case InstallKindTeam:
-		return fmt.Errorf("%w: team-scoped installs on sleuth vaults (the existing GraphQL setAssetInstallations mutation does not expose team targets; use the skills.new web UI)", ErrNotImplemented)
+		teamGID, err := s.teamGIDByName(ctx, target.Team)
+		if err != nil {
+			return err
+		}
+		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, []vaultgql.AssetInstallationInput{
+			{EntityType: vaultgql.VaultAssetInstallationEntityTypeTeam, EntityId: &teamGID},
+		})
 	case InstallKindBot:
 		// Bot installs go through the dedicated installSkillToBot
 		// mutation, not setAssetInstallations — the latter does not yet
@@ -1057,12 +1064,13 @@ func (s *SleuthVault) ClearAssetInstallations(ctx context.Context, assetName str
 func (s *SleuthVault) RecordUsageEvents(ctx context.Context, events []mgmt.UsageEvent) error {
 	// Usage events go through the existing PostUsageStats HTTP path for
 	// sleuth vaults — it talks to /api/usage, not GraphQL. Marshal each
-	// event to the legacy wire format and delegate.
+	// event to the wire format and delegate.
 	//
-	// Note: ev.Actor is intentionally dropped from the wire payload — the
-	// server always attributes events to the bearer-token holder. Any
-	// caller that sets Actor to another user will see it silently
-	// rewritten to the authenticated caller on ingestion.
+	// ev.Actor is sent as the optional `actor` field: the server resolves it
+	// to a user in the org (case-insensitively) so imported usage keeps its
+	// original attribution, falling back to the bearer-token holder when the
+	// email doesn't resolve. Omitted when empty so live (non-import) events
+	// attribute to the caller as before.
 	if len(events) == 0 {
 		return nil
 	}
@@ -1071,12 +1079,16 @@ func (s *SleuthVault) RecordUsageEvents(ctx context.Context, events []mgmt.Usage
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		line, err := json.Marshal(map[string]any{
+		payload := map[string]any{
 			"asset_name":    ev.AssetName,
 			"asset_version": ev.AssetVersion,
 			"asset_type":    ev.AssetType,
 			"timestamp":     timeOrNow(ev.Timestamp).Format(time.RFC3339),
-		})
+		}
+		if ev.Actor != "" {
+			payload["actor"] = ev.Actor
+		}
+		line, err := json.Marshal(payload)
 		if err != nil {
 			return err
 		}
@@ -1086,11 +1098,59 @@ func (s *SleuthVault) RecordUsageEvents(ctx context.Context, events []mgmt.Usage
 }
 
 func (s *SleuthVault) GetUsageStats(ctx context.Context, filter mgmt.UsageFilter) (*mgmt.UsageSummary, error) {
-	// Sleuth usage stats come from the server's PQL fragments
-	// (asset.usage). Rather than reimplementing the dashboard math, surface
-	// a clear ErrNotImplemented so callers know to use the web UI.
-	return nil, fmt.Errorf("%w: sleuth vault usage stats (use the skills.new web UI dashboards)", ErrNotImplemented)
+	// Pull raw usage rows via the assetUsageEvents export (server-side filtered),
+	// paging through the connection, then aggregate with the same summarizer the
+	// file-backed vaults use so the UsageSummary shape is identical everywhere.
+	strPtr := func(v string) *string {
+		if v == "" {
+			return nil
+		}
+		return &v
+	}
+	timePtr := func(t time.Time) *time.Time {
+		if t.IsZero() {
+			return nil
+		}
+		return &t
+	}
+
+	first := sleuthUsageEventsPageSize
+	var after *string
+	var events []mgmt.UsageEvent
+	for {
+		resp, err := vaultgql.AssetUsageEvents(
+			ctx, s.gqlClient(),
+			strPtr(filter.AssetName), strPtr(filter.AssetType), strPtr(filter.Actor),
+			timePtr(filter.Since), timePtr(filter.Until), &first, after,
+		)
+		if err != nil {
+			return nil, err
+		}
+		conn := resp.AssetUsageEvents
+		for _, n := range conn.Nodes {
+			actor := ""
+			if n.ActorEmail != nil {
+				actor = *n.ActorEmail
+			}
+			events = append(events, mgmt.UsageEvent{
+				Timestamp:    n.Timestamp,
+				Actor:        actor,
+				AssetName:    n.AssetName,
+				AssetVersion: n.AssetVersion,
+				AssetType:    n.AssetType,
+			})
+		}
+		if !conn.PageInfo.HasNextPage || conn.PageInfo.EndCursor == nil {
+			break
+		}
+		after = conn.PageInfo.EndCursor
+	}
+	return mgmt.SummarizeUsageEvents(events), nil
 }
+
+// sleuthUsageEventsPageSize is the server-side cap on assetUsageEvents (the
+// field documents a maximum of 50); we page through with the endCursor.
+const sleuthUsageEventsPageSize = 50
 
 // sleuthAuditDefaultPageSize is the server-side cap we ask for when the
 // caller didn't set filter.Limit. The server-side query plus client-side
@@ -1327,14 +1387,21 @@ func (s *SleuthVault) resolveUserGIDs(ctx context.Context, emails []string) ([]s
 // empty". Callers must route through SetAssetInstallation, which picks
 // the right arguments per InstallKind and never collapses an intended
 // repo/path/user install into the empty-empty shape.
-func (s *SleuthVault) setAssetInstallationsGraphQL(ctx context.Context, assetName string, repositories []vaultgql.RepositoryInstallationInput, personalOnly bool) error {
+func (s *SleuthVault) setAssetInstallationsGraphQL(
+	ctx context.Context,
+	assetName string,
+	repositories []vaultgql.RepositoryInstallationInput,
+	personalOnly bool,
+	installations []vaultgql.AssetInstallationInput,
+) error {
 	if repositories == nil {
 		repositories = []vaultgql.RepositoryInstallationInput{}
 	}
 	resp, err := vaultgql.SetAssetInstallations(ctx, s.gqlClient(), vaultgql.SetAssetInstallationsInput{
-		AssetName:    assetName,
-		Repositories: repositories,
-		PersonalOnly: &personalOnly,
+		AssetName:     assetName,
+		Repositories:  repositories,
+		PersonalOnly:  &personalOnly,
+		Installations: installations,
 	})
 	if err != nil {
 		return err

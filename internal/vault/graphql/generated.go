@@ -587,6 +587,101 @@ var AllAssetType = []AssetType{
 	AssetTypeClaudeCodePlugin,
 }
 
+// AssetUsageEventsAssetUsageEventsAssetUsageEventConnection includes the requested fields of the GraphQL type AssetUsageEventConnection.
+type AssetUsageEventsAssetUsageEventsAssetUsageEventConnection struct {
+	// Pagination data for this connection.
+	PageInfo AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionPageInfo               `json:"pageInfo"`
+	Nodes    []AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent `json:"nodes"`
+}
+
+// GetPageInfo returns AssetUsageEventsAssetUsageEventsAssetUsageEventConnection.PageInfo, and is useful for accessing the field via an interface.
+func (v *AssetUsageEventsAssetUsageEventsAssetUsageEventConnection) GetPageInfo() AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionPageInfo {
+	return v.PageInfo
+}
+
+// GetNodes returns AssetUsageEventsAssetUsageEventsAssetUsageEventConnection.Nodes, and is useful for accessing the field via an interface.
+func (v *AssetUsageEventsAssetUsageEventsAssetUsageEventConnection) GetNodes() []AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent {
+	return v.Nodes
+}
+
+// AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent includes the requested fields of the GraphQL type AssetUsageEvent.
+// The GraphQL type's documentation follows.
+//
+// A single raw asset usage event.
+//
+// Exposes the individual rows behind the aggregated usage dashboards so an
+// external tool (the sx CLI) can export usage history losslessly — actor,
+// timestamp, and asset coordinates included.
+type AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent struct {
+	Timestamp    time.Time `json:"timestamp"`
+	ActorEmail   *string   `json:"actorEmail"`
+	AssetName    string    `json:"assetName"`
+	AssetVersion string    `json:"assetVersion"`
+	AssetType    string    `json:"assetType"`
+	BotName      *string   `json:"botName"`
+}
+
+// GetTimestamp returns AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent.Timestamp, and is useful for accessing the field via an interface.
+func (v *AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent) GetTimestamp() time.Time {
+	return v.Timestamp
+}
+
+// GetActorEmail returns AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent.ActorEmail, and is useful for accessing the field via an interface.
+func (v *AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent) GetActorEmail() *string {
+	return v.ActorEmail
+}
+
+// GetAssetName returns AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent.AssetName, and is useful for accessing the field via an interface.
+func (v *AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent) GetAssetName() string {
+	return v.AssetName
+}
+
+// GetAssetVersion returns AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent.AssetVersion, and is useful for accessing the field via an interface.
+func (v *AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent) GetAssetVersion() string {
+	return v.AssetVersion
+}
+
+// GetAssetType returns AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent.AssetType, and is useful for accessing the field via an interface.
+func (v *AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent) GetAssetType() string {
+	return v.AssetType
+}
+
+// GetBotName returns AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent.BotName, and is useful for accessing the field via an interface.
+func (v *AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionNodesAssetUsageEvent) GetBotName() *string {
+	return v.BotName
+}
+
+// AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionPageInfo includes the requested fields of the GraphQL type PageInfo.
+// The GraphQL type's documentation follows.
+//
+// The Relay compliant `PageInfo` type, containing data necessary to paginate this connection.
+type AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionPageInfo struct {
+	// When paginating forwards, are there more items?
+	HasNextPage bool `json:"hasNextPage"`
+	// When paginating forwards, the cursor to continue.
+	EndCursor *string `json:"endCursor"`
+}
+
+// GetHasNextPage returns AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionPageInfo.HasNextPage, and is useful for accessing the field via an interface.
+func (v *AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionPageInfo) GetHasNextPage() bool {
+	return v.HasNextPage
+}
+
+// GetEndCursor returns AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionPageInfo.EndCursor, and is useful for accessing the field via an interface.
+func (v *AssetUsageEventsAssetUsageEventsAssetUsageEventConnectionPageInfo) GetEndCursor() *string {
+	return v.EndCursor
+}
+
+// AssetUsageEventsResponse is returned by AssetUsageEvents on success.
+type AssetUsageEventsResponse struct {
+	AssetUsageEvents AssetUsageEventsAssetUsageEventsAssetUsageEventConnection `json:"assetUsageEvents"`
+}
+
+// GetAssetUsageEvents returns AssetUsageEventsResponse.AssetUsageEvents, and is useful for accessing the field via an interface.
+func (v *AssetUsageEventsResponse) GetAssetUsageEvents() AssetUsageEventsAssetUsageEventsAssetUsageEventConnection {
+	return v.AssetUsageEvents
+}
+
 // BotApiKeysBotManagedBot includes the requested fields of the GraphQL type ManagedBot.
 type BotApiKeysBotManagedBot struct {
 	ApiKeys []BotApiKeysBotManagedBotApiKeysBotApiKey `json:"apiKeys"`
@@ -1633,6 +1728,95 @@ func (v *GetMeUser) GetFirstName() string { return v.FirstName }
 // GetLastName returns GetMeUser.LastName, and is useful for accessing the field via an interface.
 func (v *GetMeUser) GetLastName() string { return v.LastName }
 
+type ImportAuditEventInput struct {
+	// When the event occurred (original timestamp)
+	Timestamp time.Time `json:"timestamp"`
+	// Email of the original actor
+	Actor *string `json:"actor"`
+	// Event name, stored verbatim (e.g. team.created)
+	Event string `json:"event"`
+	// Target type, stored verbatim (e.g. team, asset)
+	TargetType string `json:"targetType"`
+	// Target name/identifier
+	Target *string `json:"target"`
+	// Event-specific payload
+	Data *json.RawMessage `json:"data"`
+}
+
+// GetTimestamp returns ImportAuditEventInput.Timestamp, and is useful for accessing the field via an interface.
+func (v *ImportAuditEventInput) GetTimestamp() time.Time { return v.Timestamp }
+
+// GetActor returns ImportAuditEventInput.Actor, and is useful for accessing the field via an interface.
+func (v *ImportAuditEventInput) GetActor() *string { return v.Actor }
+
+// GetEvent returns ImportAuditEventInput.Event, and is useful for accessing the field via an interface.
+func (v *ImportAuditEventInput) GetEvent() string { return v.Event }
+
+// GetTargetType returns ImportAuditEventInput.TargetType, and is useful for accessing the field via an interface.
+func (v *ImportAuditEventInput) GetTargetType() string { return v.TargetType }
+
+// GetTarget returns ImportAuditEventInput.Target, and is useful for accessing the field via an interface.
+func (v *ImportAuditEventInput) GetTarget() *string { return v.Target }
+
+// GetData returns ImportAuditEventInput.Data, and is useful for accessing the field via an interface.
+func (v *ImportAuditEventInput) GetData() *json.RawMessage { return v.Data }
+
+// ImportAuditEventsImportAuditEventsImportAuditEventsMutation includes the requested fields of the GraphQL type ImportAuditEventsMutation.
+// The GraphQL type's documentation follows.
+//
+// Import historical audit events from another vault, verbatim.
+//
+// Preserves the original timestamp, actor (resolved by email within the org;
+// unresolved actors fall back to the caller with the original email kept in
+// data), event name, target type, and payload — so migrating a vault into
+// skills.new doesn't lose its audit trail.
+type ImportAuditEventsImportAuditEventsImportAuditEventsMutation struct {
+	ImportedCount int                                                                          `json:"importedCount"`
+	Errors        []ImportAuditEventsImportAuditEventsImportAuditEventsMutationErrorsErrorType `json:"errors"`
+}
+
+// GetImportedCount returns ImportAuditEventsImportAuditEventsImportAuditEventsMutation.ImportedCount, and is useful for accessing the field via an interface.
+func (v *ImportAuditEventsImportAuditEventsImportAuditEventsMutation) GetImportedCount() int {
+	return v.ImportedCount
+}
+
+// GetErrors returns ImportAuditEventsImportAuditEventsImportAuditEventsMutation.Errors, and is useful for accessing the field via an interface.
+func (v *ImportAuditEventsImportAuditEventsImportAuditEventsMutation) GetErrors() []ImportAuditEventsImportAuditEventsImportAuditEventsMutationErrorsErrorType {
+	return v.Errors
+}
+
+// ImportAuditEventsImportAuditEventsImportAuditEventsMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type ImportAuditEventsImportAuditEventsImportAuditEventsMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns ImportAuditEventsImportAuditEventsImportAuditEventsMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *ImportAuditEventsImportAuditEventsImportAuditEventsMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns ImportAuditEventsImportAuditEventsImportAuditEventsMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *ImportAuditEventsImportAuditEventsImportAuditEventsMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+// ImportAuditEventsResponse is returned by ImportAuditEvents on success.
+type ImportAuditEventsResponse struct {
+	// Import historical audit events from another vault, verbatim.
+	//
+	// Preserves the original timestamp, actor (resolved by email within the org;
+	// unresolved actors fall back to the caller with the original email kept in
+	// data), event name, target type, and payload — so migrating a vault into
+	// skills.new doesn't lose its audit trail.
+	ImportAuditEvents *ImportAuditEventsImportAuditEventsImportAuditEventsMutation `json:"importAuditEvents"`
+}
+
+// GetImportAuditEvents returns ImportAuditEventsResponse.ImportAuditEvents, and is useful for accessing the field via an interface.
+func (v *ImportAuditEventsResponse) GetImportAuditEvents() *ImportAuditEventsImportAuditEventsImportAuditEventsMutation {
+	return v.ImportAuditEvents
+}
+
 // InstallSkillToBotInstallSkillToBotInstallSkillToBotMutation includes the requested fields of the GraphQL type InstallSkillToBotMutation.
 type InstallSkillToBotInstallSkillToBotInstallSkillToBotMutation struct {
 	Success bool                                                                         `json:"success"`
@@ -2117,10 +2301,11 @@ func (v *RevokeBotRuntimeTokensRevokeBotRuntimeTokensRevokeBotRuntimeTokensMutat
 }
 
 type SetAssetInstallationsInput struct {
-	AssetName    string                        `json:"assetName"`
-	AssetVersion *string                       `json:"assetVersion"`
-	Repositories []RepositoryInstallationInput `json:"repositories"`
-	PersonalOnly *bool                         `json:"personalOnly"`
+	AssetName     string                        `json:"assetName"`
+	AssetVersion  *string                       `json:"assetVersion"`
+	Repositories  []RepositoryInstallationInput `json:"repositories"`
+	PersonalOnly  *bool                         `json:"personalOnly"`
+	Installations []AssetInstallationInput      `json:"installations"`
 }
 
 // GetAssetName returns SetAssetInstallationsInput.AssetName, and is useful for accessing the field via an interface.
@@ -2136,6 +2321,11 @@ func (v *SetAssetInstallationsInput) GetRepositories() []RepositoryInstallationI
 
 // GetPersonalOnly returns SetAssetInstallationsInput.PersonalOnly, and is useful for accessing the field via an interface.
 func (v *SetAssetInstallationsInput) GetPersonalOnly() *bool { return v.PersonalOnly }
+
+// GetInstallations returns SetAssetInstallationsInput.Installations, and is useful for accessing the field via an interface.
+func (v *SetAssetInstallationsInput) GetInstallations() []AssetInstallationInput {
+	return v.Installations
+}
 
 // SetAssetInstallationsResponse is returned by SetAssetInstallations on success.
 type SetAssetInstallationsResponse struct {
@@ -4018,6 +4208,38 @@ type __AssetGIDInput struct {
 // GetSearch returns __AssetGIDInput.Search, and is useful for accessing the field via an interface.
 func (v *__AssetGIDInput) GetSearch() string { return v.Search }
 
+// __AssetUsageEventsInput is used internally by genqlient
+type __AssetUsageEventsInput struct {
+	AssetName *string    `json:"assetName"`
+	AssetType *string    `json:"assetType"`
+	Actor     *string    `json:"actor"`
+	Since     *time.Time `json:"since"`
+	Until     *time.Time `json:"until"`
+	First     *int       `json:"first"`
+	After     *string    `json:"after"`
+}
+
+// GetAssetName returns __AssetUsageEventsInput.AssetName, and is useful for accessing the field via an interface.
+func (v *__AssetUsageEventsInput) GetAssetName() *string { return v.AssetName }
+
+// GetAssetType returns __AssetUsageEventsInput.AssetType, and is useful for accessing the field via an interface.
+func (v *__AssetUsageEventsInput) GetAssetType() *string { return v.AssetType }
+
+// GetActor returns __AssetUsageEventsInput.Actor, and is useful for accessing the field via an interface.
+func (v *__AssetUsageEventsInput) GetActor() *string { return v.Actor }
+
+// GetSince returns __AssetUsageEventsInput.Since, and is useful for accessing the field via an interface.
+func (v *__AssetUsageEventsInput) GetSince() *time.Time { return v.Since }
+
+// GetUntil returns __AssetUsageEventsInput.Until, and is useful for accessing the field via an interface.
+func (v *__AssetUsageEventsInput) GetUntil() *time.Time { return v.Until }
+
+// GetFirst returns __AssetUsageEventsInput.First, and is useful for accessing the field via an interface.
+func (v *__AssetUsageEventsInput) GetFirst() *int { return v.First }
+
+// GetAfter returns __AssetUsageEventsInput.After, and is useful for accessing the field via an interface.
+func (v *__AssetUsageEventsInput) GetAfter() *string { return v.After }
+
 // __BotApiKeysInput is used internally by genqlient
 type __BotApiKeysInput struct {
 	Slug string `json:"slug"`
@@ -4117,6 +4339,14 @@ type __FindUserInput struct {
 
 // GetTerm returns __FindUserInput.Term, and is useful for accessing the field via an interface.
 func (v *__FindUserInput) GetTerm() string { return v.Term }
+
+// __ImportAuditEventsInput is used internally by genqlient
+type __ImportAuditEventsInput struct {
+	Events []ImportAuditEventInput `json:"events"`
+}
+
+// GetEvents returns __ImportAuditEventsInput.Events, and is useful for accessing the field via an interface.
+func (v *__ImportAuditEventsInput) GetEvents() []ImportAuditEventInput { return v.Events }
 
 // __InstallSkillToBotInput is used internally by genqlient
 type __InstallSkillToBotInput struct {
@@ -4320,6 +4550,63 @@ func AssetGID(
 	}
 
 	data_ = &AssetGIDResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The query executed by AssetUsageEvents.
+const AssetUsageEvents_Operation = `
+query AssetUsageEvents ($assetName: String, $assetType: String, $actor: String, $since: DateTime, $until: DateTime, $first: Int, $after: String) {
+	assetUsageEvents(assetName: $assetName, assetType: $assetType, actor: $actor, since: $since, until: $until, first: $first, after: $after) {
+		pageInfo {
+			hasNextPage
+			endCursor
+		}
+		nodes {
+			timestamp
+			actorEmail
+			assetName
+			assetVersion
+			assetType
+			botName
+		}
+	}
+}
+`
+
+func AssetUsageEvents(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	assetName *string,
+	assetType *string,
+	actor *string,
+	since *time.Time,
+	until *time.Time,
+	first *int,
+	after *string,
+) (data_ *AssetUsageEventsResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "AssetUsageEvents",
+		Query:  AssetUsageEvents_Operation,
+		Variables: &__AssetUsageEventsInput{
+			AssetName: assetName,
+			AssetType: assetType,
+			Actor:     actor,
+			Since:     since,
+			Until:     until,
+			First:     first,
+			After:     after,
+		},
+	}
+
+	data_ = &AssetUsageEventsResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(
@@ -4782,6 +5069,44 @@ func GetMe(
 	}
 
 	data_ = &GetMeResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by ImportAuditEvents.
+const ImportAuditEvents_Operation = `
+mutation ImportAuditEvents ($events: [ImportAuditEventInput!]!) {
+	importAuditEvents(events: $events) {
+		importedCount
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func ImportAuditEvents(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	events []ImportAuditEventInput,
+) (data_ *ImportAuditEventsResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "ImportAuditEvents",
+		Query:  ImportAuditEvents_Operation,
+		Variables: &__ImportAuditEventsInput{
+			Events: events,
+		},
+	}
+
+	data_ = &ImportAuditEventsResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(

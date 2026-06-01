@@ -1,0 +1,32 @@
+query AssetUsageEvents(
+  $assetName: String
+  $assetType: String
+  $actor: String
+  $since: DateTime
+  $until: DateTime
+  $first: Int
+  $after: String
+) {
+  assetUsageEvents(
+    assetName: $assetName
+    assetType: $assetType
+    actor: $actor
+    since: $since
+    until: $until
+    first: $first
+    after: $after
+  ) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      timestamp
+      actorEmail
+      assetName
+      assetVersion
+      assetType
+      botName
+    }
+  }
+}
