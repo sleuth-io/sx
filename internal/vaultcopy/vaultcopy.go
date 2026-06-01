@@ -202,41 +202,68 @@ func copyAssets(ctx context.Context, src, dst vault.Vault, opts Options, r *Repo
 	return nil
 }
 
-func copyAssetScopes(ctx context.Context, dst vault.Vault, name string, scopes []manifest.Scope, present, dryRun bool, r *Report) {
+// scopeInstaller is the slice of a vault the scope-copy step needs: set one
+// installation target at a time. Narrowed from vault.Vault so the dispatch
+// logic is unit-testable with a fake.
+type scopeInstaller interface {
+	SetAssetInstallation(ctx context.Context, name string, target vault.InstallTarget) error
+}
+
+// bulkInstaller is implemented by vaults that can set an asset's whole
+// installation set in one call (the Sleuth vault). It matters because that
+// backend replaces-on-set: setting scopes one at a time would let each call
+// clobber the last, so a multi-scope asset would keep only its final scope.
+type bulkInstaller interface {
+	SetAssetInstallations(ctx context.Context, name string, targets []vault.InstallTarget) error
+}
+
+func copyAssetScopes(ctx context.Context, dst scopeInstaller, name string, scopes []manifest.Scope, present, dryRun bool, r *Report) {
 	if !present {
 		// Asset exists only as uploaded files (never installed) — nothing to
 		// register on the destination beyond the version content already copied.
 		return
 	}
+
+	var targets []vault.InstallTarget
 	if len(scopes) == 0 {
 		// Registered with no scopes == org-wide. Register it so the destination
 		// records the global install rather than leaving an orphan file set.
-		if !dryRun {
-			if err := dst.SetAssetInstallation(ctx, name, vault.InstallTarget{Kind: vault.InstallKindOrg}); err != nil {
-				r.warnf("set org-wide install on %q: %v", name, err)
-				return
-			}
-		}
-		r.Scopes++
-		return
-	}
-	if len(scopes) > 1 {
-		// SetAssetInstallation appends on file-backed vaults but replaces on
-		// skills.new, where each call supersedes the previous one. Flag it so a
-		// multi-scope asset's installs can be verified on a server destination.
-		r.warnf("asset %q has %d scopes; verify all applied on the destination (server vaults replace per call)", name, len(scopes))
-	}
-	for _, sc := range scopes {
-		target, ok := scopeToTarget(sc)
-		if !ok {
-			r.warnf("asset %q: unsupported scope kind %q; skipped", name, sc.Kind)
-			continue
-		}
-		if !dryRun {
-			if err := dst.SetAssetInstallation(ctx, name, target); err != nil {
-				r.warnf("set scope %s on %q: %v", target.Describe(), name, err)
+		targets = []vault.InstallTarget{{Kind: vault.InstallKindOrg}}
+	} else {
+		for _, sc := range scopes {
+			target, ok := scopeToTarget(sc)
+			if !ok {
+				r.warnf("asset %q: unsupported scope kind %q; skipped", name, sc.Kind)
 				continue
 			}
+			targets = append(targets, target)
+		}
+	}
+	if len(targets) == 0 {
+		return
+	}
+	if dryRun {
+		r.Scopes += len(targets)
+		return
+	}
+
+	// Prefer one bulk call when the destination supports it (skills.new), so a
+	// multi-scope asset lands atomically rather than each call replacing the
+	// last. Fall back to per-target on any bulk error so one unresolvable
+	// target (e.g. a repo absent from the destination org) doesn't drop the
+	// rest — matching the engine's best-effort behavior.
+	if bulk, ok := dst.(bulkInstaller); ok && len(targets) > 1 {
+		if err := bulk.SetAssetInstallations(ctx, name, targets); err == nil {
+			r.Scopes += len(targets)
+			return
+		} else {
+			r.warnf("bulk-set scopes on %q failed (%v); retrying per-scope", name, err)
+		}
+	}
+	for _, target := range targets {
+		if err := dst.SetAssetInstallation(ctx, name, target); err != nil {
+			r.warnf("set scope %s on %q: %v", target.Describe(), name, err)
+			continue
 		}
 		r.Scopes++
 	}

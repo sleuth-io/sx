@@ -430,6 +430,61 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 	return fmt.Errorf("unknown install kind: %q", target.Kind)
 }
 
+// SetAssetInstallations replaces an asset's entire installation set in a single
+// server call. Because the skills.new mutation replaces (rather than appends),
+// the per-target SetAssetInstallation would let each call clobber the previous
+// one for a multi-scope asset; this sends every target at once so they all
+// stick. Org-wide is exclusive — if any target is org, the asset goes global.
+func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName string, targets []InstallTarget) error {
+	if len(targets) == 0 {
+		return nil
+	}
+	for _, t := range targets {
+		if t.Kind == InstallKindOrg {
+			return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, nil)
+		}
+	}
+	var repositories []vaultgql.RepositoryInstallationInput
+	var installations []vaultgql.AssetInstallationInput
+	for _, t := range targets {
+		switch t.Kind {
+		case InstallKindOrg:
+			// Handled before the loop (org is exclusive); unreachable here.
+		case InstallKindRepo:
+			repositories = append(repositories, vaultgql.RepositoryInstallationInput{Url: t.Repo})
+		case InstallKindPath:
+			repositories = append(repositories, vaultgql.RepositoryInstallationInput{Url: t.Repo, Paths: t.Paths})
+		case InstallKindTeam:
+			gid, err := s.teamGIDByName(ctx, t.Team)
+			if err != nil {
+				return err
+			}
+			installations = append(installations, vaultgql.AssetInstallationInput{
+				EntityType: vaultgql.VaultAssetInstallationEntityTypeTeam, EntityId: &gid,
+			})
+		case InstallKindUser:
+			gid, err := s.userGIDByEmail(ctx, t.User)
+			if err != nil {
+				return err
+			}
+			installations = append(installations, vaultgql.AssetInstallationInput{
+				EntityType: vaultgql.VaultAssetInstallationEntityTypeUser, EntityId: &gid,
+			})
+		case InstallKindBot:
+			gid, err := s.botGIDByName(ctx, t.Bot)
+			if err != nil {
+				return err
+			}
+			installations = append(installations, vaultgql.AssetInstallationInput{
+				EntityType: vaultgql.VaultAssetInstallationEntityTypeBot, EntityId: &gid,
+			})
+		default:
+			return fmt.Errorf("unknown install kind: %q", t.Kind)
+		}
+	}
+	return s.setAssetInstallationsGraphQL(ctx, assetName, repositories, false, installations)
+}
+
 // AssetInstallScopes reads an asset's installation targets from the server and
 // maps them to manifest scopes, so the copy engine can replay scopes when the
 // SOURCE is a skills.new vault (the file-backed vaults read them from sx.toml).
