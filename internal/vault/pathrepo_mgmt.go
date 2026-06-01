@@ -237,6 +237,15 @@ func (p *PathVault) GetUsageStats(ctx context.Context, filter mgmt.UsageFilter) 
 	return out, err
 }
 
+func (p *PathVault) ImportAuditEvents(ctx context.Context, events []mgmt.AuditEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	return p.withLock(ctx, func(_ mgmt.Actor) error {
+		return mgmt.AppendAuditEvents(p.repoPath, events)
+	})
+}
+
 func (p *PathVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFilter) ([]mgmt.AuditEvent, error) {
 	var out []mgmt.AuditEvent
 	err := p.withReadLock(ctx, func() error {

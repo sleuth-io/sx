@@ -1152,6 +1152,54 @@ func (s *SleuthVault) GetUsageStats(ctx context.Context, filter mgmt.UsageFilter
 // field documents a maximum of 50); we page through with the endCursor.
 const sleuthUsageEventsPageSize = 50
 
+// sleuthAuditImportChunkSize matches the server's IMPORT_AUDIT_EVENTS_MAX cap;
+// larger imports are split across calls.
+const sleuthAuditImportChunkSize = 5000
+
+func (s *SleuthVault) ImportAuditEvents(ctx context.Context, events []mgmt.AuditEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	for start := 0; start < len(events); start += sleuthAuditImportChunkSize {
+		end := min(start+sleuthAuditImportChunkSize, len(events))
+		inputs := make([]vaultgql.ImportAuditEventInput, 0, end-start)
+		for _, ev := range events[start:end] {
+			in := vaultgql.ImportAuditEventInput{
+				Timestamp:  timeOrNow(ev.Timestamp),
+				Event:      ev.Event,
+				TargetType: ev.TargetType,
+			}
+			if ev.Actor != "" {
+				actor := ev.Actor
+				in.Actor = &actor
+			}
+			if ev.Target != "" {
+				target := ev.Target
+				in.Target = &target
+			}
+			if len(ev.Data) > 0 {
+				raw, err := json.Marshal(ev.Data)
+				if err != nil {
+					return err
+				}
+				rm := json.RawMessage(raw)
+				in.Data = &rm
+			}
+			inputs = append(inputs, in)
+		}
+		resp, err := vaultgql.ImportAuditEvents(ctx, s.gqlClient(), inputs)
+		if err != nil {
+			return err
+		}
+		if resp.ImportAuditEvents != nil {
+			if err := gqlMutationErrors(resp.ImportAuditEvents.Errors); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // sleuthAuditDefaultPageSize is the server-side cap we ask for when the
 // caller didn't set filter.Limit. The server-side query plus client-side
 // filtering means a small server page paired with selective filters can
