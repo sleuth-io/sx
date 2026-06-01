@@ -541,6 +541,18 @@ func (s *SleuthVault) AssetInstallScopes(ctx context.Context, name string) ([]ma
 			// Org-wide is exclusive; report it as present-with-no-scopes.
 			return nil, true, nil
 		case vaultgql.VaultAssetInstallationEntityTypeRepository:
+			// A mono-repo config means the install is path-scoped, not whole-repo.
+			// Resolve the actual subpaths so they aren't silently widened.
+			if inst.MonoRepoConfigId != nil && inst.EntityId != nil {
+				paths, perr := s.monoRepoConfigPaths(ctx, *inst.EntityId, *inst.MonoRepoConfigId)
+				if perr != nil {
+					return nil, false, perr
+				}
+				if len(paths) > 0 {
+					scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindPath, Repo: inst.EntityName, Paths: paths})
+					continue
+				}
+			}
 			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindRepo, Repo: inst.EntityName})
 		case vaultgql.VaultAssetInstallationEntityTypeTeam:
 			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindTeam, Team: inst.EntityName})
@@ -551,6 +563,33 @@ func (s *SleuthVault) AssetInstallScopes(ctx context.Context, name string) ([]ma
 		}
 	}
 	return scopes, true, nil
+}
+
+// monoRepoConfigPaths resolves a repository's mono-repo config to its include
+// paths, so a path-scoped install read from the server keeps its subpaths
+// instead of widening to the whole repo. repoGID and configGID come from the
+// VaultAssetInstallation row.
+func (s *SleuthVault) monoRepoConfigPaths(ctx context.Context, repoGID, configGID string) ([]string, error) {
+	resp, err := vaultgql.RepoMonoRepoConfigs(ctx, s.gqlClient(), repoGID)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Repository == nil {
+		return nil, nil
+	}
+	for _, cfg := range resp.Repository.MonoRepoConfigs {
+		if cfg.Id == nil || *cfg.Id != configGID {
+			continue
+		}
+		paths := make([]string, 0, len(cfg.SourcePathPrefixIncludes))
+		for _, p := range cfg.SourcePathPrefixIncludes {
+			if p != nil && *p != "" {
+				paths = append(paths, *p)
+			}
+		}
+		return paths, nil
+	}
+	return nil, nil
 }
 
 func (s *SleuthVault) RemoveAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error {

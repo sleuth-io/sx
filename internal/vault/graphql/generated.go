@@ -1046,6 +1046,7 @@ type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallati
 	EntityType         VaultAssetInstallationEntityType `json:"entityType"`
 	EntityName         string                           `json:"entityName"`
 	EntityId           *string                          `json:"entityId"`
+	MonoRepoConfigId   *string                          `json:"monoRepoConfigId"`
 	MonoRepoConfigName *string                          `json:"monoRepoConfigName"`
 }
 
@@ -1062,6 +1063,11 @@ func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstal
 // GetEntityId returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.EntityId, and is useful for accessing the field via an interface.
 func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetEntityId() *string {
 	return v.EntityId
+}
+
+// GetMonoRepoConfigId returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.MonoRepoConfigId, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetMonoRepoConfigId() *string {
+	return v.MonoRepoConfigId
 }
 
 // GetMonoRepoConfigName returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.MonoRepoConfigName, and is useful for accessing the field via an interface.
@@ -2852,6 +2858,45 @@ type RenameAssetResponse struct {
 // GetRenameAsset returns RenameAssetResponse.RenameAsset, and is useful for accessing the field via an interface.
 func (v *RenameAssetResponse) GetRenameAsset() *RenameAssetRenameAssetRenameAssetMutation {
 	return v.RenameAsset
+}
+
+// RepoMonoRepoConfigsRepositoryRepositoryType includes the requested fields of the GraphQL type RepositoryType.
+type RepoMonoRepoConfigsRepositoryRepositoryType struct {
+	MonoRepoConfigs []RepoMonoRepoConfigsRepositoryRepositoryTypeMonoRepoConfigsMonoRepoConfigType `json:"monoRepoConfigs"`
+}
+
+// GetMonoRepoConfigs returns RepoMonoRepoConfigsRepositoryRepositoryType.MonoRepoConfigs, and is useful for accessing the field via an interface.
+func (v *RepoMonoRepoConfigsRepositoryRepositoryType) GetMonoRepoConfigs() []RepoMonoRepoConfigsRepositoryRepositoryTypeMonoRepoConfigsMonoRepoConfigType {
+	return v.MonoRepoConfigs
+}
+
+// RepoMonoRepoConfigsRepositoryRepositoryTypeMonoRepoConfigsMonoRepoConfigType includes the requested fields of the GraphQL type MonoRepoConfigType.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for monorepo configuration
+type RepoMonoRepoConfigsRepositoryRepositoryTypeMonoRepoConfigsMonoRepoConfigType struct {
+	Id                       *string   `json:"id"`
+	SourcePathPrefixIncludes []*string `json:"sourcePathPrefixIncludes"`
+}
+
+// GetId returns RepoMonoRepoConfigsRepositoryRepositoryTypeMonoRepoConfigsMonoRepoConfigType.Id, and is useful for accessing the field via an interface.
+func (v *RepoMonoRepoConfigsRepositoryRepositoryTypeMonoRepoConfigsMonoRepoConfigType) GetId() *string {
+	return v.Id
+}
+
+// GetSourcePathPrefixIncludes returns RepoMonoRepoConfigsRepositoryRepositoryTypeMonoRepoConfigsMonoRepoConfigType.SourcePathPrefixIncludes, and is useful for accessing the field via an interface.
+func (v *RepoMonoRepoConfigsRepositoryRepositoryTypeMonoRepoConfigsMonoRepoConfigType) GetSourcePathPrefixIncludes() []*string {
+	return v.SourcePathPrefixIncludes
+}
+
+// RepoMonoRepoConfigsResponse is returned by RepoMonoRepoConfigs on success.
+type RepoMonoRepoConfigsResponse struct {
+	Repository *RepoMonoRepoConfigsRepositoryRepositoryType `json:"repository"`
+}
+
+// GetRepository returns RepoMonoRepoConfigsResponse.Repository, and is useful for accessing the field via an interface.
+func (v *RepoMonoRepoConfigsResponse) GetRepository() *RepoMonoRepoConfigsRepositoryRepositoryType {
+	return v.Repository
 }
 
 type RepositoryInstallationInput struct {
@@ -5040,6 +5085,14 @@ type __RenameAssetInput struct {
 // GetInput returns __RenameAssetInput.Input, and is useful for accessing the field via an interface.
 func (v *__RenameAssetInput) GetInput() RenameAssetInput { return v.Input }
 
+// __RepoMonoRepoConfigsInput is used internally by genqlient
+type __RepoMonoRepoConfigsInput struct {
+	Id string `json:"id"`
+}
+
+// GetId returns __RepoMonoRepoConfigsInput.Id, and is useful for accessing the field via an interface.
+func (v *__RepoMonoRepoConfigsInput) GetId() string { return v.Id }
+
 // __RevokeBotRuntimeTokensInput is used internally by genqlient
 type __RevokeBotRuntimeTokensInput struct {
 	BotId string `json:"botId"`
@@ -5224,6 +5277,7 @@ query AssetInstallations ($search: String!) {
 					entityType
 					entityName
 					entityId
+					monoRepoConfigId
 					monoRepoConfigName
 				}
 			}
@@ -6107,6 +6161,43 @@ func RenameAsset(
 	}
 
 	data_ = &RenameAssetResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The query executed by RepoMonoRepoConfigs.
+const RepoMonoRepoConfigs_Operation = `
+query RepoMonoRepoConfigs ($id: ID!) {
+	repository(id: $id) {
+		monoRepoConfigs {
+			id
+			sourcePathPrefixIncludes
+		}
+	}
+}
+`
+
+func RepoMonoRepoConfigs(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	id string,
+) (data_ *RepoMonoRepoConfigsResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "RepoMonoRepoConfigs",
+		Query:  RepoMonoRepoConfigs_Operation,
+		Variables: &__RepoMonoRepoConfigsInput{
+			Id: id,
+		},
+	}
+
+	data_ = &RepoMonoRepoConfigsResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(
