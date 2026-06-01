@@ -38,6 +38,7 @@ make build && ./dist/sx <command>
 - [Manifest Spec](docs/manifest-spec.md) - sx.toml format (source of truth)
 - [Lock Spec](docs/lock-spec.md) - Per-user resolved lock file format
 - [Scoping](docs/scoping.md) - Overview of every install scope (org/repo/path/team/user/bot), links to per-scope docs
+- [Vault copy](docs/copy.md) - `sx vault copy` cross-vault migration (assets, teams, bots, scopes, audit, usage)
 - [Orgs](docs/orgs.md) - Org-scoped (global) installs
 - [Repos](docs/repos.md) - Repo and path-scoped installs (monorepo patterns)
 - [Teams](docs/teams.md) - Team management and team-scoped installs

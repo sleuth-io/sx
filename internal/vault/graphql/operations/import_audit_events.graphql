@@ -1,0 +1,9 @@
+mutation ImportAuditEvents($events: [ImportAuditEventInput!]!) {
+  importAuditEvents(events: $events) {
+    importedCount
+    errors {
+      field
+      messages
+    }
+  }
+}

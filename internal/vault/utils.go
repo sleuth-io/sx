@@ -14,3 +14,20 @@ func parseVersionList(data []byte) []string {
 	}
 	return versions
 }
+
+// chunkSlice splits items into contiguous sub-slices of at most size elements.
+// An empty input yields no chunks; a non-positive size yields a single chunk.
+// Used to bound per-request payloads (audit import, usage POST).
+func chunkSlice[T any](items []T, size int) [][]T {
+	if len(items) == 0 {
+		return nil
+	}
+	if size <= 0 {
+		return [][]T{items}
+	}
+	chunks := make([][]T, 0, (len(items)+size-1)/size)
+	for start := 0; start < len(items); start += size {
+		chunks = append(chunks, items[start:min(start+size, len(items))])
+	}
+	return chunks
+}

@@ -1,5 +1,9 @@
-query AssetAuditLog($first: Int) {
-  assetAuditLog(first: $first) {
+query AssetAuditLog($first: Int, $after: String) {
+  assetAuditLog(first: $first, after: $after) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
     nodes {
       id
       date

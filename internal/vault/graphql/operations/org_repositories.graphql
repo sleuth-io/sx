@@ -1,0 +1,15 @@
+query OrgRepositories($first: Int!, $after: String) {
+  organization {
+    repositories(first: $first, after: $after) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        id
+        owner
+        name
+      }
+    }
+  }
+}

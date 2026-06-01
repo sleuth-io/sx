@@ -110,7 +110,14 @@ func SummarizeUsage(vaultRoot string, filter UsageFilter) (*UsageSummary, error)
 	if err != nil {
 		return nil, err
 	}
+	return SummarizeUsageEvents(events), nil
+}
 
+// SummarizeUsageEvents computes per-asset and per-actor rollups over an
+// in-memory event slice. Shared by the file-backed SummarizeUsage and by
+// server-backed vaults that fetch raw events over the wire, so both produce
+// identical UsageSummary shapes.
+func SummarizeUsageEvents(events []UsageEvent) *UsageSummary {
 	type assetKey struct{ name, typ string }
 	assetAgg := make(map[assetKey]*AssetUsageCount)
 	assetActors := make(map[assetKey]map[string]struct{})
@@ -155,7 +162,7 @@ func SummarizeUsage(vaultRoot string, filter UsageFilter) (*UsageSummary, error)
 		return summary.PerActor[i].Actor < summary.PerActor[j].Actor
 	})
 
-	return summary, nil
+	return summary
 }
 
 func matchesUsageFilter(ev UsageEvent, f UsageFilter) bool {

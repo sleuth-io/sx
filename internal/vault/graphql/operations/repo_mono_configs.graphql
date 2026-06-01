@@ -1,0 +1,8 @@
+query RepoMonoRepoConfigs($id: ID!) {
+  repository(id: $id) {
+    monoRepoConfigs {
+      id
+      sourcePathPrefixIncludes
+    }
+  }
+}

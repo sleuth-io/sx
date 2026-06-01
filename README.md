@@ -143,6 +143,15 @@ sx audit                                   # recent team/install mutations
 sx audit --actor alice@acme.com --since 30d --event install.set
 ```
 
+**Migrate a whole vault** (assets + versions, teams, bots, scopes, audit, usage):
+
+```bash
+sx vault copy --from skills-new --to git-vault   # preview (read-only)
+sx vault copy --from skills-new --to git-vault --yes
+```
+
+See [docs/copy.md](docs/copy.md) for directionality and what's lossy.
+
 ### Already using Claude Code?
 
 If you've built up skills, plugins, or MCP configs in your `.claude` directory, `sx` helps you version, sync across machines, and share with teammates.
@@ -280,6 +289,7 @@ See LICENSE file for details.
 - [Manifest Spec](docs/manifest-spec.md) - sx.toml source-of-truth format (assets, scopes, teams)
 - [Lock Spec](docs/lock-spec.md) - Per-user resolved lock file
 - [Scoping](docs/scoping.md) - Install targets and links to per-scope docs (orgs, repos, teams, users, bots)
+- [Vault copy](docs/copy.md) - `sx vault copy` cross-vault migration (assets, teams, bots, scopes, audit, usage)
 - [Audit log](docs/audit.md) - Event catalog, `sx audit` filters, storage format
 - [Usage analytics](docs/stats.md) - `sx stats` dashboard, JSON output, event format
 - [Metadata Spec](docs/metadata-spec.md) - Asset metadata format

@@ -14,6 +14,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	vaultgql "github.com/sleuth-io/sx/internal/vault/graphql"
 )
@@ -260,40 +261,165 @@ func (s *SleuthVault) SetTeamAdmin(ctx context.Context, team, email string, admi
 }
 
 func (s *SleuthVault) AddTeamRepository(ctx context.Context, team, repoURL string) error {
-	return fmt.Errorf("%w: add team repository on sleuth vaults (use the skills.new web UI)", ErrNotImplemented)
+	return s.setTeamRepositories(ctx, team, repoURL, true)
 }
 
 func (s *SleuthVault) RemoveTeamRepository(ctx context.Context, team, repoURL string) error {
-	return fmt.Errorf("%w: remove team repository on sleuth vaults (use the skills.new web UI)", ErrNotImplemented)
+	return s.setTeamRepositories(ctx, team, repoURL, false)
+}
+
+// setTeamRepositories adds or removes one repository from a team's skills
+// repository set. The updateTeam mutation replaces the whole set, so we
+// read the team's current members + repositories, resolve them to GIDs, and
+// re-send the full list with the one repo added or removed. Members are
+// resent unchanged so the replace doesn't drop them (admin flags persist
+// server-side since the membership rows are unchanged).
+func (s *SleuthVault) setTeamRepositories(ctx context.Context, team, repoURL string, add bool) error {
+	existing, err := s.GetTeam(ctx, team)
+	if err != nil {
+		return err
+	}
+	repoMap, err := s.orgRepoGIDsByOwnerName(ctx)
+	if err != nil {
+		return err
+	}
+
+	targetKey := trailingOwnerName(repoURL)
+	if add {
+		if _, ok := repoMap[targetKey]; !ok {
+			return fmt.Errorf("repository %q not found in the skills.new organization", repoURL)
+		}
+	}
+
+	// Build the desired owner/name set from the team's current repositories,
+	// then apply the add/remove.
+	desired := make(map[string]struct{}, len(existing.Repositories))
+	for _, r := range existing.Repositories {
+		desired[trailingOwnerName(r)] = struct{}{}
+	}
+	if add {
+		desired[targetKey] = struct{}{}
+	} else {
+		delete(desired, targetKey)
+	}
+
+	var skillsRepos []vaultgql.SkillsRepositoryInput
+	for key := range desired {
+		gid, ok := repoMap[key]
+		if !ok {
+			// A current repo that no longer resolves in this org — skip it
+			// rather than fail the whole update, but make the drop visible.
+			logger.Get().Warn("team repository no longer in org; dropping from set", "team", team, "repo", key)
+			continue
+		}
+		skillsRepos = append(skillsRepos, vaultgql.SkillsRepositoryInput{RepositoryId: gid})
+	}
+
+	memberGIDs, err := s.resolveUserGIDs(ctx, existing.Members)
+	if err != nil {
+		return err
+	}
+	teamGID, err := s.teamGIDByName(ctx, team)
+	if err != nil {
+		return err
+	}
+	resp, err := vaultgql.UpdateTeam(ctx, s.gqlClient(), vaultgql.UpdateTeamInput{
+		Id:                 teamGID,
+		Members:            memberGIDs,
+		SkillsRepositories: skillsRepos,
+	})
+	if err != nil {
+		return err
+	}
+	if resp.UpdateTeam == nil {
+		return nil
+	}
+	return gqlMutationErrors(resp.UpdateTeam.Errors)
+}
+
+// orgRepoGIDsByOwnerName pages the organization's repositories into a map
+// keyed by lowercase "owner/name" -> repository GID, used to resolve repo
+// identifiers (URLs or slugs) to the GIDs updateTeam needs.
+func (s *SleuthVault) orgRepoGIDsByOwnerName(ctx context.Context) (map[string]string, error) {
+	const pageSize = 50
+	out := map[string]string{}
+	var after *string
+	for {
+		resp, err := vaultgql.OrgRepositories(ctx, s.gqlClient(), pageSize, after)
+		if err != nil {
+			return nil, err
+		}
+		conn := resp.Organization.Repositories
+		for _, n := range conn.Nodes {
+			if n.Id == nil {
+				continue
+			}
+			out[strings.ToLower(n.Owner+"/"+n.Name)] = *n.Id
+		}
+		if !conn.PageInfo.HasNextPage || conn.PageInfo.EndCursor == nil {
+			break
+		}
+		after = conn.PageInfo.EndCursor
+	}
+	return out, nil
+}
+
+// trailingOwnerName reduces a repo identifier (a full URL, an "owner/name"
+// slug, or a normalized host/owner/name string) to a lowercase "owner/name"
+// key for matching against the org repo map. Strips a scheme, a trailing
+// ".git", and any leading host path segments.
+func trailingOwnerName(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	// Handle scp-style SSH remotes (git@github.com:owner/repo) and host:port
+	// prefixes by keeping everything after the last colon.
+	if i := strings.LastIndex(s, ":"); i >= 0 {
+		s = s[i+1:]
+	}
+	s = strings.TrimSuffix(strings.Trim(s, "/"), ".git")
+	parts := strings.Split(s, "/")
+	if len(parts) >= 2 {
+		s = parts[len(parts)-2] + "/" + parts[len(parts)-1]
+	}
+	return strings.ToLower(s)
 }
 
 func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error {
 	switch target.Kind {
 	case InstallKindOrg:
-		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false)
+		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, nil)
 	case InstallKindRepo:
-		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo}}, false)
+		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo}}, false, nil)
 	case InstallKindPath:
-		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo, Paths: target.Paths}}, false)
+		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo, Paths: target.Paths}}, false, nil)
 	case InstallKindUser:
-		// Sleuth's setAssetInstallations GraphQL mutation supports exactly
-		// one user-scoped shape: personalOnly=true with empty repositories,
-		// which installs the asset for the authenticated caller ONLY.
-		// See sleuth/apps/skills/graphql/mutations.py:SetAssetInstallationsMutation.
-		// We must never pass repositories=[] with personalOnly=false — that
-		// would be interpreted as an org-wide install on the server, which
-		// is a silent privilege escalation. Reject if the target user does
-		// not match the caller so the intent is unambiguous.
+		// The setAssetInstallations `installations` input now accepts an explicit
+		// USER target by GID, so we can scope to any user in the org (not just the
+		// caller). personalOnly stays the lighter-weight path for self-installs.
 		actor, err := s.CurrentActor(ctx)
 		if err != nil {
 			return err
 		}
-		if mgmt.NormalizeEmail(target.User) != actor.Email {
-			return fmt.Errorf("%w: user-scoped installs on sleuth vaults can only target the authenticated caller (personalOnly)", ErrNotImplemented)
+		if mgmt.NormalizeEmail(target.User) == actor.Email {
+			return s.setAssetInstallationsGraphQL(ctx, assetName, nil, true, nil)
 		}
-		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, true)
+		userGID, err := s.userGIDByEmail(ctx, target.User)
+		if err != nil {
+			return err
+		}
+		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, []vaultgql.AssetInstallationInput{
+			{EntityType: vaultgql.VaultAssetInstallationEntityTypeUser, EntityId: &userGID},
+		})
 	case InstallKindTeam:
-		return fmt.Errorf("%w: team-scoped installs on sleuth vaults (the existing GraphQL setAssetInstallations mutation does not expose team targets; use the skills.new web UI)", ErrNotImplemented)
+		teamGID, err := s.teamGIDByName(ctx, target.Team)
+		if err != nil {
+			return err
+		}
+		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, []vaultgql.AssetInstallationInput{
+			{EntityType: vaultgql.VaultAssetInstallationEntityTypeTeam, EntityId: &teamGID},
+		})
 	case InstallKindBot:
 		// Bot installs go through the dedicated installSkillToBot
 		// mutation, not setAssetInstallations — the latter does not yet
@@ -302,6 +428,176 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 		return s.installSkillToBot(ctx, assetName, target.Bot)
 	}
 	return fmt.Errorf("unknown install kind: %q", target.Kind)
+}
+
+// SetAssetInstallations replaces an asset's entire installation set in a single
+// server call. The skills.new mutation replaces (rather than appends), so
+// setting targets one at a time would let each call clobber the previous one for
+// a multi-scope asset; sending every target at once makes them all stick.
+//
+// It is best-effort on a per-target basis: team/user/bot targets whose entity
+// can't be resolved in the destination org are skipped and returned in
+// unresolved (rather than failing the whole call), so the resolvable targets
+// still land in one atomic call — no clobbering. A returned error means the
+// single GraphQL call itself failed (e.g. a repository URL the server rejects),
+// in which case nothing was applied. Org-wide is exclusive — if any target is
+// org, the asset goes global.
+func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName string, targets []InstallTarget) (unresolved []InstallTarget, err error) {
+	if len(targets) == 0 {
+		return nil, nil
+	}
+	for _, t := range targets {
+		if t.Kind == InstallKindOrg {
+			return nil, s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, nil)
+		}
+	}
+	var repositories []vaultgql.RepositoryInstallationInput
+	var installations []vaultgql.AssetInstallationInput
+	for _, t := range targets {
+		switch t.Kind {
+		case InstallKindOrg:
+			// Handled before the loop (org is exclusive); unreachable here.
+		case InstallKindRepo:
+			repositories = append(repositories, vaultgql.RepositoryInstallationInput{Url: t.Repo})
+		case InstallKindPath:
+			repositories = append(repositories, vaultgql.RepositoryInstallationInput{Url: t.Repo, Paths: t.Paths})
+		case InstallKindTeam:
+			gid, gerr := s.teamGIDByName(ctx, t.Team)
+			if gerr != nil {
+				unresolved = append(unresolved, t)
+				continue
+			}
+			installations = append(installations, vaultgql.AssetInstallationInput{
+				EntityType: vaultgql.VaultAssetInstallationEntityTypeTeam, EntityId: &gid,
+			})
+		case InstallKindUser:
+			gid, gerr := s.userGIDByEmail(ctx, t.User)
+			if gerr != nil {
+				unresolved = append(unresolved, t)
+				continue
+			}
+			installations = append(installations, vaultgql.AssetInstallationInput{
+				EntityType: vaultgql.VaultAssetInstallationEntityTypeUser, EntityId: &gid,
+			})
+		case InstallKindBot:
+			gid, gerr := s.botGIDByName(ctx, t.Bot)
+			if gerr != nil {
+				unresolved = append(unresolved, t)
+				continue
+			}
+			installations = append(installations, vaultgql.AssetInstallationInput{
+				EntityType: vaultgql.VaultAssetInstallationEntityTypeBot, EntityId: &gid,
+			})
+		default:
+			return unresolved, fmt.Errorf("unknown install kind: %q", t.Kind)
+		}
+	}
+	if len(repositories) == 0 && len(installations) == 0 {
+		// Nothing resolved. Don't send an empty set — the server reads that as
+		// org-wide, which would wrongly globalize the asset. Leave it as-is.
+		return unresolved, nil
+	}
+	if err := s.setAssetInstallationsGraphQL(ctx, assetName, repositories, false, installations); err != nil {
+		return unresolved, err
+	}
+	return unresolved, nil
+}
+
+// AssetInstallScopes reads an asset's installation targets from the server and
+// maps them to manifest scopes, so the copy engine can replay scopes when the
+// SOURCE is a skills.new vault (the file-backed vaults read them from sx.toml).
+// An org-wide install is reported as present with no scopes, matching the
+// file-backed convention.
+func (s *SleuthVault) AssetInstallScopes(ctx context.Context, name string) ([]manifest.Scope, bool, error) {
+	resp, err := vaultgql.AssetInstallations(ctx, s.gqlClient(), name)
+	if err != nil {
+		return nil, false, err
+	}
+	// The caller passes the asset slug (AssetSummary.Name is the slug for Sleuth).
+	// Match on slug first — display name may differ — falling back to name.
+	var node *vaultgql.AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset
+	for i := range resp.Vault.Assets.Nodes {
+		n := resp.Vault.Assets.Nodes[i]
+		if strings.EqualFold(n.GetSlug(), name) || strings.EqualFold(n.GetName(), name) {
+			node = &resp.Vault.Assets.Nodes[i]
+			break
+		}
+	}
+	if node == nil {
+		return nil, false, nil
+	}
+	insts := (*node).GetInstallations()
+	if len(insts) == 0 {
+		// The asset exists on the server but is not installed anywhere. That is
+		// NOT org-wide — report it as not-present so the copy leaves it
+		// uninstalled on the destination (only an explicit ORGANIZATION install
+		// is org-wide; see below).
+		return nil, false, nil
+	}
+	// Cache a repo's mono-repo configs across this asset's installs so multiple
+	// path-scoped installs against the same repo don't each re-fetch them.
+	repoConfigCache := map[string]map[string][]string{}
+	var scopes []manifest.Scope
+	for _, inst := range insts {
+		switch inst.EntityType {
+		case vaultgql.VaultAssetInstallationEntityTypeOrganization:
+			// Org-wide is exclusive; report it as present-with-no-scopes.
+			return nil, true, nil
+		case vaultgql.VaultAssetInstallationEntityTypeRepository:
+			// A mono-repo config means the install is path-scoped, not whole-repo.
+			// Resolve the actual subpaths so they aren't silently widened.
+			if inst.MonoRepoConfigId != nil && inst.EntityId != nil {
+				paths, perr := s.monoRepoConfigPaths(ctx, *inst.EntityId, *inst.MonoRepoConfigId, repoConfigCache)
+				if perr != nil {
+					return nil, false, perr
+				}
+				if len(paths) > 0 {
+					scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindPath, Repo: inst.EntityName, Paths: paths})
+					continue
+				}
+			}
+			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindRepo, Repo: inst.EntityName})
+		case vaultgql.VaultAssetInstallationEntityTypeTeam:
+			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindTeam, Team: inst.EntityName})
+		case vaultgql.VaultAssetInstallationEntityTypeUser:
+			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindUser, User: inst.EntityName})
+		case vaultgql.VaultAssetInstallationEntityTypeBot:
+			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindBot, Bot: inst.EntityName})
+		}
+	}
+	return scopes, true, nil
+}
+
+// monoRepoConfigPaths resolves a repository's mono-repo config to its include
+// paths, so a path-scoped install read from the server keeps its subpaths
+// instead of widening to the whole repo. repoGID and configGID come from the
+// VaultAssetInstallation row. cache (repoGID -> configGID -> paths) collapses
+// repeated lookups of the same repo's configs within one read.
+func (s *SleuthVault) monoRepoConfigPaths(ctx context.Context, repoGID, configGID string, cache map[string]map[string][]string) ([]string, error) {
+	configs, ok := cache[repoGID]
+	if !ok {
+		resp, err := vaultgql.RepoMonoRepoConfigs(ctx, s.gqlClient(), repoGID)
+		if err != nil {
+			return nil, err
+		}
+		configs = map[string][]string{}
+		if resp.Repository != nil {
+			for _, cfg := range resp.Repository.MonoRepoConfigs {
+				if cfg.Id == nil {
+					continue
+				}
+				paths := make([]string, 0, len(cfg.SourcePathPrefixIncludes))
+				for _, p := range cfg.SourcePathPrefixIncludes {
+					if p != nil && *p != "" {
+						paths = append(paths, *p)
+					}
+				}
+				configs[*cfg.Id] = paths
+			}
+		}
+		cache[repoGID] = configs
+	}
+	return configs[configGID], nil
 }
 
 func (s *SleuthVault) RemoveAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error {
@@ -1057,113 +1353,236 @@ func (s *SleuthVault) ClearAssetInstallations(ctx context.Context, assetName str
 func (s *SleuthVault) RecordUsageEvents(ctx context.Context, events []mgmt.UsageEvent) error {
 	// Usage events go through the existing PostUsageStats HTTP path for
 	// sleuth vaults — it talks to /api/usage, not GraphQL. Marshal each
-	// event to the legacy wire format and delegate.
+	// event to the wire format and delegate.
 	//
-	// Note: ev.Actor is intentionally dropped from the wire payload — the
-	// server always attributes events to the bearer-token holder. Any
-	// caller that sets Actor to another user will see it silently
-	// rewritten to the authenticated caller on ingestion.
+	// ev.Actor is sent as the optional `actor` field: the server resolves it
+	// to a user in the org (case-insensitively) so imported usage keeps its
+	// original attribution, falling back to the bearer-token holder when the
+	// email doesn't resolve. Omitted when empty so live (non-import) events
+	// attribute to the caller as before.
 	if len(events) == 0 {
 		return nil
 	}
-	var b strings.Builder
-	for i, ev := range events {
-		if i > 0 {
-			b.WriteByte('\n')
+	// Post in chunks so a large import (a whole vault's history) isn't one giant
+	// request the server has to validate and enqueue in a single shot.
+	for _, batch := range chunkSlice(events, sleuthUsagePostChunkSize) {
+		var b strings.Builder
+		for i, ev := range batch {
+			if i > 0 {
+				b.WriteByte('\n')
+			}
+			payload := map[string]any{
+				"asset_name":    ev.AssetName,
+				"asset_version": ev.AssetVersion,
+				"asset_type":    ev.AssetType,
+				"timestamp":     timeOrNow(ev.Timestamp).Format(time.RFC3339),
+			}
+			if ev.Actor != "" {
+				payload["actor"] = ev.Actor
+			}
+			line, err := json.Marshal(payload)
+			if err != nil {
+				return err
+			}
+			b.Write(line)
 		}
-		line, err := json.Marshal(map[string]any{
-			"asset_name":    ev.AssetName,
-			"asset_version": ev.AssetVersion,
-			"asset_type":    ev.AssetType,
-			"timestamp":     timeOrNow(ev.Timestamp).Format(time.RFC3339),
-		})
-		if err != nil {
+		if err := s.PostUsageStats(ctx, b.String()); err != nil {
 			return err
 		}
-		b.Write(line)
 	}
-	return s.PostUsageStats(ctx, b.String())
+	return nil
 }
+
+// sleuthUsagePostChunkSize bounds how many usage events go in a single
+// /api/usage POST during a bulk import.
+const sleuthUsagePostChunkSize = 1000
 
 func (s *SleuthVault) GetUsageStats(ctx context.Context, filter mgmt.UsageFilter) (*mgmt.UsageSummary, error) {
-	// Sleuth usage stats come from the server's PQL fragments
-	// (asset.usage). Rather than reimplementing the dashboard math, surface
-	// a clear ErrNotImplemented so callers know to use the web UI.
-	return nil, fmt.Errorf("%w: sleuth vault usage stats (use the skills.new web UI dashboards)", ErrNotImplemented)
-}
-
-// sleuthAuditDefaultPageSize is the server-side cap we ask for when the
-// caller didn't set filter.Limit. The server-side query plus client-side
-// filtering means a small server page paired with selective filters can
-// return zero rows even though matches exist further back in the log.
-// Setting this high (1000) makes truncation very unlikely; a warning
-// fires if we saturate so operators notice when they need a higher cap
-// or server-side filter support.
-const sleuthAuditDefaultPageSize = 1000
-
-func (s *SleuthVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFilter) ([]mgmt.AuditEvent, error) {
-	// If the caller specified a limit, honor it directly; otherwise use
-	// the wide default so client-side filters don't silently drop rows
-	// that existed just beyond a small server page.
-	userLimit := filter.Limit
-	first := userLimit
-	if first <= 0 {
-		first = sleuthAuditDefaultPageSize
-	}
-	resp, err := vaultgql.AssetAuditLog(ctx, s.gqlClient(), &first)
+	events, err := s.ReadUsageEvents(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
-	// Warn when the server returned exactly the page we asked for and the
-	// caller didn't choose that limit themselves — a saturation signal
-	// that older entries may have been dropped before client-side
-	// filtering ran.
-	if userLimit == 0 && len(resp.AssetAuditLog.Nodes) >= first {
-		logger.Get().Warn("QueryAuditEvents result saturated page size; older events may be truncated",
-			"page_size", first,
-			"returned", len(resp.AssetAuditLog.Nodes))
-	}
-	var out []mgmt.AuditEvent
-	for _, node := range resp.AssetAuditLog.Nodes {
-		ev := mgmt.AuditEvent{
-			Timestamp:  node.Date,
-			Actor:      derefStr(node.ActorEmail),
-			Event:      node.Event,
-			TargetType: node.TargetType,
-			Target:     derefStr(node.TargetName),
+	return mgmt.SummarizeUsageEvents(events), nil
+}
+
+func (s *SleuthVault) ReadUsageEvents(ctx context.Context, filter mgmt.UsageFilter) ([]mgmt.UsageEvent, error) {
+	// Pull raw usage rows via the assetUsageEvents export (server-side filtered),
+	// paging through the connection. The aggregation lives in GetUsageStats so
+	// this stays the lossless raw read the copy engine needs.
+	strPtr := func(v string) *string {
+		if v == "" {
+			return nil
 		}
-		// node.Data is a JSONString scalar that normally wire-encodes as a
-		// JSON-encoded string ("{\"foo\":...}"), but older payloads may
-		// wire the object directly. Dispatch on the first non-whitespace
-		// byte so both shapes are handled explicitly.
-		if node.Data != nil {
-			raw := bytes.TrimSpace(*node.Data)
-			switch {
-			case len(raw) == 0, bytes.Equal(raw, []byte("null")):
-				// empty payload — nothing to decode
-			case raw[0] == '"':
-				var inner string
-				if err := json.Unmarshal(raw, &inner); err != nil || inner == "" {
-					if err != nil {
-						logger.Get().Warn("audit log: malformed JSONString Data", "err", err)
-					}
-					break
+		return &v
+	}
+	timePtr := func(t time.Time) *time.Time {
+		if t.IsZero() {
+			return nil
+		}
+		return &t
+	}
+
+	first := sleuthUsageEventsPageSize
+	var after *string
+	var events []mgmt.UsageEvent
+	for {
+		resp, err := vaultgql.AssetUsageEvents(
+			ctx, s.gqlClient(),
+			strPtr(filter.AssetName), strPtr(filter.AssetType), strPtr(filter.Actor),
+			timePtr(filter.Since), timePtr(filter.Until), &first, after,
+		)
+		if err != nil {
+			return nil, err
+		}
+		conn := resp.AssetUsageEvents
+		for _, n := range conn.Nodes {
+			actor := ""
+			if n.ActorEmail != nil {
+				actor = *n.ActorEmail
+			}
+			events = append(events, mgmt.UsageEvent{
+				Timestamp:    n.Timestamp,
+				Actor:        actor,
+				AssetName:    n.AssetName,
+				AssetVersion: n.AssetVersion,
+				AssetType:    n.AssetType,
+			})
+		}
+		if !conn.PageInfo.HasNextPage || conn.PageInfo.EndCursor == nil {
+			break
+		}
+		after = conn.PageInfo.EndCursor
+	}
+	return events, nil
+}
+
+// sleuthUsageEventsPageSize is the server-side cap on assetUsageEvents (the
+// field documents a maximum of 50); we page through with the endCursor.
+const sleuthUsageEventsPageSize = 50
+
+// sleuthAuditImportChunkSize matches the server's IMPORT_AUDIT_EVENTS_MAX cap;
+// larger imports are split across calls.
+const sleuthAuditImportChunkSize = 5000
+
+func (s *SleuthVault) ImportAuditEvents(ctx context.Context, events []mgmt.AuditEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	for _, batch := range chunkSlice(events, sleuthAuditImportChunkSize) {
+		inputs := make([]vaultgql.ImportAuditEventInput, 0, len(batch))
+		for _, ev := range batch {
+			in := vaultgql.ImportAuditEventInput{
+				Timestamp:  timeOrNow(ev.Timestamp),
+				Event:      ev.Event,
+				TargetType: ev.TargetType,
+			}
+			if ev.Actor != "" {
+				actor := ev.Actor
+				in.Actor = &actor
+			}
+			if ev.Target != "" {
+				target := ev.Target
+				in.Target = &target
+			}
+			if len(ev.Data) > 0 {
+				obj, err := json.Marshal(ev.Data)
+				if err != nil {
+					return err
 				}
-				if err := json.Unmarshal([]byte(inner), &ev.Data); err != nil {
-					logger.Get().Warn("audit log: failed to decode inner Data object", "err", err)
+				// The `data` field is a JSONString scalar: the server expects a
+				// JSON-encoded STRING (which it json.loads), not a raw object. Wrap
+				// the object as a string — mirrors how QueryAuditEvents decodes it.
+				strForm, err := json.Marshal(string(obj))
+				if err != nil {
+					return err
 				}
-			default:
-				if err := json.Unmarshal(raw, &ev.Data); err != nil {
-					logger.Get().Warn("audit log: failed to decode Data object", "err", err)
-				}
+				rm := json.RawMessage(strForm)
+				in.Data = &rm
+			}
+			inputs = append(inputs, in)
+		}
+		resp, err := vaultgql.ImportAuditEvents(ctx, s.gqlClient(), inputs)
+		if err != nil {
+			return err
+		}
+		if resp.ImportAuditEvents != nil {
+			if err := gqlMutationErrors(resp.ImportAuditEvents.Errors); err != nil {
+				return err
 			}
 		}
-		if !sleuthAuditMatches(ev, filter) {
-			continue
+	}
+	return nil
+}
+
+// sleuthAuditPageSize is the server-side maximum for the assetAuditLog `first`
+// argument; we page through with the endCursor to retrieve everything.
+const sleuthAuditPageSize = 50
+
+func (s *SleuthVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFilter) ([]mgmt.AuditEvent, error) {
+	pageSize := sleuthAuditPageSize
+	var out []mgmt.AuditEvent
+	var after *string
+	for {
+		resp, err := vaultgql.AssetAuditLog(ctx, s.gqlClient(), &pageSize, after)
+		if err != nil {
+			return nil, err
 		}
-		out = append(out, ev)
+		conn := resp.AssetAuditLog
+		for _, node := range conn.Nodes {
+			ev := sleuthAuditNodeToEvent(node)
+			if !sleuthAuditMatches(ev, filter) {
+				continue
+			}
+			out = append(out, ev)
+			if filter.Limit > 0 && len(out) >= filter.Limit {
+				return out, nil
+			}
+		}
+		if !conn.PageInfo.HasNextPage || conn.PageInfo.EndCursor == nil {
+			break
+		}
+		after = conn.PageInfo.EndCursor
 	}
 	return out, nil
+}
+
+// sleuthAuditNodeToEvent converts a generated audit-log node into the internal
+// mgmt.AuditEvent, decoding the JSONString Data scalar.
+func sleuthAuditNodeToEvent(node vaultgql.AssetAuditLogAssetAuditLogAssetAuditEventConnectionNodesAssetAuditEvent) mgmt.AuditEvent {
+	ev := mgmt.AuditEvent{
+		Timestamp:  node.Date,
+		Actor:      derefStr(node.ActorEmail),
+		Event:      node.Event,
+		TargetType: node.TargetType,
+		Target:     derefStr(node.TargetName),
+	}
+	// node.Data is a JSONString scalar that normally wire-encodes as a
+	// JSON-encoded string ("{\"foo\":...}"), but older payloads may wire the
+	// object directly. Dispatch on the first non-whitespace byte so both
+	// shapes are handled explicitly.
+	if node.Data != nil {
+		raw := bytes.TrimSpace(*node.Data)
+		switch {
+		case len(raw) == 0, bytes.Equal(raw, []byte("null")):
+			// empty payload — nothing to decode
+		case raw[0] == '"':
+			var inner string
+			if err := json.Unmarshal(raw, &inner); err != nil || inner == "" {
+				if err != nil {
+					logger.Get().Warn("audit log: malformed JSONString Data", "err", err)
+				}
+				break
+			}
+			if err := json.Unmarshal([]byte(inner), &ev.Data); err != nil {
+				logger.Get().Warn("audit log: failed to decode inner Data object", "err", err)
+			}
+		default:
+			if err := json.Unmarshal(raw, &ev.Data); err != nil {
+				logger.Get().Warn("audit log: failed to decode Data object", "err", err)
+			}
+		}
+	}
+	return ev
 }
 
 // derefStr returns the pointee or "" when nil. Used for nullable string
@@ -1327,14 +1746,21 @@ func (s *SleuthVault) resolveUserGIDs(ctx context.Context, emails []string) ([]s
 // empty". Callers must route through SetAssetInstallation, which picks
 // the right arguments per InstallKind and never collapses an intended
 // repo/path/user install into the empty-empty shape.
-func (s *SleuthVault) setAssetInstallationsGraphQL(ctx context.Context, assetName string, repositories []vaultgql.RepositoryInstallationInput, personalOnly bool) error {
+func (s *SleuthVault) setAssetInstallationsGraphQL(
+	ctx context.Context,
+	assetName string,
+	repositories []vaultgql.RepositoryInstallationInput,
+	personalOnly bool,
+	installations []vaultgql.AssetInstallationInput,
+) error {
 	if repositories == nil {
 		repositories = []vaultgql.RepositoryInstallationInput{}
 	}
 	resp, err := vaultgql.SetAssetInstallations(ctx, s.gqlClient(), vaultgql.SetAssetInstallationsInput{
-		AssetName:    assetName,
-		Repositories: repositories,
-		PersonalOnly: &personalOnly,
+		AssetName:     assetName,
+		Repositories:  repositories,
+		PersonalOnly:  &personalOnly,
+		Installations: installations,
 	})
 	if err != nil {
 		return err

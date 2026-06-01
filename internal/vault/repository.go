@@ -203,8 +203,20 @@ type Vault interface {
 	// GetUsageStats returns an aggregated usage summary across the vault.
 	GetUsageStats(ctx context.Context, filter mgmt.UsageFilter) (*mgmt.UsageSummary, error)
 
+	// ReadUsageEvents returns the raw usage events matching the filter (not
+	// aggregated). Used to copy usage history between vaults losslessly.
+	ReadUsageEvents(ctx context.Context, filter mgmt.UsageFilter) ([]mgmt.UsageEvent, error)
+
 	// QueryAuditEvents returns audit events matching the filter.
 	QueryAuditEvents(ctx context.Context, filter mgmt.AuditFilter) ([]mgmt.AuditEvent, error)
+
+	// ImportAuditEvents appends pre-existing audit events to the vault's audit
+	// trail verbatim, preserving each event's timestamp, actor, event name, and
+	// target. Used to copy audit history between vaults losslessly. File-backed
+	// vaults write the JSONL directly; the Sleuth vault delegates to the
+	// importAuditEvents mutation (which resolves actors by email and falls back
+	// to the caller for unknown ones).
+	ImportAuditEvents(ctx context.Context, events []mgmt.AuditEvent) error
 }
 
 // InstallKind identifies which kind of installation a CLI command is asking
