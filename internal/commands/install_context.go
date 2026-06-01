@@ -260,11 +260,13 @@ func handleNothingToInstall(
 	profileMeta map[string]profileMetadata,
 	profileOrder []string,
 	primaryProfile string,
+	assetOrigin map[string]string,
 	styledOut *ui.Output,
 	out *outputHelper,
 ) error {
-	// Save state even if nothing changed (no assets attempted, no downloads)
-	saveInstallationState(tracker, sortedAssets, nil, nil, nil, env.CurrentScope, targetClientIDs, out)
+	// Save state even if nothing changed: this is where already-installed
+	// assets get their profile stamped/backfilled on a repair or up-to-date run.
+	saveInstallationState(tracker, sortedAssets, nil, nil, nil, env.CurrentScope, targetClientIDs, assetOrigin, out)
 
 	// Install client-specific hooks
 	// env.Clients is already filtered by --client/--clients flag

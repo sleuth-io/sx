@@ -484,7 +484,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 
 	// Early exit if nothing to install
 	if len(assetsToInstall) == 0 {
-		return handleNothingToInstall(ctx, hookMode, tracker, sortedAssets, env, targetClientIDs, profileMeta, profileOrder, primaryCfg.ProfileName, styledOut, out)
+		return handleNothingToInstall(ctx, hookMode, tracker, sortedAssets, env, targetClientIDs, profileMeta, profileOrder, primaryCfg.ProfileName, assetOrigin, styledOut, out)
 	}
 
 	// Download assets, routing each to its origin profile's vault and
@@ -503,7 +503,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	installResult := installAssets(ctx, downloadResult.Downloads, env.GitContext, env.CurrentScope, env.Clients, styledOut, strict)
 
 	// Save new installation state (only for successfully installed assets)
-	saveInstallationState(tracker, sortedAssets, assetsToInstall, downloadResult.Downloads, installResult, env.CurrentScope, targetClientIDs, out)
+	saveInstallationState(tracker, sortedAssets, assetsToInstall, downloadResult.Downloads, installResult, env.CurrentScope, targetClientIDs, assetOrigin, out)
 
 	// Ensure skills support is configured for all clients (creates local rules files, etc.)
 	ensureAssetSupport(ctx, env.Clients, buildInstallScope(env.CurrentScope, env.GitContext), out)
@@ -1046,7 +1046,7 @@ func ensureAssetSupport(ctx context.Context, targetClients []clients.Client, sco
 // saveInstallationState saves the current installation state to tracker file.
 // Assets that failed to download or install are skipped so they will be retried
 // on the next install run.
-func saveInstallationState(tracker *assets.Tracker, sortedAssets []*lockfile.Asset, assetsToInstall []*lockfile.Asset, downloads []*assets.AssetWithMetadata, installResult *assets.InstallResult, currentScope *scope.Scope, targetClientIDs []string, out *outputHelper) {
+func saveInstallationState(tracker *assets.Tracker, sortedAssets []*lockfile.Asset, assetsToInstall []*lockfile.Asset, downloads []*assets.AssetWithMetadata, installResult *assets.InstallResult, currentScope *scope.Scope, targetClientIDs []string, assetOrigin map[string]string, out *outputHelper) {
 	// Build metadata lookup map from downloads
 	metadataByName := make(map[string]*assets.AssetWithMetadata)
 	for _, d := range downloads {
@@ -1076,12 +1076,24 @@ func saveInstallationState(tracker *assets.Tracker, sortedAssets []*lockfile.Ass
 		}
 
 		key := assetKeyForInstall(art, currentScope)
+
+		// Stamp the profile that installed this asset, taken from assetOrigin
+		// (the merge winner). On a repair run assetOrigin is nil, so keep the
+		// profile already recorded rather than blanking it.
+		profile := assetOrigin[art.Name]
+		if profile == "" {
+			if existing := tracker.FindAsset(key); existing != nil {
+				profile = existing.Profile
+			}
+		}
+
 		installed := assets.InstalledAsset{
 			Name:       art.Name,
 			Version:    art.Version,
 			Type:       art.Type.Key,
 			Repository: key.Repository,
 			Path:       key.Path,
+			Profile:    profile,
 			Clients:    targetClientIDs,
 		}
 

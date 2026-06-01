@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
@@ -112,7 +113,37 @@ func runVaultList(cmd *cobra.Command, typeFilter string, jsonOutput, installedOn
 		}
 	}
 
-	// Get lock file (needed for both modes)
+	// --installed reads the local install tracker — what's actually on disk —
+	// not the vault manifest. It's offline: no GetLockFile / network needed.
+	// Entries are filtered to the current profile (empty profile counts as the
+	// current one), so `--profile X` shows only what X installed.
+	if installedOnly {
+		if status != nil {
+			status.Done("")
+		}
+
+		tracker, err := assets.LoadTracker()
+		if err != nil {
+			return fmt.Errorf("failed to load installed assets: %w", err)
+		}
+
+		if len(tracker.Assets) == 0 {
+			if jsonOutput {
+				return printInstalledListJSON(out, nil, typeFilter)
+			}
+			out.println("No assets installed. Run 'sx install' to install assets.")
+			return nil
+		}
+
+		filtered := filterInstalledForProfile(tracker.Assets, cfg.ProfileName, typeFilter)
+		lfAssets := installedToLockfileAssets(filtered)
+		if jsonOutput {
+			return printInstalledListJSON(out, lfAssets, typeFilter)
+		}
+		return printInstalledListText(out, lfAssets, typeFilter)
+	}
+
+	// Vault-query mode needs the lock file to mark which vault assets are installed.
 	var lf *lockfile.LockFile
 	lockFileData, _, _, lfErr := vault.GetLockFile(ctx, "")
 	if lfErr == nil {
@@ -122,28 +153,6 @@ func runVaultList(cmd *cobra.Command, typeFilter string, jsonOutput, installedOn
 			log := logger.Get()
 			log.Warn("failed to parse lock file", "error", parseErr)
 		}
-	}
-
-	// If --installed, use lock file data instead of querying vault
-	if installedOnly {
-		if status != nil {
-			status.Done("")
-		}
-
-		if lf == nil {
-			if jsonOutput {
-				return printInstalledListJSON(out, nil, typeFilter)
-			}
-			out.println("No assets installed. Run 'sx install' to install assets.")
-			return nil
-		}
-
-		// Convert lock file assets to vault result format
-		assets := filterAssetsByType(lf.Assets, typeFilter)
-		if jsonOutput {
-			return printInstalledListJSON(out, assets, typeFilter)
-		}
-		return printInstalledListText(out, assets, typeFilter)
 	}
 
 	result, err := vault.ListAssets(ctx, vaultpkg.ListAssetsOptions{
