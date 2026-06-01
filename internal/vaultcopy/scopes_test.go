@@ -85,9 +85,28 @@ func TestCopyAssetScopes_BulkUnresolvedCountedAndWarned(t *testing.T) {
 	if len(r.Warnings) != 1 {
 		t.Fatalf("want one skipped-scope warning, got %v", r.Warnings)
 	}
+	if f.clearCalls != 0 {
+		t.Fatalf("partial success must not clear, got %d clears", f.clearCalls)
+	}
 }
 
-func TestCopyAssetScopes_BulkErrorWarnsNoFallback(t *testing.T) {
+func TestCopyAssetScopes_BulkAllUnresolvedClears(t *testing.T) {
+	// Every target unresolvable → nothing applied → the asset must not keep the
+	// auto-applied org-wide install; the engine clears it.
+	f := &bulkFake{unresolved: []vault.InstallTarget{{Kind: vault.InstallKindUser, User: "ghost@x.com"}}}
+	r := &Report{}
+	scopes := []manifest.Scope{{Kind: manifest.ScopeKindUser, User: "ghost@x.com"}}
+	copyAssetScopes(context.Background(), f, "skill", scopes, true, false, r)
+
+	if r.Scopes != 0 {
+		t.Fatalf("Scopes = %d, want 0", r.Scopes)
+	}
+	if f.clearCalls != 1 {
+		t.Fatalf("all-unresolved must clear the auto-applied install once, got %d", f.clearCalls)
+	}
+}
+
+func TestCopyAssetScopes_BulkErrorClearsNoFallback(t *testing.T) {
 	f := &bulkFake{bulkErr: errors.New("repo rejected by server")}
 	r := &Report{}
 	scopes := []manifest.Scope{
@@ -99,8 +118,8 @@ func TestCopyAssetScopes_BulkErrorWarnsNoFallback(t *testing.T) {
 	if r.Scopes != 0 {
 		t.Fatalf("Scopes = %d, want 0 on bulk error (no clobbering fallback)", r.Scopes)
 	}
-	if len(r.Warnings) != 1 {
-		t.Fatalf("want one failure warning, got %v", r.Warnings)
+	if f.clearCalls != 1 {
+		t.Fatalf("bulk error must clear the auto-applied install, got %d clears", f.clearCalls)
 	}
 }
 

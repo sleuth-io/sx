@@ -64,6 +64,11 @@ type assetScopeReader interface {
 
 const assetListLimit = 10000
 
+// sleuthBotListSoftCap mirrors the Sleuth backend's bot-list soft cap. Kept here
+// only to warn when a copy may have been truncated; if the server cap changes
+// this just affects when the heuristic warning fires, not correctness.
+const sleuthBotListSoftCap = 1000
+
 // Copy migrates the selected categories from src into dst. Each category is
 // independent: a category-level failure is recorded as a warning and the copy
 // moves on to the next, so one broken category (e.g. audit) never costs the
@@ -87,7 +92,13 @@ func Copy(ctx context.Context, src, dst vault.Vault, opts Options) (*Report, err
 			continue
 		}
 		if err := s.fn(ctx, src, dst, opts, r); err != nil {
-			r.warnf("copy %s failed: %v", s.name, err)
+			// Audit/usage import is additive, so a mid-stage failure that already
+			// landed some chunks will double them on retry — say so in the moment.
+			if s.name == "audit" || s.name == "usage" {
+				r.warnf("copy %s failed: %v — re-running may duplicate already-imported events on the destination", s.name, err)
+			} else {
+				r.warnf("copy %s failed: %v", s.name, err)
+			}
 		}
 	}
 	return r, nil
@@ -135,21 +146,60 @@ func copyBots(ctx context.Context, src, dst vault.Vault, opts Options, r *Report
 	if err != nil {
 		return err
 	}
+	// The Sleuth backend lists bots under a soft cap (1000); ListBots exposes no
+	// HasMore, so surface a heuristic warning when we hit it rather than only
+	// emitting a structured log the operator won't see.
+	if len(bots) >= sleuthBotListSoftCap {
+		r.warnf("source returned %d bots (the server's list cap); any beyond that were not copied", len(bots))
+	}
 	for _, b := range bots {
 		r.Bots++
 		if opts.DryRun {
 			continue
 		}
-		// CreateBot may auto-issue a token (Sleuth) — it can't be copied, so we
-		// drop it and note that bot keys must be regenerated.
-		if _, err := dst.CreateBot(ctx, mgmt.Bot{Name: b.Name, Description: b.Description, Teams: b.Teams}); err != nil {
+		// CreateBot on Sleuth auto-issues a default API key (returned once and
+		// otherwise unrecoverable). The copy can't carry keys, so the auto-issued
+		// one would be an orphan — revoke it so the destination doesn't accumulate
+		// dead keys. Operators regenerate keys as needed.
+		rawToken, err := dst.CreateBot(ctx, mgmt.Bot{Name: b.Name, Description: b.Description, Teams: b.Teams})
+		if err != nil {
 			r.warnf("create bot %q: %v", b.Name, err)
+			continue
+		}
+		if rawToken != "" {
+			revokeAutoIssuedBotKeys(ctx, dst, b.Name, r)
 		}
 	}
 	if len(bots) > 0 && !opts.DryRun {
-		r.warnf("bot API keys are not copyable; regenerate them on the destination")
+		r.warnf("bot API keys are not copied; create fresh ones on the destination with 'sx bot key create'")
 	}
 	return nil
+}
+
+// botKeyManager is the slice of a vault needed to clean up an auto-issued bot
+// key (Sleuth implements BotApiKeyManager; file-backed vaults don't issue keys).
+type botKeyManager interface {
+	ListBotApiKeys(ctx context.Context, botName string) ([]mgmt.BotApiKey, error)
+	DeleteBotApiKey(ctx context.Context, botName, keyID string) error
+}
+
+// revokeAutoIssuedBotKeys deletes the key(s) a just-created bot was auto-issued,
+// so a copy doesn't leave orphan, unusable keys on the destination.
+func revokeAutoIssuedBotKeys(ctx context.Context, dst vault.Vault, botName string, r *Report) {
+	km, ok := dst.(botKeyManager)
+	if !ok {
+		return
+	}
+	keys, err := km.ListBotApiKeys(ctx, botName)
+	if err != nil {
+		r.warnf("list auto-issued keys for bot %q: %v", botName, err)
+		return
+	}
+	for _, k := range keys {
+		if err := km.DeleteBotApiKey(ctx, botName, k.ID); err != nil {
+			r.warnf("revoke auto-issued key for bot %q: %v", botName, err)
+		}
+	}
 }
 
 func copyAssets(ctx context.Context, src, dst vault.Vault, opts Options, r *Report) error {
@@ -167,6 +217,23 @@ func copyAssets(ctx context.Context, src, dst vault.Vault, opts Options, r *Repo
 			r.warnf("list versions for %q: %v", a.Name, err)
 			continue
 		}
+
+		// Read the source's scopes BEFORE uploading any versions. If the read
+		// fails we skip the asset entirely rather than leaving stranded versions
+		// on the destination (and, on Sleuth, an auto-applied org-wide install
+		// with no way to know it should have been narrowed).
+		var (
+			scopes  []manifest.Scope
+			present bool
+		)
+		if canReadScopes {
+			scopes, present, err = scopeReader.AssetInstallScopes(ctx, a.Name)
+			if err != nil {
+				r.warnf("read scopes for %q: %v; skipping asset", a.Name, err)
+				continue
+			}
+		}
+
 		r.Assets++
 		for _, v := range version.Sort(versions) {
 			if opts.DryRun {
@@ -191,12 +258,7 @@ func copyAssets(ctx context.Context, src, dst vault.Vault, opts Options, r *Repo
 			r.Versions++
 		}
 		if canReadScopes {
-			scopes, present, err := scopeReader.AssetInstallScopes(ctx, a.Name)
-			if err != nil {
-				r.warnf("read scopes for %q: %v", a.Name, err)
-			} else {
-				copyAssetScopes(ctx, dst, a.Name, scopes, present, opts.DryRun, r)
-			}
+			copyAssetScopes(ctx, dst, a.Name, scopes, present, opts.DryRun, r)
 		}
 	}
 	return nil
@@ -219,18 +281,22 @@ type bulkInstaller interface {
 	SetAssetInstallations(ctx context.Context, name string, targets []vault.InstallTarget) (unresolved []vault.InstallTarget, err error)
 }
 
+// clearAutoInstall undoes any install a destination auto-applies on upload
+// (skills.new publishes uploaded assets org-wide by default), so an asset that
+// should end up with no — or no resolvable — scopes isn't silently widened.
+// No-op on backends that don't auto-install.
+func clearAutoInstall(ctx context.Context, dst scopeInstaller, name string, r *Report) {
+	if err := dst.ClearAssetInstallations(ctx, name); err != nil {
+		r.warnf("clear auto-applied install on %q: %v", name, err)
+	}
+}
+
 func copyAssetScopes(ctx context.Context, dst scopeInstaller, name string, scopes []manifest.Scope, present, dryRun bool, r *Report) {
 	if !present {
 		// The asset has no installation in the source, so it should have none in
-		// the destination. Some backends auto-install on upload (skills.new
-		// publishes uploaded assets org-wide by default), so explicitly clear to
-		// match the source's uninstalled state. No-op on backends that don't
-		// auto-install (file-backed vaults leave an uploaded-but-unregistered
-		// asset alone).
+		// the destination. Clear the auto-applied install to match.
 		if !dryRun {
-			if err := dst.ClearAssetInstallations(ctx, name); err != nil {
-				r.warnf("clear auto-applied install on %q: %v", name, err)
-			}
+			clearAutoInstall(ctx, dst, name, r)
 		}
 		return
 	}
@@ -265,13 +331,25 @@ func copyAssetScopes(ctx context.Context, dst scopeInstaller, name string, scope
 	if bulk, ok := dst.(bulkInstaller); ok {
 		unresolved, err := bulk.SetAssetInstallations(ctx, name, targets)
 		if err != nil {
+			// The set failed, so the asset still carries any auto-applied install
+			// (org-wide on skills.new). Clear it so a failed scope-set doesn't
+			// leave the asset more permissive than the source intended.
 			r.warnf("set scopes on %q: %v", name, err)
+			clearAutoInstall(ctx, dst, name, r)
 			return
 		}
 		for _, u := range unresolved {
 			r.warnf("scope %s on %q skipped (not found in destination)", u.Describe(), name)
 		}
-		r.Scopes += len(targets) - len(unresolved)
+		applied := len(targets) - len(unresolved)
+		if applied == 0 {
+			// Nothing resolved (every target absent from the destination). The
+			// asset would otherwise keep its auto-applied org-wide install, which
+			// is more permissive than the source — clear it instead.
+			clearAutoInstall(ctx, dst, name, r)
+			return
+		}
+		r.Scopes += applied
 		return
 	}
 	// Append-on-set backends (file-backed): each target is independent, so a

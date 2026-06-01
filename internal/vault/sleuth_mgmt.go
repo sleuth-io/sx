@@ -534,6 +534,9 @@ func (s *SleuthVault) AssetInstallScopes(ctx context.Context, name string) ([]ma
 		// is org-wide; see below).
 		return nil, false, nil
 	}
+	// Cache a repo's mono-repo configs across this asset's installs so multiple
+	// path-scoped installs against the same repo don't each re-fetch them.
+	repoConfigCache := map[string]map[string][]string{}
 	var scopes []manifest.Scope
 	for _, inst := range insts {
 		switch inst.EntityType {
@@ -544,7 +547,7 @@ func (s *SleuthVault) AssetInstallScopes(ctx context.Context, name string) ([]ma
 			// A mono-repo config means the install is path-scoped, not whole-repo.
 			// Resolve the actual subpaths so they aren't silently widened.
 			if inst.MonoRepoConfigId != nil && inst.EntityId != nil {
-				paths, perr := s.monoRepoConfigPaths(ctx, *inst.EntityId, *inst.MonoRepoConfigId)
+				paths, perr := s.monoRepoConfigPaths(ctx, *inst.EntityId, *inst.MonoRepoConfigId, repoConfigCache)
 				if perr != nil {
 					return nil, false, perr
 				}
@@ -568,28 +571,33 @@ func (s *SleuthVault) AssetInstallScopes(ctx context.Context, name string) ([]ma
 // monoRepoConfigPaths resolves a repository's mono-repo config to its include
 // paths, so a path-scoped install read from the server keeps its subpaths
 // instead of widening to the whole repo. repoGID and configGID come from the
-// VaultAssetInstallation row.
-func (s *SleuthVault) monoRepoConfigPaths(ctx context.Context, repoGID, configGID string) ([]string, error) {
-	resp, err := vaultgql.RepoMonoRepoConfigs(ctx, s.gqlClient(), repoGID)
-	if err != nil {
-		return nil, err
-	}
-	if resp.Repository == nil {
-		return nil, nil
-	}
-	for _, cfg := range resp.Repository.MonoRepoConfigs {
-		if cfg.Id == nil || *cfg.Id != configGID {
-			continue
+// VaultAssetInstallation row. cache (repoGID -> configGID -> paths) collapses
+// repeated lookups of the same repo's configs within one read.
+func (s *SleuthVault) monoRepoConfigPaths(ctx context.Context, repoGID, configGID string, cache map[string]map[string][]string) ([]string, error) {
+	configs, ok := cache[repoGID]
+	if !ok {
+		resp, err := vaultgql.RepoMonoRepoConfigs(ctx, s.gqlClient(), repoGID)
+		if err != nil {
+			return nil, err
 		}
-		paths := make([]string, 0, len(cfg.SourcePathPrefixIncludes))
-		for _, p := range cfg.SourcePathPrefixIncludes {
-			if p != nil && *p != "" {
-				paths = append(paths, *p)
+		configs = map[string][]string{}
+		if resp.Repository != nil {
+			for _, cfg := range resp.Repository.MonoRepoConfigs {
+				if cfg.Id == nil {
+					continue
+				}
+				paths := make([]string, 0, len(cfg.SourcePathPrefixIncludes))
+				for _, p := range cfg.SourcePathPrefixIncludes {
+					if p != nil && *p != "" {
+						paths = append(paths, *p)
+					}
+				}
+				configs[*cfg.Id] = paths
 			}
 		}
-		return paths, nil
+		cache[repoGID] = configs
 	}
-	return nil, nil
+	return configs[configGID], nil
 }
 
 func (s *SleuthVault) RemoveAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error {
@@ -1357,10 +1365,9 @@ func (s *SleuthVault) RecordUsageEvents(ctx context.Context, events []mgmt.Usage
 	}
 	// Post in chunks so a large import (a whole vault's history) isn't one giant
 	// request the server has to validate and enqueue in a single shot.
-	for start := 0; start < len(events); start += sleuthUsagePostChunkSize {
-		end := min(start+sleuthUsagePostChunkSize, len(events))
+	for _, batch := range chunkSlice(events, sleuthUsagePostChunkSize) {
 		var b strings.Builder
-		for i, ev := range events[start:end] {
+		for i, ev := range batch {
 			if i > 0 {
 				b.WriteByte('\n')
 			}
@@ -1461,10 +1468,9 @@ func (s *SleuthVault) ImportAuditEvents(ctx context.Context, events []mgmt.Audit
 	if len(events) == 0 {
 		return nil
 	}
-	for start := 0; start < len(events); start += sleuthAuditImportChunkSize {
-		end := min(start+sleuthAuditImportChunkSize, len(events))
-		inputs := make([]vaultgql.ImportAuditEventInput, 0, end-start)
-		for _, ev := range events[start:end] {
+	for _, batch := range chunkSlice(events, sleuthAuditImportChunkSize) {
+		inputs := make([]vaultgql.ImportAuditEventInput, 0, len(batch))
+		for _, ev := range batch {
 			in := vaultgql.ImportAuditEventInput{
 				Timestamp:  timeOrNow(ev.Timestamp),
 				Event:      ev.Event,
