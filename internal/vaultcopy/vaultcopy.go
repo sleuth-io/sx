@@ -203,10 +203,11 @@ func copyAssets(ctx context.Context, src, dst vault.Vault, opts Options, r *Repo
 }
 
 // scopeInstaller is the slice of a vault the scope-copy step needs: set one
-// installation target at a time. Narrowed from vault.Vault so the dispatch
-// logic is unit-testable with a fake.
+// installation target at a time, or clear an asset's installs entirely.
+// Narrowed from vault.Vault so the dispatch logic is unit-testable with a fake.
 type scopeInstaller interface {
 	SetAssetInstallation(ctx context.Context, name string, target vault.InstallTarget) error
+	ClearAssetInstallations(ctx context.Context, name string) error
 }
 
 // bulkInstaller is implemented by vaults that replace-on-set and so must set an
@@ -220,8 +221,17 @@ type bulkInstaller interface {
 
 func copyAssetScopes(ctx context.Context, dst scopeInstaller, name string, scopes []manifest.Scope, present, dryRun bool, r *Report) {
 	if !present {
-		// Asset exists only as uploaded files (never installed) — nothing to
-		// register on the destination beyond the version content already copied.
+		// The asset has no installation in the source, so it should have none in
+		// the destination. Some backends auto-install on upload (skills.new
+		// publishes uploaded assets org-wide by default), so explicitly clear to
+		// match the source's uninstalled state. No-op on backends that don't
+		// auto-install (file-backed vaults leave an uploaded-but-unregistered
+		// asset alone).
+		if !dryRun {
+			if err := dst.ClearAssetInstallations(ctx, name); err != nil {
+				r.warnf("clear auto-applied install on %q: %v", name, err)
+			}
+		}
 		return
 	}
 

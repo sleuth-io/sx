@@ -74,10 +74,10 @@ audit, and usage in both directions, with these exceptions:
 - **Audit and usage import is additive.** If a copy's audit/usage stage fails
   part-way and you re-run it, the already-imported events are duplicated on the
   destination.
-- **Uploading an asset to skills.new publishes it org-wide by default.** An asset
-  that had *no* installations in the source therefore lands as a global install
-  in a skills.new destination — skills.new has no "uploaded but uninstalled"
-  state.
+
+(skills.new publishes an uploaded asset org-wide by default; the copy detects a
+source asset that has no installations and clears that auto-applied install on
+the destination, so an uninstalled asset stays uninstalled.)
 
 The preview/report always names what was skipped, so nothing is lost silently.
 

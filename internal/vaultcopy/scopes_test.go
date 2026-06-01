@@ -13,12 +13,18 @@ import (
 // vault. It records calls and can report unresolved targets or a hard error.
 type bulkFake struct {
 	bulkCalls  [][]vault.InstallTarget
+	clearCalls int
 	unresolved []vault.InstallTarget
 	bulkErr    error
 }
 
 func (f *bulkFake) SetAssetInstallation(_ context.Context, _ string, _ vault.InstallTarget) error {
 	panic("bulkFake.SetAssetInstallation must not be called — bulk dests use SetAssetInstallations")
+}
+
+func (f *bulkFake) ClearAssetInstallations(_ context.Context, _ string) error {
+	f.clearCalls++
+	return nil
 }
 
 func (f *bulkFake) SetAssetInstallations(_ context.Context, _ string, targets []vault.InstallTarget) ([]vault.InstallTarget, error) {
@@ -29,10 +35,16 @@ func (f *bulkFake) SetAssetInstallations(_ context.Context, _ string, targets []
 // appendFake implements only the per-target installer, like a file-backed vault.
 type appendFake struct {
 	singleCalls []vault.InstallTarget
+	clearCalls  int
 }
 
 func (f *appendFake) SetAssetInstallation(_ context.Context, _ string, t vault.InstallTarget) error {
 	f.singleCalls = append(f.singleCalls, t)
+	return nil
+}
+
+func (f *appendFake) ClearAssetInstallations(_ context.Context, _ string) error {
+	f.clearCalls++
 	return nil
 }
 
@@ -116,12 +128,28 @@ func TestCopyAssetScopes_OrgWideWhenPresentNoScopes(t *testing.T) {
 	}
 }
 
-func TestCopyAssetScopes_NotPresentDoesNothing(t *testing.T) {
-	f := &appendFake{}
+func TestCopyAssetScopes_NotPresentClearsInstalls(t *testing.T) {
+	// A source asset with no installation should end up uninstalled on the
+	// destination — the engine clears any auto-applied install (e.g. the
+	// org-wide default skills.new applies on upload) and sets no scopes.
+	f := &bulkFake{}
 	r := &Report{}
 	copyAssetScopes(context.Background(), f, "skill", nil, false, false, r)
 
-	if len(f.singleCalls) != 0 || r.Scopes != 0 {
-		t.Fatalf("not-present asset should set nothing, got calls=%v scopes=%d", f.singleCalls, r.Scopes)
+	if len(f.bulkCalls) != 0 || r.Scopes != 0 {
+		t.Fatalf("not-present asset should set no scopes, got bulk=%v scopes=%d", f.bulkCalls, r.Scopes)
+	}
+	if f.clearCalls != 1 {
+		t.Fatalf("not-present asset should clear installs once, got %d", f.clearCalls)
+	}
+}
+
+func TestCopyAssetScopes_NotPresentDryRunNoClear(t *testing.T) {
+	f := &bulkFake{}
+	r := &Report{}
+	copyAssetScopes(context.Background(), f, "skill", nil, false, true, r)
+
+	if f.clearCalls != 0 {
+		t.Fatalf("dry-run must not clear, got %d", f.clearCalls)
 	}
 }
