@@ -2120,6 +2120,86 @@ func (v *McpToolInput) GetDescription() *string { return v.Description }
 // GetEstimatedTokens returns McpToolInput.EstimatedTokens, and is useful for accessing the field via an interface.
 func (v *McpToolInput) GetEstimatedTokens() *int { return v.EstimatedTokens }
 
+// OrgRepositoriesOrganizationOrganizationType includes the requested fields of the GraphQL type OrganizationType.
+type OrgRepositoriesOrganizationOrganizationType struct {
+	Repositories OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnection `json:"repositories"`
+}
+
+// GetRepositories returns OrgRepositoriesOrganizationOrganizationType.Repositories, and is useful for accessing the field via an interface.
+func (v *OrgRepositoriesOrganizationOrganizationType) GetRepositories() OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnection {
+	return v.Repositories
+}
+
+// OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnection includes the requested fields of the GraphQL type RepositoryConnection.
+type OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnection struct {
+	// Pagination data for this connection.
+	PageInfo OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionPageInfo              `json:"pageInfo"`
+	Nodes    []OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionNodesRepositoryType `json:"nodes"`
+}
+
+// GetPageInfo returns OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnection.PageInfo, and is useful for accessing the field via an interface.
+func (v *OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnection) GetPageInfo() OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionPageInfo {
+	return v.PageInfo
+}
+
+// GetNodes returns OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnection.Nodes, and is useful for accessing the field via an interface.
+func (v *OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnection) GetNodes() []OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionNodesRepositoryType {
+	return v.Nodes
+}
+
+// OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionNodesRepositoryType includes the requested fields of the GraphQL type RepositoryType.
+type OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionNodesRepositoryType struct {
+	Id    *string `json:"id"`
+	Owner string  `json:"owner"`
+	Name  string  `json:"name"`
+}
+
+// GetId returns OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionNodesRepositoryType.Id, and is useful for accessing the field via an interface.
+func (v *OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionNodesRepositoryType) GetId() *string {
+	return v.Id
+}
+
+// GetOwner returns OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionNodesRepositoryType.Owner, and is useful for accessing the field via an interface.
+func (v *OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionNodesRepositoryType) GetOwner() string {
+	return v.Owner
+}
+
+// GetName returns OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionNodesRepositoryType.Name, and is useful for accessing the field via an interface.
+func (v *OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionNodesRepositoryType) GetName() string {
+	return v.Name
+}
+
+// OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionPageInfo includes the requested fields of the GraphQL type PageInfo.
+// The GraphQL type's documentation follows.
+//
+// The Relay compliant `PageInfo` type, containing data necessary to paginate this connection.
+type OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionPageInfo struct {
+	// When paginating forwards, are there more items?
+	HasNextPage bool `json:"hasNextPage"`
+	// When paginating forwards, the cursor to continue.
+	EndCursor *string `json:"endCursor"`
+}
+
+// GetHasNextPage returns OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionPageInfo.HasNextPage, and is useful for accessing the field via an interface.
+func (v *OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionPageInfo) GetHasNextPage() bool {
+	return v.HasNextPage
+}
+
+// GetEndCursor returns OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionPageInfo.EndCursor, and is useful for accessing the field via an interface.
+func (v *OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnectionPageInfo) GetEndCursor() *string {
+	return v.EndCursor
+}
+
+// OrgRepositoriesResponse is returned by OrgRepositories on success.
+type OrgRepositoriesResponse struct {
+	Organization OrgRepositoriesOrganizationOrganizationType `json:"organization"`
+}
+
+// GetOrganization returns OrgRepositoriesResponse.Organization, and is useful for accessing the field via an interface.
+func (v *OrgRepositoriesResponse) GetOrganization() OrgRepositoriesOrganizationOrganizationType {
+	return v.Organization
+}
+
 type RemoveAssetInstallationsInput struct {
 	AssetName string `json:"assetName"`
 	Delete    *bool  `json:"delete"`
@@ -4376,6 +4456,18 @@ func (v *__ListTeamsInput) GetTerm() *string { return v.Term }
 // GetMemberFirst returns __ListTeamsInput.MemberFirst, and is useful for accessing the field via an interface.
 func (v *__ListTeamsInput) GetMemberFirst() int { return v.MemberFirst }
 
+// __OrgRepositoriesInput is used internally by genqlient
+type __OrgRepositoriesInput struct {
+	First int     `json:"first"`
+	After *string `json:"after"`
+}
+
+// GetFirst returns __OrgRepositoriesInput.First, and is useful for accessing the field via an interface.
+func (v *__OrgRepositoriesInput) GetFirst() int { return v.First }
+
+// GetAfter returns __OrgRepositoriesInput.After, and is useful for accessing the field via an interface.
+func (v *__OrgRepositoriesInput) GetAfter() *string { return v.After }
+
 // __RemoveAssetInstallationsInput is used internally by genqlient
 type __RemoveAssetInstallationsInput struct {
 	Input RemoveAssetInstallationsInput `json:"input"`
@@ -5253,6 +5345,52 @@ func ListTeams(
 	}
 
 	data_ = &ListTeamsResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The query executed by OrgRepositories.
+const OrgRepositories_Operation = `
+query OrgRepositories ($first: Int!, $after: String) {
+	organization {
+		repositories(first: $first, after: $after) {
+			pageInfo {
+				hasNextPage
+				endCursor
+			}
+			nodes {
+				id
+				owner
+				name
+			}
+		}
+	}
+}
+`
+
+func OrgRepositories(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	first int,
+	after *string,
+) (data_ *OrgRepositoriesResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "OrgRepositories",
+		Query:  OrgRepositories_Operation,
+		Variables: &__OrgRepositoriesInput{
+			First: first,
+			After: after,
+		},
+	}
+
+	data_ = &OrgRepositoriesResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(

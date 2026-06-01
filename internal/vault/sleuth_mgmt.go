@@ -260,11 +260,129 @@ func (s *SleuthVault) SetTeamAdmin(ctx context.Context, team, email string, admi
 }
 
 func (s *SleuthVault) AddTeamRepository(ctx context.Context, team, repoURL string) error {
-	return fmt.Errorf("%w: add team repository on sleuth vaults (use the skills.new web UI)", ErrNotImplemented)
+	return s.setTeamRepositories(ctx, team, repoURL, true)
 }
 
 func (s *SleuthVault) RemoveTeamRepository(ctx context.Context, team, repoURL string) error {
-	return fmt.Errorf("%w: remove team repository on sleuth vaults (use the skills.new web UI)", ErrNotImplemented)
+	return s.setTeamRepositories(ctx, team, repoURL, false)
+}
+
+// setTeamRepositories adds or removes one repository from a team's skills
+// repository set. The updateTeam mutation replaces the whole set, so we
+// read the team's current members + repositories, resolve them to GIDs, and
+// re-send the full list with the one repo added or removed. Members are
+// resent unchanged so the replace doesn't drop them (admin flags persist
+// server-side since the membership rows are unchanged).
+func (s *SleuthVault) setTeamRepositories(ctx context.Context, team, repoURL string, add bool) error {
+	existing, err := s.GetTeam(ctx, team)
+	if err != nil {
+		return err
+	}
+	repoMap, err := s.orgRepoGIDsByOwnerName(ctx)
+	if err != nil {
+		return err
+	}
+
+	targetKey := trailingOwnerName(repoURL)
+	if add {
+		if _, ok := repoMap[targetKey]; !ok {
+			return fmt.Errorf("repository %q not found in the skills.new organization", repoURL)
+		}
+	}
+
+	// Build the desired owner/name set from the team's current repositories,
+	// then apply the add/remove.
+	desired := make(map[string]struct{}, len(existing.Repositories))
+	for _, r := range existing.Repositories {
+		desired[trailingOwnerName(r)] = struct{}{}
+	}
+	if add {
+		desired[targetKey] = struct{}{}
+	} else {
+		delete(desired, targetKey)
+	}
+
+	var skillsRepos []vaultgql.SkillsRepositoryInput
+	for key := range desired {
+		gid, ok := repoMap[key]
+		if !ok {
+			// A current repo that no longer resolves in this org — skip it
+			// rather than fail the whole update, but make the drop visible.
+			logger.Get().Warn("team repository no longer in org; dropping from set", "team", team, "repo", key)
+			continue
+		}
+		skillsRepos = append(skillsRepos, vaultgql.SkillsRepositoryInput{RepositoryId: gid})
+	}
+
+	memberGIDs, err := s.resolveUserGIDs(ctx, existing.Members)
+	if err != nil {
+		return err
+	}
+	teamGID, err := s.teamGIDByName(ctx, team)
+	if err != nil {
+		return err
+	}
+	resp, err := vaultgql.UpdateTeam(ctx, s.gqlClient(), vaultgql.UpdateTeamInput{
+		Id:                 teamGID,
+		Members:            memberGIDs,
+		SkillsRepositories: skillsRepos,
+	})
+	if err != nil {
+		return err
+	}
+	if resp.UpdateTeam == nil {
+		return nil
+	}
+	return gqlMutationErrors(resp.UpdateTeam.Errors)
+}
+
+// orgRepoGIDsByOwnerName pages the organization's repositories into a map
+// keyed by lowercase "owner/name" -> repository GID, used to resolve repo
+// identifiers (URLs or slugs) to the GIDs updateTeam needs.
+func (s *SleuthVault) orgRepoGIDsByOwnerName(ctx context.Context) (map[string]string, error) {
+	const pageSize = 50
+	out := map[string]string{}
+	var after *string
+	for {
+		resp, err := vaultgql.OrgRepositories(ctx, s.gqlClient(), pageSize, after)
+		if err != nil {
+			return nil, err
+		}
+		conn := resp.Organization.Repositories
+		for _, n := range conn.Nodes {
+			if n.Id == nil {
+				continue
+			}
+			out[strings.ToLower(n.Owner+"/"+n.Name)] = *n.Id
+		}
+		if !conn.PageInfo.HasNextPage || conn.PageInfo.EndCursor == nil {
+			break
+		}
+		after = conn.PageInfo.EndCursor
+	}
+	return out, nil
+}
+
+// trailingOwnerName reduces a repo identifier (a full URL, an "owner/name"
+// slug, or a normalized host/owner/name string) to a lowercase "owner/name"
+// key for matching against the org repo map. Strips a scheme, a trailing
+// ".git", and any leading host path segments.
+func trailingOwnerName(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	// Handle scp-style SSH remotes (git@github.com:owner/repo) and host:port
+	// prefixes by keeping everything after the last colon.
+	if i := strings.LastIndex(s, ":"); i >= 0 {
+		s = s[i+1:]
+	}
+	s = strings.TrimSuffix(strings.Trim(s, "/"), ".git")
+	parts := strings.Split(s, "/")
+	if len(parts) >= 2 {
+		s = parts[len(parts)-2] + "/" + parts[len(parts)-1]
+	}
+	return strings.ToLower(s)
 }
 
 func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error {
