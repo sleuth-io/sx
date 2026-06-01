@@ -495,9 +495,12 @@ func (s *SleuthVault) AssetInstallScopes(ctx context.Context, name string) ([]ma
 	if err != nil {
 		return nil, false, err
 	}
+	// The caller passes the asset slug (AssetSummary.Name is the slug for Sleuth).
+	// Match on slug first — display name may differ — falling back to name.
 	var node *vaultgql.AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset
 	for i := range resp.Vault.Assets.Nodes {
-		if strings.EqualFold(resp.Vault.Assets.Nodes[i].GetName(), name) {
+		n := resp.Vault.Assets.Nodes[i]
+		if strings.EqualFold(n.GetSlug(), name) || strings.EqualFold(n.GetName(), name) {
 			node = &resp.Vault.Assets.Nodes[i]
 			break
 		}

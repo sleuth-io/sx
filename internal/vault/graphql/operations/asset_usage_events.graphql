@@ -26,7 +26,6 @@ query AssetUsageEvents(
       assetName
       assetVersion
       assetType
-      botName
     }
   }
 }

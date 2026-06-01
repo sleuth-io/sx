@@ -1,6 +1,10 @@
-query VaultAssets($first: Int, $assetType: AssetType!, $search: String) {
+query VaultAssets($first: Int, $after: String, $assetType: AssetType!, $search: String) {
   vault {
-    assets(first: $first, type: $assetType, search: $search) {
+    assets(first: $first, after: $after, type: $assetType, search: $search) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         slug
         type

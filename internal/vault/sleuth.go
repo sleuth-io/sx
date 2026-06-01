@@ -615,12 +615,6 @@ func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*
 
 // listAssetsByType retrieves assets of a specific type from the vault
 func (s *SleuthVault) listAssetsByType(ctx context.Context, opts ListAssetsOptions) (*ListAssetsResult, error) {
-	// Set default limit if not specified (max 50 enforced by backend)
-	limit := opts.Limit
-	if limit == 0 || limit > 50 {
-		limit = 50
-	}
-
 	gqlType := sxAssetTypeToGQL(asset.FromString(opts.Type))
 	if gqlType == "" {
 		// Type not supported by backend, return empty result
@@ -632,35 +626,50 @@ func (s *SleuthVault) listAssetsByType(ctx context.Context, opts ListAssetsOptio
 		searchPtr = &opts.Search
 	}
 
-	resp, err := vaultgql.VaultAssets(ctx, s.gqlClient(), &limit, gqlType, searchPtr)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert to result struct. VaultAsset is a polymorphic interface;
-	// shared getters cover every concrete subtype (Skill, MCP, Agent, ...).
-	result := &ListAssetsResult{
-		Assets: make([]AssetSummary, 0, len(resp.Vault.Assets.Nodes)),
-	}
-	for _, node := range resp.Vault.Assets.Nodes {
-		assetType := gqlAssetTypeToSX(node.GetType())
-		if !assetType.IsValid() {
-			log := logger.Get()
-			log.Warn("unknown asset type from GraphQL", "type", string(node.GetType()), "asset", node.GetSlug())
+	// The server caps `first` at 50, so page through with the endCursor rather
+	// than truncating — a vault copy must see every asset, not just the first
+	// page. opts.Limit (when > 0) bounds the total returned.
+	result := &ListAssetsResult{Assets: []AssetSummary{}}
+	pageSize := sleuthAssetsPageSize
+	var after *string
+	for {
+		resp, err := vaultgql.VaultAssets(ctx, s.gqlClient(), &pageSize, after, gqlType, searchPtr)
+		if err != nil {
+			return nil, err
 		}
-		result.Assets = append(result.Assets, AssetSummary{
-			Name:          node.GetSlug(),
-			Type:          assetType,
-			LatestVersion: node.GetLatestVersion(),
-			VersionsCount: node.GetVersionsCount(),
-			Description:   node.GetDescription(),
-			CreatedAt:     node.GetCreatedAt(),
-			UpdatedAt:     node.GetUpdatedAt(),
-		})
+		conn := resp.Vault.Assets
+		// VaultAsset is a polymorphic interface; shared getters cover every
+		// concrete subtype (Skill, MCP, Agent, ...).
+		for _, node := range conn.Nodes {
+			assetType := gqlAssetTypeToSX(node.GetType())
+			if !assetType.IsValid() {
+				logger.Get().Warn("unknown asset type from GraphQL", "type", string(node.GetType()), "asset", node.GetSlug())
+			}
+			result.Assets = append(result.Assets, AssetSummary{
+				Name:          node.GetSlug(),
+				Type:          assetType,
+				LatestVersion: node.GetLatestVersion(),
+				VersionsCount: node.GetVersionsCount(),
+				Description:   node.GetDescription(),
+				CreatedAt:     node.GetCreatedAt(),
+				UpdatedAt:     node.GetUpdatedAt(),
+			})
+			if opts.Limit > 0 && len(result.Assets) >= opts.Limit {
+				return result, nil
+			}
+		}
+		if !conn.PageInfo.HasNextPage || conn.PageInfo.EndCursor == nil {
+			break
+		}
+		after = conn.PageInfo.EndCursor
 	}
 
 	return result, nil
 }
+
+// sleuthAssetsPageSize is the server-side maximum for the vault.assets `first`
+// argument; we page through with the endCursor.
+const sleuthAssetsPageSize = 50
 
 // GetAssetDetails retrieves detailed information about a specific asset using GraphQL
 func (s *SleuthVault) GetAssetDetails(ctx context.Context, name string) (*AssetDetails, error) {

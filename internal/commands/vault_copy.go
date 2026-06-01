@@ -33,10 +33,15 @@ content is deduplicated and changed content lands as a new version in the
 destination. Audit and usage events keep their original timestamps and actors.
 
 By default every category is copied. Use --only to restrict (e.g.
---only assets,teams). A preview is always shown first; pass --yes to apply.
+--only assets,teams). Without --yes a read-only preview is shown; pass --yes
+to apply directly.
 
 Some transfers are lossy depending on direction (e.g. into skills.new: bot API
-keys must be regenerated). The preview lists anything that won't transfer.`,
+keys must be regenerated). The preview lists anything that won't transfer.
+
+Note: audit and usage import is additive — re-running a copy whose audit/usage
+stage previously failed part-way will duplicate the already-imported events on
+the destination.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runVaultCopy(cmd, fromProfile, toProfile, only, dryRun, yes)
@@ -47,7 +52,7 @@ keys must be regenerated). The preview lists anything that won't transfer.`,
 	cmd.Flags().StringVar(&toProfile, "to", "", "destination profile name (required)")
 	cmd.Flags().StringSliceVar(&only, "only", nil, "restrict to categories: teams,bots,assets,audit,usage")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview what would copy without writing")
-	cmd.Flags().BoolVar(&yes, "yes", false, "apply the copy (without this, only a preview is shown)")
+	cmd.Flags().BoolVar(&yes, "yes", false, "apply the copy (without this, only a read-only preview is shown)")
 	_ = cmd.MarkFlagRequired("from")
 	_ = cmd.MarkFlagRequired("to")
 
@@ -76,32 +81,28 @@ func runVaultCopy(cmd *cobra.Command, fromProfile, toProfile string, only []stri
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
-	// Always preview first so the user sees scope + losses before any writes.
-	preview := opts
-	preview.DryRun = true
-	previewReport, err := vaultcopy.Copy(ctx, src, dst, preview)
+	// --yes applies directly. We deliberately don't run a separate preview pass
+	// first: a preview re-reads the entire source (audit + usage history), so
+	// previewing then applying would read everything twice. Use --dry-run for a
+	// read-only preview.
+	if yes && !dryRun {
+		opts.DryRun = false
+		report, err := vaultcopy.Copy(ctx, src, dst, opts)
+		fmt.Fprintf(out, "Copied %s → %s\n", fromProfile, toProfile)
+		printReport(out, report, false)
+		return err
+	}
+
+	opts.DryRun = true
+	report, err := vaultcopy.Copy(ctx, src, dst, opts)
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "Preview: copy %s → %s\n", fromProfile, toProfile)
-	printReport(out, previewReport, true)
-
-	if dryRun {
-		return nil
-	}
-	if !yes {
+	printReport(out, report, true)
+	if !dryRun {
 		fmt.Fprintln(out, "\nRe-run with --yes to apply, or --dry-run to preview only.")
-		return nil
 	}
-
-	opts.DryRun = false
-	report, err := vaultcopy.Copy(ctx, src, dst, opts)
-	if err != nil {
-		printReport(out, report, false)
-		return err
-	}
-	fmt.Fprintf(out, "\nCopied %s → %s\n", fromProfile, toProfile)
-	printReport(out, report, false)
 	return nil
 }
 
