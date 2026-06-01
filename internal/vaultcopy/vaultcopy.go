@@ -54,12 +54,12 @@ func (r *Report) warnf(format string, args ...any) {
 	r.Warnings = append(r.Warnings, fmt.Sprintf(format, args...))
 }
 
-// manifestScopeReader is implemented by file-backed vaults (path, git); it
-// exposes an asset's complete authoring scopes from the manifest. Server-backed
-// (skills.new) sources don't implement it, so scope copy is skipped with a
-// warning when the source is server-backed.
-type manifestScopeReader interface {
-	ManifestAssetScopes(name string) (scopes []manifest.Scope, present bool)
+// assetScopeReader reads an asset's installation scopes from a vault. All three
+// backends implement it: file-backed vaults read sx.toml; the Sleuth vault reads
+// the server's installation rows. `present` reports whether the asset is
+// registered (an org-wide asset is present with no scopes).
+type assetScopeReader interface {
+	AssetInstallScopes(ctx context.Context, name string) (scopes []manifest.Scope, present bool, err error)
 }
 
 const assetListLimit = 10000
@@ -160,7 +160,7 @@ func copyAssets(ctx context.Context, src, dst vault.Vault, opts Options, r *Repo
 	if err != nil {
 		return err
 	}
-	scopeReader, canReadScopes := src.(manifestScopeReader)
+	scopeReader, canReadScopes := src.(assetScopeReader)
 	if !canReadScopes && len(res.Assets) > 0 {
 		r.warnf("source does not expose asset installation scopes; assets copied without scopes")
 	}
@@ -194,8 +194,12 @@ func copyAssets(ctx context.Context, src, dst vault.Vault, opts Options, r *Repo
 			r.Versions++
 		}
 		if canReadScopes {
-			scopes, present := scopeReader.ManifestAssetScopes(a.Name)
-			copyAssetScopes(ctx, dst, a.Name, scopes, present, opts.DryRun, r)
+			scopes, present, err := scopeReader.AssetInstallScopes(ctx, a.Name)
+			if err != nil {
+				r.warnf("read scopes for %q: %v", a.Name, err)
+			} else {
+				copyAssetScopes(ctx, dst, a.Name, scopes, present, opts.DryRun, r)
+			}
 		}
 	}
 	return nil

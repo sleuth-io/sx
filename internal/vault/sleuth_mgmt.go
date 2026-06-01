@@ -14,6 +14,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	vaultgql "github.com/sleuth-io/sx/internal/vault/graphql"
 )
@@ -427,6 +428,45 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 		return s.installSkillToBot(ctx, assetName, target.Bot)
 	}
 	return fmt.Errorf("unknown install kind: %q", target.Kind)
+}
+
+// AssetInstallScopes reads an asset's installation targets from the server and
+// maps them to manifest scopes, so the copy engine can replay scopes when the
+// SOURCE is a skills.new vault (the file-backed vaults read them from sx.toml).
+// An org-wide install is reported as present with no scopes, matching the
+// file-backed convention.
+func (s *SleuthVault) AssetInstallScopes(ctx context.Context, name string) ([]manifest.Scope, bool, error) {
+	resp, err := vaultgql.AssetInstallations(ctx, s.gqlClient(), name)
+	if err != nil {
+		return nil, false, err
+	}
+	var node *vaultgql.AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset
+	for i := range resp.Vault.Assets.Nodes {
+		if strings.EqualFold(resp.Vault.Assets.Nodes[i].GetName(), name) {
+			node = &resp.Vault.Assets.Nodes[i]
+			break
+		}
+	}
+	if node == nil {
+		return nil, false, nil
+	}
+	var scopes []manifest.Scope
+	for _, inst := range (*node).GetInstallations() {
+		switch inst.EntityType {
+		case vaultgql.VaultAssetInstallationEntityTypeOrganization:
+			// Org-wide is exclusive; report it as present-with-no-scopes.
+			return nil, true, nil
+		case vaultgql.VaultAssetInstallationEntityTypeRepository:
+			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindRepo, Repo: inst.EntityName})
+		case vaultgql.VaultAssetInstallationEntityTypeTeam:
+			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindTeam, Team: inst.EntityName})
+		case vaultgql.VaultAssetInstallationEntityTypeUser:
+			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindUser, User: inst.EntityName})
+		case vaultgql.VaultAssetInstallationEntityTypeBot:
+			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindBot, Bot: inst.EntityName})
+		}
+	}
+	return scopes, true, nil
 }
 
 func (s *SleuthVault) RemoveAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error {
@@ -1326,78 +1366,75 @@ func (s *SleuthVault) ImportAuditEvents(ctx context.Context, events []mgmt.Audit
 	return nil
 }
 
-// sleuthAuditDefaultPageSize is the server-side cap we ask for when the
-// caller didn't set filter.Limit. The server-side query plus client-side
-// filtering means a small server page paired with selective filters can
-// return zero rows even though matches exist further back in the log.
-// Setting this high (1000) makes truncation very unlikely; a warning
-// fires if we saturate so operators notice when they need a higher cap
-// or server-side filter support.
-const sleuthAuditDefaultPageSize = 1000
+// sleuthAuditPageSize is the server-side maximum for the assetAuditLog `first`
+// argument; we page through with the endCursor to retrieve everything.
+const sleuthAuditPageSize = 50
 
 func (s *SleuthVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFilter) ([]mgmt.AuditEvent, error) {
-	// If the caller specified a limit, honor it directly; otherwise use
-	// the wide default so client-side filters don't silently drop rows
-	// that existed just beyond a small server page.
-	userLimit := filter.Limit
-	first := userLimit
-	if first <= 0 {
-		first = sleuthAuditDefaultPageSize
-	}
-	resp, err := vaultgql.AssetAuditLog(ctx, s.gqlClient(), &first)
-	if err != nil {
-		return nil, err
-	}
-	// Warn when the server returned exactly the page we asked for and the
-	// caller didn't choose that limit themselves — a saturation signal
-	// that older entries may have been dropped before client-side
-	// filtering ran.
-	if userLimit == 0 && len(resp.AssetAuditLog.Nodes) >= first {
-		logger.Get().Warn("QueryAuditEvents result saturated page size; older events may be truncated",
-			"page_size", first,
-			"returned", len(resp.AssetAuditLog.Nodes))
-	}
+	pageSize := sleuthAuditPageSize
 	var out []mgmt.AuditEvent
-	for _, node := range resp.AssetAuditLog.Nodes {
-		ev := mgmt.AuditEvent{
-			Timestamp:  node.Date,
-			Actor:      derefStr(node.ActorEmail),
-			Event:      node.Event,
-			TargetType: node.TargetType,
-			Target:     derefStr(node.TargetName),
+	var after *string
+	for {
+		resp, err := vaultgql.AssetAuditLog(ctx, s.gqlClient(), &pageSize, after)
+		if err != nil {
+			return nil, err
 		}
-		// node.Data is a JSONString scalar that normally wire-encodes as a
-		// JSON-encoded string ("{\"foo\":...}"), but older payloads may
-		// wire the object directly. Dispatch on the first non-whitespace
-		// byte so both shapes are handled explicitly.
-		if node.Data != nil {
-			raw := bytes.TrimSpace(*node.Data)
-			switch {
-			case len(raw) == 0, bytes.Equal(raw, []byte("null")):
-				// empty payload — nothing to decode
-			case raw[0] == '"':
-				var inner string
-				if err := json.Unmarshal(raw, &inner); err != nil || inner == "" {
-					if err != nil {
-						logger.Get().Warn("audit log: malformed JSONString Data", "err", err)
-					}
-					break
-				}
-				if err := json.Unmarshal([]byte(inner), &ev.Data); err != nil {
-					logger.Get().Warn("audit log: failed to decode inner Data object", "err", err)
-				}
-			default:
-				if err := json.Unmarshal(raw, &ev.Data); err != nil {
-					logger.Get().Warn("audit log: failed to decode Data object", "err", err)
-				}
+		conn := resp.AssetAuditLog
+		for _, node := range conn.Nodes {
+			ev := sleuthAuditNodeToEvent(node)
+			if !sleuthAuditMatches(ev, filter) {
+				continue
+			}
+			out = append(out, ev)
+			if filter.Limit > 0 && len(out) >= filter.Limit {
+				return out, nil
 			}
 		}
-		if !sleuthAuditMatches(ev, filter) {
-			continue
+		if !conn.PageInfo.HasNextPage || conn.PageInfo.EndCursor == nil {
+			break
 		}
-		out = append(out, ev)
+		after = conn.PageInfo.EndCursor
 	}
 	return out, nil
+}
+
+// sleuthAuditNodeToEvent converts a generated audit-log node into the internal
+// mgmt.AuditEvent, decoding the JSONString Data scalar.
+func sleuthAuditNodeToEvent(node vaultgql.AssetAuditLogAssetAuditLogAssetAuditEventConnectionNodesAssetAuditEvent) mgmt.AuditEvent {
+	ev := mgmt.AuditEvent{
+		Timestamp:  node.Date,
+		Actor:      derefStr(node.ActorEmail),
+		Event:      node.Event,
+		TargetType: node.TargetType,
+		Target:     derefStr(node.TargetName),
+	}
+	// node.Data is a JSONString scalar that normally wire-encodes as a
+	// JSON-encoded string ("{\"foo\":...}"), but older payloads may wire the
+	// object directly. Dispatch on the first non-whitespace byte so both
+	// shapes are handled explicitly.
+	if node.Data != nil {
+		raw := bytes.TrimSpace(*node.Data)
+		switch {
+		case len(raw) == 0, bytes.Equal(raw, []byte("null")):
+			// empty payload — nothing to decode
+		case raw[0] == '"':
+			var inner string
+			if err := json.Unmarshal(raw, &inner); err != nil || inner == "" {
+				if err != nil {
+					logger.Get().Warn("audit log: malformed JSONString Data", "err", err)
+				}
+				break
+			}
+			if err := json.Unmarshal([]byte(inner), &ev.Data); err != nil {
+				logger.Get().Warn("audit log: failed to decode inner Data object", "err", err)
+			}
+		default:
+			if err := json.Unmarshal(raw, &ev.Data); err != nil {
+				logger.Get().Warn("audit log: failed to decode Data object", "err", err)
+			}
+		}
+	}
+	return ev
 }
 
 // derefStr returns the pointee or "" when nil. Used for nullable string

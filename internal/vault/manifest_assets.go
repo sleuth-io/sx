@@ -141,16 +141,20 @@ func manifestAssetScopes(vaultRoot, name string) ([]manifest.Scope, bool) {
 	return a.Scopes, true
 }
 
-// ManifestAssetScopes exposes the named asset's complete authoring scopes and
-// whether it has a manifest entry. See manifestAssetScopes.
-func (p *PathVault) ManifestAssetScopes(name string) ([]manifest.Scope, bool) {
-	return manifestAssetScopes(p.repoPath, name)
+// AssetInstallScopes exposes the named asset's complete authoring scopes and
+// whether it has a manifest entry. The ctx/error signature matches the
+// server-backed implementation so the copy engine can read scopes uniformly.
+// See manifestAssetScopes.
+func (p *PathVault) AssetInstallScopes(_ context.Context, name string) ([]manifest.Scope, bool, error) {
+	scopes, present := manifestAssetScopes(p.repoPath, name)
+	return scopes, present, nil
 }
 
-// ManifestAssetScopes exposes the named asset's complete authoring scopes and
+// AssetInstallScopes exposes the named asset's complete authoring scopes and
 // whether it has a manifest entry. See manifestAssetScopes.
-func (g *GitVault) ManifestAssetScopes(name string) ([]manifest.Scope, bool) {
-	return manifestAssetScopes(g.repoPath, name)
+func (g *GitVault) AssetInstallScopes(_ context.Context, name string) ([]manifest.Scope, bool, error) {
+	scopes, present := manifestAssetScopes(g.repoPath, name)
+	return scopes, present, nil
 }
 
 // findAssetInManifest returns (asset, true) when the named asset exists

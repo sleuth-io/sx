@@ -13,7 +13,14 @@ import (
 
 // AssetAuditLogAssetAuditLogAssetAuditEventConnection includes the requested fields of the GraphQL type AssetAuditEventConnection.
 type AssetAuditLogAssetAuditLogAssetAuditEventConnection struct {
-	Nodes []AssetAuditLogAssetAuditLogAssetAuditEventConnectionNodesAssetAuditEvent `json:"nodes"`
+	// Pagination data for this connection.
+	PageInfo AssetAuditLogAssetAuditLogAssetAuditEventConnectionPageInfo               `json:"pageInfo"`
+	Nodes    []AssetAuditLogAssetAuditLogAssetAuditEventConnectionNodesAssetAuditEvent `json:"nodes"`
+}
+
+// GetPageInfo returns AssetAuditLogAssetAuditLogAssetAuditEventConnection.PageInfo, and is useful for accessing the field via an interface.
+func (v *AssetAuditLogAssetAuditLogAssetAuditEventConnection) GetPageInfo() AssetAuditLogAssetAuditLogAssetAuditEventConnectionPageInfo {
+	return v.PageInfo
 }
 
 // GetNodes returns AssetAuditLogAssetAuditLogAssetAuditEventConnection.Nodes, and is useful for accessing the field via an interface.
@@ -71,6 +78,27 @@ func (v *AssetAuditLogAssetAuditLogAssetAuditEventConnectionNodesAssetAuditEvent
 // GetData returns AssetAuditLogAssetAuditLogAssetAuditEventConnectionNodesAssetAuditEvent.Data, and is useful for accessing the field via an interface.
 func (v *AssetAuditLogAssetAuditLogAssetAuditEventConnectionNodesAssetAuditEvent) GetData() *json.RawMessage {
 	return v.Data
+}
+
+// AssetAuditLogAssetAuditLogAssetAuditEventConnectionPageInfo includes the requested fields of the GraphQL type PageInfo.
+// The GraphQL type's documentation follows.
+//
+// The Relay compliant `PageInfo` type, containing data necessary to paginate this connection.
+type AssetAuditLogAssetAuditLogAssetAuditEventConnectionPageInfo struct {
+	// When paginating forwards, are there more items?
+	HasNextPage bool `json:"hasNextPage"`
+	// When paginating forwards, the cursor to continue.
+	EndCursor *string `json:"endCursor"`
+}
+
+// GetHasNextPage returns AssetAuditLogAssetAuditLogAssetAuditEventConnectionPageInfo.HasNextPage, and is useful for accessing the field via an interface.
+func (v *AssetAuditLogAssetAuditLogAssetAuditEventConnectionPageInfo) GetHasNextPage() bool {
+	return v.HasNextPage
+}
+
+// GetEndCursor returns AssetAuditLogAssetAuditLogAssetAuditEventConnectionPageInfo.EndCursor, and is useful for accessing the field via an interface.
+func (v *AssetAuditLogAssetAuditLogAssetAuditEventConnectionPageInfo) GetEndCursor() *string {
+	return v.EndCursor
 }
 
 // AssetAuditLogResponse is returned by AssetAuditLog on success.
@@ -557,6 +585,449 @@ func (v *AssetInstallationInput) GetMonoRepoConfigId() *string { return v.MonoRe
 
 // GetMonoRepoConfigName returns AssetInstallationInput.MonoRepoConfigName, and is useful for accessing the field via an interface.
 func (v *AssetInstallationInput) GetMonoRepoConfigName() *string { return v.MonoRepoConfigName }
+
+// AssetInstallationsResponse is returned by AssetInstallations on success.
+type AssetInstallationsResponse struct {
+	Vault AssetInstallationsVault `json:"vault"`
+}
+
+// GetVault returns AssetInstallationsResponse.Vault, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsResponse) GetVault() AssetInstallationsVault { return v.Vault }
+
+// AssetInstallationsVault includes the requested fields of the GraphQL type Vault.
+// The GraphQL type's documentation follows.
+//
+// Vault containing assets.
+type AssetInstallationsVault struct {
+	Assets AssetInstallationsVaultAssetsVaultAssetsConnection `json:"assets"`
+}
+
+// GetAssets returns AssetInstallationsVault.Assets, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVault) GetAssets() AssetInstallationsVaultAssetsVaultAssetsConnection {
+	return v.Assets
+}
+
+// AssetInstallationsVaultAssetsVaultAssetsConnection includes the requested fields of the GraphQL type VaultAssetsConnection.
+// The GraphQL type's documentation follows.
+//
+// Paginated list of vault assets.
+type AssetInstallationsVaultAssetsVaultAssetsConnection struct {
+	Nodes []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset `json:"-"`
+}
+
+// GetNodes returns AssetInstallationsVaultAssetsVaultAssetsConnection.Nodes, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnection) GetNodes() []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset {
+	return v.Nodes
+}
+
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnection) UnmarshalJSON(b []byte) error {
+
+	if string(b) == "null" {
+		return nil
+	}
+
+	var firstPass struct {
+		*AssetInstallationsVaultAssetsVaultAssetsConnection
+		Nodes []json.RawMessage `json:"nodes"`
+		graphql.NoUnmarshalJSON
+	}
+	firstPass.AssetInstallationsVaultAssetsVaultAssetsConnection = v
+
+	err := json.Unmarshal(b, &firstPass)
+	if err != nil {
+		return err
+	}
+
+	{
+		dst := &v.Nodes
+		src := firstPass.Nodes
+		*dst = make(
+			[]AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset,
+			len(src))
+		for i, src := range src {
+			dst := &(*dst)[i]
+			if len(src) != 0 && string(src) != "null" {
+				err = __unmarshalAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset(
+					src, dst)
+				if err != nil {
+					return fmt.Errorf(
+						"unable to unmarshal AssetInstallationsVaultAssetsVaultAssetsConnection.Nodes: %w", err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+type __premarshalAssetInstallationsVaultAssetsVaultAssetsConnection struct {
+	Nodes []json.RawMessage `json:"nodes"`
+}
+
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnection) MarshalJSON() ([]byte, error) {
+	premarshaled, err := v.__premarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(premarshaled)
+}
+
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnection) __premarshalJSON() (*__premarshalAssetInstallationsVaultAssetsVaultAssetsConnection, error) {
+	var retval __premarshalAssetInstallationsVaultAssetsVaultAssetsConnection
+
+	{
+
+		dst := &retval.Nodes
+		src := v.Nodes
+		*dst = make(
+			[]json.RawMessage,
+			len(src))
+		for i, src := range src {
+			dst := &(*dst)[i]
+			var err error
+			*dst, err = __marshalAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset(
+				&src)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"unable to marshal AssetInstallationsVaultAssetsVaultAssetsConnection.Nodes: %w", err)
+			}
+		}
+	}
+	return &retval, nil
+}
+
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent includes the requested fields of the GraphQL type Agent.
+type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent struct {
+	Typename      *string                                                                                                `json:"__typename"`
+	Name          string                                                                                                 `json:"name"`
+	Installations []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation `json:"installations"`
+}
+
+// GetTypename returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent.Typename, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent.Name, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent) GetName() string {
+	return v.Name
+}
+
+// GetInstallations returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent.Installations, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent) GetInstallations() []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation {
+	return v.Installations
+}
+
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
+type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin struct {
+	Typename      *string                                                                                                `json:"__typename"`
+	Name          string                                                                                                 `json:"name"`
+	Installations []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation `json:"installations"`
+}
+
+// GetTypename returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Typename, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Name, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetName() string {
+	return v.Name
+}
+
+// GetInstallations returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Installations, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetInstallations() []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation {
+	return v.Installations
+}
+
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand includes the requested fields of the GraphQL type Command.
+type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand struct {
+	Typename      *string                                                                                                `json:"__typename"`
+	Name          string                                                                                                 `json:"name"`
+	Installations []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation `json:"installations"`
+}
+
+// GetTypename returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand.Typename, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand.Name, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand) GetName() string {
+	return v.Name
+}
+
+// GetInstallations returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand.Installations, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand) GetInstallations() []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation {
+	return v.Installations
+}
+
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook includes the requested fields of the GraphQL type Hook.
+type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook struct {
+	Typename      *string                                                                                                `json:"__typename"`
+	Name          string                                                                                                 `json:"name"`
+	Installations []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation `json:"installations"`
+}
+
+// GetTypename returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook.Typename, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook.Name, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook) GetName() string { return v.Name }
+
+// GetInstallations returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook.Installations, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook) GetInstallations() []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation {
+	return v.Installations
+}
+
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer includes the requested fields of the GraphQL type McpServer.
+type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer struct {
+	Typename      *string                                                                                                `json:"__typename"`
+	Name          string                                                                                                 `json:"name"`
+	Installations []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation `json:"installations"`
+}
+
+// GetTypename returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer.Typename, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer.Name, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer) GetName() string {
+	return v.Name
+}
+
+// GetInstallations returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer.Installations, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer) GetInstallations() []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation {
+	return v.Installations
+}
+
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule includes the requested fields of the GraphQL type Rule.
+type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule struct {
+	Typename      *string                                                                                                `json:"__typename"`
+	Name          string                                                                                                 `json:"name"`
+	Installations []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation `json:"installations"`
+}
+
+// GetTypename returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule.Typename, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule.Name, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule) GetName() string { return v.Name }
+
+// GetInstallations returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule.Installations, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule) GetInstallations() []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation {
+	return v.Installations
+}
+
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill includes the requested fields of the GraphQL type Skill.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for skill.
+type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill struct {
+	Typename      *string                                                                                                `json:"__typename"`
+	Name          string                                                                                                 `json:"name"`
+	Installations []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation `json:"installations"`
+}
+
+// GetTypename returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill.Typename, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill.Name, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill) GetName() string {
+	return v.Name
+}
+
+// GetInstallations returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill.Installations, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill) GetInstallations() []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation {
+	return v.Installations
+}
+
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset includes the requested fields of the GraphQL interface VaultAsset.
+//
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset is implemented by the following types:
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill
+// The GraphQL type's documentation follows.
+//
+// Asset in the vault (Skill, MCP, Agent, etc.).
+type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset interface {
+	implementsGraphQLInterfaceAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset()
+	// GetTypename returns the receiver's concrete GraphQL type-name (see interface doc for possible values).
+	GetTypename() *string
+	// GetName returns the interface-field "name" from its implementation.
+	GetName() string
+	// GetInstallations returns the interface-field "installations" from its implementation.
+	GetInstallations() []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation
+}
+
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent) implementsGraphQLInterfaceAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) implementsGraphQLInterfaceAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand) implementsGraphQLInterfaceAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook) implementsGraphQLInterfaceAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer) implementsGraphQLInterfaceAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule) implementsGraphQLInterfaceAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill) implementsGraphQLInterfaceAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+
+func __unmarshalAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset(b []byte, v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset) error {
+	if string(b) == "null" {
+		return nil
+	}
+
+	var tn struct {
+		TypeName string `json:"__typename"`
+	}
+	err := json.Unmarshal(b, &tn)
+	if err != nil {
+		return err
+	}
+
+	switch tn.TypeName {
+	case "Agent":
+		*v = new(AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent)
+		return json.Unmarshal(b, *v)
+	case "ClaudeCodePlugin":
+		*v = new(AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin)
+		return json.Unmarshal(b, *v)
+	case "Command":
+		*v = new(AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand)
+		return json.Unmarshal(b, *v)
+	case "Hook":
+		*v = new(AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook)
+		return json.Unmarshal(b, *v)
+	case "McpServer":
+		*v = new(AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer)
+		return json.Unmarshal(b, *v)
+	case "Rule":
+		*v = new(AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule)
+		return json.Unmarshal(b, *v)
+	case "Skill":
+		*v = new(AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill)
+		return json.Unmarshal(b, *v)
+	case "":
+		return fmt.Errorf(
+			"response was missing VaultAsset.__typename")
+	default:
+		return fmt.Errorf(
+			`unexpected concrete type for AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset: "%v"`, tn.TypeName)
+	}
+}
+
+func __marshalAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset(v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset) ([]byte, error) {
+
+	var typename string
+	switch v := (*v).(type) {
+	case *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent:
+		typename = "Agent"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent
+		}{typename, v}
+		return json.Marshal(result)
+	case *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin:
+		typename = "ClaudeCodePlugin"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
+		}{typename, v}
+		return json.Marshal(result)
+	case *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand:
+		typename = "Command"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand
+		}{typename, v}
+		return json.Marshal(result)
+	case *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook:
+		typename = "Hook"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook
+		}{typename, v}
+		return json.Marshal(result)
+	case *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer:
+		typename = "McpServer"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*AssetInstallationsVaultAssetsVaultAssetsConnectionNodesMcpServer
+		}{typename, v}
+		return json.Marshal(result)
+	case *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule:
+		typename = "Rule"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*AssetInstallationsVaultAssetsVaultAssetsConnectionNodesRule
+		}{typename, v}
+		return json.Marshal(result)
+	case *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill:
+		typename = "Skill"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill
+		}{typename, v}
+		return json.Marshal(result)
+	case nil:
+		return []byte("null"), nil
+	default:
+		return nil, fmt.Errorf(
+			`unexpected concrete type for AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset: "%T"`, v)
+	}
+}
+
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation includes the requested fields of the GraphQL type VaultAssetInstallation.
+// The GraphQL type's documentation follows.
+//
+// Installation location for a vault asset.
+type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation struct {
+	EntityType         VaultAssetInstallationEntityType `json:"entityType"`
+	EntityName         string                           `json:"entityName"`
+	EntityId           *string                          `json:"entityId"`
+	MonoRepoConfigName *string                          `json:"monoRepoConfigName"`
+}
+
+// GetEntityType returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.EntityType, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetEntityType() VaultAssetInstallationEntityType {
+	return v.EntityType
+}
+
+// GetEntityName returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.EntityName, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetEntityName() string {
+	return v.EntityName
+}
+
+// GetEntityId returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.EntityId, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetEntityId() *string {
+	return v.EntityId
+}
+
+// GetMonoRepoConfigName returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.MonoRepoConfigName, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetMonoRepoConfigName() *string {
+	return v.MonoRepoConfigName
+}
 
 type AssetType string
 
@@ -4274,11 +4745,15 @@ func __marshalVaultAssetsVaultAssetsVaultAssetsConnectionNodesVaultAsset(v *Vaul
 
 // __AssetAuditLogInput is used internally by genqlient
 type __AssetAuditLogInput struct {
-	First *int `json:"first"`
+	First *int    `json:"first"`
+	After *string `json:"after"`
 }
 
 // GetFirst returns __AssetAuditLogInput.First, and is useful for accessing the field via an interface.
 func (v *__AssetAuditLogInput) GetFirst() *int { return v.First }
+
+// GetAfter returns __AssetAuditLogInput.After, and is useful for accessing the field via an interface.
+func (v *__AssetAuditLogInput) GetAfter() *string { return v.After }
 
 // __AssetGIDInput is used internally by genqlient
 type __AssetGIDInput struct {
@@ -4287,6 +4762,14 @@ type __AssetGIDInput struct {
 
 // GetSearch returns __AssetGIDInput.Search, and is useful for accessing the field via an interface.
 func (v *__AssetGIDInput) GetSearch() string { return v.Search }
+
+// __AssetInstallationsInput is used internally by genqlient
+type __AssetInstallationsInput struct {
+	Search string `json:"search"`
+}
+
+// GetSearch returns __AssetInstallationsInput.Search, and is useful for accessing the field via an interface.
+func (v *__AssetInstallationsInput) GetSearch() string { return v.Search }
 
 // __AssetUsageEventsInput is used internally by genqlient
 type __AssetUsageEventsInput struct {
@@ -4570,8 +5053,12 @@ func (v *__VaultAssetsInput) GetSearch() *string { return v.Search }
 
 // The query executed by AssetAuditLog.
 const AssetAuditLog_Operation = `
-query AssetAuditLog ($first: Int) {
-	assetAuditLog(first: $first) {
+query AssetAuditLog ($first: Int, $after: String) {
+	assetAuditLog(first: $first, after: $after) {
+		pageInfo {
+			hasNextPage
+			endCursor
+		}
 		nodes {
 			id
 			date
@@ -4590,12 +5077,14 @@ func AssetAuditLog(
 	ctx_ context.Context,
 	client_ graphql.Client,
 	first *int,
+	after *string,
 ) (data_ *AssetAuditLogResponse, err_ error) {
 	req_ := &graphql.Request{
 		OpName: "AssetAuditLog",
 		Query:  AssetAuditLog_Operation,
 		Variables: &__AssetAuditLogInput{
 			First: first,
+			After: after,
 		},
 	}
 
@@ -4642,6 +5131,51 @@ func AssetGID(
 	}
 
 	data_ = &AssetGIDResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The query executed by AssetInstallations.
+const AssetInstallations_Operation = `
+query AssetInstallations ($search: String!) {
+	vault {
+		assets(search: $search, first: 50) {
+			nodes {
+				__typename
+				name
+				installations {
+					entityType
+					entityName
+					entityId
+					monoRepoConfigName
+				}
+			}
+		}
+	}
+}
+`
+
+func AssetInstallations(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	search string,
+) (data_ *AssetInstallationsResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "AssetInstallations",
+		Query:  AssetInstallations_Operation,
+		Variables: &__AssetInstallationsInput{
+			Search: search,
+		},
+	}
+
+	data_ = &AssetInstallationsResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(

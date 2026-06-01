@@ -1,0 +1,15 @@
+query AssetInstallations($search: String!) {
+  vault {
+    assets(search: $search, first: 50) {
+      nodes {
+        name
+        installations {
+          entityType
+          entityName
+          entityId
+          monoRepoConfigName
+        }
+      }
+    }
+  }
+}

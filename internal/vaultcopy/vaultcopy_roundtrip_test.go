@@ -101,16 +101,16 @@ func TestCopy_PathToPathRoundTrip(t *testing.T) {
 	}
 
 	scopeReader := dst.(interface {
-		ManifestAssetScopes(string) ([]manifest.Scope, bool)
+		AssetInstallScopes(context.Context, string) ([]manifest.Scope, bool, error)
 	})
-	scopes, present := scopeReader.ManifestAssetScopes("my-skill")
-	if !present || len(scopes) != 1 || scopes[0].Kind != manifest.ScopeKindRepo {
-		t.Fatalf("dst my-skill scopes = %+v present=%v, want one repo scope", scopes, present)
+	scopes, present, err := scopeReader.AssetInstallScopes(ctx, "my-skill")
+	if err != nil || !present || len(scopes) != 1 || scopes[0].Kind != manifest.ScopeKindRepo {
+		t.Fatalf("dst my-skill scopes = %+v present=%v err=%v, want one repo scope", scopes, present, err)
 	}
 	// The org-wide asset must be registered (present) with no scopes on dst.
-	orgScopes, orgPresent := scopeReader.ManifestAssetScopes("global-skill")
-	if !orgPresent || len(orgScopes) != 0 {
-		t.Fatalf("dst global-skill scopes = %+v present=%v, want registered org-wide", orgScopes, orgPresent)
+	orgScopes, orgPresent, err := scopeReader.AssetInstallScopes(ctx, "global-skill")
+	if err != nil || !orgPresent || len(orgScopes) != 0 {
+		t.Fatalf("dst global-skill scopes = %+v present=%v err=%v, want registered org-wide", orgScopes, orgPresent, err)
 	}
 
 	// dst holds the imported source events PLUS the copy's own mutation audit
