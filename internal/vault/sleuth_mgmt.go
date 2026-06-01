@@ -505,8 +505,16 @@ func (s *SleuthVault) AssetInstallScopes(ctx context.Context, name string) ([]ma
 	if node == nil {
 		return nil, false, nil
 	}
+	insts := (*node).GetInstallations()
+	if len(insts) == 0 {
+		// The asset exists on the server but is not installed anywhere. That is
+		// NOT org-wide — report it as not-present so the copy leaves it
+		// uninstalled on the destination (only an explicit ORGANIZATION install
+		// is org-wide; see below).
+		return nil, false, nil
+	}
 	var scopes []manifest.Scope
-	for _, inst := range (*node).GetInstallations() {
+	for _, inst := range insts {
 		switch inst.EntityType {
 		case vaultgql.VaultAssetInstallationEntityTypeOrganization:
 			// Org-wide is exclusive; report it as present-with-no-scopes.
