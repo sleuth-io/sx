@@ -203,6 +203,10 @@ type Vault interface {
 	// GetUsageStats returns an aggregated usage summary across the vault.
 	GetUsageStats(ctx context.Context, filter mgmt.UsageFilter) (*mgmt.UsageSummary, error)
 
+	// ReadUsageEvents returns the raw usage events matching the filter (not
+	// aggregated). Used to copy usage history between vaults losslessly.
+	ReadUsageEvents(ctx context.Context, filter mgmt.UsageFilter) ([]mgmt.UsageEvent, error)
+
 	// QueryAuditEvents returns audit events matching the filter.
 	QueryAuditEvents(ctx context.Context, filter mgmt.AuditFilter) ([]mgmt.AuditEvent, error)
 

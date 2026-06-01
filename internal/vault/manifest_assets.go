@@ -122,6 +122,32 @@ func renameAssetInManifest(vaultRoot, oldName, newName string) error {
 	return manifest.Save(vaultRoot, m)
 }
 
+// manifestAssetScopes returns the complete authoring scopes (org/repo/path/
+// team/user/bot) for an asset from the manifest — unlike ExistingAssetScopes,
+// which flattens to repo/path only. Used by the cross-vault copy engine to
+// replay every installation target.
+func manifestAssetScopes(vaultRoot, name string) []manifest.Scope {
+	m, err := loadManifest(vaultRoot)
+	if err != nil || m == nil {
+		return nil
+	}
+	a := m.FindAsset(name)
+	if a == nil {
+		return nil
+	}
+	return a.Scopes
+}
+
+// ManifestAssetScopes exposes the named asset's complete authoring scopes.
+func (p *PathVault) ManifestAssetScopes(name string) []manifest.Scope {
+	return manifestAssetScopes(p.repoPath, name)
+}
+
+// ManifestAssetScopes exposes the named asset's complete authoring scopes.
+func (g *GitVault) ManifestAssetScopes(name string) []manifest.Scope {
+	return manifestAssetScopes(g.repoPath, name)
+}
+
 // findAssetInManifest returns (asset, true) when the named asset exists
 // in the vault. Used by callers that need to check before modifying.
 func findAssetInManifest(vaultRoot, name string) (*lockfile.Asset, bool) {

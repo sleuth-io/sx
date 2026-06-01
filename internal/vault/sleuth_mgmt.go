@@ -1216,9 +1216,17 @@ func (s *SleuthVault) RecordUsageEvents(ctx context.Context, events []mgmt.Usage
 }
 
 func (s *SleuthVault) GetUsageStats(ctx context.Context, filter mgmt.UsageFilter) (*mgmt.UsageSummary, error) {
+	events, err := s.ReadUsageEvents(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	return mgmt.SummarizeUsageEvents(events), nil
+}
+
+func (s *SleuthVault) ReadUsageEvents(ctx context.Context, filter mgmt.UsageFilter) ([]mgmt.UsageEvent, error) {
 	// Pull raw usage rows via the assetUsageEvents export (server-side filtered),
-	// paging through the connection, then aggregate with the same summarizer the
-	// file-backed vaults use so the UsageSummary shape is identical everywhere.
+	// paging through the connection. The aggregation lives in GetUsageStats so
+	// this stays the lossless raw read the copy engine needs.
 	strPtr := func(v string) *string {
 		if v == "" {
 			return nil
@@ -1263,7 +1271,7 @@ func (s *SleuthVault) GetUsageStats(ctx context.Context, filter mgmt.UsageFilter
 		}
 		after = conn.PageInfo.EndCursor
 	}
-	return mgmt.SummarizeUsageEvents(events), nil
+	return events, nil
 }
 
 // sleuthUsageEventsPageSize is the server-side cap on assetUsageEvents (the

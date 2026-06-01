@@ -32,6 +32,7 @@ func NewVaultCommand() *cobra.Command {
 	cmd.AddCommand(newVaultShowCommand())
 	cmd.AddCommand(newVaultRemoveCommand())
 	cmd.AddCommand(newVaultRenameCommand())
+	cmd.AddCommand(newVaultCopyCommand())
 
 	return cmd
 }

@@ -419,6 +419,13 @@ func (g *GitVault) GetUsageStats(ctx context.Context, filter mgmt.UsageFilter) (
 	return mgmt.SummarizeUsage(g.repoPath, filter)
 }
 
+func (g *GitVault) ReadUsageEvents(ctx context.Context, filter mgmt.UsageFilter) ([]mgmt.UsageEvent, error) {
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return nil, err
+	}
+	return mgmt.ReadUsageEvents(g.repoPath, filter)
+}
+
 func (g *GitVault) ImportAuditEvents(ctx context.Context, events []mgmt.AuditEvent) error {
 	if len(events) == 0 {
 		return nil
