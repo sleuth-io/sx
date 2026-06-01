@@ -773,8 +773,10 @@ func TestVaultListInstalled(t *testing.T) {
 		if !strings.Contains(output, "(global)") {
 			t.Errorf("Expected '(global)' scope info, got:\n%s", output)
 		}
-		if !strings.Contains(output, "(1 scopes)") {
-			t.Errorf("Expected '(1 scopes)' scope info, got:\n%s", output)
+		// Repo-scoped entries name their repo so cross-repo installs are
+		// distinguishable rather than showing an opaque scope count.
+		if !strings.Contains(output, "(https://github.com/test/repo)") {
+			t.Errorf("Expected repo name in scope info, got:\n%s", output)
 		}
 	})
 

@@ -42,8 +42,8 @@ also remove system hooks from all clients.
 Use ` + e("--clients") + ` to limit which clients are affected (applies to both asset
 removal and hook removal).
 
-Uninstall only touches assets installed by the current profile (use ` + e("--profile") + `
-to act on another one). Untagged assets count as the current profile.
+Uninstall only touches assets installed by the current profile (use the global
+` + e("--profile") + ` flag to act on another one). Untagged assets count as the current profile.
 
 ` + s.Header.Render("Examples:") + `
   ` + m("# Uninstall repo assets (must be inside a repo)") + `
@@ -178,9 +178,10 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 
 	// Step 4: Filter to the current profile (empty profile counts as current),
 	// so uninstalling under one profile leaves other profiles' installs alone.
-	// If the profile can't be resolved, skip this filter rather than wrongly
-	// dropping everything.
-	if cfg, cfgErr := config.Load(); cfgErr == nil && cfg.ProfileName != "" {
+	// An empty ProfileName is the default profile, not a resolution failure, so
+	// still filter (filterUninstallPlanByProfile keeps untagged entries). Only a
+	// config load error skips the filter, to avoid wrongly dropping everything.
+	if cfg, cfgErr := config.Load(); cfgErr == nil {
 		plan = filterUninstallPlanByProfile(plan, cfg.ProfileName)
 	}
 
@@ -408,10 +409,6 @@ func buildUninstallPlanFromTracker(lockFile *lockfile.LockFile, tracker *assets.
 	return plan
 }
 
-// filterUninstallPlanByScope filters the plan based on git context and --all flag.
-// Without --all: only repo-scoped assets matching the current repo (global assets are never included).
-// Outside a repo without --all: returns an empty plan (no-op).
-// With --all: returns all assets unfiltered.
 // filterUninstallPlanByProfile keeps only assets installed by the current
 // profile. An empty profile counts as the current profile, matching
 // `vault list --installed`, so untagged leftovers are removed too while
@@ -427,6 +424,10 @@ func filterUninstallPlanByProfile(plan UninstallPlan, currentProfile string) Uni
 	return plan
 }
 
+// filterUninstallPlanByScope filters the plan based on git context and --all flag.
+// Without --all: only repo-scoped assets matching the current repo (global assets are never included).
+// Outside a repo without --all: returns an empty plan (no-op).
+// With --all: returns all assets unfiltered.
 func filterUninstallPlanByScope(plan UninstallPlan, all bool) UninstallPlan {
 	if all {
 		return plan

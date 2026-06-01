@@ -1078,8 +1078,9 @@ func saveInstallationState(tracker *assets.Tracker, sortedAssets []*lockfile.Ass
 		key := assetKeyForInstall(art, currentScope)
 
 		// Stamp the profile that installed this asset, taken from assetOrigin
-		// (the merge winner). On a repair run assetOrigin is nil, so keep the
-		// profile already recorded rather than blanking it.
+		// (the merge winner). The lookup is "" when the winner is the default
+		// (unnamed) profile or the asset isn't in the merge map; in that case
+		// keep the profile already recorded rather than blanking it.
 		profile := assetOrigin[art.Name]
 		if profile == "" {
 			if existing := tracker.FindAsset(key); existing != nil {

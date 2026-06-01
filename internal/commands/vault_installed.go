@@ -32,6 +32,10 @@ func filterInstalledForProfile(all []assets.InstalledAsset, currentProfile, type
 // installedToLockfileAssets adapts tracker entries to lockfile.Asset so the
 // shared installed-list printers can render them. Each tracker entry is a
 // single scope: global entries get no scopes, repo/path entries get one.
+// Profile and Clients are intentionally not carried over: lockfile.Asset has
+// no place for them and the installed-list printers don't display them. A
+// future profile-scoped view would need to read those fields off the tracker
+// entry directly rather than through this adapter.
 func installedToLockfileAssets(in []assets.InstalledAsset) []lockfile.Asset {
 	out := make([]lockfile.Asset, 0, len(in))
 	for _, a := range in {

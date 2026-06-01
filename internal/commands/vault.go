@@ -140,6 +140,19 @@ func runVaultList(cmd *cobra.Command, typeFilter string, jsonOutput, installedOn
 		if jsonOutput {
 			return printInstalledListJSON(out, lfAssets, typeFilter)
 		}
+		// The tracker had entries but none survived the profile filter — say so
+		// rather than printing a bare header, so it's clear the assets belong to
+		// another profile rather than nothing being installed. Only when there's
+		// no type filter, otherwise an empty result means "none of that type" and
+		// the type-labelled header below already conveys that.
+		if len(filtered) == 0 && typeFilter == "" {
+			profile := cfg.ProfileName
+			if profile == "" {
+				profile = config.DefaultProfileName
+			}
+			out.println(fmt.Sprintf("No assets installed under profile %q. Other profiles may have installs; switch with --profile.", profile))
+			return nil
+		}
 		return printInstalledListText(out, lfAssets, typeFilter)
 	}
 
@@ -498,6 +511,15 @@ func printInstalledListText(out *outputHelper, assets []lockfile.Asset, typeFilt
 			scopeInfo := ""
 			if a.IsGlobal() {
 				scopeInfo = uiOut.MutedText(" (global)")
+			} else if len(a.Scopes) == 1 {
+				// Name the repo (and path) so entries from another repo are
+				// distinguishable rather than blending into the current one.
+				s := a.Scopes[0]
+				label := s.Repo
+				if len(s.Paths) > 0 {
+					label += ":" + strings.Join(s.Paths, ",")
+				}
+				scopeInfo = uiOut.MutedText(" (" + label + ")")
 			} else if len(a.Scopes) > 0 {
 				scopeInfo = uiOut.MutedText(fmt.Sprintf(" (%d scopes)", len(a.Scopes)))
 			}
