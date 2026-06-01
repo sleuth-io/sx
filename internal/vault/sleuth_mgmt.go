@@ -1344,11 +1344,18 @@ func (s *SleuthVault) ImportAuditEvents(ctx context.Context, events []mgmt.Audit
 				in.Target = &target
 			}
 			if len(ev.Data) > 0 {
-				raw, err := json.Marshal(ev.Data)
+				obj, err := json.Marshal(ev.Data)
 				if err != nil {
 					return err
 				}
-				rm := json.RawMessage(raw)
+				// The `data` field is a JSONString scalar: the server expects a
+				// JSON-encoded STRING (which it json.loads), not a raw object. Wrap
+				// the object as a string — mirrors how QueryAuditEvents decodes it.
+				strForm, err := json.Marshal(string(obj))
+				if err != nil {
+					return err
+				}
+				rm := json.RawMessage(strForm)
 				in.Data = &rm
 			}
 			inputs = append(inputs, in)

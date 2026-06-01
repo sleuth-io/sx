@@ -64,33 +64,30 @@ type assetScopeReader interface {
 
 const assetListLimit = 10000
 
-// Copy migrates the selected categories from src into dst. It returns a Report
-// even on error so the caller can show partial progress.
+// Copy migrates the selected categories from src into dst. Each category is
+// independent: a category-level failure is recorded as a warning and the copy
+// moves on to the next, so one broken category (e.g. audit) never costs the
+// others (e.g. usage). Always returns a Report for partial-progress reporting.
 func Copy(ctx context.Context, src, dst vault.Vault, opts Options) (*Report, error) {
 	r := &Report{}
-	if opts.Teams {
-		if err := copyTeams(ctx, src, dst, opts, r); err != nil {
-			return r, fmt.Errorf("copy teams: %w", err)
-		}
+	// Run in a fixed order (teams/bots before assets so scope targets exist).
+	stages := []struct {
+		name string
+		on   bool
+		fn   func(context.Context, vault.Vault, vault.Vault, Options, *Report) error
+	}{
+		{"teams", opts.Teams, copyTeams},
+		{"bots", opts.Bots, copyBots},
+		{"assets", opts.Assets, copyAssets},
+		{"audit", opts.Audit, copyAudit},
+		{"usage", opts.Usage, copyUsage},
 	}
-	if opts.Bots {
-		if err := copyBots(ctx, src, dst, opts, r); err != nil {
-			return r, fmt.Errorf("copy bots: %w", err)
+	for _, s := range stages {
+		if !s.on {
+			continue
 		}
-	}
-	if opts.Assets {
-		if err := copyAssets(ctx, src, dst, opts, r); err != nil {
-			return r, fmt.Errorf("copy assets: %w", err)
-		}
-	}
-	if opts.Audit {
-		if err := copyAudit(ctx, src, dst, opts, r); err != nil {
-			return r, fmt.Errorf("copy audit: %w", err)
-		}
-	}
-	if opts.Usage {
-		if err := copyUsage(ctx, src, dst, opts, r); err != nil {
-			return r, fmt.Errorf("copy usage: %w", err)
+		if err := s.fn(ctx, src, dst, opts, r); err != nil {
+			r.warnf("copy %s failed: %v", s.name, err)
 		}
 	}
 	return r, nil
