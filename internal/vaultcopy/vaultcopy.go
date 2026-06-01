@@ -150,7 +150,7 @@ func copyBots(ctx context.Context, src, dst vault.Vault, opts Options, r *Report
 	// HasMore, so surface a heuristic warning when we hit it rather than only
 	// emitting a structured log the operator won't see.
 	if len(bots) >= sleuthBotListSoftCap {
-		r.warnf("source returned %d bots (the server's list cap); any beyond that were not copied", len(bots))
+		r.warnf("source returned %d bots, the most the server lists in one call; if the org has more, they were not copied", len(bots))
 	}
 	for _, b := range bots {
 		r.Bots++
@@ -317,6 +317,12 @@ func copyAssetScopes(ctx context.Context, dst scopeInstaller, name string, scope
 		}
 	}
 	if len(targets) == 0 {
+		// The asset had scopes but none mapped to a target (e.g. an unsupported
+		// kind). Don't leave the destination's auto-applied install in place —
+		// clear it, mirroring the all-unresolved path below.
+		if !dryRun {
+			clearAutoInstall(ctx, dst, name, r)
+		}
 		return
 	}
 	if dryRun {
