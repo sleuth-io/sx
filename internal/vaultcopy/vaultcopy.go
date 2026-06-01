@@ -209,12 +209,13 @@ type scopeInstaller interface {
 	SetAssetInstallation(ctx context.Context, name string, target vault.InstallTarget) error
 }
 
-// bulkInstaller is implemented by vaults that can set an asset's whole
-// installation set in one call (the Sleuth vault). It matters because that
-// backend replaces-on-set: setting scopes one at a time would let each call
-// clobber the last, so a multi-scope asset would keep only its final scope.
+// bulkInstaller is implemented by vaults that replace-on-set and so must set an
+// asset's whole installation set in one call (the Sleuth vault): setting scopes
+// one at a time would let each call clobber the last, leaving only the final
+// scope. It returns the targets it couldn't resolve in the destination (skipped,
+// not applied) so the caller can warn without the others being lost.
 type bulkInstaller interface {
-	SetAssetInstallations(ctx context.Context, name string, targets []vault.InstallTarget) error
+	SetAssetInstallations(ctx context.Context, name string, targets []vault.InstallTarget) (unresolved []vault.InstallTarget, err error)
 }
 
 func copyAssetScopes(ctx context.Context, dst scopeInstaller, name string, scopes []manifest.Scope, present, dryRun bool, r *Report) {
@@ -247,19 +248,24 @@ func copyAssetScopes(ctx context.Context, dst scopeInstaller, name string, scope
 		return
 	}
 
-	// Prefer one bulk call when the destination supports it (skills.new), so a
-	// multi-scope asset lands atomically rather than each call replacing the
-	// last. Fall back to per-target on any bulk error so one unresolvable
-	// target (e.g. a repo absent from the destination org) doesn't drop the
-	// rest — matching the engine's best-effort behavior.
-	if bulk, ok := dst.(bulkInstaller); ok && len(targets) > 1 {
-		if err := bulk.SetAssetInstallations(ctx, name, targets); err == nil {
-			r.Scopes += len(targets)
+	// On a replace-on-set backend (skills.new) we must set every scope in one
+	// call — per-target calls would clobber each other. The bulk call is
+	// best-effort: it applies all resolvable targets atomically and reports the
+	// rest as unresolved (so we never fall back to clobbering per-target calls).
+	if bulk, ok := dst.(bulkInstaller); ok {
+		unresolved, err := bulk.SetAssetInstallations(ctx, name, targets)
+		if err != nil {
+			r.warnf("set scopes on %q: %v", name, err)
 			return
-		} else {
-			r.warnf("bulk-set scopes on %q failed (%v); retrying per-scope", name, err)
 		}
+		for _, u := range unresolved {
+			r.warnf("scope %s on %q skipped (not found in destination)", u.Describe(), name)
+		}
+		r.Scopes += len(targets) - len(unresolved)
+		return
 	}
+	// Append-on-set backends (file-backed): each target is independent, so a
+	// per-target loop is correct and gives partial success.
 	for _, target := range targets {
 		if err := dst.SetAssetInstallation(ctx, name, target); err != nil {
 			r.warnf("set scope %s on %q: %v", target.Describe(), name, err)

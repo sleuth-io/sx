@@ -431,17 +431,24 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 }
 
 // SetAssetInstallations replaces an asset's entire installation set in a single
-// server call. Because the skills.new mutation replaces (rather than appends),
-// the per-target SetAssetInstallation would let each call clobber the previous
-// one for a multi-scope asset; this sends every target at once so they all
-// stick. Org-wide is exclusive — if any target is org, the asset goes global.
-func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName string, targets []InstallTarget) error {
+// server call. The skills.new mutation replaces (rather than appends), so
+// setting targets one at a time would let each call clobber the previous one for
+// a multi-scope asset; sending every target at once makes them all stick.
+//
+// It is best-effort on a per-target basis: team/user/bot targets whose entity
+// can't be resolved in the destination org are skipped and returned in
+// unresolved (rather than failing the whole call), so the resolvable targets
+// still land in one atomic call — no clobbering. A returned error means the
+// single GraphQL call itself failed (e.g. a repository URL the server rejects),
+// in which case nothing was applied. Org-wide is exclusive — if any target is
+// org, the asset goes global.
+func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName string, targets []InstallTarget) (unresolved []InstallTarget, err error) {
 	if len(targets) == 0 {
-		return nil
+		return nil, nil
 	}
 	for _, t := range targets {
 		if t.Kind == InstallKindOrg {
-			return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, nil)
+			return nil, s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, nil)
 		}
 	}
 	var repositories []vaultgql.RepositoryInstallationInput
@@ -455,34 +462,45 @@ func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName strin
 		case InstallKindPath:
 			repositories = append(repositories, vaultgql.RepositoryInstallationInput{Url: t.Repo, Paths: t.Paths})
 		case InstallKindTeam:
-			gid, err := s.teamGIDByName(ctx, t.Team)
-			if err != nil {
-				return err
+			gid, gerr := s.teamGIDByName(ctx, t.Team)
+			if gerr != nil {
+				unresolved = append(unresolved, t)
+				continue
 			}
 			installations = append(installations, vaultgql.AssetInstallationInput{
 				EntityType: vaultgql.VaultAssetInstallationEntityTypeTeam, EntityId: &gid,
 			})
 		case InstallKindUser:
-			gid, err := s.userGIDByEmail(ctx, t.User)
-			if err != nil {
-				return err
+			gid, gerr := s.userGIDByEmail(ctx, t.User)
+			if gerr != nil {
+				unresolved = append(unresolved, t)
+				continue
 			}
 			installations = append(installations, vaultgql.AssetInstallationInput{
 				EntityType: vaultgql.VaultAssetInstallationEntityTypeUser, EntityId: &gid,
 			})
 		case InstallKindBot:
-			gid, err := s.botGIDByName(ctx, t.Bot)
-			if err != nil {
-				return err
+			gid, gerr := s.botGIDByName(ctx, t.Bot)
+			if gerr != nil {
+				unresolved = append(unresolved, t)
+				continue
 			}
 			installations = append(installations, vaultgql.AssetInstallationInput{
 				EntityType: vaultgql.VaultAssetInstallationEntityTypeBot, EntityId: &gid,
 			})
 		default:
-			return fmt.Errorf("unknown install kind: %q", t.Kind)
+			return unresolved, fmt.Errorf("unknown install kind: %q", t.Kind)
 		}
 	}
-	return s.setAssetInstallationsGraphQL(ctx, assetName, repositories, false, installations)
+	if len(repositories) == 0 && len(installations) == 0 {
+		// Nothing resolved. Don't send an empty set — the server reads that as
+		// org-wide, which would wrongly globalize the asset. Leave it as-is.
+		return unresolved, nil
+	}
+	if err := s.setAssetInstallationsGraphQL(ctx, assetName, repositories, false, installations); err != nil {
+		return unresolved, err
+	}
+	return unresolved, nil
 }
 
 // AssetInstallScopes reads an asset's installation targets from the server and
