@@ -46,6 +46,14 @@ func TestCopy_PathToPathRoundTrip(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed scope: %v", err)
 	}
+	// An org-wide asset: uploaded then registered globally (empty scopes).
+	if err := src.AddAsset(ctx, &lockfile.Asset{Name: "global-skill", Version: "1.0.0", Type: asset.TypeSkill},
+		skillZip(t, "global-skill", "1.0.0")); err != nil {
+		t.Fatalf("seed global asset: %v", err)
+	}
+	if err := src.SetAssetInstallation(ctx, "global-skill", vault.InstallTarget{Kind: vault.InstallKindOrg}); err != nil {
+		t.Fatalf("seed org scope: %v", err)
+	}
 	ts := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
 	if err := src.ImportAuditEvents(ctx, []mgmt.AuditEvent{
 		{Timestamp: ts, Actor: "alice@example.com", Event: "asset.created", TargetType: "asset", Target: "my-skill"},
@@ -72,9 +80,9 @@ func TestCopy_PathToPathRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Copy: %v (warnings: %v)", err, report.Warnings)
 	}
-	if report.Teams != 1 || report.Assets != 1 || report.Versions != 2 || report.Scopes != 1 ||
+	if report.Teams != 1 || report.Assets != 2 || report.Versions != 3 || report.Scopes != 2 ||
 		report.AuditEvents != len(srcAudit) || report.UsageEvents != 1 {
-		t.Fatalf("report = %+v, want 1 team / 1 asset / 2 versions / 1 scope / %d audit / 1 usage", report, len(srcAudit))
+		t.Fatalf("report = %+v, want 1 team / 2 assets / 3 versions / 2 scopes / %d audit / 1 usage", report, len(srcAudit))
 	}
 
 	// Assert destination.
@@ -92,11 +100,17 @@ func TestCopy_PathToPathRoundTrip(t *testing.T) {
 		t.Fatalf("dst versions = %v err=%v, want 2", versions, err)
 	}
 
-	scopes := dst.(interface {
-		ManifestAssetScopes(string) []manifest.Scope
-	}).ManifestAssetScopes("my-skill")
-	if len(scopes) != 1 || scopes[0].Kind != manifest.ScopeKindRepo {
-		t.Fatalf("dst scopes = %+v, want one repo scope", scopes)
+	scopeReader := dst.(interface {
+		ManifestAssetScopes(string) ([]manifest.Scope, bool)
+	})
+	scopes, present := scopeReader.ManifestAssetScopes("my-skill")
+	if !present || len(scopes) != 1 || scopes[0].Kind != manifest.ScopeKindRepo {
+		t.Fatalf("dst my-skill scopes = %+v present=%v, want one repo scope", scopes, present)
+	}
+	// The org-wide asset must be registered (present) with no scopes on dst.
+	orgScopes, orgPresent := scopeReader.ManifestAssetScopes("global-skill")
+	if !orgPresent || len(orgScopes) != 0 {
+		t.Fatalf("dst global-skill scopes = %+v present=%v, want registered org-wide", orgScopes, orgPresent)
 	}
 
 	// dst holds the imported source events PLUS the copy's own mutation audit

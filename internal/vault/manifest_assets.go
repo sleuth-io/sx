@@ -124,27 +124,32 @@ func renameAssetInManifest(vaultRoot, oldName, newName string) error {
 
 // manifestAssetScopes returns the complete authoring scopes (org/repo/path/
 // team/user/bot) for an asset from the manifest — unlike ExistingAssetScopes,
-// which flattens to repo/path only. Used by the cross-vault copy engine to
-// replay every installation target.
-func manifestAssetScopes(vaultRoot, name string) []manifest.Scope {
+// which flattens to repo/path only. The bool reports whether the asset has a
+// manifest entry at all: a registered org-wide asset returns (nil/empty, true)
+// while an asset present only as uploaded files returns (nil, false). The copy
+// engine needs that distinction to register org-wide installs without
+// registering files-only assets.
+func manifestAssetScopes(vaultRoot, name string) ([]manifest.Scope, bool) {
 	m, err := loadManifest(vaultRoot)
 	if err != nil || m == nil {
-		return nil
+		return nil, false
 	}
 	a := m.FindAsset(name)
 	if a == nil {
-		return nil
+		return nil, false
 	}
-	return a.Scopes
+	return a.Scopes, true
 }
 
-// ManifestAssetScopes exposes the named asset's complete authoring scopes.
-func (p *PathVault) ManifestAssetScopes(name string) []manifest.Scope {
+// ManifestAssetScopes exposes the named asset's complete authoring scopes and
+// whether it has a manifest entry. See manifestAssetScopes.
+func (p *PathVault) ManifestAssetScopes(name string) ([]manifest.Scope, bool) {
 	return manifestAssetScopes(p.repoPath, name)
 }
 
-// ManifestAssetScopes exposes the named asset's complete authoring scopes.
-func (g *GitVault) ManifestAssetScopes(name string) []manifest.Scope {
+// ManifestAssetScopes exposes the named asset's complete authoring scopes and
+// whether it has a manifest entry. See manifestAssetScopes.
+func (g *GitVault) ManifestAssetScopes(name string) ([]manifest.Scope, bool) {
 	return manifestAssetScopes(g.repoPath, name)
 }
 

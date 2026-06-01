@@ -59,7 +59,7 @@ func (r *Report) warnf(format string, args ...any) {
 // (skills.new) sources don't implement it, so scope copy is skipped with a
 // warning when the source is server-backed.
 type manifestScopeReader interface {
-	ManifestAssetScopes(name string) []manifest.Scope
+	ManifestAssetScopes(name string) (scopes []manifest.Scope, present bool)
 }
 
 const assetListLimit = 10000
@@ -100,6 +100,9 @@ func copyTeams(ctx context.Context, src, dst vault.Vault, opts Options, r *Repor
 	res, err := src.ListTeams(ctx, vault.ListTeamsOptions{Limit: vault.DefaultTeamsLimit})
 	if err != nil {
 		return err
+	}
+	if res.HasMore {
+		r.warnf("source has more than %d teams; only the first %d were copied", vault.DefaultTeamsLimit, vault.DefaultTeamsLimit)
 	}
 	for _, summary := range res.Teams {
 		full, err := src.GetTeam(ctx, summary.Name)
@@ -169,36 +172,53 @@ func copyAssets(ctx context.Context, src, dst vault.Vault, opts Options, r *Repo
 		}
 		r.Assets++
 		for _, v := range version.Sort(versions) {
-			r.Versions++
 			if opts.DryRun {
+				r.Versions++
 				continue
 			}
 			data, err := src.GetAssetByVersion(ctx, a.Name, v)
 			if err != nil {
 				r.warnf("download %q@%s: %v", a.Name, v, err)
-				r.Versions--
 				continue
 			}
 			la := &lockfile.Asset{Name: a.Name, Version: v, Type: a.Type}
 			if err := dst.AddAsset(ctx, la, data); err != nil {
 				var exists *vault.ErrVersionExists
 				if errors.As(err, &exists) {
-					r.Versions--
 					r.SkippedVersions++
 					continue
 				}
 				r.warnf("upload %q@%s: %v", a.Name, v, err)
-				r.Versions--
+				continue
 			}
+			r.Versions++
 		}
-		if !opts.DryRun && canReadScopes {
-			copyAssetScopes(ctx, dst, a.Name, scopeReader.ManifestAssetScopes(a.Name), r)
+		if canReadScopes {
+			scopes, present := scopeReader.ManifestAssetScopes(a.Name)
+			copyAssetScopes(ctx, dst, a.Name, scopes, present, opts.DryRun, r)
 		}
 	}
 	return nil
 }
 
-func copyAssetScopes(ctx context.Context, dst vault.Vault, name string, scopes []manifest.Scope, r *Report) {
+func copyAssetScopes(ctx context.Context, dst vault.Vault, name string, scopes []manifest.Scope, present, dryRun bool, r *Report) {
+	if !present {
+		// Asset exists only as uploaded files (never installed) — nothing to
+		// register on the destination beyond the version content already copied.
+		return
+	}
+	if len(scopes) == 0 {
+		// Registered with no scopes == org-wide. Register it so the destination
+		// records the global install rather than leaving an orphan file set.
+		if !dryRun {
+			if err := dst.SetAssetInstallation(ctx, name, vault.InstallTarget{Kind: vault.InstallKindOrg}); err != nil {
+				r.warnf("set org-wide install on %q: %v", name, err)
+				return
+			}
+		}
+		r.Scopes++
+		return
+	}
 	if len(scopes) > 1 {
 		// SetAssetInstallation appends on file-backed vaults but replaces on
 		// skills.new, where each call supersedes the previous one. Flag it so a
@@ -211,9 +231,11 @@ func copyAssetScopes(ctx context.Context, dst vault.Vault, name string, scopes [
 			r.warnf("asset %q: unsupported scope kind %q; skipped", name, sc.Kind)
 			continue
 		}
-		if err := dst.SetAssetInstallation(ctx, name, target); err != nil {
-			r.warnf("set scope %s on %q: %v", target.Describe(), name, err)
-			continue
+		if !dryRun {
+			if err := dst.SetAssetInstallation(ctx, name, target); err != nil {
+				r.warnf("set scope %s on %q: %v", target.Describe(), name, err)
+				continue
+			}
 		}
 		r.Scopes++
 	}
