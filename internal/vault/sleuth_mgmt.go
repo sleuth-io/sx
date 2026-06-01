@@ -1232,28 +1232,40 @@ func (s *SleuthVault) RecordUsageEvents(ctx context.Context, events []mgmt.Usage
 	if len(events) == 0 {
 		return nil
 	}
-	var b strings.Builder
-	for i, ev := range events {
-		if i > 0 {
-			b.WriteByte('\n')
+	// Post in chunks so a large import (a whole vault's history) isn't one giant
+	// request the server has to validate and enqueue in a single shot.
+	for start := 0; start < len(events); start += sleuthUsagePostChunkSize {
+		end := min(start+sleuthUsagePostChunkSize, len(events))
+		var b strings.Builder
+		for i, ev := range events[start:end] {
+			if i > 0 {
+				b.WriteByte('\n')
+			}
+			payload := map[string]any{
+				"asset_name":    ev.AssetName,
+				"asset_version": ev.AssetVersion,
+				"asset_type":    ev.AssetType,
+				"timestamp":     timeOrNow(ev.Timestamp).Format(time.RFC3339),
+			}
+			if ev.Actor != "" {
+				payload["actor"] = ev.Actor
+			}
+			line, err := json.Marshal(payload)
+			if err != nil {
+				return err
+			}
+			b.Write(line)
 		}
-		payload := map[string]any{
-			"asset_name":    ev.AssetName,
-			"asset_version": ev.AssetVersion,
-			"asset_type":    ev.AssetType,
-			"timestamp":     timeOrNow(ev.Timestamp).Format(time.RFC3339),
-		}
-		if ev.Actor != "" {
-			payload["actor"] = ev.Actor
-		}
-		line, err := json.Marshal(payload)
-		if err != nil {
+		if err := s.PostUsageStats(ctx, b.String()); err != nil {
 			return err
 		}
-		b.Write(line)
 	}
-	return s.PostUsageStats(ctx, b.String())
+	return nil
 }
+
+// sleuthUsagePostChunkSize bounds how many usage events go in a single
+// /api/usage POST during a bulk import.
+const sleuthUsagePostChunkSize = 1000
 
 func (s *SleuthVault) GetUsageStats(ctx context.Context, filter mgmt.UsageFilter) (*mgmt.UsageSummary, error) {
 	events, err := s.ReadUsageEvents(ctx, filter)
