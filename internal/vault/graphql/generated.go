@@ -1043,11 +1043,10 @@ func __marshalAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset(
 //
 // Installation location for a vault asset.
 type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation struct {
-	EntityType         VaultAssetInstallationEntityType `json:"entityType"`
-	EntityName         string                           `json:"entityName"`
-	EntityId           *string                          `json:"entityId"`
-	MonoRepoConfigId   *string                          `json:"monoRepoConfigId"`
-	MonoRepoConfigName *string                          `json:"monoRepoConfigName"`
+	EntityType       VaultAssetInstallationEntityType `json:"entityType"`
+	EntityName       string                           `json:"entityName"`
+	EntityId         *string                          `json:"entityId"`
+	MonoRepoConfigId *string                          `json:"monoRepoConfigId"`
 }
 
 // GetEntityType returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.EntityType, and is useful for accessing the field via an interface.
@@ -1068,11 +1067,6 @@ func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstal
 // GetMonoRepoConfigId returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.MonoRepoConfigId, and is useful for accessing the field via an interface.
 func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetMonoRepoConfigId() *string {
 	return v.MonoRepoConfigId
-}
-
-// GetMonoRepoConfigName returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.MonoRepoConfigName, and is useful for accessing the field via an interface.
-func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetMonoRepoConfigName() *string {
-	return v.MonoRepoConfigName
 }
 
 type AssetType string
@@ -5278,7 +5272,6 @@ query AssetInstallations ($search: String!) {
 					entityName
 					entityId
 					monoRepoConfigId
-					monoRepoConfigName
 				}
 			}
 		}

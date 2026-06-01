@@ -9,7 +9,6 @@ query AssetInstallations($search: String!) {
           entityName
           entityId
           monoRepoConfigId
-          monoRepoConfigName
         }
       }
     }
