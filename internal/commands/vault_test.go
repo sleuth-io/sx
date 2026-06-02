@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/lockfile"
 )
 
@@ -724,36 +725,20 @@ func TestVaultCommandEmptyRepository(t *testing.T) {
 // TestVaultListInstalled tests the --installed flag
 func TestVaultListInstalled(t *testing.T) {
 	env := NewTestEnv(t)
-	vaultDir := env.SetupPathVault()
+	env.SetupPathVault()
 
-	// Add skills to vault with different scopes
-	env.AddSkillToVault(vaultDir, "global-skill", "1.0.0")
-	env.AddSkillToVault(vaultDir, "scoped-skill", "2.0.0")
-	env.WriteFile(filepath.Join(vaultDir, "assets", "global-skill", "list.txt"), "1.0.0\n")
-	env.WriteFile(filepath.Join(vaultDir, "assets", "scoped-skill", "list.txt"), "2.0.0\n")
-
-	// Write lock file with installed assets
-	// Note: IsGlobal() returns true when there are no scopes
-	env.WriteLockFile(vaultDir, `
-[[assets]]
-name = "global-skill"
-version = "1.0.0"
-type = "skill"
-
-[assets.source-path]
-path = "assets/global-skill/1.0.0"
-
-[[assets]]
-name = "scoped-skill"
-version = "2.0.0"
-type = "skill"
-
-[assets.source-path]
-path = "assets/scoped-skill/2.0.0"
-
-[[assets.scopes]]
-repo = "https://github.com/test/repo"
-`)
+	// --installed reads the local install tracker, not the vault manifest.
+	// Seed it directly. Empty profile means "current profile", so these show
+	// regardless of which profile is active.
+	if err := assets.SaveTracker(&assets.Tracker{
+		Version: assets.TrackerFormatVersion,
+		Assets: []assets.InstalledAsset{
+			{Name: "global-skill", Version: "1.0.0", Type: "skill", Clients: []string{"claude-code"}},
+			{Name: "scoped-skill", Version: "2.0.0", Type: "skill", Repository: "https://github.com/test/repo", Clients: []string{"claude-code"}},
+		},
+	}); err != nil {
+		t.Fatalf("seed tracker: %v", err)
+	}
 
 	workingDir := env.MkdirAll(filepath.Join(env.TempDir, "working"))
 	env.Chdir(workingDir)
@@ -788,8 +773,10 @@ repo = "https://github.com/test/repo"
 		if !strings.Contains(output, "(global)") {
 			t.Errorf("Expected '(global)' scope info, got:\n%s", output)
 		}
-		if !strings.Contains(output, "(1 scopes)") {
-			t.Errorf("Expected '(1 scopes)' scope info, got:\n%s", output)
+		// Repo-scoped entries name their repo so cross-repo installs are
+		// distinguishable rather than showing an opaque scope count.
+		if !strings.Contains(output, "(https://github.com/test/repo)") {
+			t.Errorf("Expected repo name in scope info, got:\n%s", output)
 		}
 	})
 

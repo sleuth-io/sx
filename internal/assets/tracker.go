@@ -29,6 +29,7 @@ type InstalledAsset struct {
 	Type       string            `json:"type,omitempty"`       // Asset type (skill, agent, mcp, etc) - added in v3
 	Repository string            `json:"repository,omitempty"` // Empty for global scope
 	Path       string            `json:"path,omitempty"`       // Path within repo (if path-scoped)
+	Profile    string            `json:"profile,omitempty"`    // Profile that installed it; empty means default
 	Clients    []string          `json:"clients"`
 	Config     map[string]string `json:"config,omitempty"` // Type-specific config (e.g., marketplace for plugins)
 }

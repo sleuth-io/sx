@@ -42,8 +42,8 @@ also remove system hooks from all clients.
 Use ` + e("--clients") + ` to limit which clients are affected (applies to both asset
 removal and hook removal).
 
-Note: ` + e("--profile") + ` has no effect on uninstall. All installed assets are removed
-regardless of which profile originally installed them.
+Uninstall only touches assets installed by the current profile (use the global
+` + e("--profile") + ` flag to act on another one). Untagged assets count as the current profile.
 
 ` + s.Header.Render("Examples:") + `
   ` + m("# Uninstall repo assets (must be inside a repo)") + `
@@ -112,6 +112,7 @@ type AssetUninstallPlan struct {
 	IsGlobal   bool
 	Repository string   // Empty for global scope
 	Path       string   // Path within repo (if path-scoped)
+	Profile    string   // Profile that installed it; empty means default
 	Clients    []string // client IDs that have this installed
 	LockEntry  *lockfile.Asset
 }
@@ -175,7 +176,16 @@ func runUninstall(cmd *cobra.Command, args []string, opts UninstallOptions) erro
 	// Step 3: Build uninstall plan
 	plan := buildUninstallPlanFromTracker(lockFile, tracker, gitContext, trackingBase)
 
-	// Step 4: Filter plan by scope (without --all, only current repo's assets)
+	// Step 4: Filter to the current profile (empty profile counts as current),
+	// so uninstalling under one profile leaves other profiles' installs alone.
+	// An empty ProfileName is the default profile, not a resolution failure, so
+	// still filter (filterUninstallPlanByProfile keeps untagged entries). Only a
+	// config load error skips the filter, to avoid wrongly dropping everything.
+	if cfg, cfgErr := config.Load(); cfgErr == nil {
+		plan = filterUninstallPlanByProfile(plan, cfg.ProfileName)
+	}
+
+	// Step 5: Filter plan by scope (without --all, only current repo's assets)
 	plan = filterUninstallPlanByScope(plan, opts.All)
 
 	if len(plan.Assets) == 0 {
@@ -377,6 +387,7 @@ func buildUninstallPlanFromTracker(lockFile *lockfile.LockFile, tracker *assets.
 				IsGlobal:   installed.IsGlobal(),
 				Repository: installed.Repository,
 				Path:       installed.Path,
+				Profile:    installed.Profile,
 				Clients:    installed.Clients,
 			})
 			continue
@@ -389,11 +400,27 @@ func buildUninstallPlanFromTracker(lockFile *lockfile.LockFile, tracker *assets.
 			IsGlobal:   lockEntry.IsGlobal(),
 			Repository: installed.Repository,
 			Path:       installed.Path,
+			Profile:    installed.Profile,
 			Clients:    installed.Clients,
 			LockEntry:  lockEntry,
 		})
 	}
 
+	return plan
+}
+
+// filterUninstallPlanByProfile keeps only assets installed by the current
+// profile. An empty profile counts as the current profile, matching
+// `vault list --installed`, so untagged leftovers are removed too while
+// another profile's installs are left alone.
+func filterUninstallPlanByProfile(plan UninstallPlan, currentProfile string) UninstallPlan {
+	var filtered []AssetUninstallPlan
+	for _, a := range plan.Assets {
+		if a.Profile == "" || a.Profile == currentProfile {
+			filtered = append(filtered, a)
+		}
+	}
+	plan.Assets = filtered
 	return plan
 }
 
