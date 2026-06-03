@@ -3,7 +3,7 @@
 <br>
 
 ### Define your agents once. Distribute them everywhere
-### `sx` is the control plane for your team's AI — manage, distribute, and govern every AI asset
+#### `sx` is the control plane for your team's AI — manage, distribute, and govern every AI asset
 <br>
 
 [![Stars](https://img.shields.io/github/stars/sleuth-io/sx?style=flat&color=F59E0B)](https://github.com/sleuth-io/sx/stargazers)
@@ -28,14 +28,6 @@ Skills, rules, commands, hooks, MCP servers, and agent prompts usually live as l
 - **No Git knowledge required to use it** — back the vault with Skills.new and non-technical users get a UI and one-command installs; back it with Git and your team gets version control. Either way, the vault plumbing stays out of the way.
 - **Install the right assets, not all of them** — scope installs to an org, repo, path, team, bot, or user, so nobody's context gets bloated with assets they don't need.
 - **Version, observe, and govern** — update once and everyone picks it up (and you can roll back); track real adoption and token usage with `sx stats`; admin-gate team changes with a full `sx audit` trail (RBAC is on the [roadmap](#roadmap)).
-
-## Portable agents, not just files
-
-An AI agent is only as good as what it knows and what it's allowed to do. `sx` lets you describe that **once** — define a Bot and attach the agent's prompt plus the skills, rules, commands, hooks, and MCP servers it depends on — and install it unchanged across any client, coding or not.
-
-- **One definition, every tool** — the same agent runs on Claude Code, Cursor, GitHub Copilot, Gemini, Codex, Kiro, OpenCode, and more, plus claude.ai and chatgpt.com via the [cloud relay](docs/cloud-relay.md). `sx` translates to each client's native format on install.
-- **Bundle the whole capability** — skills, rules, commands, hooks, and MCP config travel together as versioned assets, not loose files scattered across repos and machines.
-- **Decoupled from any one vendor** — AI tools are commoditizing; the agents running on them shouldn't be locked in. Describe them in a portable format you own and carry them between tools as the landscape shifts.
 
 ## Quickstart
 
@@ -177,6 +169,14 @@ See [docs/library.md](docs/library.md) for the full API guide.
 - **Hooks** - Automation triggers for lifecycle events
 - **MCP Servers** (experimental) - Model Context Protocol (MCP) servers for external integrations
 - **Plugins** - Claude Code plugin bundles with commands, skills, and more
+
+## Portable agents, not just files
+
+An AI agent is only as good as what it knows and what it's allowed to do. `sx` lets you describe that **once** — define a Bot and attach the agent's prompt plus the skills, rules, commands, hooks, and MCP servers it depends on — and install it unchanged across any client, coding or not.
+
+- **One definition, every tool** — the same agent runs on Claude Code, Cursor, GitHub Copilot, Gemini, Codex, Kiro, OpenCode, and more, plus claude.ai and chatgpt.com via the [cloud relay](docs/cloud-relay.md). `sx` translates to each client's native format on install.
+- **Bundle the whole capability** — skills, rules, commands, hooks, and MCP config travel together as versioned assets, not loose files scattered across repos and machines.
+- **Decoupled from any one vendor** — AI tools are commoditizing; the agents running on them shouldn't be locked in. Describe them in a portable format you own and carry them between tools as the landscape shifts.
 
 ## skills.sh support
 
