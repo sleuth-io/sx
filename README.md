@@ -2,8 +2,8 @@
 <img src="docs/sx_logo.png" alt="sx" width="300">
 <br>
 
-### `sx` is your team's private npm for AI assets - skills, MCP configs, commands, and more. 
-### Capture what your best AI users have learned and spread it to everyone automatically.
+### Define your agents once. Distribute them everywhere.
+### `sx` is the control plane for your team's AI — version, scope, and govern every AI asset.
 <br>
 
 [![Stars](https://img.shields.io/github/stars/sleuth-io/sx?style=flat&color=F59E0B)](https://github.com/sleuth-io/sx/stargazers)
@@ -21,19 +21,21 @@
 
 ## Why sx?
 
-Your best developers have figured out how to make AI assistants incredibly productive - custom skills, MCP configs, slash commands, proven patterns. But that knowledge is stuck on their machines.
+Skills, rules, commands, hooks, MCP servers, and agent prompts usually live as loose files in one person's setup or checked into a project's git repo, in one tool's format. `sx` keeps them in a vault format that solves the practical problems that show up the moment more than one person — or more than one tool — needs them:
 
-**Current workarounds don't scale:**
-- **Copy into each repo** - Duplication nightmare, no central updates, version drift
-- **Global config** - Bloats context for projects/tasks that don't need those skills
-- **Client plugins** - Manually install each one, locked to one AI client, no bundling
+- **Share across projects and teams** — manage an asset once and install it into any repo, or for any teammate, instead of copy-pasting it around and watching versions drift.
+- **Share across clients, including the web ones** — the same asset installs into all major AI assistants, including claude.ai and chatgpt.com via the cloud relay. `sx` writes each client's native format for you.
+- **No Git knowledge required to use it** — back the vault with Skills.new and non-technical users get a UI and one-command installs; back it with Git and your team gets version control. Either way, the vault plumbing stays out of the way.
+- **Install the right assets, not all of them** — scope installs to an org, repo, path, team, bot, or user, so nobody's context gets bloated with assets they don't need.
+- **Version, observe, and govern** — update once and everyone picks it up (and you can roll back); track real adoption and token usage with `sx stats`; admin-gate team changes with a full `sx audit` trail (RBAC is on the [roadmap](#roadmap)).
 
-**sx solves this by:**
-- **Sharing expertise** - Turn individual discoveries into team assets
-- **Instant onboarding** - New devs inherit the team's AI playbook on day one
-- **Central updates** - Change once in your vault, everyone gets the update
-- **Scoped installation** - Right assets for each org, team, bot, repo or person, no context bloat
-- **Works with any AI client** - Claude Code, Cursor, GitHub Copilot, Gemini, Kiro, OpenCode, and more, plus claude.ai and chatgpt.com via the cloud relay
+## Portable agents, not just files
+
+An AI agent is only as good as what it knows and what it's allowed to do. `sx` lets you describe that **once** — define a Bot and attach the agent's prompt plus the skills, rules, commands, hooks, and MCP servers it depends on — and install it unchanged across any client, coding or not.
+
+- **One definition, every tool** — the same agent runs on Claude Code, Cursor, GitHub Copilot, Gemini, Codex, Kiro, OpenCode, and more, plus claude.ai and chatgpt.com via the [cloud relay](docs/cloud-relay.md). `sx` translates to each client's native format on install.
+- **Bundle the whole capability** — skills, rules, commands, hooks, and MCP config travel together as versioned assets, not loose files scattered across repos and machines.
+- **Decoupled from any one vendor** — AI tools are commoditizing; the agents running on them shouldn't be locked in. Describe them in a portable format you own and carry them between tools as the landscape shifts.
 
 ## Quickstart
 
@@ -81,14 +83,6 @@ sx install my-skill --team platform               # every member of a team
 sx install my-skill --user alice@acme.com         # a single user (must be the caller)
 sx install my-skill --bot python-backend          # a bot identity (CI runner, agent)
 ```
-
-| Scope | Who gets it |
-|-------|-------------|
-| `--org` | Everyone — the default if no flag is set |
-| `--repo` / `--path` | Callers working inside the named repo or subpath |
-| `--team` | Team members; admin-gated |
-| `--user` | A single human, must match caller's git identity |
-| `--bot` | A bot identity, resolved when `SX_BOT=<name>` is set |
 
 See [docs/scoping.md](docs/scoping.md) for the full overview and
 links to a per-scope doc for each install target.
