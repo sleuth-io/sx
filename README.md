@@ -2,8 +2,8 @@
 <img src="docs/sx_logo.png" alt="sx" width="300">
 <br>
 
-### Define your agents once. Distribute them everywhere.
-### `sx` is the control plane for your team's AI — manage, distribute, and govern every AI asset.
+### Define your agents once. Distribute them everywhere
+### `sx` is the control plane for your team's AI — manage, distribute, and govern every AI asset
 <br>
 
 [![Stars](https://img.shields.io/github/stars/sleuth-io/sx?style=flat&color=F59E0B)](https://github.com/sleuth-io/sx/stargazers)
