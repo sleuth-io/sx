@@ -50,7 +50,7 @@ LW = 13        # letter width
 letters = [S, X]
 
 # --- tagline ---------------------------------------------------------------
-TAGLINE = "< your team's AI, everywhere />"
+TAGLINE = "< your team's AI />"
 FONT_PATH = "/System/Library/Fonts/SFNSMono.ttf"
 
 # --- geometry --------------------------------------------------------------
@@ -61,8 +61,8 @@ OUT_W = 3 * SS       # perimeter outline width
 OFF = 5 * SS         # 3D offset of the duplicate edge (down-right)
 PAD = 36 * SS        # outer padding
 TAG_GAP = 30 * SS    # space between wordmark and tagline
-FONT_PX = 33 * SS    # tagline size
-TRACK = 5 * SS       # tagline letter spacing
+FONT_PX = 38 * SS    # tagline size
+TRACK = 6 * SS       # tagline letter spacing
 
 rows = 15
 cols = LW * len(letters) + GAP_COLS * (len(letters) - 1)

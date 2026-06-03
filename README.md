@@ -1,5 +1,5 @@
 <div align="center">
-<img src="docs/sx_logo.png" alt="sx" width="300">
+<img src="docs/sx_logo.png" alt="sx" width="360">
 <br>
 
 ### Define your agents once. Distribute them everywhere
