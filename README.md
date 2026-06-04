@@ -19,11 +19,11 @@
 
 AI assets — skills, MCP's, agents, rules, commands, hooks — usually live inside a single Git repo. The moment you want them in another you copy-paste, and then it drifts out of sync, and has no source of truth. `sx` manages complex sharing and distribution of AI assets for real-world Teams:
 
-- **Share across projects and teams** — manage an asset once, install it into any repos or teams from that single source
+- **Share across projects and teams** — manage an asset once, install it into any repos or teams
 - **Share across clients, including the web ones** — one asset installs into every major AI assistant
-- **No Git knowledge required** — Skills.new gives non-technical users a UI and one-command installs; the plumbing stays hidden
-- **Install the right assets, not all of them** — scope to an org, repo, path, team, bot, or user, so no one's context gets bloated
-- **Version, observe, and govern** — update once; track adoption with `sx stats`; audit access with `sx audit` trail
+- **No Git knowledge required** — gives non-technical users easy access; the plumbing stays hidden
+- **Install the right assets, not all of them** — scope to an org, repo, path, team, bot, or user, no context bloat
+- **Version, observe, and govern** — update once; track adoption with `sx stats`; audit access with `sx audit`
 
 ## Quickstart
 
