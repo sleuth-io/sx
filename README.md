@@ -85,12 +85,12 @@ sx install
 **Install targets** — pick who sees which asset:
 
 ```bash
-sx install my-skill --org                         # everyone in the vault
-sx install my-skill --repo github.com/acme/infra  # only inside that repo
+sx install my-skill --org                               # everyone in the vault
+sx install my-skill --repo github.com/acme/infra        # only inside that repo
 sx install my-skill --path github.com/acme/infra#docs/  # one path in a repo
-sx install my-skill --team platform               # every member of a team
-sx install my-skill --user alice@acme.com         # a single user (must be the caller)
-sx install my-skill --bot python-backend          # a bot identity (CI runner, agent)
+sx install my-skill --team platform                     # every member of a team
+sx install my-skill --user alice@acme.com               # a single user
+sx install my-skill --bot python-backend                # a bot identity (CI runner, agent)
 ```
 
 See [docs/scoping.md](docs/scoping.md) for the full overview and
@@ -105,7 +105,7 @@ sx cloud serve         # keep this running — Ctrl+C exits
 sx cloud status        # prints the MCP URL to paste into claude.ai / chatgpt.com
 ```
 
-The relay forwards requests over a WebSocket your machine opens — vault
+The relay forwards requests over a WebSocket — vault
 content stays local. See [docs/cloud-relay.md](docs/cloud-relay.md).
 
 ### Govern — audit and migrate
