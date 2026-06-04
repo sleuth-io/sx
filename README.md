@@ -1,7 +1,7 @@
 <div align="center">
 <img src="docs/sx_logo.png" alt="sx" width="360">
 
-### Define your agents once. Distribute them everywhere
+### Define your agents once. Distribute them everywhere.
 #### `sx` is the control plane for your team's AI — manage, distribute, and govern every AI asset
 
 [![Stars](https://img.shields.io/github/stars/sleuth-io/sx?style=flat&color=F59E0B)](https://github.com/sleuth-io/sx/stargazers)
@@ -17,7 +17,7 @@
 
 ## Why sx?
 
-AI assets — skills, MCP's, agents, rules, commands, hooks — usually live inside a single Git repo. The moment you want them in another you copy-paste, and then it drifts out of sync, and has no source of truth. `sx` manages complex sharing and distribution of AI assets for real-world Teams:
+AI assets — skills, MCPs, agents, rules, commands, hooks — usually live inside a single Git repo. The moment you want them in another repo you copy-paste, and they drift out of sync with no source of truth. `sx` manages complex sharing and distribution of AI assets for real-world teams:
 
 - **Share across projects and teams** — manage an asset once, install it into any repos or teams
 - **Share across clients, including the web ones** — one asset installs into every major AI assistant
