@@ -1,10 +1,8 @@
 <div align="center">
-<img src="docs/sx_logo.png" alt="sx" width="300">
-<br>
+<img src="docs/sx_logo.png" alt="sx" width="360">
 
-### `sx` is your team's private npm for AI assets - skills, MCP configs, commands, and more. 
-### Capture what your best AI users have learned and spread it to everyone automatically.
-<br>
+### Define your agents once. Distribute them everywhere.
+#### `sx` is the control plane for your team's AI — manage, distribute, and govern every AI asset
 
 [![Stars](https://img.shields.io/github/stars/sleuth-io/sx?style=flat&color=F59E0B)](https://github.com/sleuth-io/sx/stargazers)
 [![Star History](https://img.shields.io/badge/Star_History-chart-8B5CF6)](https://star-history.com/#sleuth-io/sx&Date)
@@ -13,27 +11,19 @@
 
 ⭐ [Star this repo](https://github.com/sleuth-io/sx) · 🌐 [Website](https://skills.new) · 📋 [Changelog](https://github.com/sleuth-io/sx/releases) · 📄 [License](LICENSE)
 
-<br>
-
 </div>
 
 ![Demo](docs/demo.gif)
 
 ## Why sx?
 
-Your best developers have figured out how to make AI assistants incredibly productive - custom skills, MCP configs, slash commands, proven patterns. But that knowledge is stuck on their machines.
+AI assets — skills, MCPs, agents, rules, commands, hooks — usually live inside a single Git repo. The moment you want them in another repo you copy-paste, and they drift out of sync with no source of truth. `sx` manages complex sharing and distribution of AI assets for real-world teams:
 
-**Current workarounds don't scale:**
-- **Copy into each repo** - Duplication nightmare, no central updates, version drift
-- **Global config** - Bloats context for projects/tasks that don't need those skills
-- **Client plugins** - Manually install each one, locked to one AI client, no bundling
-
-**sx solves this by:**
-- **Sharing expertise** - Turn individual discoveries into team assets
-- **Instant onboarding** - New devs inherit the team's AI playbook on day one
-- **Central updates** - Change once in your vault, everyone gets the update
-- **Scoped installation** - Right assets for each org, team, bot, repo or person, no context bloat
-- **Works with any AI client** - Claude Code, Cursor, GitHub Copilot, Gemini, Kiro, OpenCode, and more, plus claude.ai and chatgpt.com via the cloud relay
+- **Share across projects and teams** — manage an asset once, install it into any repos or teams
+- **Share across clients, including the web ones** — one asset installs into every major AI assistant
+- **No Git knowledge required** — gives non-technical users easy access; the plumbing stays hidden
+- **Install the right assets, not all of them** — scope to an org, repo, path, team, bot, or user, no context bloat
+- **Version, observe, and govern** — update once; track adoption with `sx stats`; audit access with `sx audit`
 
 ## Quickstart
 
@@ -50,18 +40,25 @@ brew install sx
 curl -fsSL https://raw.githubusercontent.com/sleuth-io/sx/main/install.sh | bash
 ```
 
-Then
+Then initialize in your vault or project:
 
 ```bash
-# Initialize
 sx init
-
-# Add an asset from your vault
-sx add /path/to/my-skill
-
-# Install assets to your current project
-sx install
 ```
+
+From here the workflow is three steps — **manage** your assets, **distribute** them, and **govern** what ships.
+
+### Manage — capture, version, and observe
+
+Add assets to your vault (`sx` auto-detects the type):
+
+```bash
+sx add /path/to/my-skill
+sx add ~/.claude/skills/my-skill            # an existing Claude Code skill
+sx add code-review@claude-plugins-official  # a plugin from a registry
+```
+
+Your AI assets stay exactly as they are — `sx` just wraps them with metadata for versioning and stores them in its vault format.
 
 **Multiple vaults?** Use profiles to switch between them:
 
@@ -71,34 +68,33 @@ sx profile use work        # Switch to it
 sx profile list            # See all profiles
 ```
 
+**See what's actually used** — track adoption and token usage across your team:
+
+```bash
+sx stats                   # adoption dashboard
+sx stats --since 7d --json # machine-readable
+```
+
+### Distribute — install to the right scope, on any client
+
+```bash
+# Install everything scoped to you, into the current project
+sx install
+```
+
 **Install targets** — pick who sees which asset:
 
 ```bash
-sx install my-skill --org                         # everyone in the vault
-sx install my-skill --repo github.com/acme/infra  # only inside that repo
+sx install my-skill --org                               # everyone in the vault
+sx install my-skill --repo github.com/acme/infra        # only inside that repo
 sx install my-skill --path github.com/acme/infra#docs/  # one path in a repo
-sx install my-skill --team platform               # every member of a team
-sx install my-skill --user alice@acme.com         # a single user (must be the caller)
-sx install my-skill --bot python-backend          # a bot identity (CI runner, agent)
+sx install my-skill --team platform                     # every member of a team
+sx install my-skill --user alice@acme.com               # a single user
+sx install my-skill --bot python-backend                # a bot identity (CI runner, agent)
 ```
-
-| Scope | Who gets it |
-|-------|-------------|
-| `--org` | Everyone — the default if no flag is set |
-| `--repo` / `--path` | Callers working inside the named repo or subpath |
-| `--team` | Team members; admin-gated |
-| `--user` | A single human, must match caller's git identity |
-| `--bot` | A bot identity, resolved when `SX_BOT=<name>` is set |
 
 See [docs/scoping.md](docs/scoping.md) for the full overview and
 links to a per-scope doc for each install target.
-
-**Preview** — see what `sx install` would resolve for you, the `pip
-freeze` analogue, without downloading or writing anything:
-
-```bash
-sx install --dry-run
-```
 
 **Use your vault from claude.ai or chatgpt.com** — expose it as an MCP
 endpoint via the skills.new relay:
@@ -109,36 +105,14 @@ sx cloud serve         # keep this running — Ctrl+C exits
 sx cloud status        # prints the MCP URL to paste into claude.ai / chatgpt.com
 ```
 
-The relay forwards requests over a WebSocket your machine opens — vault
+The relay forwards requests over a WebSocket — vault
 content stays local. See [docs/cloud-relay.md](docs/cloud-relay.md).
 
-**Use sx as a Go library** — everything the CLI does to a vault is also a
-package. Publish skills and agents, manage bots and teams, and browse or
-download assets from your own program against Skills.new, Git, or local
-Path vaults through one `Client`:
+### Govern — audit and migrate
 
-```go
-import "github.com/sleuth-io/sx/pkg/sxvault"
-
-ctx := context.Background()
-client, err := sxvault.OpenSkillsNew("https://app.skills.new", token)
-if err != nil {
-    log.Fatal(err)
-}
-if err := client.PutSkillZip(ctx, sxvault.SkillZipSpec{
-    Name: "lint-helper", Version: "1.0.0", ZipData: zip,
-}); err != nil {
-    log.Fatal(err)
-}
-```
-
-See [docs/library.md](docs/library.md) for the full API guide.
-
-**Usage analytics & audit**:
+**Audit** — every team and install mutation is recorded:
 
 ```bash
-sx stats                                   # adoption dashboard
-sx stats --since 7d --json                 # machine-readable
 sx audit                                   # recent team/install mutations
 sx audit --actor alice@acme.com --since 30d --event install.set
 ```
@@ -150,20 +124,7 @@ sx vault copy --from skills-new --to git-vault   # preview (read-only)
 sx vault copy --from skills-new --to git-vault --yes
 ```
 
-See [docs/copy.md](docs/copy.md) for directionality and what's lossy.
-
-### Already using Claude Code?
-
-If you've built up skills, plugins, or MCP configs in your `.claude` directory, `sx` helps you version, sync across machines, and share with teammates.
-
-```bash
-# Add your existing skills/commands (sx auto-detects the type)
-sx add ~/.claude/commands/my-command
-sx add ~/.claude/skills/my-skill
-sx add code-review@claude-plugins-official
-```
-
-Your prompt files stay exactly as they are - `sx` just wraps them with metadata for versioning.
+See [docs/copy.md](docs/copy.md) for directionality and what's lossy. A gated change-request flow (RBAC) is on the [roadmap](#roadmap).
 
 ## What can you build and share?
 
@@ -175,15 +136,13 @@ Your prompt files stay exactly as they are - `sx` just wraps them with metadata 
 - **MCP Servers** (experimental) - Model Context Protocol (MCP) servers for external integrations
 - **Plugins** - Claude Code plugin bundles with commands, skills, and more
 
-## skills.sh support
+## Portable agents, not just files
 
-sx integrates with [skills.sh](https://skills.sh), a community directory of 85k+ agent skills.
+An AI agent is only as good as what it knows and what it's allowed to do. `sx` lets you describe that **once** — define a Bot and attach the agent's prompt plus the skills, rules, commands, hooks, and MCP servers it depends on — and install it unchanged across any client, coding or not.
 
-```bash
-sx add anthropics/skills/frontend-design  # Add a specific skill
-sx add vercel-labs/agent-skills           # Browse skills in a repo
-sx add --browse                           # Search and browse the full directory
-```
+- **One definition, every tool** — the same agent runs unchanged on every [supported client](#supported-clients), coding or not; `sx` writes each one's native format on install
+- **Bundle the whole capability** — skills, rules, commands, hooks, and MCP config travel together as versioned assets, not loose files scattered across repos and machines
+- **Decoupled from any one vendor** — AI tools are commoditizing; the agents running on them shouldn't be locked in. Describe them in a portable format you own and carry them between tools as the landscape shifts
 
 ## Distribution models
 
@@ -231,10 +190,33 @@ sx follows the manifest-and-lock pattern used by npm, cargo, and uv:
    audit entry to `.sx/audit/YYYY-MM.jsonl`; usage events append to
    `.sx/usage/YYYY-MM.jsonl`. Query them with `sx audit` / `sx stats`.
 
-High level: **create** assets with metadata, **share** to your vault,
-**install** [globally, per repo, per path, per team, per bot, or per user](docs/scoping.md),
-**auto-install** on new Claude Code sessions, **stay synchronized** —
-everyone gets the same tools automatically.
+High level: **manage** assets in one vault, **distribute** them
+[globally, per repo, per path, per team, per bot, or per user](docs/scoping.md) —
+auto-installing on new Claude Code sessions so everyone stays in sync — and
+**govern** every change through the audit and usage streams.
+
+## Use sx as a Go library
+
+Everything the CLI does to a vault is also a package. Publish skills and
+agents, manage bots and teams, and browse or download assets from your own
+program against Skills.new, Git, or local Path vaults through one `Client`:
+
+```go
+import "github.com/sleuth-io/sx/pkg/sxvault"
+
+ctx := context.Background()
+client, err := sxvault.OpenSkillsNew("https://app.skills.new", token)
+if err != nil {
+    log.Fatal(err)
+}
+if err := client.PutSkillZip(ctx, sxvault.SkillZipSpec{
+    Name: "lint-helper", Version: "1.0.0", ZipData: zip,
+}); err != nil {
+    log.Fatal(err)
+}
+```
+
+See [docs/library.md](docs/library.md) for the full API guide.
 
 ## Supported Clients
 
