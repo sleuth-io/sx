@@ -27,7 +27,7 @@ func formatPaths(paths []string) string {
 // displayCurrentInstallation shows the current installation state of an asset
 func displayCurrentInstallation(currentRepos []lockfile.Scope, styledOut *ui.Output) {
 	styledOut.Newline()
-	styledOut.Info("Current installation:")
+	styledOut.Println("Current installation:")
 
 	if currentRepos == nil {
 		styledOut.Println("  Not installed (available in vault only)")
@@ -47,20 +47,6 @@ func displayCurrentInstallation(currentRepos []lockfile.Scope, styledOut *ui.Out
 		items[i] = formatRepository(repo)
 	}
 	styledOut.List(items)
-}
-
-// displayRepositoryList shows a numbered list of current repositories
-func displayRepositoryList(repos []lockfile.Scope, styledOut *ui.Output) {
-	styledOut.Newline()
-	if len(repos) == 0 {
-		styledOut.Muted("  (none - currently global or not installed)")
-		return
-	}
-
-	styledOut.Println("Current repositories:")
-	for i, repo := range repos {
-		styledOut.Printf("  %d. %s\n", i+1, formatRepository(repo))
-	}
 }
 
 // repositoriesEqual checks if two repository slices are equal

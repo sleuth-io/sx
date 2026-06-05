@@ -34,11 +34,6 @@ func promptForRepositories(out *outputHelper, assetName, version string, current
 // Takes currentRepos (nil if not installed, empty slice if global, or list of repos)
 // Returns scopeResult with Remove=true if user chooses not to install
 func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockfile.Scope, v vault.Vault, styledOut *ui.Output, ioc *components.IOContext) (*scopeResult, error) {
-	// Display current state
-	displayCurrentInstallation(currentRepos, styledOut)
-
-	styledOut.Newline()
-
 	// Build options based on current state with Value field for switch
 	var options []components.Option
 
@@ -51,38 +46,29 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 		})
 	}
 
-	options = append(options, []components.Option{
-		{
+	options = append(options,
+		components.Option{
 			Label:       "Make it available globally",
 			Value:       "global",
-			Description: "Install in all projects (removes repository restrictions)",
+			Description: "Org-wide, no restrictions",
 		},
-		{
-			Label:       "Add/modify repository-specific installations",
+		components.Option{
+			Label:       "Edit scopes",
 			Value:       "modify",
-			Description: "Add repositories, remove existing ones, or change paths",
+			Description: "Add/remove repos, paths, teams, users, bots",
 		},
-	}...)
+		components.Option{
+			Label:       "Remove from installation",
+			Value:       "remove",
+			Description: "Uninstall (keeps it in vault)",
+		},
+	)
 
-	// Add vault-specific scope options (e.g., "Just for me" for Sleuth vaults)
-	if sop, ok := v.(vault.ScopeOptionProvider); ok {
-		for _, opt := range sop.GetScopeOptions() {
-			options = append(options, components.Option{
-				Label:       opt.Label,
-				Value:       opt.Value,
-				Description: opt.Description,
-			})
-		}
-	}
-
-	options = append(options, components.Option{
-		Label:       "Remove from installation",
-		Value:       "remove",
-		Description: "Uninstall this asset (keeps it in vault)",
-	})
-
-	// Show selection menu
-	selected, err := ioc.Select("What would you like to do?", options)
+	// Title, then the original current-installation block, then the menu.
+	styledOut.Newline()
+	styledOut.Header("Scope for " + assetName)
+	displayCurrentInstallation(currentRepos, styledOut)
+	selected, err := ioc.Select("", options)
 	if err != nil {
 		// If user cancelled, treat it as "keep current" if installed, or "don't install" if not
 		if err.Error() == "selection cancelled" {
@@ -150,19 +136,16 @@ func modifyRepositories(currentRepos []lockfile.Scope, styledOut *ui.Output, ioc
 	copy(originalRepos, currentRepos)
 
 	for {
-		// Display current list
-		displayRepositoryList(workingRepos, styledOut)
-
 		// Build action menu with Value fields
 		options := []components.Option{
-			{Label: "Add new repository", Value: "add", Description: "Add another repository to the installation list"},
-			{Label: "Remove repository", Value: "remove", Description: "Remove an existing repository from the list"},
-			{Label: "Modify repository paths", Value: "modify", Description: "Change which paths within a repository are included"},
-			{Label: "Done with modifications", Value: "done", Description: "Continue to preview changes"},
+			{Label: "Add a scope", Value: "add", Description: "pick kind (repo/path/team/user/bot) → enter value"},
+			{Label: "Remove a scope", Value: "remove", Description: "pick from current list"},
+			{Label: "Remove all scopes", Value: "remove-all", Description: "clear every scope"},
+			{Label: "Done", Value: "done"},
 		}
 
-		// Show selection menu (default to "Done")
-		selected, err := ioc.SelectWithDefault("Actions", options, len(options)-1)
+		// Show selection menu (default to "Add a scope")
+		selected, err := ioc.SelectWithDefault("", options, 0)
 		if err != nil {
 			// If user cancelled, return original unchanged state
 			if err.Error() == "selection cancelled" {
@@ -212,6 +195,14 @@ func modifyRepositories(currentRepos []lockfile.Scope, styledOut *ui.Output, ioc
 			removed := workingRepos[idx]
 			workingRepos = append(workingRepos[:idx], workingRepos[idx+1:]...)
 			styledOut.Success("Removed " + formatRepository(removed))
+
+		case "remove-all": // Remove all scopes
+			if len(workingRepos) == 0 {
+				styledOut.Warning("No scopes to remove")
+				continue
+			}
+			workingRepos = workingRepos[:0]
+			styledOut.Success("Removed all scopes")
 
 		case "modify": // Modify repository paths
 			if len(workingRepos) == 0 {
