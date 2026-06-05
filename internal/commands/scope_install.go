@@ -89,6 +89,13 @@ func runInstallSetTarget(cmd *cobra.Command, assetName string, f installTargetFl
 		return err
 	}
 
+	// Resolve the magic "me" user value (--user me) to the caller's account.
+	resolvedTargets, selfEmail, err := resolveSelfUserScopes(ctx, v, []vaultpkg.InstallTarget{target})
+	if err != nil {
+		return err
+	}
+	target = resolvedTargets[0]
+
 	if target.Kind == vaultpkg.InstallKindTeam {
 		if err := requireTeamAdmin(ctx, v, target.Team); err != nil {
 			return err
@@ -102,6 +109,9 @@ func runInstallSetTarget(cmd *cobra.Command, assetName string, f installTargetFl
 		return err
 	}
 	status.Done("Updated installation target for " + assetName)
+	if selfEmail != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "Assigned to you (%s)\n", selfEmail)
+	}
 	return nil
 }
 

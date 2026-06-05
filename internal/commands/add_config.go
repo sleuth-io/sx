@@ -156,7 +156,7 @@ func handleNewAssetFromVault(ctx context.Context, cmd *cobra.Command, out *outpu
 		return nil
 	}
 
-	if err := updateLockFile(ctx, out, vault, newAsset, result.ScopeEntity); err != nil {
+	if err := updateLockFile(ctx, out, vault, newAsset, result); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 

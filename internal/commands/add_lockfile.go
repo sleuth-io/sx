@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/vault"
@@ -30,20 +31,100 @@ func writeLockFileForNoInstall(ctx context.Context, out *outputHelper, repo vaul
 		//     an empty Scopes slice is the correct payload.
 		asset.Scopes = []lockfile.Scope{}
 	}
-	if err := updateLockFile(ctx, out, repo, asset, result.ScopeEntity); err != nil {
+	if err := updateLockFile(ctx, out, repo, asset, result); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 	return nil
 }
 
-// updateLockFile updates the repository's lock file with the asset using modern UI
-func updateLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, asset *lockfile.Asset, scopeEntity string) error {
+// meScopeAlias is the magic user value that resolves to the caller's own
+// account, so users can type "me" instead of their email.
+const meScopeAlias = "me"
+
+// resolveSelfUserScopes replaces the magic "me" user value with the caller's
+// resolved email (looked up once via CurrentActor) and drops duplicate user
+// targets, so "me" plus your own email don't produce two identical installs.
+// The second return value is the resolved self-email when any "me" was present
+// (empty otherwise), so callers can confirm who it landed on.
+func resolveSelfUserScopes(ctx context.Context, repo vault.Vault, targets []vault.InstallTarget) ([]vault.InstallTarget, string, error) {
+	var meEmail string
+	seenUser := make(map[string]bool)
+	resolved := make([]vault.InstallTarget, 0, len(targets))
+	for _, t := range targets {
+		if t.Kind == vault.InstallKindUser {
+			if strings.EqualFold(strings.TrimSpace(t.User), meScopeAlias) {
+				if meEmail == "" {
+					actor, err := repo.CurrentActor(ctx)
+					if err != nil {
+						return nil, "", fmt.Errorf("could not resolve 'me' to your account: %w", err)
+					}
+					if actor.Email == "" {
+						return nil, "", fmt.Errorf("could not resolve 'me': your account has no email")
+					}
+					meEmail = actor.Email
+				}
+				t.User = meEmail
+			}
+			key := strings.ToLower(strings.TrimSpace(t.User))
+			if seenUser[key] {
+				continue
+			}
+			seenUser[key] = true
+		}
+		resolved = append(resolved, t)
+	}
+	return resolved, meEmail, nil
+}
+
+// installSetter is implemented by vaults that can persist a full set of
+// kind-aware install targets — team/user/bot in addition to repo/path — in one
+// atomic call. appendMode merges with the asset's existing installations
+// server-side instead of replacing them. The Sleuth/skills.io vault implements
+// it; file-backed vaults don't, so they stay repo/path-only.
+type installSetter interface {
+	SetAssetInstallations(ctx context.Context, assetName string, targets []vault.InstallTarget, appendMode bool) (unresolved []vault.InstallTarget, err error)
+}
+
+// updateLockFile persists an asset's chosen scopes. Identity scopes
+// (team/user/bot) — and any edit the user chose to append — are routed through
+// the vault's bulk installer, which merges or replaces server-side; repo/path
+// replaces keep the lock-file path (which also pins the asset version).
+func updateLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, asset *lockfile.Asset, result *scopeResult) error {
+	if result.Append || hasIdentityScope(result.Targets) {
+		return bulkSetInstallTargets(ctx, out, repo, asset.Name, result.Targets, result.Append)
+	}
+
 	// SetInstallations updates the vault's lock file with the installation configuration
 	// The user was already shown their choice in the prompt, so we don't need to show it again
-	if err := repo.SetInstallations(ctx, asset, scopeEntity); err != nil {
+	if err := repo.SetInstallations(ctx, asset, result.ScopeEntity); err != nil {
 		return fmt.Errorf("failed to set installations: %w", err)
 	}
 
+	return nil
+}
+
+// bulkSetInstallTargets resolves the "me" alias and persists targets via the
+// vault's bulk installer. appendMode merges with the asset's existing
+// installations server-side; otherwise the set is replaced.
+func bulkSetInstallTargets(ctx context.Context, out *outputHelper, repo vault.Vault, assetName string, targets []vault.InstallTarget, appendMode bool) error {
+	setter, ok := repo.(installSetter)
+	if !ok {
+		return fmt.Errorf("this vault does not support team/user/bot scopes")
+	}
+	resolved, selfEmail, err := resolveSelfUserScopes(ctx, repo, targets)
+	if err != nil {
+		return err
+	}
+	unresolved, err := setter.SetAssetInstallations(ctx, assetName, resolved, appendMode)
+	if err != nil {
+		return fmt.Errorf("failed to set installations: %w", err)
+	}
+	if selfEmail != "" {
+		out.printf("Assigned to you (%s)\n", selfEmail)
+	}
+	for _, t := range unresolved {
+		out.printf("⚠ Could not resolve %s — skipped\n", formatTarget(t))
+	}
 	return nil
 }
 

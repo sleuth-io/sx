@@ -2930,6 +2930,8 @@ type SetAssetInstallationsInput struct {
 	Repositories  []RepositoryInstallationInput `json:"repositories"`
 	PersonalOnly  *bool                         `json:"personalOnly"`
 	Installations []AssetInstallationInput      `json:"installations"`
+	// When true, merge these targets with the asset's existing installations instead of replacing them. Defaults to false (replace). An empty target set with append=true is a no-op.
+	Append *bool `json:"append"`
 }
 
 // GetAssetName returns SetAssetInstallationsInput.AssetName, and is useful for accessing the field via an interface.
@@ -2950,6 +2952,9 @@ func (v *SetAssetInstallationsInput) GetPersonalOnly() *bool { return v.Personal
 func (v *SetAssetInstallationsInput) GetInstallations() []AssetInstallationInput {
 	return v.Installations
 }
+
+// GetAppend returns SetAssetInstallationsInput.Append, and is useful for accessing the field via an interface.
+func (v *SetAssetInstallationsInput) GetAppend() *bool { return v.Append }
 
 // SetAssetInstallationsResponse is returned by SetAssetInstallations on success.
 type SetAssetInstallationsResponse struct {

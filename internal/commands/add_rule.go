@@ -425,7 +425,7 @@ func configureRuleScopes(ctx context.Context, out *outputHelper, vault vaultpkg.
 				Path: fmt.Sprintf("./assets/%s/%s", name, version),
 			},
 		}
-		if err := updateLockFile(ctx, out, vault, lockAsset, result.ScopeEntity); err != nil {
+		if err := updateLockFile(ctx, out, vault, lockAsset, result); err != nil {
 			return fmt.Errorf("failed to update lock file: %w", err)
 		}
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/ui"
+	"github.com/sleuth-io/sx/internal/vault"
 )
 
 // formatRepository formats a repository entry for display
@@ -16,12 +17,64 @@ func formatRepository(repo lockfile.Scope) string {
 	return fmt.Sprintf("%s → %s", repo.Repo, strings.Join(repo.Paths, ", "))
 }
 
-// formatPaths formats a list of paths for display
-func formatPaths(paths []string) string {
-	if len(paths) == 0 {
-		return "(entire repository)"
+// formatTarget formats a kind-aware install target for display in the scope
+// editor.
+func formatTarget(t vault.InstallTarget) string {
+	switch t.Kind {
+	case vault.InstallKindRepo:
+		return t.Repo + " (entire repository)"
+	case vault.InstallKindPath:
+		return fmt.Sprintf("%s → %s", t.Repo, strings.Join(t.Paths, ", "))
+	case vault.InstallKindTeam:
+		return "team: " + t.Team
+	case vault.InstallKindUser:
+		return "user: " + t.User
+	case vault.InstallKindBot:
+		return "bot: " + t.Bot
+	case vault.InstallKindOrg:
+		return "global (org-wide)"
 	}
-	return strings.Join(paths, ", ")
+	return string(t.Kind)
+}
+
+// scopesToTargets converts the repo/path scopes the rest of the add flow uses
+// into kind-aware install targets for the editor.
+func scopesToTargets(scopes []lockfile.Scope) []vault.InstallTarget {
+	targets := make([]vault.InstallTarget, 0, len(scopes))
+	for _, s := range scopes {
+		if len(s.Paths) > 0 {
+			targets = append(targets, vault.InstallTarget{Kind: vault.InstallKindPath, Repo: s.Repo, Paths: s.Paths})
+		} else {
+			targets = append(targets, vault.InstallTarget{Kind: vault.InstallKindRepo, Repo: s.Repo})
+		}
+	}
+	return targets
+}
+
+// targetsToScopes extracts the repo/path targets back into lockfile scopes, so
+// vaults that can't persist identity scopes still get the repo/path subset.
+// Team/user/bot targets are dropped here (they ride along in scopeResult.Targets).
+func targetsToScopes(targets []vault.InstallTarget) []lockfile.Scope {
+	scopes := []lockfile.Scope{}
+	for _, t := range targets {
+		if t.Kind == vault.InstallKindRepo || t.Kind == vault.InstallKindPath {
+			scopes = append(scopes, lockfile.Scope{Repo: t.Repo, Paths: t.Paths})
+		}
+	}
+	return scopes
+}
+
+// hasIdentityScope reports whether any target is a team/user/bot scope, i.e.
+// a kind the repo/path lockfile model can't represent and that must be
+// persisted through SetAssetInstallations.
+func hasIdentityScope(targets []vault.InstallTarget) bool {
+	for _, t := range targets {
+		switch t.Kind {
+		case vault.InstallKindTeam, vault.InstallKindUser, vault.InstallKindBot:
+			return true
+		}
+	}
+	return false
 }
 
 // displayCurrentInstallation shows the current installation state of an asset
@@ -49,105 +102,41 @@ func displayCurrentInstallation(currentRepos []lockfile.Scope, styledOut *ui.Out
 	styledOut.List(items)
 }
 
-// repositoriesEqual checks if two repository slices are equal
-func repositoriesEqual(a, b []lockfile.Scope) bool {
-	if len(a) != len(b) {
-		return false
+// displayScopeChanges shows a diff-style preview of scope changes.
+// Returns true if changes were detected, false otherwise.
+func displayScopeChanges(before, after []vault.InstallTarget, styledOut *ui.Output) bool {
+	beforeSet := make(map[string]bool, len(before))
+	for _, t := range before {
+		beforeSet[formatTarget(t)] = true
+	}
+	afterSet := make(map[string]bool, len(after))
+	for _, t := range after {
+		afterSet[formatTarget(t)] = true
 	}
 
-	// Create maps for comparison
-	aMap := make(map[string][]string)
-	for _, repo := range a {
-		aMap[repo.Repo] = repo.Paths
-	}
-
-	bMap := make(map[string][]string)
-	for _, repo := range b {
-		bMap[repo.Repo] = repo.Paths
-	}
-
-	// Compare maps
-	for repo, paths := range aMap {
-		bPaths, exists := bMap[repo]
-		if !exists || len(paths) != len(bPaths) {
-			return false
+	var removed, added []string
+	for key := range beforeSet {
+		if !afterSet[key] {
+			removed = append(removed, key)
 		}
-
-		// Compare paths (order matters)
-		for i := range paths {
-			if paths[i] != bPaths[i] {
-				return false
-			}
+	}
+	for key := range afterSet {
+		if !beforeSet[key] {
+			added = append(added, key)
 		}
 	}
 
-	return true
-}
-
-// displayRepositoryChanges shows a diff-style preview of repository changes
-// Returns true if changes were detected, false otherwise
-func displayRepositoryChanges(before, after []lockfile.Scope, styledOut *ui.Output) bool {
-	// Check if there are any changes
-	if repositoriesEqual(before, after) {
+	if len(removed) == 0 && len(added) == 0 {
 		return false
 	}
 
 	styledOut.Newline()
 	styledOut.Info("Changes to apply:")
-
-	// Build maps for easier comparison
-	beforeMap := make(map[string][]string)
-	for _, repo := range before {
-		beforeMap[repo.Repo] = repo.Paths
+	for _, key := range removed {
+		styledOut.Printf("  - Removed: %s\n", styledOut.MutedText(key))
 	}
-
-	afterMap := make(map[string][]string)
-	for _, repo := range after {
-		afterMap[repo.Repo] = repo.Paths
+	for _, key := range added {
+		styledOut.Success("Added: " + key)
 	}
-
-	// Find removed repositories
-	for repo, paths := range beforeMap {
-		if _, exists := afterMap[repo]; !exists {
-			repoFormatted := formatRepository(lockfile.Scope{Repo: repo, Paths: paths})
-			styledOut.Printf("  - Removed: %s\n", styledOut.MutedText(repoFormatted))
-		}
-	}
-
-	// Find added repositories
-	for repo, paths := range afterMap {
-		if _, exists := beforeMap[repo]; !exists {
-			repoFormatted := formatRepository(lockfile.Scope{Repo: repo, Paths: paths})
-			styledOut.Success("Added: " + repoFormatted)
-		}
-	}
-
-	// Find modified repositories (same repo, different paths)
-	for repo, afterPaths := range afterMap {
-		if beforePaths, exists := beforeMap[repo]; exists {
-			// Check if paths changed
-			if len(beforePaths) != len(afterPaths) {
-				styledOut.Warning("Modified: " + repo)
-				styledOut.Printf("      Before: %s\n", formatPaths(beforePaths))
-				styledOut.Printf("      After:  %s\n", formatPaths(afterPaths))
-				continue
-			}
-
-			pathsChanged := false
-			for i := range beforePaths {
-				if beforePaths[i] != afterPaths[i] {
-					pathsChanged = true
-					break
-				}
-			}
-
-			if pathsChanged {
-				styledOut.Warning("Modified: " + repo)
-				styledOut.Printf("      Before: %s\n", formatPaths(beforePaths))
-				styledOut.Printf("      After:  %s\n", formatPaths(afterPaths))
-			}
-		}
-	}
-
 	return true
 }

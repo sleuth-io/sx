@@ -15,9 +15,11 @@ import (
 // scopeResult holds the result of scope prompting
 type scopeResult struct {
 	Scopes      []lockfile.Scope
-	ScopeEntity string // vault-specific (e.g., "personal"), empty for standard scoping
-	Remove      bool   // User chose "remove from installation"
-	Inherit     bool   // Preserve existing installations (no scope flags provided)
+	Targets     []vault.InstallTarget // kind-aware scopes (repo/path/team/user/bot) from the interactive editor
+	Append      bool                  // Merge Targets with existing server scopes instead of replacing them
+	ScopeEntity string                // vault-specific (e.g., "personal"), empty for standard scoping
+	Remove      bool                  // User chose "remove from installation"
+	Inherit     bool                  // Preserve existing installations (no scope flags provided)
 }
 
 // promptForRepositories prompts user for repository configurations and returns them
@@ -52,6 +54,23 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 			Value:       "global",
 			Description: "Org-wide, no restrictions",
 		},
+	)
+
+	// Vault-specific scope options (e.g. the Sleuth vault's "Just for me"
+	// personal install) sit directly under "Make it available globally" — the
+	// two global/self options read together — and are handled by value in the
+	// switch below.
+	if sop, ok := v.(vault.ScopeOptionProvider); ok {
+		for _, opt := range sop.GetScopeOptions() {
+			options = append(options, components.Option{
+				Label:       opt.Label,
+				Value:       opt.Value,
+				Description: opt.Description,
+			})
+		}
+	}
+
+	options = append(options,
 		components.Option{
 			Label:       "Edit scopes",
 			Value:       "modify",
@@ -96,15 +115,17 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 		styledOut.Success("Set to global installation")
 		return &scopeResult{Scopes: []lockfile.Scope{}}, nil
 
-	case "modify": // Add/modify repository-specific installations
-		if currentRepos == nil {
-			currentRepos = []lockfile.Scope{}
-		}
-		scopes, err := modifyRepositories(currentRepos, styledOut, ioc)
+	case "modify": // Add/modify scopes
+		// Identity scopes (team/user/bot) are only offered when the vault can
+		// persist them — i.e. it implements the bulk SetAssetInstallations
+		// setter (the Sleuth/skills.io vault). File-backed vaults stay
+		// repo/path-only.
+		_, allowIdentity := v.(installSetter)
+		targets, appendMode, err := modifyScopes(scopesToTargets(currentRepos), allowIdentity, styledOut, ioc)
 		if err != nil {
 			return nil, err
 		}
-		return &scopeResult{Scopes: scopes}, nil
+		return &scopeResult{Scopes: targetsToScopes(targets), Targets: targets, Append: appendMode}, nil
 
 	case "remove": // Remove from installation
 		styledOut.Info("Removing from installation (will remain available in vault)")
@@ -124,102 +145,139 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 	}
 }
 
-// modifyRepositories allows interactive modification of repository list
-// Returns the modified list of repositories
-func modifyRepositories(currentRepos []lockfile.Scope, styledOut *ui.Output, ioc *components.IOContext) ([]lockfile.Scope, error) {
+// modifyScopes runs the interactive scope editor over a kind-aware target
+// list. allowIdentity gates the team/user/bot actions to vaults that can
+// persist them. Returns the edited list (or the original on cancel).
+func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *ui.Output, ioc *components.IOContext) ([]vault.InstallTarget, bool, error) {
 	// Clone current state (so we can cancel without side effects)
-	workingRepos := make([]lockfile.Scope, len(currentRepos))
-	copy(workingRepos, currentRepos)
+	working := append([]vault.InstallTarget(nil), current...)
+	original := append([]vault.InstallTarget(nil), current...)
 
-	// Save original for comparison later
-	originalRepos := make([]lockfile.Scope, len(currentRepos))
-	copy(originalRepos, currentRepos)
+	// Once the user has added a scope this session, default the menu to "Done"
+	// instead of the first option — adding one scope is usually the whole task.
+	addedScope := false
 
 	for {
 		// Build action menu with Value fields
 		options := []components.Option{
-			{Label: "Add a scope", Value: "add", Description: "pick kind (repo/path/team/user/bot) → enter value"},
-			{Label: "Remove a scope", Value: "remove", Description: "pick from current list"},
-			{Label: "Remove all scopes", Value: "remove-all", Description: "clear every scope"},
-			{Label: "Done", Value: "done"},
+			{Label: "Add a repo scope", Value: "add-repo", Description: "entire repository"},
+			{Label: "Add a path scope", Value: "add-path", Description: "specific paths within a repository"},
 		}
+		if allowIdentity {
+			options = append(options,
+				components.Option{Label: "Add a team scope", Value: "add-team", Description: "everyone on a team"},
+				components.Option{Label: "Add a user scope", Value: "add-user", Description: "a single user, by email (entering \"me\" resolves to your email address )"},
+				components.Option{Label: "Add a bot scope", Value: "add-bot", Description: "a single bot, by name"},
+			)
+		}
+		options = append(options,
+			components.Option{Label: "Remove a scope", Value: "remove", Description: "pick from current list"},
+			components.Option{Label: "Remove all scopes", Value: "remove-all", Description: "clear every scope"},
+			components.Option{Label: "Done", Value: "done"},
+		)
 
-		// Show selection menu (default to "Add a scope")
-		selected, err := ioc.SelectWithDefault("", options, 0)
+		// Default to the first option (index 0) on first entry, but to "Done"
+		// (always the last option) once at least one scope has been added.
+		defaultIdx := 0
+		if addedScope {
+			defaultIdx = len(options) - 1
+		}
+		selected, err := ioc.SelectWithDefault("", options, defaultIdx)
 		if err != nil {
 			// If user cancelled, return original unchanged state
 			if err.Error() == "selection cancelled" {
 				styledOut.Info("Changes cancelled")
-				return originalRepos, nil
+				return original, false, nil
 			}
-			return nil, err
+			return nil, false, err
 		}
 
 		switch selected.Value {
-		case "add": // Add new repository
-			repo, err := promptForNewRepository(styledOut, ioc)
+		case "add-repo":
+			repoURL, err := promptForRepoURL(ioc)
 			if err != nil {
-				styledOut.Error(fmt.Sprintf("Failed to add repository: %v", err))
+				styledOut.Error(fmt.Sprintf("Failed to add repo scope: %v", err))
 				continue
 			}
-			workingRepos = append(workingRepos, repo)
-			styledOut.Success("Added " + formatRepository(repo))
+			t := vault.InstallTarget{Kind: vault.InstallKindRepo, Repo: repoURL}
+			working = append(working, t)
+			addedScope = true
+			styledOut.Success("Added " + formatTarget(t))
 
-		case "remove": // Remove repository
-			if len(workingRepos) == 0 {
-				styledOut.Warning("No repositories to remove")
-				continue
-			}
-
-			// Build selection list with indices as values
-			repoOptions := make([]components.Option, len(workingRepos))
-			for i, repo := range workingRepos {
-				repoOptions[i] = components.Option{
-					Label: formatRepository(repo),
-					Value: strconv.Itoa(i),
-				}
-			}
-
-			selectedRepo, err := ioc.Select("Which repository would you like to remove?", repoOptions)
+		case "add-path":
+			repoURL, err := promptForRepoURL(ioc)
 			if err != nil {
-				// User pressed esc or cancelled
+				styledOut.Error(fmt.Sprintf("Failed to add path scope: %v", err))
 				continue
 			}
-
-			// Parse index from Value
-			var idx int
-			if _, err := fmt.Sscanf(selectedRepo.Value, "%d", &idx); err != nil {
+			paths, err := promptForRepositoryPaths(styledOut, repoURL, ioc)
+			if err != nil {
+				styledOut.Error(fmt.Sprintf("Failed to collect paths: %v", err))
 				continue
 			}
+			t := vault.InstallTarget{Kind: vault.InstallKindPath, Repo: repoURL, Paths: paths}
+			working = append(working, t)
+			addedScope = true
+			styledOut.Success("Added " + formatTarget(t))
 
-			removed := workingRepos[idx]
-			workingRepos = append(workingRepos[:idx], workingRepos[idx+1:]...)
-			styledOut.Success("Removed " + formatRepository(removed))
+		case "add-team":
+			names, err := promptForScopeList(ioc, "Team name(s) — comma-separated", "", "team name")
+			if err != nil {
+				styledOut.Error(err.Error())
+				continue
+			}
+			for _, name := range names {
+				t := vault.InstallTarget{Kind: vault.InstallKindTeam, Team: name}
+				working = append(working, t)
+				addedScope = true
+				styledOut.Success("Added " + formatTarget(t))
+			}
 
-		case "remove-all": // Remove all scopes
-			if len(workingRepos) == 0 {
+		case "add-user":
+			// Prefill "me" so the common case (assign to yourself) is just
+			// Enter; "me" resolves to your account at save time. Accepts a
+			// comma-separated list so you can add several users at once.
+			emails, err := promptForScopeList(ioc, "User email(s) — comma-separated, 'me' = you", "me", "user email")
+			if err != nil {
+				styledOut.Error(err.Error())
+				continue
+			}
+			for _, email := range emails {
+				t := vault.InstallTarget{Kind: vault.InstallKindUser, User: email}
+				working = append(working, t)
+				addedScope = true
+				styledOut.Success("Added " + formatTarget(t))
+			}
+
+		case "add-bot":
+			names, err := promptForScopeList(ioc, "Bot name(s) — comma-separated", "", "bot name")
+			if err != nil {
+				styledOut.Error(err.Error())
+				continue
+			}
+			for _, name := range names {
+				t := vault.InstallTarget{Kind: vault.InstallKindBot, Bot: name}
+				working = append(working, t)
+				addedScope = true
+				styledOut.Success("Added " + formatTarget(t))
+			}
+
+		case "remove":
+			if len(working) == 0 {
 				styledOut.Warning("No scopes to remove")
 				continue
 			}
-			workingRepos = workingRepos[:0]
-			styledOut.Success("Removed all scopes")
-
-		case "modify": // Modify repository paths
-			if len(workingRepos) == 0 {
-				styledOut.Warning("No repositories to modify")
-				continue
-			}
 
 			// Build selection list with indices as values
-			repoOptions := make([]components.Option, len(workingRepos))
-			for i, repo := range workingRepos {
-				repoOptions[i] = components.Option{
-					Label: formatRepository(repo),
+			scopeOptions := make([]components.Option, len(working))
+			for i, t := range working {
+				scopeOptions[i] = components.Option{
+					Label: formatTarget(t),
 					Value: strconv.Itoa(i),
 				}
 			}
 
-			selectedRepo, err := ioc.Select("Which repository would you like to modify?", repoOptions)
+			selectedScope, err := ioc.Select("Which scope would you like to remove?", scopeOptions)
 			if err != nil {
 				// User pressed esc or cancelled
 				continue
@@ -227,56 +285,87 @@ func modifyRepositories(currentRepos []lockfile.Scope, styledOut *ui.Output, ioc
 
 			// Parse index from Value
 			var idx int
-			if _, err := fmt.Sscanf(selectedRepo.Value, "%d", &idx); err != nil {
+			if _, err := fmt.Sscanf(selectedScope.Value, "%d", &idx); err != nil {
 				continue
 			}
 
-			// Ask if they want entire repo or specific paths (default to yes)
-			entireRepo, err := ioc.Confirm("Do you want to install for the entire repository?", true)
-			if err != nil {
+			removed := working[idx]
+			working = append(working[:idx], working[idx+1:]...)
+			styledOut.Success("Removed " + formatTarget(removed))
+
+		case "remove-all":
+			if len(working) == 0 {
+				styledOut.Warning("No scopes to remove")
 				continue
 			}
+			working = working[:0]
+			styledOut.Success("Removed all scopes")
 
-			var paths []string
-			if !entireRepo {
-				// Collect new paths (replaces old ones)
-				paths, err = promptForRepositoryPaths(styledOut, workingRepos[idx].Repo, ioc)
-				if err != nil {
-					styledOut.Error(fmt.Sprintf("Failed to collect paths: %v", err))
-					continue
-				}
-			}
-
-			workingRepos[idx].Paths = paths
-			styledOut.Success("Updated " + formatRepository(workingRepos[idx]))
-
-		case "done": // Done with modifications
+		case "done":
 			// Preview changes if any
-			if displayRepositoryChanges(originalRepos, workingRepos, styledOut) {
+			if displayScopeChanges(original, working, styledOut) {
+				// Ask append-vs-replace before the final confirmation, so the
+				// preview, the apply mode, and the confirm read top-to-bottom.
+				// Only meaningful when the vault merges server-side (Sleuth)
+				// and there are scopes to apply.
+				appendMode := false
+				if allowIdentity && len(working) > 0 {
+					appendMode, err = askAppendOrReplace(ioc)
+					if err != nil {
+						return nil, false, err
+					}
+					if appendMode {
+						styledOut.Success("Append")
+					} else {
+						styledOut.Success("Replace")
+					}
+				}
+
 				// Ask for confirmation (default to yes)
 				confirmed, err := ioc.Confirm("Continue with these changes?", true)
 				if err != nil || !confirmed {
 					styledOut.Info("Changes cancelled")
-					return originalRepos, nil // Return original, unchanged
+					return original, false, nil // Return original, unchanged
 				}
+
+				return working, appendMode, nil
 			}
 
-			return workingRepos, nil
+			return working, false, nil
 		}
 	}
 }
 
-// promptForNewRepository prompts for a new repository with URL and paths
-func promptForNewRepository(styledOut *ui.Output, ioc *components.IOContext) (lockfile.Scope, error) {
-	// Prompt for repository URL
+// askAppendOrReplace asks whether the chosen scopes should be merged with the
+// asset's existing scopes (append) or replace them entirely. Defaults to
+// append, including when the prompt is cancelled, since that's the
+// non-destructive choice.
+func askAppendOrReplace(ioc *components.IOContext) (bool, error) {
+	options := []components.Option{
+		{Label: "Append to existing scopes", Value: "append", Description: "keep current installs and add these"},
+		{Label: "Replace existing scopes", Value: "replace", Description: "remove current installs, set only these"},
+	}
+	selected, err := ioc.SelectWithDefault("Apply these scopes how?", options, 0)
+	if err != nil {
+		if err.Error() == "selection cancelled" {
+			return true, nil
+		}
+		return false, err
+	}
+	return selected.Value == "append", nil
+}
+
+// promptForRepoURL prompts for a repository URL and normalizes bare "owner/repo"
+// slugs to full GitHub URLs.
+func promptForRepoURL(ioc *components.IOContext) (string, error) {
 	repoURL, err := ioc.Input("Repository URL (e.g., github.com/user/repo or full URL)", "")
 	if err != nil {
-		return lockfile.Scope{}, err
+		return "", err
 	}
 
 	repoURL = strings.TrimSpace(repoURL)
 	if repoURL == "" {
-		return lockfile.Scope{}, errors.New("repository URL is required")
+		return "", errors.New("repository URL is required")
 	}
 
 	// If it's just a slug (e.g., "user/repo"), convert to full GitHub URL
@@ -287,25 +376,27 @@ func promptForNewRepository(styledOut *ui.Output, ioc *components.IOContext) (lo
 		}
 	}
 
-	// Ask if entire repository or specific paths (default to yes)
-	entireRepo, err := ioc.Confirm("Do you want to install for the entire repository?", true)
-	if err != nil {
-		return lockfile.Scope{}, err
-	}
+	return repoURL, nil
+}
 
-	var paths []string
-	if !entireRepo {
-		// Collect paths
-		paths, err = promptForRepositoryPaths(styledOut, repoURL, ioc)
-		if err != nil {
-			return lockfile.Scope{}, err
+// promptForScopeList prompts for one or more comma-separated identity values
+// (team names, user emails, or bot names), trimming each and dropping blanks.
+// def is the prefilled default; what names the value for the "required" error.
+func promptForScopeList(ioc *components.IOContext, label, def, what string) ([]string, error) {
+	raw, err := ioc.Input(label, def)
+	if err != nil {
+		return nil, err
+	}
+	var vals []string
+	for _, part := range strings.Split(raw, ",") {
+		if v := strings.TrimSpace(part); v != "" {
+			vals = append(vals, v)
 		}
 	}
-
-	return lockfile.Scope{
-		Repo:  repoURL,
-		Paths: paths,
-	}, nil
+	if len(vals) == 0 {
+		return nil, fmt.Errorf("%s is required", what)
+	}
+	return vals, nil
 }
 
 // promptForRepositoryPaths collects one or more paths for a repository

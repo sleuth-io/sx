@@ -110,7 +110,7 @@ equivalent of 'pip freeze' against the vault's manifest.`,
 	cmd.Flags().StringVar(&repoFlag, "repo", "", "Install this asset for a specific repository URL")
 	cmd.Flags().StringVar(&pathFlag, "path", "", "Install this asset for a repo subpath (format: repo_url#path1,path2)")
 	cmd.Flags().StringVar(&teamFlag, "team", "", "Install this asset for every member of a team")
-	cmd.Flags().StringVar(&userFlag, "user", "", "Install this asset for a specific user email")
+	cmd.Flags().StringVar(&userFlag, "user", "", "Install this asset for a specific user email (or 'me' for yourself)")
 	cmd.Flags().StringVar(&botFlag, "bot", "", "Install this asset for a specific bot identity")
 
 	_ = cmd.Flags().MarkHidden("hook-mode") // Hide from help output since it's internal

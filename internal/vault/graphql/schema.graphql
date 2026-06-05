@@ -3602,6 +3602,19 @@ type ManagedImportRunItem {
   error: String
 }
 
+type SmartMergeStatus {
+  isRunning: Boolean!
+  isComplete: Boolean!
+  error: String
+  files: [SmartMergeFile!]!
+}
+
+type SmartMergeFile {
+  name: String!
+  path: String
+  content: String!
+}
+
 """A tool available from an MCP integration."""
 type McpIntegrationTool {
   """Tool name"""
@@ -4751,6 +4764,7 @@ type Query {
   assetDiscoveryStatus: AssetDiscoveryStatus!
   managedImportScanStatus: ManagedImportScanStatus!
   managedImportRunStatus: ManagedImportRunStatus!
+  smartMergeStatus(mergeId: ID!): SmartMergeStatus!
   aiAssetCleanupRoots: [String!]!
   skillVersionDiff(
     """Skill GID"""
@@ -5677,6 +5691,16 @@ type Mutation {
   subsequent re-scan starts fresh.
   """
   confirmManagedImport(items: [ManagedImportItemInput!]!): ConfirmManagedImportMutation
+
+  """
+  Kick off a background LLM-driven smart merge.
+  
+  Returns a ``merge_id`` immediately. The actual LLM call runs in a celery
+  task; the frontend polls ``smartMergeStatus(mergeId)`` for the result.
+  A single LLM call can take well over the 60s GraphQL request timeout, so
+  keeping this mutation synchronous would unavoidably stall the wizard.
+  """
+  triggerSmartMerge(assetName: String!, assetType: AssetType!, variants: [SmartMergeVariantInput!]!): TriggerSmartMergeMutation
   createMonoRepoConfig(input: CreateMonoRepoConfigInput!): CreateMonoRepoConfigMutation
   updateMonoRepoConfig(input: UpdateMonoRepoConfigInput!): UpdateMonoRepoConfigMutation
   deleteMonoRepoConfig(id: ID!): DeleteMonoRepoConfigMutation
@@ -6050,6 +6074,11 @@ input SetAssetInstallationsInput {
   repositories: [RepositoryInstallationInput!]!
   personalOnly: Boolean
   installations: [AssetInstallationInput!]
+
+  """
+  When true, merge these targets with the asset's existing installations instead of replacing them. Defaults to false (replace). An empty target set with append=true is a no-op.
+  """
+  append: Boolean
 }
 
 input RepositoryInstallationInput {
@@ -6552,6 +6581,23 @@ input ManagedImportFileInput {
   name: String!
   path: String
   content: String!
+}
+
+"""
+Kick off a background LLM-driven smart merge.
+
+Returns a ``merge_id`` immediately. The actual LLM call runs in a celery
+task; the frontend polls ``smartMergeStatus(mergeId)`` for the result.
+A single LLM call can take well over the 60s GraphQL request timeout, so
+keeping this mutation synchronous would unavoidably stall the wizard.
+"""
+type TriggerSmartMergeMutation {
+  mergeId: ID
+  errors: [ErrorType!]!
+}
+
+input SmartMergeVariantInput {
+  files: [ManagedImportFileInput!]!
 }
 
 type CreateMonoRepoConfigMutation {

@@ -360,7 +360,7 @@ func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHel
 	foundAsset.Scopes = result.Scopes
 
 	// Update lock file
-	if err := updateLockFile(ctx, out, vault, foundAsset, result.ScopeEntity); err != nil {
+	if err := updateLockFile(ctx, out, vault, foundAsset, result); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 
@@ -494,7 +494,7 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 	}
 
 	lockAsset.Scopes = result.Scopes
-	if err := updateLockFile(ctx, out, vault, lockAsset, result.ScopeEntity); err != nil {
+	if err := updateLockFile(ctx, out, vault, lockAsset, result); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 
@@ -596,7 +596,7 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 	lockAsset.Scopes = result.Scopes
 
 	// Update lock file with asset
-	if err := updateLockFile(ctx, out, vault, lockAsset, result.ScopeEntity); err != nil {
+	if err := updateLockFile(ctx, out, vault, lockAsset, result); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 

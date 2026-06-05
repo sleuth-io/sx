@@ -389,11 +389,11 @@ func trailingOwnerName(s string) string {
 func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string, target InstallTarget) error {
 	switch target.Kind {
 	case InstallKindOrg:
-		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, nil)
+		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, nil, false)
 	case InstallKindRepo:
-		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo}}, false, nil)
+		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo}}, false, nil, false)
 	case InstallKindPath:
-		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo, Paths: target.Paths}}, false, nil)
+		return s.setAssetInstallationsGraphQL(ctx, assetName, []vaultgql.RepositoryInstallationInput{{Url: target.Repo, Paths: target.Paths}}, false, nil, false)
 	case InstallKindUser:
 		// The setAssetInstallations `installations` input now accepts an explicit
 		// USER target by GID, so we can scope to any user in the org (not just the
@@ -403,7 +403,7 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 			return err
 		}
 		if mgmt.NormalizeEmail(target.User) == actor.Email {
-			return s.setAssetInstallationsGraphQL(ctx, assetName, nil, true, nil)
+			return s.setAssetInstallationsGraphQL(ctx, assetName, nil, true, nil, false)
 		}
 		userGID, err := s.userGIDByEmail(ctx, target.User)
 		if err != nil {
@@ -411,7 +411,7 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 		}
 		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, []vaultgql.AssetInstallationInput{
 			{EntityType: vaultgql.VaultAssetInstallationEntityTypeUser, EntityId: &userGID},
-		})
+		}, false)
 	case InstallKindTeam:
 		teamGID, err := s.teamGIDByName(ctx, target.Team)
 		if err != nil {
@@ -419,7 +419,7 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 		}
 		return s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, []vaultgql.AssetInstallationInput{
 			{EntityType: vaultgql.VaultAssetInstallationEntityTypeTeam, EntityId: &teamGID},
-		})
+		}, false)
 	case InstallKindBot:
 		// Bot installs go through the dedicated installSkillToBot
 		// mutation, not setAssetInstallations — the latter does not yet
@@ -442,13 +442,13 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 // single GraphQL call itself failed (e.g. a repository URL the server rejects),
 // in which case nothing was applied. Org-wide is exclusive — if any target is
 // org, the asset goes global.
-func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName string, targets []InstallTarget) (unresolved []InstallTarget, err error) {
+func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName string, targets []InstallTarget, appendMode bool) (unresolved []InstallTarget, err error) {
 	if len(targets) == 0 {
 		return nil, nil
 	}
 	for _, t := range targets {
 		if t.Kind == InstallKindOrg {
-			return nil, s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, nil)
+			return nil, s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, nil, appendMode)
 		}
 	}
 	var repositories []vaultgql.RepositoryInstallationInput
@@ -497,7 +497,7 @@ func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName strin
 		// org-wide, which would wrongly globalize the asset. Leave it as-is.
 		return unresolved, nil
 	}
-	if err := s.setAssetInstallationsGraphQL(ctx, assetName, repositories, false, installations); err != nil {
+	if err := s.setAssetInstallationsGraphQL(ctx, assetName, repositories, false, installations, appendMode); err != nil {
 		return unresolved, err
 	}
 	return unresolved, nil
@@ -1752,6 +1752,7 @@ func (s *SleuthVault) setAssetInstallationsGraphQL(
 	repositories []vaultgql.RepositoryInstallationInput,
 	personalOnly bool,
 	installations []vaultgql.AssetInstallationInput,
+	appendMode bool,
 ) error {
 	if repositories == nil {
 		repositories = []vaultgql.RepositoryInstallationInput{}
@@ -1761,6 +1762,7 @@ func (s *SleuthVault) setAssetInstallationsGraphQL(
 		Repositories:  repositories,
 		PersonalOnly:  &personalOnly,
 		Installations: installations,
+		Append:        &appendMode,
 	})
 	if err != nil {
 		return err

@@ -27,7 +27,7 @@ func (f *bulkFake) ClearAssetInstallations(_ context.Context, _ string) error {
 	return nil
 }
 
-func (f *bulkFake) SetAssetInstallations(_ context.Context, _ string, targets []vault.InstallTarget) ([]vault.InstallTarget, error) {
+func (f *bulkFake) SetAssetInstallations(_ context.Context, _ string, targets []vault.InstallTarget, _ bool) ([]vault.InstallTarget, error) {
 	f.bulkCalls = append(f.bulkCalls, targets)
 	return f.unresolved, f.bulkErr
 }
