@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1166,5 +1167,49 @@ func TestSleuthVault_CreateTeam_NoAdminsSkipsSetTeamAdmin(t *testing.T) {
 		if r.OperationName == "SetTeamAdmin" {
 			t.Fatal("SetTeamAdmin should not be called when no admins specified")
 		}
+	}
+}
+
+// TestSleuthVault_GetLockFile_RetriesTransient502 covers issue #124: a 502
+// from the skills.new gateway during `sx install` must not abort the
+// install — the lock file fetch retries with backoff until the gateway
+// responds. Asserts via the visible side effect (first-call 502, second-
+// call success returns the lock file body).
+func TestSleuthVault_GetLockFile_RetriesTransient502(t *testing.T) {
+	fastRetryBackoff(t)
+
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/skills/sx.lock" {
+			http.NotFound(w, r)
+			return
+		}
+		n := atomic.AddInt32(&calls, 1)
+		if n == 1 {
+			http.Error(w, "upstream unavailable", http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("ETag", `"v1"`)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("lock-file-body"))
+	}))
+	defer srv.Close()
+
+	v := NewSleuthVault(srv.URL, "test-token")
+	data, etag, notModified, err := v.GetLockFile(context.Background(), "")
+	if err != nil {
+		t.Fatalf("GetLockFile after transient 502 should succeed, got: %v", err)
+	}
+	if notModified {
+		t.Fatalf("notModified = true, want false")
+	}
+	if string(data) != "lock-file-body" {
+		t.Fatalf("data = %q, want %q", string(data), "lock-file-body")
+	}
+	if etag != `"v1"` {
+		t.Fatalf("etag = %q, want %q", etag, `"v1"`)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("server call count = %d, want 2 (1 failure + 1 success)", got)
 	}
 }

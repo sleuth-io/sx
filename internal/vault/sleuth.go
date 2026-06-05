@@ -142,7 +142,7 @@ func (s *SleuthVault) GetLockFile(ctx context.Context, cachedETag string) (conte
 		req.Header.Set("If-None-Match", cachedETag)
 	}
 
-	resp, err := s.httpClient.Do(req)
+	resp, err := doHTTPWithRetry(ctx, s.httpClient, req)
 	if err != nil {
 		return nil, "", false, fmt.Errorf("failed to fetch lock file: %w", err)
 	}

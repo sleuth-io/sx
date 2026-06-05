@@ -53,7 +53,7 @@ func (h *HTTPSourceHandler) Fetch(ctx context.Context, asset *lockfile.Asset) ([
 	}
 
 	// Execute request
-	resp, err := h.client.Do(req)
+	resp, err := doHTTPWithRetry(ctx, h.client, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download asset: %w", err)
 	}
