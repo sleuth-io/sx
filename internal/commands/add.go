@@ -15,7 +15,6 @@ import (
 	"github.com/sleuth-io/sx/internal/github"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
-	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	"github.com/sleuth-io/sx/internal/ui/theme"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -602,14 +601,4 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 	}
 
 	return nil
-}
-
-// promptForRepositories prompts user for repository configurations and returns them
-// Takes currentRepos (nil if not installed, empty slice if global, or list of repos)
-// Returns scopeResult with Remove=true if user chooses not to install
-func promptForRepositories(out *outputHelper, assetName, version string, currentRepos []lockfile.Scope, v vaultpkg.Vault) (*scopeResult, error) {
-	// Use the new UI components (they automatically fall back to simple text in non-TTY)
-	styledOut := ui.NewOutput(out.cmd.OutOrStdout(), out.cmd.ErrOrStderr())
-	ioc := components.NewIOContext(out.cmd.InOrStdin(), out.cmd.OutOrStdout())
-	return promptForRepositoriesWithUI(assetName, version, currentRepos, v, styledOut, ioc)
 }

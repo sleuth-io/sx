@@ -20,6 +20,16 @@ type scopeResult struct {
 	Inherit     bool   // Preserve existing installations (no scope flags provided)
 }
 
+// promptForRepositories prompts user for repository configurations and returns them
+// Takes currentRepos (nil if not installed, empty slice if global, or list of repos)
+// Returns scopeResult with Remove=true if user chooses not to install
+func promptForRepositories(out *outputHelper, assetName, version string, currentRepos []lockfile.Scope, v vault.Vault) (*scopeResult, error) {
+	// Use the new UI components (they automatically fall back to simple text in non-TTY)
+	styledOut := ui.NewOutput(out.cmd.OutOrStdout(), out.cmd.ErrOrStderr())
+	ioc := components.NewIOContext(out.cmd.InOrStdin(), out.cmd.OutOrStdout())
+	return promptForRepositoriesWithUI(assetName, version, currentRepos, v, styledOut, ioc)
+}
+
 // promptForRepositoriesWithUI prompts user for repository configurations using new UI
 // Takes currentRepos (nil if not installed, empty slice if global, or list of repos)
 // Returns scopeResult with Remove=true if user chooses not to install
