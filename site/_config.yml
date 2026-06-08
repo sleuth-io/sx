@@ -1,0 +1,27 @@
+title: sx blog
+description: >-
+  Notes from building sx — a package manager for AI assets (skills, rules,
+  MCP configs, commands).
+author: Sleuth
+# Project site lives at https://sleuth-io.github.io/sx
+url: "https://sleuth-io.github.io"
+baseurl: "/sx"
+
+theme: minima
+minima:
+  skin: dark
+
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+
+# Keep the repo's own docs/specs out of the build (they live under docs/, not site/)
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor
+
+header_pages:
+  - index.md
+
+show_excerpts: true

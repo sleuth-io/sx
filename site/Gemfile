@@ -1,0 +1,13 @@
+source "https://rubygems.org"
+
+# Mirrors what GitHub Pages / actions/jekyll-build-pages runs, so a local
+# `bundle exec jekyll build` matches the deployed build.
+gem "github-pages", group: :jekyll_plugins
+
+group :jekyll_plugins do
+  gem "jekyll-feed"
+  gem "jekyll-seo-tag"
+end
+
+# Windows / JRuby tzinfo + newer-ruby webrick (harmless elsewhere)
+gem "webrick"
