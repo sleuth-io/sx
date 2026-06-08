@@ -3516,6 +3516,11 @@ type VaultAssetInstallation {
   entityType: VaultAssetInstallationEntityType!
   entityId: String
   entityName: String!
+
+  """
+  Canonical reference used to install this entity, when it differs from entityName: the email for USER installations. Null for entity types whose entityName is already the canonical reference.
+  """
+  entityRef: String
   entityProvider: String
   monoRepoConfigId: String
   monoRepoConfigName: String
@@ -3543,23 +3548,6 @@ type SkillDiscoveryStatus {
 
   """Stream ID for the discovery process"""
   streamId: String
-}
-
-type AssetDiscoveryStatus {
-  isComplete: Boolean!
-  isRunning: Boolean!
-  entries: [AssetDiscoveryEntry!]!
-  counts: JSONString!
-  totalRepos: Int!
-  sourceClients: [String!]!
-}
-
-type AssetDiscoveryEntry {
-  assetName: String!
-  assetType: String!
-  repoName: String!
-  isNew: Boolean!
-  sourceClient: String!
 }
 
 type ManagedImportScanStatus {
@@ -4761,7 +4749,6 @@ type Query {
     after: String
   ): SkillPullRequestConnection!
   skillDiscoveryStatus(repositoryGid: ID!): SkillDiscoveryStatus!
-  assetDiscoveryStatus: AssetDiscoveryStatus!
   managedImportScanStatus: ManagedImportScanStatus!
   managedImportRunStatus: ManagedImportRunStatus!
   smartMergeStatus(mergeId: ID!): SmartMergeStatus!
@@ -5640,11 +5627,6 @@ type Mutation {
   ): SetAssetStatusMutation
 
   """
-  Remove a single installation from an asset (does not delete the asset).
-  """
-  uninstallAsset(input: UninstallAssetInput!): UninstallAssetMutation
-
-  """
   Re-initialize skill discovery for a repository, deleting existing suggestions.
   """
   reinitializeRepositoryDiscovery(
@@ -5668,9 +5650,6 @@ type Mutation {
     """New status (PENDING or REJECTED)"""
     status: SuggestedSkillStatusEnum!
   ): UpdateSuggestedSkillStatusMutation
-
-  """Trigger a re-scan of all repositories for AI assets."""
-  triggerAssetDiscovery: TriggerAssetDiscoveryMutation
 
   """
   Start a managed-import scan over the user-selected repositories.
@@ -5701,6 +5680,20 @@ type Mutation {
   keeping this mutation synchronous would unavoidably stall the wizard.
   """
   triggerSmartMerge(assetName: String!, assetType: AssetType!, variants: [SmartMergeVariantInput!]!): TriggerSmartMergeMutation
+
+  """
+  Remove a single installation from an asset (does not delete the asset).
+  """
+  uninstallAsset(input: UninstallAssetInput!): UninstallAssetMutation
+
+  """
+  Remove multiple installations from an asset in one best-effort call.
+  
+  Each target is attempted independently; one that can't be removed (no
+  permission, not installed, a git-source removal) is recorded in ``errors``
+  while the rest proceed. ``removedCount`` is how many were actually removed.
+  """
+  uninstallAssetTargets(input: UninstallAssetTargetsInput!): UninstallAssetTargetsMutation
   createMonoRepoConfig(input: CreateMonoRepoConfigInput!): CreateMonoRepoConfigMutation
   updateMonoRepoConfig(input: UpdateMonoRepoConfigInput!): UpdateMonoRepoConfigMutation
   deleteMonoRepoConfig(id: ID!): DeleteMonoRepoConfigMutation
@@ -6497,26 +6490,6 @@ type SetAssetStatusMutation {
 }
 
 """
-Remove a single installation from an asset (does not delete the asset).
-"""
-type UninstallAssetMutation {
-  asset: VaultAsset
-  errors: [ErrorType!]!
-}
-
-input UninstallAssetInput {
-  """GID of the asset to uninstall from a target"""
-  id: ID!
-  entityType: VaultAssetInstallationEntityType!
-
-  """GID of the entity (null for organization-wide installs)"""
-  entityId: ID
-
-  """GID of the mono-repo config (only for repository targets)"""
-  monoRepoConfigId: ID
-}
-
-"""
 Re-initialize skill discovery for a repository, deleting existing suggestions.
 """
 type ReinitializeRepositoryDiscoveryMutation {
@@ -6535,12 +6508,6 @@ type GenerateMoreRepositorySuggestionsMutation {
 """Update the status of a suggested skill (reject or unreject)."""
 type UpdateSuggestedSkillStatusMutation {
   suggestedSkill: SuggestedSkill
-  errors: [ErrorType!]!
-}
-
-"""Trigger a re-scan of all repositories for AI assets."""
-type TriggerAssetDiscoveryMutation {
-  success: Boolean!
   errors: [ErrorType!]!
 }
 
@@ -6598,6 +6565,58 @@ type TriggerSmartMergeMutation {
 
 input SmartMergeVariantInput {
   files: [ManagedImportFileInput!]!
+}
+
+"""
+Remove a single installation from an asset (does not delete the asset).
+"""
+type UninstallAssetMutation {
+  asset: VaultAsset
+  errors: [ErrorType!]!
+}
+
+input UninstallAssetInput {
+  entityType: VaultAssetInstallationEntityType!
+
+  """GID of the entity (null for organization-wide installs)"""
+  entityId: ID
+
+  """GID of the mono-repo config (only for repository targets)"""
+  monoRepoConfigId: ID
+
+  """GID of the asset to uninstall from a target"""
+  id: ID!
+}
+
+"""
+Remove multiple installations from an asset in one best-effort call.
+
+Each target is attempted independently; one that can't be removed (no
+permission, not installed, a git-source removal) is recorded in ``errors``
+while the rest proceed. ``removedCount`` is how many were actually removed.
+"""
+type UninstallAssetTargetsMutation {
+  asset: VaultAsset
+  removedCount: Int!
+  errors: [ErrorType!]!
+}
+
+input UninstallAssetTargetsInput {
+  """GID of the asset to uninstall targets from"""
+  id: ID!
+
+  """Installation targets to remove from the asset."""
+  targets: [UninstallScopeInput!]!
+}
+
+input UninstallScopeInput {
+  entityType: VaultAssetInstallationEntityType!
+
+  """GID of the entity (null for organization-wide installs)"""
+  entityId: ID
+
+  """GID of the mono-repo config (only for repository targets)"""
+  monoRepoConfigId: ID
 }
 
 type CreateMonoRepoConfigMutation {
