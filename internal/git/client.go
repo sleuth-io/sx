@@ -186,6 +186,30 @@ func (c *Client) Fetch(ctx context.Context, repoPath string) error {
 	return nil
 }
 
+// Reset runs `git reset --<mode> <ref>` in repoPath. Used by vault-clone
+// repair to move the branch pointer back to the remote tip.
+func (c *Client) Reset(ctx context.Context, repoPath, mode, ref string) error {
+	cmd := c.command(ctx, "reset", "--"+mode, ref)
+	cmd.Dir = repoPath
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git reset --%s %s failed: %w: %s", mode, ref, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+// RestoreExcept restores all tracked files in both the index and worktree to
+// HEAD, except those under excludeDir. Used by vault-clone repair to discard
+// local manifest/asset divergence while leaving the queued usage appends under
+// excludeDir staged for a follow-up commit.
+func (c *Client) RestoreExcept(ctx context.Context, repoPath, excludeDir string) error {
+	cmd := c.command(ctx, "restore", "--staged", "--worktree", "--", ".", ":(exclude)"+excludeDir)
+	cmd.Dir = repoPath
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git restore failed: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
 // Pull pulls changes from the remote repository
 func (c *Client) Pull(ctx context.Context, repoPath string) error {
 	log := logger.Get()

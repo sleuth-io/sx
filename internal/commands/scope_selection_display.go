@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/lockfile"
@@ -181,13 +182,19 @@ func displayScopeChanges(before, after []vault.InstallTarget, styledOut *ui.Outp
 		return false
 	}
 
+	// Render added and removed symmetrically as a diff preview: a red "- " for
+	// removals, a green "+ " for additions. Don't use Success() here — its ✓
+	// reads as "already done", but this is a preview shown BEFORE the
+	// "Continue?" confirmation. Sort each list so the preview is stable.
+	slices.Sort(removed)
+	slices.Sort(added)
 	styledOut.Newline()
 	styledOut.Info("Changes to apply:")
 	for _, key := range removed {
-		styledOut.Printf("  - Removed: %s\n", styledOut.MutedText(key))
+		styledOut.Printf("  %s\n", styledOut.ErrorText("- "+key))
 	}
 	for _, key := range added {
-		styledOut.Success("Added: " + key)
+		styledOut.Printf("  %s\n", styledOut.SuccessText("+ "+key))
 	}
 	return true
 }

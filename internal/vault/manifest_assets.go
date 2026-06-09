@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"fmt"
 	"maps"
 
 	"github.com/sleuth-io/sx/internal/lockfile"
@@ -190,6 +191,80 @@ func (g *GitVault) ExistingAssetScopes(name string) []lockfile.Scope {
 		return a.Scopes
 	}
 	return nil
+}
+
+// commonCurrentInstallTargets reads the named asset's current installation from
+// the manifest as kind-aware targets — repo/path AND identity (team/user/bot).
+// It is the file-backed counterpart to SleuthVault.CurrentInstallTargets and
+// lets git/path vaults satisfy the same currentInstallReader interface, so the
+// `sx add` scope editor renders every scope kind through ONE code path instead
+// of falling back to the repo/path-only view (which silently showed a
+// user-scoped asset as "global"). The bool reports whether the asset is in the
+// manifest at all; present with no targets means a global (org-wide) install.
+func commonCurrentInstallTargets(vaultRoot, name string) ([]InstallTarget, bool, error) {
+	m, err := loadManifest(vaultRoot)
+	if err != nil {
+		return nil, false, err
+	}
+	present := false
+	var targets []InstallTarget
+	seen := map[string]bool{}
+	for _, a := range m.Assets {
+		if a.Name != name {
+			continue
+		}
+		present = true
+		// Scopes inherit across same-name version rows, so aggregate and dedup
+		// rather than trusting the first row alone.
+		for _, s := range a.Scopes {
+			t, ok := manifestScopeToTarget(s)
+			if !ok {
+				continue
+			}
+			key := fmt.Sprintf("%s|%s|%v|%s|%s|%s", t.Kind, t.Repo, t.Paths, t.Team, t.User, t.Bot)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			targets = append(targets, t)
+		}
+	}
+	if !present {
+		return nil, false, nil
+	}
+	return targets, true, nil
+}
+
+// manifestScopeToTarget converts a stored manifest scope row into a kind-aware
+// install target. Org scopes never appear as rows (org-wide is the empty scope
+// set), so an unexpected kind is reported as not-convertible.
+func manifestScopeToTarget(s manifest.Scope) (InstallTarget, bool) {
+	switch s.Kind {
+	case manifest.ScopeKindRepo:
+		return InstallTarget{Kind: InstallKindRepo, Repo: s.Repo}, true
+	case manifest.ScopeKindPath:
+		return InstallTarget{Kind: InstallKindPath, Repo: s.Repo, Paths: append([]string(nil), s.Paths...)}, true
+	case manifest.ScopeKindTeam:
+		return InstallTarget{Kind: InstallKindTeam, Team: s.Team}, true
+	case manifest.ScopeKindUser:
+		return InstallTarget{Kind: InstallKindUser, User: s.User}, true
+	case manifest.ScopeKindBot:
+		return InstallTarget{Kind: InstallKindBot, Bot: s.Bot}, true
+	default:
+		return InstallTarget{}, false
+	}
+}
+
+// CurrentInstallTargets reports the named asset's current installation from the
+// path vault's manifest; see commonCurrentInstallTargets.
+func (p *PathVault) CurrentInstallTargets(ctx context.Context, name string) ([]InstallTarget, bool, error) {
+	return commonCurrentInstallTargets(p.repoPath, name)
+}
+
+// CurrentInstallTargets reports the named asset's current installation from the
+// git vault's manifest; see commonCurrentInstallTargets.
+func (g *GitVault) CurrentInstallTargets(ctx context.Context, name string) ([]InstallTarget, bool, error) {
+	return commonCurrentInstallTargets(g.repoPath, name)
 }
 
 // lockfileAssetToManifest converts a lockfile.Asset (how the install

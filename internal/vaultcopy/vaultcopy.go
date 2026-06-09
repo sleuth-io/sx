@@ -278,7 +278,7 @@ type scopeInstaller interface {
 // scope. It returns the targets it couldn't resolve in the destination (skipped,
 // not applied) so the caller can warn without the others being lost.
 type bulkInstaller interface {
-	SetAssetInstallations(ctx context.Context, name string, targets []vault.InstallTarget, appendMode bool) (unresolved []vault.InstallTarget, err error)
+	SetAssetInstallations(ctx context.Context, name string, targets []vault.InstallTarget, appendMode bool) (skipped []vault.SkippedTarget, err error)
 }
 
 // clearAutoInstall undoes any install a destination auto-applies on upload
@@ -335,7 +335,7 @@ func copyAssetScopes(ctx context.Context, dst scopeInstaller, name string, scope
 	// best-effort: it applies all resolvable targets atomically and reports the
 	// rest as unresolved (so we never fall back to clobbering per-target calls).
 	if bulk, ok := dst.(bulkInstaller); ok {
-		unresolved, err := bulk.SetAssetInstallations(ctx, name, targets, false)
+		skipped, err := bulk.SetAssetInstallations(ctx, name, targets, false)
 		if err != nil {
 			// The set failed, so the asset still carries any auto-applied install
 			// (org-wide on skills.new). Clear it so a failed scope-set doesn't
@@ -344,10 +344,10 @@ func copyAssetScopes(ctx context.Context, dst scopeInstaller, name string, scope
 			clearAutoInstall(ctx, dst, name, r)
 			return
 		}
-		for _, u := range unresolved {
-			r.warnf("scope %s on %q skipped (not found in destination)", u.Describe(), name)
+		for _, sk := range skipped {
+			r.warnf("scope %s on %q skipped: %s", sk.Target.Describe(), name, sk.Reason)
 		}
-		applied := len(targets) - len(unresolved)
+		applied := len(targets) - len(skipped)
 		if applied == 0 {
 			// Nothing resolved (every target absent from the destination). The
 			// asset would otherwise keep its auto-applied org-wide install, which

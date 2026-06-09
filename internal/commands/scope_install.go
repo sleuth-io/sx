@@ -96,11 +96,10 @@ func runInstallSetTarget(cmd *cobra.Command, assetName string, f installTargetFl
 	}
 	target = resolvedTargets[0]
 
-	if target.Kind == vaultpkg.InstallKindTeam {
-		if err := requireTeamAdmin(ctx, v, target.Team); err != nil {
-			return err
-		}
-	}
+	// Scoping an asset to a team no longer requires team-admin — only that the
+	// team exists and you can write to the vault (SD-10170). The vault layer
+	// enforces team existence; admin stays reserved for modifying the team
+	// itself (sx team member/admin/repo).
 
 	status := components.NewStatus(cmd.OutOrStdout())
 	status.Start("Setting installation target for " + assetName)

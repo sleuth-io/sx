@@ -109,7 +109,7 @@ equivalent of 'pip freeze' against the vault's manifest.`,
 	cmd.Flags().BoolVar(&orgFlag, "org", false, "Set this asset to install org-wide")
 	cmd.Flags().StringVar(&repoFlag, "repo", "", "Install this asset for a specific repository URL")
 	cmd.Flags().StringVar(&pathFlag, "path", "", "Install this asset for a repo subpath (format: repo_url#path1,path2)")
-	cmd.Flags().StringVar(&teamFlag, "team", "", "Install this asset for every member of a team (by team name, e.g. --team platform; you must be a team admin)")
+	cmd.Flags().StringVar(&teamFlag, "team", "", "Install this asset for every member of a team (by team name, e.g. --team platform; the team must exist in the vault)")
 	cmd.Flags().StringVar(&userFlag, "user", "", "Install this asset for a specific user email (or 'me' for yourself)")
 	cmd.Flags().StringVar(&botFlag, "bot", "", "Install this asset for a specific bot identity")
 
@@ -276,7 +276,7 @@ func runInstall(cmd *cobra.Command, args []string, hookMode bool, hookClientID s
 	handleCursorWorkspace(hookMode, effectiveClientsFlag, log)
 
 	// Load every active profile's configuration and fetch their lock files.
-	profileLocks, mpc, primaryCfg, cfg, done, err := loadActiveProfilesAndLockFiles(ctx, status, styledOut)
+	profileLocks, mpc, primaryCfg, cfg, done, err := loadActiveProfilesAndLockFiles(ctx, status, styledOut, repairMode)
 	if err != nil {
 		return err
 	}

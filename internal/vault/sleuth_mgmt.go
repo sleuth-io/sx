@@ -442,7 +442,7 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 // single GraphQL call itself failed (e.g. a repository URL the server rejects),
 // in which case nothing was applied. Org-wide is exclusive — if any target is
 // org, the asset goes global.
-func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName string, targets []InstallTarget, appendMode bool) (unresolved []InstallTarget, err error) {
+func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName string, targets []InstallTarget, appendMode bool) (skipped []SkippedTarget, err error) {
 	if len(targets) == 0 {
 		return nil, nil
 	}
@@ -464,7 +464,7 @@ func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName strin
 		case InstallKindTeam:
 			gid, gerr := s.teamGIDByName(ctx, t.Team)
 			if gerr != nil {
-				unresolved = append(unresolved, t)
+				skipped = append(skipped, SkippedTarget{Target: t, Reason: fmt.Sprintf("team %q not found in this vault", t.Team)})
 				continue
 			}
 			installations = append(installations, vaultgql.AssetInstallationInput{
@@ -473,7 +473,7 @@ func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName strin
 		case InstallKindUser:
 			gid, gerr := s.userGIDByEmail(ctx, t.User)
 			if gerr != nil {
-				unresolved = append(unresolved, t)
+				skipped = append(skipped, SkippedTarget{Target: t, Reason: fmt.Sprintf("user %q not found in this vault", t.User)})
 				continue
 			}
 			installations = append(installations, vaultgql.AssetInstallationInput{
@@ -482,25 +482,25 @@ func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName strin
 		case InstallKindBot:
 			gid, gerr := s.botGIDByName(ctx, t.Bot)
 			if gerr != nil {
-				unresolved = append(unresolved, t)
+				skipped = append(skipped, SkippedTarget{Target: t, Reason: fmt.Sprintf("bot %q not found in this vault", t.Bot)})
 				continue
 			}
 			installations = append(installations, vaultgql.AssetInstallationInput{
 				EntityType: vaultgql.VaultAssetInstallationEntityTypeBot, EntityId: &gid,
 			})
 		default:
-			return unresolved, fmt.Errorf("unknown install kind: %q", t.Kind)
+			return skipped, fmt.Errorf("unknown install kind: %q", t.Kind)
 		}
 	}
 	if len(repositories) == 0 && len(installations) == 0 {
 		// Nothing resolved. Don't send an empty set — the server reads that as
 		// org-wide, which would wrongly globalize the asset. Leave it as-is.
-		return unresolved, nil
+		return skipped, nil
 	}
 	if err := s.setAssetInstallationsGraphQL(ctx, assetName, repositories, false, installations, appendMode); err != nil {
-		return unresolved, err
+		return skipped, err
 	}
-	return unresolved, nil
+	return skipped, nil
 }
 
 // AssetInstallScopes reads an asset's installation targets from the server and

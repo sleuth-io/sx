@@ -100,8 +100,13 @@ one of the team's repositories" — so the asset reaches the right
 people in the right codebases without you listing every repo
 separately.
 
-`--team <name>` requires the caller to be an admin of the named team,
-re-checked inside the transaction against the freshly-loaded team list.
+`--team <name>` only requires the named team to **exist** in the vault
+(re-checked inside the transaction) plus write access to the vault —
+**not** team-admin. Scoping an asset to a team is distribution, not team
+management: anyone who can write to the vault may target a team with an
+asset. Admin is reserved for modifying the team itself (`sx team
+member/admin/repo …`). A `--team` naming an unknown team is skipped with
+a "team not found" warning rather than created implicitly.
 
 ## Where state lives
 

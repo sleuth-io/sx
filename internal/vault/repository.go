@@ -253,6 +253,15 @@ type InstallTarget struct {
 	MonoRepoConfigID string
 }
 
+// SkippedTarget is an install target that SetAssetInstallations could not apply,
+// paired with a human-readable reason — e.g. a team that doesn't exist in the
+// vault, or one the caller is not an admin of (a permissions problem). Callers
+// surface the reason so a skip isn't mistaken for "team not found".
+type SkippedTarget struct {
+	Target InstallTarget
+	Reason string
+}
+
 // AuditData returns the payload attached to an install.set audit event
 // for this target. Single source of truth for what each kind records.
 func (t InstallTarget) AuditData() map[string]any {

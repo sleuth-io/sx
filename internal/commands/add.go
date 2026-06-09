@@ -15,6 +15,7 @@ import (
 	"github.com/sleuth-io/sx/internal/github"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
+	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	"github.com/sleuth-io/sx/internal/ui/theme"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -424,6 +425,14 @@ func createVault() (vaultpkg.Vault, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load configuration: %w\nRun 'sx init' to configure", err)
 	}
+
+	// Apply the active profile's identity before any vault op so "me"/user
+	// scopes and audit entries resolve to the profile's configured email
+	// rather than the system git config. The install paths do this via
+	// loadConfigAndVault; sx add must do it too or --profile <git vault> falls
+	// back to git config user.email (SD-10170).
+	mgmt.SetIdentityOverride(cfg.Identity)
+	mgmt.SetAuditProfileTag(cfg.ProfileName)
 
 	return vaultpkg.NewFromConfig(cfg)
 }

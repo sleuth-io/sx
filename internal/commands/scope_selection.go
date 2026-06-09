@@ -78,6 +78,15 @@ func promptForRepositoriesWithUI(assetName, version string, current []vault.Inst
 				Description: opt.Description,
 			})
 		}
+	} else if _, ok := v.(installSetter); ok {
+		// File-backed vaults (git/path) don't supply their own "personal"
+		// option, but they can persist a user scope — so offer "Just for me"
+		// generically, implemented as a user scope on the caller's own account.
+		options = append(options, components.Option{
+			Label:       "Just for me",
+			Value:       "self",
+			Description: "Install only for your account",
+		})
 	}
 
 	options = append(options,
@@ -124,6 +133,13 @@ func promptForRepositoriesWithUI(assetName, version string, current []vault.Inst
 	case "global": // Make it available globally
 		styledOut.Success("Set to global installation")
 		return &scopeResult{Scopes: []lockfile.Scope{}}, nil
+
+	case "self": // Just for me — a user scope on the caller's own account.
+		// "me" is resolved to the caller's email by resolveSelfUserScopes inside
+		// bulkSetInstallTargets; the user kind routes through the bulk setter
+		// (hasIdentityScope) as a replace, so the asset ends up scoped to just
+		// the caller.
+		return &scopeResult{Targets: []vault.InstallTarget{{Kind: vault.InstallKindUser, User: meScopeAlias}}}, nil
 
 	case "modify": // Add/modify scopes
 		// Identity scopes (team/user/bot) are only offered when the vault can

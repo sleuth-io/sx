@@ -124,6 +124,79 @@ func (g *GitVault) pushWithRebaseRetry(ctx context.Context) error {
 	return fmt.Errorf("push failed after %d attempts: %w", maxAttempts, lastPushErr)
 }
 
+// RepairVaultClone re-syncs the local vault cache to the remote, discarding any
+// unpushed manifest/asset commits (treated as failed or interrupted mutations)
+// while preserving and pushing queued usage-event appends under .sx/usage. It
+// returns the short SHA of the discarded local tip, or "" if the cache was
+// already in sync with the remote.
+//
+// It deliberately avoids cloneOrUpdate's `git pull` (a merge): when the cache
+// has diverged on the manifest, that merge can conflict and stall the very
+// repair meant to clear the divergence. Instead it fetches and hard-anchors the
+// branch back to the remote tip. SD-10170.
+func (g *GitVault) RepairVaultClone(ctx context.Context) (discardedTip string, err error) {
+	fileLock, err := g.acquireFileLock(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	defer func() { _ = fileLock.Unlock() }()
+
+	// No usable clone yet — a fresh clone IS the repaired state.
+	headSHA, err := g.gitClient.RevParse(ctx, g.repoPath, "HEAD")
+	if err != nil {
+		if cerr := g.clone(ctx); cerr != nil {
+			return "", fmt.Errorf("failed to clone vault: %w", cerr)
+		}
+		g.hasSynced = true
+		return "", nil
+	}
+
+	if err := g.gitClient.Fetch(ctx, g.repoPath); err != nil {
+		return "", fmt.Errorf("failed to fetch remote: %w", err)
+	}
+	branch, err := g.gitClient.GetCurrentBranch(ctx, g.repoPath)
+	if err != nil {
+		return "", err
+	}
+	remoteRef := "origin/" + branch
+	remoteSHA, err := g.gitClient.RevParse(ctx, g.repoPath, remoteRef)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve %s: %w", remoteRef, err)
+	}
+	if headSHA == remoteSHA {
+		g.hasSynced = true
+		return "", nil // already in sync — nothing to repair
+	}
+
+	// Move the branch back to the remote tip (soft, so the net diff is staged),
+	// then restore everything except the usage dir to the remote — discarding
+	// local manifest/asset divergence but leaving queued usage appends staged.
+	if err := g.gitClient.Reset(ctx, g.repoPath, "soft", remoteRef); err != nil {
+		return "", err
+	}
+	if err := g.gitClient.RestoreExcept(ctx, g.repoPath, mgmt.UsageDirName); err != nil {
+		return "", err
+	}
+	hasUsage, err := g.gitClient.HasStagedChanges(ctx, g.repoPath)
+	if err != nil {
+		return "", err
+	}
+	if hasUsage {
+		if err := g.gitClient.Commit(ctx, g.repoPath, "Record usage events"); err != nil {
+			return "", err
+		}
+		if err := g.pushWithRebaseRetry(ctx); err != nil {
+			return "", err
+		}
+	}
+
+	g.hasSynced = true
+	if len(headSHA) > 8 {
+		return headSHA[:8], nil
+	}
+	return headSHA, nil
+}
+
 // CurrentActor resolves the caller's identity via git config.
 func (g *GitVault) CurrentActor(ctx context.Context) (mgmt.Actor, error) {
 	return mgmt.CurrentGitActor(ctx, g.repoPath)
@@ -267,6 +340,34 @@ func (g *GitVault) ClearAssetInstallations(ctx context.Context, assetName string
 	return g.runInVaultTx(ctx, msg, func(root string, actor mgmt.Actor) error {
 		return commonClearAssetInstallations(root, actor, assetName)
 	})
+}
+
+// SetAssetInstallations applies a batch of install targets (including identity
+// scopes — team/user/bot) in one commit. Satisfies installSetter so the unified
+// scope flow works against git vaults, not just the Sleuth vault.
+func (g *GitVault) SetAssetInstallations(ctx context.Context, assetName string, targets []InstallTarget, appendMode bool) (skipped []SkippedTarget, err error) {
+	verb := "Set installations for "
+	if appendMode {
+		verb = "Add installations for "
+	}
+	msg := verb + assetName
+	err = g.runInVaultTx(ctx, msg, func(root string, actor mgmt.Actor) error {
+		skipped, err = commonSetAssetInstallations(root, actor, assetName, targets, appendMode)
+		return err
+	})
+	return skipped, err
+}
+
+// UninstallAssetTargets removes a batch of install targets in one commit.
+// Satisfies targetUninstaller so interactive scope edits can remove individual
+// scopes from a git vault.
+func (g *GitVault) UninstallAssetTargets(ctx context.Context, assetName string, targets []InstallTarget) (removed int, failures []string, err error) {
+	msg := "Remove installations for " + assetName
+	err = g.runInVaultTx(ctx, msg, func(root string, actor mgmt.Actor) error {
+		removed, failures, err = commonUninstallAssetTargets(root, actor, assetName, targets)
+		return err
+	})
+	return removed, failures, err
 }
 
 // RecordUsageEvents appends usage events to the local JSONL log and,

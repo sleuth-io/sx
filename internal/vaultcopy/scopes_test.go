@@ -14,7 +14,7 @@ import (
 type bulkFake struct {
 	bulkCalls  [][]vault.InstallTarget
 	clearCalls int
-	unresolved []vault.InstallTarget
+	skipped    []vault.SkippedTarget
 	bulkErr    error
 }
 
@@ -27,9 +27,9 @@ func (f *bulkFake) ClearAssetInstallations(_ context.Context, _ string) error {
 	return nil
 }
 
-func (f *bulkFake) SetAssetInstallations(_ context.Context, _ string, targets []vault.InstallTarget, _ bool) ([]vault.InstallTarget, error) {
+func (f *bulkFake) SetAssetInstallations(_ context.Context, _ string, targets []vault.InstallTarget, _ bool) ([]vault.SkippedTarget, error) {
 	f.bulkCalls = append(f.bulkCalls, targets)
-	return f.unresolved, f.bulkErr
+	return f.skipped, f.bulkErr
 }
 
 // appendFake implements only the per-target installer, like a file-backed vault.
@@ -68,7 +68,7 @@ func TestCopyAssetScopes_BulkDestSetsAllAtOnce(t *testing.T) {
 func TestCopyAssetScopes_BulkUnresolvedCountedAndWarned(t *testing.T) {
 	// One target unresolved: the bulk call still applies the rest in one shot
 	// (no per-target clobbering), and only the resolved count is recorded.
-	f := &bulkFake{unresolved: []vault.InstallTarget{{Kind: vault.InstallKindUser, User: "ghost@x.com"}}}
+	f := &bulkFake{skipped: []vault.SkippedTarget{{Target: vault.InstallTarget{Kind: vault.InstallKindUser, User: "ghost@x.com"}, Reason: "user not found"}}}
 	r := &Report{}
 	scopes := []manifest.Scope{
 		{Kind: manifest.ScopeKindRepo, Repo: "github.com/acme/a"},
@@ -93,7 +93,7 @@ func TestCopyAssetScopes_BulkUnresolvedCountedAndWarned(t *testing.T) {
 func TestCopyAssetScopes_BulkAllUnresolvedClears(t *testing.T) {
 	// Every target unresolvable → nothing applied → the asset must not keep the
 	// auto-applied org-wide install; the engine clears it.
-	f := &bulkFake{unresolved: []vault.InstallTarget{{Kind: vault.InstallKindUser, User: "ghost@x.com"}}}
+	f := &bulkFake{skipped: []vault.SkippedTarget{{Target: vault.InstallTarget{Kind: vault.InstallKindUser, User: "ghost@x.com"}, Reason: "user not found"}}}
 	r := &Report{}
 	scopes := []manifest.Scope{{Kind: manifest.ScopeKindUser, User: "ghost@x.com"}}
 	copyAssetScopes(context.Background(), f, "skill", scopes, true, false, r)

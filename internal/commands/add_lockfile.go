@@ -82,7 +82,7 @@ func resolveSelfUserScopes(ctx context.Context, repo vault.Vault, targets []vaul
 // server-side instead of replacing them. The Sleuth/skills.io vault implements
 // it; file-backed vaults don't, so they stay repo/path-only.
 type installSetter interface {
-	SetAssetInstallations(ctx context.Context, assetName string, targets []vault.InstallTarget, appendMode bool) (unresolved []vault.InstallTarget, err error)
+	SetAssetInstallations(ctx context.Context, assetName string, targets []vault.InstallTarget, appendMode bool) (skipped []vault.SkippedTarget, err error)
 }
 
 // targetUninstaller is implemented by vaults that can remove specific
@@ -126,15 +126,15 @@ func bulkSetInstallTargets(ctx context.Context, out *outputHelper, repo vault.Va
 	if err != nil {
 		return err
 	}
-	unresolved, err := setter.SetAssetInstallations(ctx, assetName, resolved, appendMode)
+	skipped, err := setter.SetAssetInstallations(ctx, assetName, resolved, appendMode)
 	if err != nil {
 		return fmt.Errorf("failed to set installations: %w", err)
 	}
 	if selfEmail != "" {
 		out.printf("Assigned to you (%s)\n", selfEmail)
 	}
-	for _, t := range unresolved {
-		out.printf("⚠ Could not resolve %s — skipped\n", formatTarget(t))
+	for _, sk := range skipped {
+		out.printf("⚠ Skipped %s: %s\n", formatTarget(sk.Target), sk.Reason)
 	}
 	return nil
 }

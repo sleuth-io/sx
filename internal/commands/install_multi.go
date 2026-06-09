@@ -29,6 +29,17 @@ type profileLockFile struct {
 	Vault       vaultpkg.Vault
 	LockFile    *lockfile.LockFile
 	FetchErr    error
+	// RepairDiscarded is the short SHA of a local vault-cache commit that
+	// --repair reset away to match the remote (empty if nothing was discarded).
+	RepairDiscarded string
+}
+
+// vaultRepairer is implemented by vaults whose local cache can drift from the
+// authoritative remote — i.e. the git vault, whose clone can be left with an
+// unpushed commit by an interrupted mutation. RepairVaultClone re-syncs the
+// cache to the remote, returning the discarded local tip (or "").
+type vaultRepairer interface {
+	RepairVaultClone(ctx context.Context) (discardedTip string, err error)
 }
 
 // loadActiveProfilesAndLockFiles is the top-level helper for runInstall's
@@ -41,6 +52,7 @@ func loadActiveProfilesAndLockFiles(
 	ctx context.Context,
 	status *components.Status,
 	styledOut *ui.Output,
+	repair bool,
 ) (profileLocks []profileLockFile, mpc *config.MultiProfileConfig, primaryCfg *config.Config, cfg *config.Config, done bool, err error) {
 	activeConfigs, mpc, err := config.LoadActive()
 	if err != nil {
@@ -63,7 +75,14 @@ func loadActiveProfilesAndLockFiles(
 	// global override is not touched mid-fetch.
 	mgmt.SetIdentityOverride(activeConfigs[0].Identity)
 
-	profileLocks = loadActiveLockFiles(ctx, activeConfigs, status)
+	profileLocks = loadActiveLockFiles(ctx, activeConfigs, status, repair)
+	if repair {
+		for _, pl := range profileLocks {
+			if pl.RepairDiscarded != "" {
+				styledOut.Warning(fmt.Sprintf("Repaired %s vault cache: discarded unpushed local commit %s to match the remote.", pl.ProfileName, pl.RepairDiscarded))
+			}
+		}
+	}
 	if !reportFetchErrors(profileLocks, styledOut) {
 		// All profiles failed. A pristine "no lock file yet" outcome is
 		// the new-user case (every profile reports ErrLockFileNotFound).
@@ -113,7 +132,7 @@ func loadActiveProfilesAndLockFiles(
 // for the caller to set after the fan-out. Individual fetch failures
 // are captured per-profile rather than failing the whole call so
 // partial installs can proceed.
-func loadActiveLockFiles(ctx context.Context, configs []*config.Config, status *components.Status) []profileLockFile {
+func loadActiveLockFiles(ctx context.Context, configs []*config.Config, status *components.Status, repair bool) []profileLockFile {
 	results := make([]profileLockFile, len(configs))
 	if len(configs) == 0 {
 		return results
@@ -139,6 +158,18 @@ func loadActiveLockFiles(ctx context.Context, configs []*config.Config, status *
 				return
 			}
 			entry.Vault = vault
+			// In repair mode, re-sync the local vault cache to the remote
+			// BEFORE resolving the lock file, so the lock reflects the
+			// remote's authoritative scopes rather than a stale/diverged
+			// local clone (SD-10170). Repair failures are non-fatal — fall
+			// through to a normal fetch and let it surface any real error.
+			if repair {
+				if r, ok := vault.(vaultRepairer); ok {
+					if discarded, rerr := r.RepairVaultClone(fetchCtx); rerr == nil {
+						entry.RepairDiscarded = discarded
+					}
+				}
+			}
 			lf, err := fetchLockFile(fetchCtx, vault, cfg)
 			if err != nil {
 				entry.FetchErr = err
