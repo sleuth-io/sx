@@ -101,7 +101,7 @@ func updateLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, as
 	if result.Edited {
 		return applyScopeEdit(ctx, out, repo, asset.Name, result.Added, result.Removed)
 	}
-	if result.Append || hasIdentityScope(result.Targets) {
+	if result.ApplyTargets || result.Append || hasIdentityScope(result.Targets) {
 		return bulkSetInstallTargets(ctx, out, repo, asset.Name, result.Targets, result.Append)
 	}
 

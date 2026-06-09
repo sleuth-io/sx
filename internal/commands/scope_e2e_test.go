@@ -231,6 +231,62 @@ func TestScopeE2E_GitVaultScopePushedToRemote(t *testing.T) {
 	}
 }
 
+// TestScopeE2E_AddFlagsApplyScopeWithYes: `sx add <name> --team <t> --yes`
+// pre-fills the team scope and (with --yes) applies it without prompting — the
+// scope actually lands in sx.toml. Proves the add command's unified scope flags
+// are wired through resolveScopeFlags to the real apply path.
+func TestScopeE2E_AddFlagsApplyScopeWithYes(t *testing.T) {
+	_, vaultDir := seedScopeVault(t)
+
+	// A team to scope to (admined by someone else — non-admin scoping is allowed).
+	v, err := vaultpkg.NewPathVault("file://" + vaultDir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	if err := v.CreateTeam(context.Background(), mgmt.Team{
+		Name: "platform", Members: []string{"other@example.com"}, Admins: []string{"other@example.com"},
+	}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+
+	cmd := NewAddCommand()
+	cmd.SetArgs([]string{"my-skill", "--team", "platform", "--user", "me", "--yes", "--no-install"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("add --team platform --user me --yes: %v", err)
+	}
+
+	scopes := manifestScopes(t, vaultDir, "my-skill")
+	if !hasScope(scopes, manifest.ScopeKindTeam, "platform") {
+		t.Errorf("expected team scope platform, got %+v", scopes)
+	}
+	if !hasScope(scopes, manifest.ScopeKindUser, "test@example.com") {
+		t.Errorf("expected user scope for caller, got %+v", scopes)
+	}
+}
+
+// TestScopeE2E_AddOrgFlagGoesGlobal: `sx add <name> --org --yes` clears scopes
+// (global).
+func TestScopeE2E_AddOrgFlagGoesGlobal(t *testing.T) {
+	_, vaultDir := seedScopeVault(t)
+
+	// First give it a non-global scope so we can see --org replace it.
+	set := NewInstallCommand()
+	set.SetArgs([]string{"my-skill", "--user", "me"})
+	if err := set.Execute(); err != nil {
+		t.Fatalf("seed user scope: %v", err)
+	}
+
+	cmd := NewAddCommand()
+	cmd.SetArgs([]string{"my-skill", "--org", "--yes", "--no-install"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("add --org --yes: %v", err)
+	}
+
+	if scopes := manifestScopes(t, vaultDir, "my-skill"); len(scopes) != 0 {
+		t.Fatalf("--org should clear all scopes (global), got %+v", scopes)
+	}
+}
+
 func gitRunE2E(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
@@ -253,4 +309,17 @@ func gitOutE2E(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 	return string(out)
+}
+
+// TestScopeE2E_AddScopeFlagRejectsNonPersonal: --scope only ever meant
+// "personal"; any other value must error loudly instead of doing nothing.
+func TestScopeE2E_AddScopeFlagRejectsNonPersonal(t *testing.T) {
+	cmd := NewAddCommand()
+	cmd.SetArgs([]string{"some-asset", "--scope", "bogus"})
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "personal") {
+		t.Fatalf("expected --scope bogus to error mentioning personal, got %v", err)
+	}
 }

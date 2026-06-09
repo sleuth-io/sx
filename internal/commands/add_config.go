@@ -113,18 +113,10 @@ func handleNewAssetFromVault(ctx context.Context, cmd *cobra.Command, out *outpu
 		out.printf("Found asset: %s v%s in vault (not yet installed)\n", assetName, latestVersion)
 	}
 
-	// Get scopes (from flags if non-interactive, otherwise prompt)
-	var result *scopeResult
-	if opts.isNonInteractive() {
-		result, err = opts.getScopes()
-		if err != nil {
-			return err
-		}
-	} else {
-		result, err = promptForRepositories(out, assetName, latestVersion, current, installed, vault)
-		if err != nil {
-			return fmt.Errorf("failed to configure repositories: %w", err)
-		}
+	// Get scopes: scope flags pre-fill + confirm, otherwise the interactive editor.
+	result, err := resolveAddScope(out, vault, assetName, latestVersion, current, installed, opts)
+	if err != nil {
+		return fmt.Errorf("failed to configure repositories: %w", err)
 	}
 
 	if result.Remove {

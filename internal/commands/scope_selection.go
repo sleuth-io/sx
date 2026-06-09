@@ -28,6 +28,12 @@ type scopeResult struct {
 	Edited  bool
 	Added   []vault.InstallTarget // installs to add (appended to the server set)
 	Removed []vault.InstallTarget // installs to remove (carry the server EntityID)
+
+	// ApplyTargets forces the kind-aware bulk path (SetAssetInstallations) for
+	// Targets regardless of kind — used by the flag-driven flow so a repo/path
+	// or org replace goes through the same setter as identity scopes, instead of
+	// the legacy lockfile SetInstallations branch. Append selects replace vs add.
+	ApplyTargets bool
 }
 
 // promptForRepositories prompts user for repository configurations and returns them.

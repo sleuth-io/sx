@@ -53,12 +53,20 @@ If the argument is an existing asset name, configure its installation scope inst
 // NewAddCommand creates the add command
 func NewAddCommand() *cobra.Command {
 	var (
-		yes         bool
-		noInstall   bool
-		browse      bool
-		name        string
-		assetType   string
-		version     string
+		yes        bool
+		noInstall  bool
+		browse     bool
+		name       string
+		assetType  string
+		version    string
+		org        bool
+		repos      []string
+		paths      []string
+		teams      []string
+		users      []string
+		bots       []string
+		addToScope bool
+		// legacy aliases
 		scopeGlobal bool
 		scopeRepos  []string
 		scope       string
@@ -81,6 +89,13 @@ func NewAddCommand() *cobra.Command {
 				Name:        name,
 				Type:        assetType,
 				Version:     version,
+				Org:         org,
+				Repos:       repos,
+				Paths:       paths,
+				Teams:       teams,
+				Users:       users,
+				Bots:        bots,
+				AddToScope:  addToScope,
 				ScopeGlobal: scopeGlobal,
 				ScopeRepos:  scopeRepos,
 				Scope:       scope,
@@ -89,22 +104,44 @@ func NewAddCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Accept all defaults and skip prompts")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Accept all defaults and skip prompts (including the scope confirmation)")
 	cmd.Flags().BoolVar(&noInstall, "no-install", false, "Skip running install after adding")
 	cmd.Flags().BoolVar(&browse, "browse", false, "Search and browse skills from skills.sh")
 	cmd.Flags().StringVar(&name, "name", "", "Override detected asset name")
 	cmd.Flags().StringVar(&assetType, "type", "", "Override detected asset type (skill, rule, agent, command, mcp, hook)")
 	cmd.Flags().StringVar(&version, "version", "", "Override suggested version")
-	cmd.Flags().BoolVar(&scopeGlobal, "scope-global", false, "Install globally (all repositories)")
-	cmd.Flags().StringArrayVar(&scopeRepos, "scope-repo", nil, "Install for specific repository, optionally with paths (format: repo_url or repo_url#path1,path2)")
-	cmd.Flags().StringVar(&scope, "scope", "", "Vault-specific scope (e.g., personal for Sleuth vaults)")
+
+	// Unified scope flags (same vocabulary as `sx install`). Setting any
+	// pre-fills the scope and shows the same confirmation the menu does (skipped
+	// with --yes). Default replaces the asset's scope; --add-to-scope appends.
+	cmd.Flags().BoolVar(&org, "org", false, "Scope: install org-wide (global, exclusive)")
+	cmd.Flags().StringArrayVar(&repos, "repo", nil, "Scope: a repository URL (repeatable)")
+	cmd.Flags().StringArrayVar(&paths, "path", nil, "Scope: a repo subpath set (repo_url#path1,path2; repeatable)")
+	cmd.Flags().StringArrayVar(&teams, "team", nil, "Scope: every member of a team, by name (repeatable)")
+	cmd.Flags().StringArrayVar(&users, "user", nil, "Scope: a user email, or 'me' (repeatable)")
+	cmd.Flags().StringArrayVar(&bots, "bot", nil, "Scope: a bot identity, by name (repeatable)")
+	cmd.Flags().BoolVar(&addToScope, "add-to-scope", false, "Append the named scopes instead of replacing the asset's scope set")
+
+	// Legacy scope flags — forwarded to the unified set; kept for compatibility.
+	cmd.Flags().BoolVar(&scopeGlobal, "scope-global", false, "Deprecated: use --org")
+	cmd.Flags().StringArrayVar(&scopeRepos, "scope-repo", nil, "Deprecated: use --repo / --path")
+	cmd.Flags().StringVar(&scope, "scope", "", "Deprecated: use --user me (for 'personal')")
+	_ = cmd.Flags().MarkDeprecated("scope-global", "use --org")
+	_ = cmd.Flags().MarkDeprecated("scope-repo", "use --repo or --path")
+	_ = cmd.Flags().MarkDeprecated("scope", "use --user me")
 
 	return cmd
 }
 
 // runAddWithFlags is the main entry point
 func runAddWithFlags(cmd *cobra.Command, input string, opts addOptions) error {
-	// Validate scope flags upfront
+	// Validate scope flags upfront.
+	// --scope only ever supported the "personal" entity (Sleuth's "just for me",
+	// now expressed as --user me); any other value silently did nothing, so
+	// reject it explicitly rather than ignoring it.
+	if opts.Scope != "" && opts.Scope != "personal" {
+		return fmt.Errorf("--scope only accepts \"personal\" (deprecated; use --user me); got %q", opts.Scope)
+	}
 	if opts.Scope != "" && (opts.ScopeGlobal || len(opts.ScopeRepos) > 0) {
 		return errors.New("cannot use --scope with --scope-global or --scope-repo")
 	}
@@ -331,19 +368,10 @@ func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHel
 		current, installed = scopesToTargets(foundAsset.Scopes), true
 	}
 
-	// Get scopes (from flags if non-interactive, otherwise prompt)
-	var result *scopeResult
-	var err error
-	if opts.isNonInteractive() {
-		result, err = opts.getScopes()
-		if err != nil {
-			return err
-		}
-	} else {
-		result, err = promptForRepositories(out, foundAsset.Name, foundAsset.Version, current, installed, vault)
-		if err != nil {
-			return fmt.Errorf("failed to configure repositories: %w", err)
-		}
+	// Get scopes: scope flags pre-fill + confirm, otherwise the interactive editor.
+	result, err := resolveAddScope(out, vault, foundAsset.Name, foundAsset.Version, current, installed, opts)
+	if err != nil {
+		return fmt.Errorf("failed to configure repositories: %w", err)
 	}
 
 	// If remove, user chose to remove from installation
@@ -483,21 +511,14 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 	// Get scopes (from flags if --yes, otherwise prompt)
 	var result *scopeResult
 	var err error
-	if opts.Yes {
-		result, err = opts.getScopes()
-		if err != nil {
-			return err
-		}
-	} else {
-		current, installed := resolveCurrentTargets(ctx, vault, name)
-		result, err = promptForRepositories(out, name, version, current, installed, vault)
-		if err != nil {
-			return fmt.Errorf("failed to configure repositories: %w", err)
-		}
-		if result.Remove {
-			out.printf("Run 'sx add %s' to configure where to install it.\n", name)
-			return nil
-		}
+	current, installed := resolveCurrentTargets(ctx, vault, name)
+	result, err = resolveAddScope(out, vault, name, version, current, installed, opts)
+	if err != nil {
+		return fmt.Errorf("failed to configure repositories: %w", err)
+	}
+	if result.Remove {
+		out.printf("Run 'sx add %s' to configure where to install it.\n", name)
+		return nil
 	}
 
 	// If inherit, preserve existing installations
@@ -582,22 +603,15 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 
 	// Get scopes (from flags if --yes, otherwise prompt)
 	var result *scopeResult
-	if opts.Yes {
-		result, err = opts.getScopes()
-		if err != nil {
-			return err
-		}
-	} else {
-		current, installed := resolveCurrentTargets(ctx, vault, lockAsset.Name)
-		result, err = promptForRepositories(out, lockAsset.Name, lockAsset.Version, current, installed, vault)
-		if err != nil {
-			return fmt.Errorf("failed to configure scopes: %w", err)
-		}
-		// If remove, user chose not to install
-		if result.Remove {
-			out.printf("Run 'sx add %s' to configure where to install it.\n", lockAsset.Name)
-			return nil
-		}
+	current, installed := resolveCurrentTargets(ctx, vault, lockAsset.Name)
+	result, err = resolveAddScope(out, vault, lockAsset.Name, lockAsset.Version, current, installed, opts)
+	if err != nil {
+		return fmt.Errorf("failed to configure scopes: %w", err)
+	}
+	// If remove, user chose not to install
+	if result.Remove {
+		out.printf("Run 'sx add %s' to configure where to install it.\n", lockAsset.Name)
+		return nil
 	}
 
 	// If inherit, preserve existing installations

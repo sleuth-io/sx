@@ -56,6 +56,14 @@ func NewTestEnv(t *testing.T) *TestEnv {
 		t.Fatalf("Failed to create settings.json: %v", err)
 	}
 
+	// Give the sandbox a real git identity. Every scope write is an audited
+	// manifest mutation that requires a real user.email (RequireRealIdentity),
+	// so without this any scoping command fails with "identity not set".
+	if err := os.WriteFile(filepath.Join(homeDir, ".gitconfig"),
+		[]byte("[user]\n\temail = test@example.com\n\tname = Test User\n"), 0644); err != nil {
+		t.Fatalf("Failed to create .gitconfig: %v", err)
+	}
+
 	origDir, _ := os.Getwd()
 
 	return &TestEnv{
