@@ -6,6 +6,21 @@ import (
 	"testing"
 )
 
+// configureGitIdentityForTest writes a git identity into the test's sandboxed
+// HOME. Scope writes go through the manifest-mutation path, which requires a
+// real git user.email (RequireRealIdentity rejects the synthetic $USER@host
+// fallback); without this the scope steps fail with "identity not set".
+func configureGitIdentityForTest(t *testing.T, home string) {
+	t.Helper()
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("mkdir home for git identity: %v", err)
+	}
+	cfg := "[user]\n\temail = test@example.com\n\tname = Test User\n"
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(cfg), 0o644); err != nil {
+		t.Fatalf("write .gitconfig: %v", err)
+	}
+}
+
 // TestAddScopeModification tests modifying an existing asset's scope
 func TestAddScopeModification(t *testing.T) {
 	// Create fully isolated test environment
@@ -17,6 +32,7 @@ func TestAddScopeModification(t *testing.T) {
 
 	// Set environment for complete sandboxing
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
@@ -149,6 +165,7 @@ func TestAddKeepCurrentSettings(t *testing.T) {
 
 	// Set environment
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
@@ -272,6 +289,7 @@ func TestAddRemoveFromInstallation(t *testing.T) {
 
 	// Set environment
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
@@ -388,6 +406,7 @@ func TestAddFirstTimeNoScopes(t *testing.T) {
 
 	// Set environment
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))

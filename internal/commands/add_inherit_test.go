@@ -20,6 +20,7 @@ func TestAddYesWithoutScopeFlagsPreservesExistingScopes(t *testing.T) {
 
 	// Set environment for complete sandboxing
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
@@ -139,6 +140,7 @@ func TestAddYesWithScopeGlobalOverridesExisting(t *testing.T) {
 
 	// Set environment
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
@@ -252,6 +254,7 @@ func TestAddYesWithoutScopeFlagsNewAsset(t *testing.T) {
 
 	// Set environment
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))

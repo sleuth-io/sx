@@ -430,8 +430,12 @@ func createVault() (vaultpkg.Vault, error) {
 	// scopes and audit entries resolve to the profile's configured email
 	// rather than the system git config. The install paths do this via
 	// loadConfigAndVault; sx add must do it too or --profile <git vault> falls
-	// back to git config user.email (SD-10170).
-	mgmt.SetIdentityOverride(cfg.Identity)
+	// back to git config user.email (SD-10170). Only override when the profile
+	// actually sets an identity — an empty one must NOT clobber the git-config
+	// fallback (the process-global override is sticky).
+	if cfg.Identity != "" {
+		mgmt.SetIdentityOverride(cfg.Identity)
+	}
 	mgmt.SetAuditProfileTag(cfg.ProfileName)
 
 	return vaultpkg.NewFromConfig(cfg)
