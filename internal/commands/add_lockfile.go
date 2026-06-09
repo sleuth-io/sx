@@ -85,11 +85,22 @@ type installSetter interface {
 	SetAssetInstallations(ctx context.Context, assetName string, targets []vault.InstallTarget, appendMode bool) (unresolved []vault.InstallTarget, err error)
 }
 
+// targetUninstaller is implemented by vaults that can remove specific
+// installations by server GID in one best-effort call (the Sleuth/skills.io
+// vault). It returns how many installs were removed and a per-target failure
+// message for any the server couldn't remove.
+type targetUninstaller interface {
+	UninstallAssetTargets(ctx context.Context, assetName string, targets []vault.InstallTarget) (removed int, failures []string, err error)
+}
+
 // updateLockFile persists an asset's chosen scopes. Identity scopes
 // (team/user/bot) — and any edit the user chose to append — are routed through
 // the vault's bulk installer, which merges or replaces server-side; repo/path
 // replaces keep the lock-file path (which also pins the asset version).
 func updateLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, asset *lockfile.Asset, result *scopeResult) error {
+	if result.Edited {
+		return applyScopeEdit(ctx, out, repo, asset.Name, result.Added, result.Removed)
+	}
 	if result.Append || hasIdentityScope(result.Targets) {
 		return bulkSetInstallTargets(ctx, out, repo, asset.Name, result.Targets, result.Append)
 	}
@@ -124,6 +135,39 @@ func bulkSetInstallTargets(ctx context.Context, out *outputHelper, repo vault.Va
 	}
 	for _, t := range unresolved {
 		out.printf("⚠ Could not resolve %s — skipped\n", formatTarget(t))
+	}
+	return nil
+}
+
+// applyScopeEdit applies an interactive scope edit as a precise diff: removed
+// installs are uninstalled by GID (so kept installs are never re-resolved or
+// clobbered) and added installs are appended. Removals run first so that
+// "remove X, add Y" can't transiently leave the asset in a wider state than
+// intended. Removal is best-effort — per-target failures are reported but don't
+// abort the additions.
+func applyScopeEdit(ctx context.Context, out *outputHelper, repo vault.Vault, assetName string, added, removed []vault.InstallTarget) error {
+	if len(removed) > 0 {
+		uninstaller, ok := repo.(targetUninstaller)
+		if !ok {
+			return fmt.Errorf("this vault does not support removing individual scopes")
+		}
+		n, failures, err := uninstaller.UninstallAssetTargets(ctx, assetName, removed)
+		if err != nil {
+			return fmt.Errorf("failed to remove scopes: %w", err)
+		}
+		if n > 0 {
+			out.printf("Removed %d scope(s)\n", n)
+		}
+		for _, f := range failures {
+			out.printf("⚠ Could not remove %s\n", f)
+		}
+	}
+	if len(added) > 0 {
+		// Append the new targets; resolveSelfUserScopes ("me") and entity
+		// resolution happen inside bulkSetInstallTargets.
+		if err := bulkSetInstallTargets(ctx, out, repo, assetName, added, true); err != nil {
+			return err
+		}
 	}
 	return nil
 }

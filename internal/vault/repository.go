@@ -241,6 +241,16 @@ type InstallTarget struct {
 	Team  string   // Team
 	User  string   // User (email)
 	Bot   string   // Bot (name)
+
+	// EntityID is the server GID of the installed entity, populated when a
+	// target is read back from the server (the current-installation view). It
+	// lets a removal target the exact installation via uninstallAssetTargets
+	// without re-resolving the entity by name/email. Empty for targets the user
+	// is adding (those resolve by name/email at apply time).
+	EntityID string
+	// MonoRepoConfigID is the server GID of the mono-repo config for a
+	// path-scoped repository install, needed to remove that specific install.
+	MonoRepoConfigID string
 }
 
 // AuditData returns the payload attached to an install.set audit event

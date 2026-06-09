@@ -410,7 +410,7 @@ func uploadRuleZip(ctx context.Context, status *components.Status, vault vaultpk
 
 // configureRuleScopes prompts for and saves scope configuration
 func configureRuleScopes(ctx context.Context, out *outputHelper, vault vaultpkg.Vault, name, version string) error {
-	result, err := promptForRepositories(out, name, version, nil, vault)
+	result, err := promptForRepositories(out, name, version, nil, false, vault)
 	if err != nil {
 		return fmt.Errorf("failed to configure scopes: %w", err)
 	}

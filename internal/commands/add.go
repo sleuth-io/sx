@@ -321,10 +321,13 @@ func configureExistingAsset(ctx context.Context, cmd *cobra.Command, out *output
 func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHelper, vault vaultpkg.Vault, foundAsset *lockfile.Asset, promptInstall bool, opts addOptions) error {
 	out.printf("Configuring scope for %s@%s\n", foundAsset.Name, foundAsset.Version)
 
-	// Normalize nil to empty slice for global installations
-	currentScopes := foundAsset.Scopes
-	if currentScopes == nil {
-		currentScopes = []lockfile.Scope{}
+	// Read the real current installation from the vault (the server view for
+	// Sleuth, which includes team/user/bot scopes). The asset is already in the
+	// lock file, so if that read can't see it, fall back to the lock-file
+	// scopes and still treat it as installed.
+	current, installed := resolveCurrentTargets(ctx, vault, foundAsset.Name)
+	if !installed {
+		current, installed = scopesToTargets(foundAsset.Scopes), true
 	}
 
 	// Get scopes (from flags if non-interactive, otherwise prompt)
@@ -336,7 +339,7 @@ func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHel
 			return err
 		}
 	} else {
-		result, err = promptForRepositories(out, foundAsset.Name, foundAsset.Version, currentScopes, vault)
+		result, err = promptForRepositories(out, foundAsset.Name, foundAsset.Version, current, installed, vault)
 		if err != nil {
 			return fmt.Errorf("failed to configure repositories: %w", err)
 		}
@@ -473,8 +476,8 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 			return err
 		}
 	} else {
-		currentScopes := resolveCurrentScopes(vault, name)
-		result, err = promptForRepositories(out, name, version, currentScopes, vault)
+		current, installed := resolveCurrentTargets(ctx, vault, name)
+		result, err = promptForRepositories(out, name, version, current, installed, vault)
 		if err != nil {
 			return fmt.Errorf("failed to configure repositories: %w", err)
 		}
@@ -572,8 +575,8 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 			return err
 		}
 	} else {
-		currentScopes := resolveCurrentScopes(vault, lockAsset.Name)
-		result, err = promptForRepositories(out, lockAsset.Name, lockAsset.Version, currentScopes, vault)
+		current, installed := resolveCurrentTargets(ctx, vault, lockAsset.Name)
+		result, err = promptForRepositories(out, lockAsset.Name, lockAsset.Version, current, installed, vault)
 		if err != nil {
 			return fmt.Errorf("failed to configure scopes: %w", err)
 		}

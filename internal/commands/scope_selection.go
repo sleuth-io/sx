@@ -20,27 +20,37 @@ type scopeResult struct {
 	ScopeEntity string                // vault-specific (e.g., "personal"), empty for standard scoping
 	Remove      bool                  // User chose "remove from installation"
 	Inherit     bool                  // Preserve existing installations (no scope flags provided)
+
+	// Edited marks the interactive "Edit scopes" path on a vault that supports
+	// targeted removal (Sleuth). The change is applied as a precise diff:
+	// Removed installs are uninstalled by GID and Added installs are appended,
+	// so kept installs are never re-resolved or clobbered.
+	Edited  bool
+	Added   []vault.InstallTarget // installs to add (appended to the server set)
+	Removed []vault.InstallTarget // installs to remove (carry the server EntityID)
 }
 
-// promptForRepositories prompts user for repository configurations and returns them
-// Takes currentRepos (nil if not installed, empty slice if global, or list of repos)
-// Returns scopeResult with Remove=true if user chooses not to install
-func promptForRepositories(out *outputHelper, assetName, version string, currentRepos []lockfile.Scope, v vault.Vault) (*scopeResult, error) {
+// promptForRepositories prompts user for repository configurations and returns them.
+// current is the asset's real installation as kind-aware targets and installed
+// reports whether it's installed at all (an empty target set with installed=true
+// means global). Returns scopeResult with Remove=true if user chooses not to install.
+func promptForRepositories(out *outputHelper, assetName, version string, current []vault.InstallTarget, installed bool, v vault.Vault) (*scopeResult, error) {
 	// Use the new UI components (they automatically fall back to simple text in non-TTY)
 	styledOut := ui.NewOutput(out.cmd.OutOrStdout(), out.cmd.ErrOrStderr())
 	ioc := components.NewIOContext(out.cmd.InOrStdin(), out.cmd.OutOrStdout())
-	return promptForRepositoriesWithUI(assetName, version, currentRepos, v, styledOut, ioc)
+	return promptForRepositoriesWithUI(assetName, version, current, installed, v, styledOut, ioc)
 }
 
-// promptForRepositoriesWithUI prompts user for repository configurations using new UI
-// Takes currentRepos (nil if not installed, empty slice if global, or list of repos)
-// Returns scopeResult with Remove=true if user chooses not to install
-func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockfile.Scope, v vault.Vault, styledOut *ui.Output, ioc *components.IOContext) (*scopeResult, error) {
+// promptForRepositoriesWithUI prompts user for repository configurations using new UI.
+// current is the asset's real installation as kind-aware targets and installed
+// reports whether it's installed at all (empty targets + installed=true => global).
+// Returns scopeResult with Remove=true if user chooses not to install.
+func promptForRepositoriesWithUI(assetName, version string, current []vault.InstallTarget, installed bool, v vault.Vault, styledOut *ui.Output, ioc *components.IOContext) (*scopeResult, error) {
 	// Build options based on current state with Value field for switch
 	var options []components.Option
 
 	// Only show "Keep current" if already installed
-	if currentRepos != nil {
+	if installed {
 		options = append(options, components.Option{
 			Label:       "Keep current settings",
 			Value:       "keep",
@@ -86,12 +96,12 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 	// Title, then the original current-installation block, then the menu.
 	styledOut.Newline()
 	styledOut.Header("Scope for " + assetName)
-	displayCurrentInstallation(currentRepos, styledOut)
+	displayCurrentTargets(current, installed, styledOut)
 	selected, err := ioc.Select("", options)
 	if err != nil {
 		// If user cancelled, treat it as "keep current" if installed, or "don't install" if not
 		if err.Error() == "selection cancelled" {
-			if currentRepos != nil {
+			if installed {
 				styledOut.Info("No changes made")
 				return &scopeResult{Inherit: true}, nil
 			}
@@ -121,11 +131,18 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 		// setter (the Sleuth/skills.io vault). File-backed vaults stay
 		// repo/path-only.
 		_, allowIdentity := v.(installSetter)
-		targets, appendMode, err := modifyScopes(scopesToTargets(currentRepos), allowIdentity, styledOut, ioc)
+		working, added, removed, err := modifyScopes(current, allowIdentity, styledOut, ioc)
 		if err != nil {
 			return nil, err
 		}
-		return &scopeResult{Scopes: targetsToScopes(targets), Targets: targets, Append: appendMode}, nil
+		// Sleuth-class vaults apply the edit as a precise diff: removed installs
+		// go through uninstallAssetTargets (by GID) and additions through an
+		// append, so kept installs we can't re-resolve are never touched.
+		if _, ok := v.(targetUninstaller); ok {
+			return &scopeResult{Edited: true, Added: added, Removed: removed}, nil
+		}
+		// File-backed vaults replace their repo/path set with the edited working set.
+		return &scopeResult{Scopes: targetsToScopes(working), Targets: working}, nil
 
 	case "remove": // Remove from installation
 		styledOut.Info("Removing from installation (will remain available in vault)")
@@ -147,15 +164,18 @@ func promptForRepositoriesWithUI(assetName, version string, currentRepos []lockf
 
 // modifyScopes runs the interactive scope editor over a kind-aware target
 // list. allowIdentity gates the team/user/bot actions to vaults that can
-// persist them. Returns the edited list (or the original on cancel).
-func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *ui.Output, ioc *components.IOContext) ([]vault.InstallTarget, bool, error) {
+// persist them. It returns the edited working set plus the diff against the
+// original — added (newly introduced) and removed (dropped, still carrying the
+// original's server EntityID). On cancel it returns the original with empty
+// diffs, so nothing is applied.
+func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *ui.Output, ioc *components.IOContext) (working, added, removed []vault.InstallTarget, err error) {
 	// Clone current state (so we can cancel without side effects)
-	working := append([]vault.InstallTarget(nil), current...)
+	working = append([]vault.InstallTarget(nil), current...)
 	original := append([]vault.InstallTarget(nil), current...)
 
 	// Once the user has added a scope this session, default the menu to "Done"
 	// instead of the first option — adding one scope is usually the whole task.
-	addedScope := false
+	changedScope := false
 
 	for {
 		// Build action menu with Value fields
@@ -179,7 +199,7 @@ func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *
 		// Default to the first option (index 0) on first entry, but to "Done"
 		// (always the last option) once at least one scope has been added.
 		defaultIdx := 0
-		if addedScope {
+		if changedScope {
 			defaultIdx = len(options) - 1
 		}
 		selected, err := ioc.SelectWithDefault("", options, defaultIdx)
@@ -187,9 +207,9 @@ func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *
 			// If user cancelled, return original unchanged state
 			if err.Error() == "selection cancelled" {
 				styledOut.Info("Changes cancelled")
-				return original, false, nil
+				return original, nil, nil, nil
 			}
-			return nil, false, err
+			return nil, nil, nil, err
 		}
 
 		switch selected.Value {
@@ -201,7 +221,7 @@ func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *
 			}
 			t := vault.InstallTarget{Kind: vault.InstallKindRepo, Repo: repoURL}
 			working = append(working, t)
-			addedScope = true
+			changedScope = true
 			styledOut.Success("Added " + formatTarget(t))
 
 		case "add-path":
@@ -217,7 +237,7 @@ func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *
 			}
 			t := vault.InstallTarget{Kind: vault.InstallKindPath, Repo: repoURL, Paths: paths}
 			working = append(working, t)
-			addedScope = true
+			changedScope = true
 			styledOut.Success("Added " + formatTarget(t))
 
 		case "add-team":
@@ -229,7 +249,7 @@ func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *
 			for _, name := range names {
 				t := vault.InstallTarget{Kind: vault.InstallKindTeam, Team: name}
 				working = append(working, t)
-				addedScope = true
+				changedScope = true
 				styledOut.Success("Added " + formatTarget(t))
 			}
 
@@ -245,7 +265,7 @@ func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *
 			for _, email := range emails {
 				t := vault.InstallTarget{Kind: vault.InstallKindUser, User: email}
 				working = append(working, t)
-				addedScope = true
+				changedScope = true
 				styledOut.Success("Added " + formatTarget(t))
 			}
 
@@ -258,7 +278,7 @@ func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *
 			for _, name := range names {
 				t := vault.InstallTarget{Kind: vault.InstallKindBot, Bot: name}
 				working = append(working, t)
-				addedScope = true
+				changedScope = true
 				styledOut.Success("Added " + formatTarget(t))
 			}
 
@@ -268,30 +288,47 @@ func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *
 				continue
 			}
 
-			// Build selection list with indices as values
-			scopeOptions := make([]components.Option, len(working))
+			// Build a multi-select list with indices as values, so several
+			// scopes can be removed in one pass.
+			scopeOptions := make([]components.MultiSelectOption, len(working))
 			for i, t := range working {
-				scopeOptions[i] = components.Option{
+				scopeOptions[i] = components.MultiSelectOption{
 					Label: formatTarget(t),
 					Value: strconv.Itoa(i),
 				}
 			}
 
-			selectedScope, err := ioc.Select("Which scope would you like to remove?", scopeOptions)
+			chosen, err := ioc.MultiSelect("Which scope(s) would you like to remove?", scopeOptions)
 			if err != nil {
 				// User pressed esc or cancelled
 				continue
 			}
 
-			// Parse index from Value
-			var idx int
-			if _, err := fmt.Sscanf(selectedScope.Value, "%d", &idx); err != nil {
+			// Collect the chosen indices, then rebuild working without them.
+			removeIdx := make(map[int]bool)
+			for _, opt := range chosen {
+				if !opt.Selected {
+					continue
+				}
+				var idx int
+				if _, err := fmt.Sscanf(opt.Value, "%d", &idx); err != nil {
+					continue
+				}
+				removeIdx[idx] = true
+			}
+			if len(removeIdx) == 0 {
 				continue
 			}
-
-			removed := working[idx]
-			working = append(working[:idx], working[idx+1:]...)
-			styledOut.Success("Removed " + formatTarget(removed))
+			var kept []vault.InstallTarget
+			for i, t := range working {
+				if removeIdx[i] {
+					styledOut.Success("Removed " + formatTarget(t))
+				} else {
+					kept = append(kept, t)
+				}
+			}
+			working = kept
+			changedScope = true
 
 		case "remove-all":
 			if len(working) == 0 {
@@ -299,60 +336,24 @@ func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *
 				continue
 			}
 			working = working[:0]
+			changedScope = true
 			styledOut.Success("Removed all scopes")
 
 		case "done":
-			// Preview changes if any
-			if displayScopeChanges(original, working, styledOut) {
-				// Ask append-vs-replace before the final confirmation, so the
-				// preview, the apply mode, and the confirm read top-to-bottom.
-				// Only meaningful when the vault merges server-side (Sleuth)
-				// and there are scopes to apply.
-				appendMode := false
-				if allowIdentity && len(working) > 0 {
-					appendMode, err = askAppendOrReplace(ioc)
-					if err != nil {
-						return nil, false, err
-					}
-					if appendMode {
-						styledOut.Success("Append")
-					} else {
-						styledOut.Success("Replace")
-					}
-				}
-
-				// Ask for confirmation (default to yes)
-				confirmed, err := ioc.Confirm("Continue with these changes?", true)
-				if err != nil || !confirmed {
-					styledOut.Info("Changes cancelled")
-					return original, false, nil // Return original, unchanged
-				}
-
-				return working, appendMode, nil
+			// Preview the diff. No changes → nothing to apply.
+			if !displayScopeChanges(original, working, styledOut) {
+				return working, nil, nil, nil
 			}
-
-			return working, false, nil
+			// Ask for confirmation (default to yes).
+			confirmed, cerr := ioc.Confirm("Continue with these changes?", true)
+			if cerr != nil || !confirmed {
+				styledOut.Info("Changes cancelled")
+				return original, nil, nil, nil // unchanged
+			}
+			added, removed = diffTargets(original, working)
+			return working, added, removed, nil
 		}
 	}
-}
-
-// askAppendOrReplace asks whether the chosen scopes should be merged with the
-// asset's existing scopes (append) or replace them entirely. Defaults to
-// append, including when the prompt is cancelled, since that's the
-// non-destructive choice.
-func askAppendOrReplace(ioc *components.IOContext) (bool, error) {
-	options := []components.Option{
-		{Label: "Append to existing scopes", Value: "append", Description: "keep current installs and add these"},
-		{Label: "Replace existing scopes", Value: "replace", Description: "remove current installs, set only these"},
-	}
-	selected, err := ioc.SelectWithDefault("Apply these scopes how?", options, 0)
-	if err != nil {
-		if err.Error() == "selection cancelled" {
-			return true, nil
-		}
-		return false, err
-	}
-	return selected.Value == "append", nil
 }
 
 // promptForRepoURL prompts for a repository URL and normalizes bare "owner/repo"
@@ -368,11 +369,17 @@ func promptForRepoURL(ioc *components.IOContext) (string, error) {
 		return "", errors.New("repository URL is required")
 	}
 
-	// If it's just a slug (e.g., "user/repo"), convert to full GitHub URL
+	// Normalize scheme-less input to a full URL. The server matches repos by
+	// exact URL string and stores them with the scheme (https://github.com/...),
+	// so anything without a scheme is rejected as "not found".
 	if !strings.Contains(repoURL, "://") && !strings.HasPrefix(repoURL, "git@") {
 		parts := strings.Split(repoURL, "/")
 		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+			// Bare "owner/repo" slug — assume GitHub.
 			repoURL = "https://github.com/" + repoURL
+		} else {
+			// Host-prefixed but scheme-less, e.g. "github.com/owner/repo".
+			repoURL = "https://" + repoURL
 		}
 	}
 

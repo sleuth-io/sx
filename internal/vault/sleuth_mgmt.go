@@ -509,19 +509,30 @@ func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName strin
 // An org-wide install is reported as present with no scopes, matching the
 // file-backed convention.
 func (s *SleuthVault) AssetInstallScopes(ctx context.Context, name string) ([]manifest.Scope, bool, error) {
-	resp, err := vaultgql.AssetInstallations(ctx, s.gqlClient(), name)
+	targets, present, err := s.CurrentInstallTargets(ctx, name)
+	if err != nil || !present {
+		return nil, present, err
+	}
+	// Present with no targets == org-wide (CurrentInstallTargets collapses an
+	// ORGANIZATION install to an empty set); report present-with-no-scopes.
+	scopes := make([]manifest.Scope, 0, len(targets))
+	for _, t := range targets {
+		scopes = append(scopes, installTargetToManifestScope(t))
+	}
+	return scopes, true, nil
+}
+
+// CurrentInstallTargets reads an asset's current installations from the server
+// as kind-aware targets, each carrying the server entity GID (EntityID, plus
+// MonoRepoConfigID for path installs) so a later removal can target the exact
+// installation via uninstallAssetTargets without re-resolving by name/email.
+// User targets use the email (entityRef) when available. The bool reports
+// whether the asset is installed at all; a present install with no targets is
+// org-wide.
+func (s *SleuthVault) CurrentInstallTargets(ctx context.Context, name string) ([]InstallTarget, bool, error) {
+	node, err := s.findAssetInstallationsNode(ctx, name)
 	if err != nil {
 		return nil, false, err
-	}
-	// The caller passes the asset slug (AssetSummary.Name is the slug for Sleuth).
-	// Match on slug first — display name may differ — falling back to name.
-	var node *vaultgql.AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset
-	for i := range resp.Vault.Assets.Nodes {
-		n := resp.Vault.Assets.Nodes[i]
-		if strings.EqualFold(n.GetSlug(), name) || strings.EqualFold(n.GetName(), name) {
-			node = &resp.Vault.Assets.Nodes[i]
-			break
-		}
 	}
 	if node == nil {
 		return nil, false, nil
@@ -529,19 +540,19 @@ func (s *SleuthVault) AssetInstallScopes(ctx context.Context, name string) ([]ma
 	insts := (*node).GetInstallations()
 	if len(insts) == 0 {
 		// The asset exists on the server but is not installed anywhere. That is
-		// NOT org-wide — report it as not-present so the copy leaves it
-		// uninstalled on the destination (only an explicit ORGANIZATION install
-		// is org-wide; see below).
+		// NOT org-wide — report it as not-present (only an explicit ORGANIZATION
+		// install is org-wide; see below).
 		return nil, false, nil
 	}
 	// Cache a repo's mono-repo configs across this asset's installs so multiple
 	// path-scoped installs against the same repo don't each re-fetch them.
 	repoConfigCache := map[string]map[string][]string{}
-	var scopes []manifest.Scope
+	var targets []InstallTarget
 	for _, inst := range insts {
+		entityID := derefStr(inst.EntityId)
 		switch inst.EntityType {
 		case vaultgql.VaultAssetInstallationEntityTypeOrganization:
-			// Org-wide is exclusive; report it as present-with-no-scopes.
+			// Org-wide is exclusive; report it as present with no targets.
 			return nil, true, nil
 		case vaultgql.VaultAssetInstallationEntityTypeRepository:
 			// A mono-repo config means the install is path-scoped, not whole-repo.
@@ -552,20 +563,163 @@ func (s *SleuthVault) AssetInstallScopes(ctx context.Context, name string) ([]ma
 					return nil, false, perr
 				}
 				if len(paths) > 0 {
-					scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindPath, Repo: inst.EntityName, Paths: paths})
+					targets = append(targets, InstallTarget{
+						Kind: InstallKindPath, Repo: inst.EntityName, Paths: paths,
+						EntityID: entityID, MonoRepoConfigID: derefStr(inst.MonoRepoConfigId),
+					})
 					continue
 				}
 			}
-			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindRepo, Repo: inst.EntityName})
+			targets = append(targets, InstallTarget{Kind: InstallKindRepo, Repo: inst.EntityName, EntityID: entityID})
 		case vaultgql.VaultAssetInstallationEntityTypeTeam:
-			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindTeam, Team: inst.EntityName})
+			targets = append(targets, InstallTarget{Kind: InstallKindTeam, Team: inst.EntityName, EntityID: entityID})
 		case vaultgql.VaultAssetInstallationEntityTypeUser:
-			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindUser, User: inst.EntityName})
+			// Prefer entityRef, which holds the user's email; entityName can be a
+			// provider username (e.g. a GitHub handle). Fall back to entityName
+			// when the server didn't supply a ref.
+			user := inst.EntityName
+			if inst.EntityRef != nil && *inst.EntityRef != "" {
+				user = *inst.EntityRef
+			}
+			targets = append(targets, InstallTarget{Kind: InstallKindUser, User: user, EntityID: entityID})
 		case vaultgql.VaultAssetInstallationEntityTypeBot:
-			scopes = append(scopes, manifest.Scope{Kind: manifest.ScopeKindBot, Bot: inst.EntityName})
+			targets = append(targets, InstallTarget{Kind: InstallKindBot, Bot: inst.EntityName, EntityID: entityID})
 		}
 	}
-	return scopes, true, nil
+	return targets, true, nil
+}
+
+// installTargetToManifestScope converts a kind-aware install target into a
+// manifest scope (dropping the server GIDs the manifest model doesn't carry).
+func installTargetToManifestScope(t InstallTarget) manifest.Scope {
+	switch t.Kind {
+	case InstallKindPath:
+		return manifest.Scope{Kind: manifest.ScopeKindPath, Repo: t.Repo, Paths: t.Paths}
+	case InstallKindRepo:
+		return manifest.Scope{Kind: manifest.ScopeKindRepo, Repo: t.Repo}
+	case InstallKindTeam:
+		return manifest.Scope{Kind: manifest.ScopeKindTeam, Team: t.Team}
+	case InstallKindUser:
+		return manifest.Scope{Kind: manifest.ScopeKindUser, User: t.User}
+	case InstallKindBot:
+		return manifest.Scope{Kind: manifest.ScopeKindBot, Bot: t.Bot}
+	case InstallKindOrg:
+		return manifest.Scope{Kind: manifest.ScopeKindOrg}
+	}
+	return manifest.Scope{}
+}
+
+// installKindToEntityType maps a target kind to the GraphQL installation entity
+// type. Repo and path installs are both REPOSITORY entities (a path install is
+// a repository install narrowed by a mono-repo config).
+func installKindToEntityType(k InstallKind) (vaultgql.VaultAssetInstallationEntityType, bool) {
+	switch k {
+	case InstallKindOrg:
+		return vaultgql.VaultAssetInstallationEntityTypeOrganization, true
+	case InstallKindRepo, InstallKindPath:
+		return vaultgql.VaultAssetInstallationEntityTypeRepository, true
+	case InstallKindTeam:
+		return vaultgql.VaultAssetInstallationEntityTypeTeam, true
+	case InstallKindUser:
+		return vaultgql.VaultAssetInstallationEntityTypeUser, true
+	case InstallKindBot:
+		return vaultgql.VaultAssetInstallationEntityTypeBot, true
+	}
+	return "", false
+}
+
+// UninstallAssetTargets removes specific installations from an asset via the
+// bulk uninstallAssetTargets mutation. The asset is identified by slug
+// (assetName) — the server resolves it, so there's no client-side GID lookup —
+// and each target carries the server EntityID (GID) captured from
+// CurrentInstallTargets, so removal is by GID with no name/email re-resolution.
+// It is best-effort: the returned failures describe targets the server could not
+// remove (no permission, not installed), while removed reports how many
+// installations were actually removed. A returned error means the GraphQL call
+// itself failed and nothing was applied.
+func (s *SleuthVault) UninstallAssetTargets(ctx context.Context, assetName string, targets []InstallTarget) (removed int, failures []string, err error) {
+	if len(targets) == 0 {
+		return 0, nil, nil
+	}
+
+	var inputs []vaultgql.UninstallScopeInput
+	for _, t := range targets {
+		et, ok := installKindToEntityType(t.Kind)
+		if !ok {
+			failures = append(failures, fmt.Sprintf("%s: unsupported scope kind", t.Kind))
+			continue
+		}
+		in := vaultgql.UninstallScopeInput{EntityType: et}
+		if t.EntityID != "" {
+			id := t.EntityID
+			in.EntityId = &id
+		}
+		if t.MonoRepoConfigID != "" {
+			m := t.MonoRepoConfigID
+			in.MonoRepoConfigId = &m
+		}
+		inputs = append(inputs, in)
+	}
+	if len(inputs) == 0 {
+		return 0, failures, nil
+	}
+
+	resp, err := vaultgql.UninstallAssetTargets(ctx, s.gqlClient(), vaultgql.UninstallAssetTargetsInput{
+		AssetName: &assetName,
+		Targets:   inputs,
+	})
+	if err != nil {
+		return 0, failures, err
+	}
+	if resp.UninstallAssetTargets == nil {
+		return 0, failures, errors.New("missing uninstallAssetTargets payload in response")
+	}
+	for _, e := range resp.UninstallAssetTargets.Errors {
+		msg := strings.Join(e.Messages, "; ")
+		if e.Field != "" {
+			msg = e.Field + ": " + msg
+		}
+		failures = append(failures, msg)
+	}
+	s.refreshLockFileCache()
+	return resp.UninstallAssetTargets.RemovedCount, failures, nil
+}
+
+// findAssetInstallationsNode locates the asset whose slug (or, failing that,
+// display name) matches name and returns its installations node, or nil if no
+// such asset exists in the vault.
+//
+// It pages through the whole `vault.assets` connection and matches client-side
+// rather than passing name as the `search` argument: that search is an
+// icontains over name/description only, so a slug like "personal-skill" (whose
+// display name is "Personal skill") matches nothing and the asset reads as "not
+// installed". Slugs are unique, so an exact slug match wins immediately; a
+// display-name match is only a fallback when no slug matches anywhere.
+func (s *SleuthVault) findAssetInstallationsNode(ctx context.Context, name string) (*vaultgql.AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset, error) {
+	pageSize := 50
+	var after *string
+	var nameMatch *vaultgql.AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset
+	for {
+		resp, err := vaultgql.AssetInstallations(ctx, s.gqlClient(), &pageSize, after)
+		if err != nil {
+			return nil, err
+		}
+		conn := resp.Vault.Assets
+		for i := range conn.Nodes {
+			n := conn.Nodes[i]
+			if strings.EqualFold(n.GetSlug(), name) {
+				return &conn.Nodes[i], nil
+			}
+			if nameMatch == nil && strings.EqualFold(n.GetName(), name) {
+				match := conn.Nodes[i]
+				nameMatch = &match
+			}
+		}
+		if !conn.PageInfo.HasNextPage || conn.PageInfo.EndCursor == nil {
+			return nameMatch, nil
+		}
+		after = conn.PageInfo.EndCursor
+	}
 }
 
 // monoRepoConfigPaths resolves a repository's mono-repo config to its include
@@ -941,29 +1095,38 @@ func (s *SleuthVault) assetGIDByName(ctx context.Context, name string) (string, 
 }
 
 func (s *SleuthVault) assetInfoByName(ctx context.Context, name string) (assetIDMatch, error) {
-	resp, err := vaultgql.AssetGID(ctx, s.gqlClient(), name)
-	if err != nil {
-		return assetIDMatch{}, err
-	}
-	// VaultAsset is a GraphQL interface with concrete subtypes
-	// (Skill, MCP, Agent, ClaudeCodePlugin, ...). Use the interface
-	// getters to avoid switching on every variant.
-	name = strings.TrimSpace(name)
-	var slugMatch assetIDMatch
-	var nameMatches []assetIDMatch
-	for _, n := range resp.Vault.Assets.Nodes {
-		match := assetIDMatch{id: n.GetId(), slug: n.GetSlug(), typ: string(n.GetType())}
-		if n.GetSlug() == name && slugMatch.id == "" {
-			slugMatch = match
-		}
-		if n.GetName() == name && n.GetSlug() != name {
-			nameMatches = appendDistinctAssetMatch(nameMatches, match)
-		}
-	}
+	// Page through the whole vault.assets connection and match client-side: the
+	// `search` argument is an icontains over name/description, so a slug like
+	// "personal-skill" (display name "Personal skill") matches nothing there.
 	// An exact slug match is unambiguous — slugs are unique and are what
-	// ListAssets / upload responses hand back — so it always wins.
-	if slugMatch.id != "" {
-		return slugMatch, nil
+	// ListAssets / upload responses hand back — so it wins immediately; a
+	// display-name match is only a fallback when no slug matches anywhere.
+	name = strings.TrimSpace(name)
+	pageSize := 50
+	var after *string
+	var nameMatches []assetIDMatch
+	for {
+		resp, err := vaultgql.AssetGID(ctx, s.gqlClient(), &pageSize, after)
+		if err != nil {
+			return assetIDMatch{}, err
+		}
+		conn := resp.Vault.Assets
+		// VaultAsset is a GraphQL interface with concrete subtypes
+		// (Skill, MCP, Agent, ClaudeCodePlugin, ...). Use the interface
+		// getters to avoid switching on every variant.
+		for _, n := range conn.Nodes {
+			match := assetIDMatch{id: n.GetId(), slug: n.GetSlug(), typ: string(n.GetType())}
+			if n.GetSlug() == name {
+				return match, nil
+			}
+			if n.GetName() == name {
+				nameMatches = appendDistinctAssetMatch(nameMatches, match)
+			}
+		}
+		if !conn.PageInfo.HasNextPage || conn.PageInfo.EndCursor == nil {
+			break
+		}
+		after = conn.PageInfo.EndCursor
 	}
 	switch len(nameMatches) {
 	case 0:

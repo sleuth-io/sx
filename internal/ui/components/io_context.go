@@ -43,3 +43,9 @@ func (ioc *IOContext) Select(title string, options []Option) (*Option, error) {
 func (ioc *IOContext) SelectWithDefault(title string, options []Option, defaultIndex int) (*Option, error) {
 	return SelectWithDefaultAndIO(title, options, defaultIndex, ioc.In, ioc.Out)
 }
+
+// MultiSelect displays an interactive multi-selection menu and returns the
+// chosen options (those with Selected=true in the result).
+func (ioc *IOContext) MultiSelect(title string, options []MultiSelectOption) ([]MultiSelectOption, error) {
+	return MultiSelectWithIO(title, options, ioc.In, ioc.Out)
+}

@@ -135,7 +135,14 @@ func (v *AssetGIDVault) GetAssets() AssetGIDVaultAssetsVaultAssetsConnection { r
 //
 // Paginated list of vault assets.
 type AssetGIDVaultAssetsVaultAssetsConnection struct {
-	Nodes []AssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset `json:"-"`
+	// Pagination data for this connection.
+	PageInfo AssetGIDVaultAssetsVaultAssetsConnectionPageInfo          `json:"pageInfo"`
+	Nodes    []AssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset `json:"-"`
+}
+
+// GetPageInfo returns AssetGIDVaultAssetsVaultAssetsConnection.PageInfo, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnection) GetPageInfo() AssetGIDVaultAssetsVaultAssetsConnectionPageInfo {
+	return v.PageInfo
 }
 
 // GetNodes returns AssetGIDVaultAssetsVaultAssetsConnection.Nodes, and is useful for accessing the field via an interface.
@@ -183,6 +190,8 @@ func (v *AssetGIDVaultAssetsVaultAssetsConnection) UnmarshalJSON(b []byte) error
 }
 
 type __premarshalAssetGIDVaultAssetsVaultAssetsConnection struct {
+	PageInfo AssetGIDVaultAssetsVaultAssetsConnectionPageInfo `json:"pageInfo"`
+
 	Nodes []json.RawMessage `json:"nodes"`
 }
 
@@ -197,6 +206,7 @@ func (v *AssetGIDVaultAssetsVaultAssetsConnection) MarshalJSON() ([]byte, error)
 func (v *AssetGIDVaultAssetsVaultAssetsConnection) __premarshalJSON() (*__premarshalAssetGIDVaultAssetsVaultAssetsConnection, error) {
 	var retval __premarshalAssetGIDVaultAssetsVaultAssetsConnection
 
+	retval.PageInfo = v.PageInfo
 	{
 
 		dst := &retval.Nodes
@@ -555,6 +565,25 @@ func __marshalAssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset(v *AssetGI
 	}
 }
 
+// AssetGIDVaultAssetsVaultAssetsConnectionPageInfo includes the requested fields of the GraphQL type PageInfo.
+// The GraphQL type's documentation follows.
+//
+// The Relay compliant `PageInfo` type, containing data necessary to paginate this connection.
+type AssetGIDVaultAssetsVaultAssetsConnectionPageInfo struct {
+	// When paginating forwards, are there more items?
+	HasNextPage bool `json:"hasNextPage"`
+	// When paginating forwards, the cursor to continue.
+	EndCursor *string `json:"endCursor"`
+}
+
+// GetHasNextPage returns AssetGIDVaultAssetsVaultAssetsConnectionPageInfo.HasNextPage, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionPageInfo) GetHasNextPage() bool {
+	return v.HasNextPage
+}
+
+// GetEndCursor returns AssetGIDVaultAssetsVaultAssetsConnectionPageInfo.EndCursor, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionPageInfo) GetEndCursor() *string { return v.EndCursor }
+
 type AssetInstallationInput struct {
 	EntityType VaultAssetInstallationEntityType `json:"entityType"`
 	// GID of the entity (null for organization-wide)
@@ -612,7 +641,14 @@ func (v *AssetInstallationsVault) GetAssets() AssetInstallationsVaultAssetsVault
 //
 // Paginated list of vault assets.
 type AssetInstallationsVaultAssetsVaultAssetsConnection struct {
-	Nodes []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset `json:"-"`
+	// Pagination data for this connection.
+	PageInfo AssetInstallationsVaultAssetsVaultAssetsConnectionPageInfo          `json:"pageInfo"`
+	Nodes    []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset `json:"-"`
+}
+
+// GetPageInfo returns AssetInstallationsVaultAssetsVaultAssetsConnection.PageInfo, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnection) GetPageInfo() AssetInstallationsVaultAssetsVaultAssetsConnectionPageInfo {
+	return v.PageInfo
 }
 
 // GetNodes returns AssetInstallationsVaultAssetsVaultAssetsConnection.Nodes, and is useful for accessing the field via an interface.
@@ -660,6 +696,8 @@ func (v *AssetInstallationsVaultAssetsVaultAssetsConnection) UnmarshalJSON(b []b
 }
 
 type __premarshalAssetInstallationsVaultAssetsVaultAssetsConnection struct {
+	PageInfo AssetInstallationsVaultAssetsVaultAssetsConnectionPageInfo `json:"pageInfo"`
+
 	Nodes []json.RawMessage `json:"nodes"`
 }
 
@@ -674,6 +712,7 @@ func (v *AssetInstallationsVaultAssetsVaultAssetsConnection) MarshalJSON() ([]by
 func (v *AssetInstallationsVaultAssetsVaultAssetsConnection) __premarshalJSON() (*__premarshalAssetInstallationsVaultAssetsVaultAssetsConnection, error) {
 	var retval __premarshalAssetInstallationsVaultAssetsVaultAssetsConnection
 
+	retval.PageInfo = v.PageInfo
 	{
 
 		dst := &retval.Nodes
@@ -1043,10 +1082,12 @@ func __marshalAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset(
 //
 // Installation location for a vault asset.
 type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation struct {
-	EntityType       VaultAssetInstallationEntityType `json:"entityType"`
-	EntityName       string                           `json:"entityName"`
-	EntityId         *string                          `json:"entityId"`
-	MonoRepoConfigId *string                          `json:"monoRepoConfigId"`
+	EntityType VaultAssetInstallationEntityType `json:"entityType"`
+	EntityName string                           `json:"entityName"`
+	// Canonical reference used to install this entity, when it differs from entityName: the email for USER installations. Null for entity types whose entityName is already the canonical reference.
+	EntityRef        *string `json:"entityRef"`
+	EntityId         *string `json:"entityId"`
+	MonoRepoConfigId *string `json:"monoRepoConfigId"`
 }
 
 // GetEntityType returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.EntityType, and is useful for accessing the field via an interface.
@@ -1059,6 +1100,11 @@ func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstal
 	return v.EntityName
 }
 
+// GetEntityRef returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.EntityRef, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetEntityRef() *string {
+	return v.EntityRef
+}
+
 // GetEntityId returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.EntityId, and is useful for accessing the field via an interface.
 func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetEntityId() *string {
 	return v.EntityId
@@ -1067,6 +1113,27 @@ func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstal
 // GetMonoRepoConfigId returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.MonoRepoConfigId, and is useful for accessing the field via an interface.
 func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetMonoRepoConfigId() *string {
 	return v.MonoRepoConfigId
+}
+
+// AssetInstallationsVaultAssetsVaultAssetsConnectionPageInfo includes the requested fields of the GraphQL type PageInfo.
+// The GraphQL type's documentation follows.
+//
+// The Relay compliant `PageInfo` type, containing data necessary to paginate this connection.
+type AssetInstallationsVaultAssetsVaultAssetsConnectionPageInfo struct {
+	// When paginating forwards, are there more items?
+	HasNextPage bool `json:"hasNextPage"`
+	// When paginating forwards, the cursor to continue.
+	EndCursor *string `json:"endCursor"`
+}
+
+// GetHasNextPage returns AssetInstallationsVaultAssetsVaultAssetsConnectionPageInfo.HasNextPage, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionPageInfo) GetHasNextPage() bool {
+	return v.HasNextPage
+}
+
+// GetEndCursor returns AssetInstallationsVaultAssetsVaultAssetsConnectionPageInfo.EndCursor, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionPageInfo) GetEndCursor() *string {
+	return v.EndCursor
 }
 
 type AssetType string
@@ -3393,6 +3460,436 @@ func (v *SkillsRepositoryInput) GetRepositoryId() string { return v.RepositoryId
 // GetMonoRepoConfigId returns SkillsRepositoryInput.MonoRepoConfigId, and is useful for accessing the field via an interface.
 func (v *SkillsRepositoryInput) GetMonoRepoConfigId() *string { return v.MonoRepoConfigId }
 
+type UninstallAssetTargetsInput struct {
+	// GID of the asset; takes precedence over assetName when both are given
+	Id *string `json:"id"`
+	// Slug of the asset; used when id is not given
+	AssetName *string `json:"assetName"`
+	// Installation targets to remove from the asset.
+	Targets []UninstallScopeInput `json:"targets"`
+}
+
+// GetId returns UninstallAssetTargetsInput.Id, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsInput) GetId() *string { return v.Id }
+
+// GetAssetName returns UninstallAssetTargetsInput.AssetName, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsInput) GetAssetName() *string { return v.AssetName }
+
+// GetTargets returns UninstallAssetTargetsInput.Targets, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsInput) GetTargets() []UninstallScopeInput { return v.Targets }
+
+// UninstallAssetTargetsResponse is returned by UninstallAssetTargets on success.
+type UninstallAssetTargetsResponse struct {
+	// Remove multiple installations from an asset in one best-effort call.
+	//
+	// Each target is attempted independently; one that can't be removed (no
+	// permission, not installed, a git-source removal) is recorded in ``errors``
+	// while the rest proceed. ``removedCount`` is how many were actually removed.
+	UninstallAssetTargets *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation `json:"uninstallAssetTargets"`
+}
+
+// GetUninstallAssetTargets returns UninstallAssetTargetsResponse.UninstallAssetTargets, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsResponse) GetUninstallAssetTargets() *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation {
+	return v.UninstallAssetTargets
+}
+
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation includes the requested fields of the GraphQL type UninstallAssetTargetsMutation.
+// The GraphQL type's documentation follows.
+//
+// Remove multiple installations from an asset in one best-effort call.
+//
+// Each target is attempted independently; one that can't be removed (no
+// permission, not installed, a git-source removal) is recorded in “errors“
+// while the rest proceed. “removedCount“ is how many were actually removed.
+type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation struct {
+	Asset        *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset  `json:"-"`
+	RemovedCount int                                                                                      `json:"removedCount"`
+	Errors       []UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationErrorsErrorType `json:"errors"`
+}
+
+// GetAsset returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation.Asset, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation) GetAsset() *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset {
+	return v.Asset
+}
+
+// GetRemovedCount returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation.RemovedCount, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation) GetRemovedCount() int {
+	return v.RemovedCount
+}
+
+// GetErrors returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation.Errors, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation) GetErrors() []UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationErrorsErrorType {
+	return v.Errors
+}
+
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation) UnmarshalJSON(b []byte) error {
+
+	if string(b) == "null" {
+		return nil
+	}
+
+	var firstPass struct {
+		*UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation
+		Asset json.RawMessage `json:"asset"`
+		graphql.NoUnmarshalJSON
+	}
+	firstPass.UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation = v
+
+	err := json.Unmarshal(b, &firstPass)
+	if err != nil {
+		return err
+	}
+
+	{
+		dst := &v.Asset
+		src := firstPass.Asset
+		if len(src) != 0 && string(src) != "null" {
+			*dst = new(UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset)
+			err = __unmarshalUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset(
+				src, *dst)
+			if err != nil {
+				return fmt.Errorf(
+					"unable to unmarshal UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation.Asset: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+type __premarshalUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation struct {
+	Asset json.RawMessage `json:"asset"`
+
+	RemovedCount int `json:"removedCount"`
+
+	Errors []UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationErrorsErrorType `json:"errors"`
+}
+
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation) MarshalJSON() ([]byte, error) {
+	premarshaled, err := v.__premarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(premarshaled)
+}
+
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation) __premarshalJSON() (*__premarshalUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation, error) {
+	var retval __premarshalUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation
+
+	{
+
+		dst := &retval.Asset
+		src := v.Asset
+		if src != nil {
+			var err error
+			*dst, err = __marshalUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset(
+				src)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"unable to marshal UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation.Asset: %w", err)
+			}
+		}
+	}
+	retval.RemovedCount = v.RemovedCount
+	retval.Errors = v.Errors
+	return &retval, nil
+}
+
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent includes the requested fields of the GraphQL type Agent.
+type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent struct {
+	Typename *string `json:"__typename"`
+	Name     string  `json:"name"`
+}
+
+// GetTypename returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent.Typename, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent.Name, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent) GetName() string {
+	return v.Name
+}
+
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
+type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin struct {
+	Typename *string `json:"__typename"`
+	Name     string  `json:"name"`
+}
+
+// GetTypename returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin.Typename, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin.Name, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin) GetName() string {
+	return v.Name
+}
+
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetCommand includes the requested fields of the GraphQL type Command.
+type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetCommand struct {
+	Typename *string `json:"__typename"`
+	Name     string  `json:"name"`
+}
+
+// GetTypename returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetCommand.Typename, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetCommand) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetCommand.Name, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetCommand) GetName() string {
+	return v.Name
+}
+
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetHook includes the requested fields of the GraphQL type Hook.
+type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetHook struct {
+	Typename *string `json:"__typename"`
+	Name     string  `json:"name"`
+}
+
+// GetTypename returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetHook.Typename, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetHook) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetHook.Name, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetHook) GetName() string {
+	return v.Name
+}
+
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetMcpServer includes the requested fields of the GraphQL type McpServer.
+type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetMcpServer struct {
+	Typename *string `json:"__typename"`
+	Name     string  `json:"name"`
+}
+
+// GetTypename returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetMcpServer.Typename, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetMcpServer) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetMcpServer.Name, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetMcpServer) GetName() string {
+	return v.Name
+}
+
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetRule includes the requested fields of the GraphQL type Rule.
+type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetRule struct {
+	Typename *string `json:"__typename"`
+	Name     string  `json:"name"`
+}
+
+// GetTypename returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetRule.Typename, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetRule) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetRule.Name, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetRule) GetName() string {
+	return v.Name
+}
+
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetSkill includes the requested fields of the GraphQL type Skill.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for skill.
+type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetSkill struct {
+	Typename *string `json:"__typename"`
+	Name     string  `json:"name"`
+}
+
+// GetTypename returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetSkill.Typename, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetSkill) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetSkill.Name, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetSkill) GetName() string {
+	return v.Name
+}
+
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset includes the requested fields of the GraphQL interface VaultAsset.
+//
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset is implemented by the following types:
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetCommand
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetHook
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetMcpServer
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetRule
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetSkill
+// The GraphQL type's documentation follows.
+//
+// Asset in the vault (Skill, MCP, Agent, etc.).
+type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset interface {
+	implementsGraphQLInterfaceUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset()
+	// GetTypename returns the receiver's concrete GraphQL type-name (see interface doc for possible values).
+	GetTypename() *string
+	// GetName returns the interface-field "name" from its implementation.
+	GetName() string
+}
+
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent) implementsGraphQLInterfaceUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset() {
+}
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin) implementsGraphQLInterfaceUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset() {
+}
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetCommand) implementsGraphQLInterfaceUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset() {
+}
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetHook) implementsGraphQLInterfaceUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset() {
+}
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetMcpServer) implementsGraphQLInterfaceUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset() {
+}
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetRule) implementsGraphQLInterfaceUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset() {
+}
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetSkill) implementsGraphQLInterfaceUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset() {
+}
+
+func __unmarshalUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset(b []byte, v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset) error {
+	if string(b) == "null" {
+		return nil
+	}
+
+	var tn struct {
+		TypeName string `json:"__typename"`
+	}
+	err := json.Unmarshal(b, &tn)
+	if err != nil {
+		return err
+	}
+
+	switch tn.TypeName {
+	case "Agent":
+		*v = new(UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent)
+		return json.Unmarshal(b, *v)
+	case "ClaudeCodePlugin":
+		*v = new(UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin)
+		return json.Unmarshal(b, *v)
+	case "Command":
+		*v = new(UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetCommand)
+		return json.Unmarshal(b, *v)
+	case "Hook":
+		*v = new(UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetHook)
+		return json.Unmarshal(b, *v)
+	case "McpServer":
+		*v = new(UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetMcpServer)
+		return json.Unmarshal(b, *v)
+	case "Rule":
+		*v = new(UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetRule)
+		return json.Unmarshal(b, *v)
+	case "Skill":
+		*v = new(UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetSkill)
+		return json.Unmarshal(b, *v)
+	case "":
+		return fmt.Errorf(
+			"response was missing VaultAsset.__typename")
+	default:
+		return fmt.Errorf(
+			`unexpected concrete type for UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset: "%v"`, tn.TypeName)
+	}
+}
+
+func __marshalUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset(v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset) ([]byte, error) {
+
+	var typename string
+	switch v := (*v).(type) {
+	case *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent:
+		typename = "Agent"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent
+		}{typename, v}
+		return json.Marshal(result)
+	case *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin:
+		typename = "ClaudeCodePlugin"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin
+		}{typename, v}
+		return json.Marshal(result)
+	case *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetCommand:
+		typename = "Command"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetCommand
+		}{typename, v}
+		return json.Marshal(result)
+	case *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetHook:
+		typename = "Hook"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetHook
+		}{typename, v}
+		return json.Marshal(result)
+	case *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetMcpServer:
+		typename = "McpServer"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetMcpServer
+		}{typename, v}
+		return json.Marshal(result)
+	case *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetRule:
+		typename = "Rule"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetRule
+		}{typename, v}
+		return json.Marshal(result)
+	case *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetSkill:
+		typename = "Skill"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetSkill
+		}{typename, v}
+		return json.Marshal(result)
+	case nil:
+		return []byte("null"), nil
+	default:
+		return nil, fmt.Errorf(
+			`unexpected concrete type for UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset: "%T"`, v)
+	}
+}
+
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+type UninstallScopeInput struct {
+	EntityType VaultAssetInstallationEntityType `json:"entityType"`
+	// GID of the entity (null for organization-wide installs)
+	EntityId *string `json:"entityId"`
+	// GID of the mono-repo config (only for repository targets)
+	MonoRepoConfigId *string `json:"monoRepoConfigId"`
+}
+
+// GetEntityType returns UninstallScopeInput.EntityType, and is useful for accessing the field via an interface.
+func (v *UninstallScopeInput) GetEntityType() VaultAssetInstallationEntityType { return v.EntityType }
+
+// GetEntityId returns UninstallScopeInput.EntityId, and is useful for accessing the field via an interface.
+func (v *UninstallScopeInput) GetEntityId() *string { return v.EntityId }
+
+// GetMonoRepoConfigId returns UninstallScopeInput.MonoRepoConfigId, and is useful for accessing the field via an interface.
+func (v *UninstallScopeInput) GetMonoRepoConfigId() *string { return v.MonoRepoConfigId }
+
 // UninstallSkillFromBotResponse is returned by UninstallSkillFromBot on success.
 type UninstallSkillFromBotResponse struct {
 	UninstallSkillFromBot *UninstallSkillFromBotUninstallSkillFromBotUninstallSkillFromBotMutation `json:"uninstallSkillFromBot"`
@@ -4866,19 +5363,27 @@ func (v *__AssetAuditLogInput) GetAfter() *string { return v.After }
 
 // __AssetGIDInput is used internally by genqlient
 type __AssetGIDInput struct {
-	Search string `json:"search"`
+	First *int    `json:"first"`
+	After *string `json:"after"`
 }
 
-// GetSearch returns __AssetGIDInput.Search, and is useful for accessing the field via an interface.
-func (v *__AssetGIDInput) GetSearch() string { return v.Search }
+// GetFirst returns __AssetGIDInput.First, and is useful for accessing the field via an interface.
+func (v *__AssetGIDInput) GetFirst() *int { return v.First }
+
+// GetAfter returns __AssetGIDInput.After, and is useful for accessing the field via an interface.
+func (v *__AssetGIDInput) GetAfter() *string { return v.After }
 
 // __AssetInstallationsInput is used internally by genqlient
 type __AssetInstallationsInput struct {
-	Search string `json:"search"`
+	First *int    `json:"first"`
+	After *string `json:"after"`
 }
 
-// GetSearch returns __AssetInstallationsInput.Search, and is useful for accessing the field via an interface.
-func (v *__AssetInstallationsInput) GetSearch() string { return v.Search }
+// GetFirst returns __AssetInstallationsInput.First, and is useful for accessing the field via an interface.
+func (v *__AssetInstallationsInput) GetFirst() *int { return v.First }
+
+// GetAfter returns __AssetInstallationsInput.After, and is useful for accessing the field via an interface.
+func (v *__AssetInstallationsInput) GetAfter() *string { return v.After }
 
 // __AssetUsageEventsInput is used internally by genqlient
 type __AssetUsageEventsInput struct {
@@ -5116,6 +5621,14 @@ type __SetTeamAdminInput struct {
 // GetInput returns __SetTeamAdminInput.Input, and is useful for accessing the field via an interface.
 func (v *__SetTeamAdminInput) GetInput() SetTeamAdminInput { return v.Input }
 
+// __UninstallAssetTargetsInput is used internally by genqlient
+type __UninstallAssetTargetsInput struct {
+	Input UninstallAssetTargetsInput `json:"input"`
+}
+
+// GetInput returns __UninstallAssetTargetsInput.Input, and is useful for accessing the field via an interface.
+func (v *__UninstallAssetTargetsInput) GetInput() UninstallAssetTargetsInput { return v.Input }
+
 // __UninstallSkillFromBotInput is used internally by genqlient
 type __UninstallSkillFromBotInput struct {
 	BotId   string `json:"botId"`
@@ -5223,9 +5736,13 @@ func AssetAuditLog(
 
 // The query executed by AssetGID.
 const AssetGID_Operation = `
-query AssetGID ($search: String!) {
+query AssetGID ($first: Int, $after: String) {
 	vault {
-		assets(search: $search, first: 25) {
+		assets(first: $first, after: $after) {
+			pageInfo {
+				hasNextPage
+				endCursor
+			}
 			nodes {
 				__typename
 				id
@@ -5241,13 +5758,15 @@ query AssetGID ($search: String!) {
 func AssetGID(
 	ctx_ context.Context,
 	client_ graphql.Client,
-	search string,
+	first *int,
+	after *string,
 ) (data_ *AssetGIDResponse, err_ error) {
 	req_ := &graphql.Request{
 		OpName: "AssetGID",
 		Query:  AssetGID_Operation,
 		Variables: &__AssetGIDInput{
-			Search: search,
+			First: first,
+			After: after,
 		},
 	}
 
@@ -5265,9 +5784,13 @@ func AssetGID(
 
 // The query executed by AssetInstallations.
 const AssetInstallations_Operation = `
-query AssetInstallations ($search: String!) {
+query AssetInstallations ($first: Int, $after: String) {
 	vault {
-		assets(search: $search, first: 50) {
+		assets(first: $first, after: $after) {
+			pageInfo {
+				hasNextPage
+				endCursor
+			}
 			nodes {
 				__typename
 				slug
@@ -5275,6 +5798,7 @@ query AssetInstallations ($search: String!) {
 				installations {
 					entityType
 					entityName
+					entityRef
 					entityId
 					monoRepoConfigId
 				}
@@ -5287,13 +5811,15 @@ query AssetInstallations ($search: String!) {
 func AssetInstallations(
 	ctx_ context.Context,
 	client_ graphql.Client,
-	search string,
+	first *int,
+	after *string,
 ) (data_ *AssetInstallationsResponse, err_ error) {
 	req_ := &graphql.Request{
 		OpName: "AssetInstallations",
 		Query:  AssetInstallations_Operation,
 		Variables: &__AssetInstallationsInput{
-			Search: search,
+			First: first,
+			After: after,
 		},
 	}
 
@@ -6308,6 +6834,48 @@ func SetTeamAdmin(
 	}
 
 	data_ = &SetTeamAdminResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by UninstallAssetTargets.
+const UninstallAssetTargets_Operation = `
+mutation UninstallAssetTargets ($input: UninstallAssetTargetsInput!) {
+	uninstallAssetTargets(input: $input) {
+		asset {
+			__typename
+			name
+		}
+		removedCount
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func UninstallAssetTargets(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input UninstallAssetTargetsInput,
+) (data_ *UninstallAssetTargetsResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "UninstallAssetTargets",
+		Query:  UninstallAssetTargets_Operation,
+		Variables: &__UninstallAssetTargetsInput{
+			Input: input,
+		},
+	}
+
+	data_ = &UninstallAssetTargetsResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(

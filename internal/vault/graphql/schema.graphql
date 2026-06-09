@@ -6584,8 +6584,11 @@ input UninstallAssetInput {
   """GID of the mono-repo config (only for repository targets)"""
   monoRepoConfigId: ID
 
-  """GID of the asset to uninstall from a target"""
-  id: ID!
+  """GID of the asset; takes precedence over assetName when both are given"""
+  id: ID
+
+  """Slug of the asset; used when id is not given"""
+  assetName: String
 }
 
 """
@@ -6602,8 +6605,11 @@ type UninstallAssetTargetsMutation {
 }
 
 input UninstallAssetTargetsInput {
-  """GID of the asset to uninstall targets from"""
-  id: ID!
+  """GID of the asset; takes precedence over assetName when both are given"""
+  id: ID
+
+  """Slug of the asset; used when id is not given"""
+  assetName: String
 
   """Installation targets to remove from the asset."""
   targets: [UninstallScopeInput!]!

@@ -77,6 +77,31 @@ func hasIdentityScope(targets []vault.InstallTarget) bool {
 	return false
 }
 
+// displayCurrentTargets shows the asset's real current installation as
+// kind-aware targets. installed distinguishes "not installed" from "installed
+// globally" (an empty target set). Unlike displayCurrentInstallation it renders
+// team/user/bot scopes too, so the line reflects the authoritative server view.
+func displayCurrentTargets(targets []vault.InstallTarget, installed bool, styledOut *ui.Output) {
+	styledOut.Newline()
+	styledOut.Println("Current installation:")
+
+	if !installed {
+		styledOut.Println("  Not installed (available in vault only)")
+		return
+	}
+
+	if len(targets) == 0 {
+		styledOut.Println("  → Global (available in all projects)")
+		return
+	}
+
+	items := make([]string, len(targets))
+	for i, t := range targets {
+		items[i] = formatTarget(t)
+	}
+	styledOut.List(items)
+}
+
 // displayCurrentInstallation shows the current installation state of an asset
 func displayCurrentInstallation(currentRepos []lockfile.Scope, styledOut *ui.Output) {
 	styledOut.Newline()
@@ -100,6 +125,32 @@ func displayCurrentInstallation(currentRepos []lockfile.Scope, styledOut *ui.Out
 		items[i] = formatRepository(repo)
 	}
 	styledOut.List(items)
+}
+
+// diffTargets computes the change between the original install set and the
+// edited working set, keyed by display identity (formatTarget). removed entries
+// are taken from original (so they keep the server EntityID needed to uninstall
+// by GID); added entries are taken from working.
+func diffTargets(original, working []vault.InstallTarget) (added, removed []vault.InstallTarget) {
+	originalKeys := make(map[string]bool, len(original))
+	for _, t := range original {
+		originalKeys[formatTarget(t)] = true
+	}
+	workingKeys := make(map[string]bool, len(working))
+	for _, t := range working {
+		workingKeys[formatTarget(t)] = true
+	}
+	for _, t := range original {
+		if !workingKeys[formatTarget(t)] {
+			removed = append(removed, t)
+		}
+	}
+	for _, t := range working {
+		if !originalKeys[formatTarget(t)] {
+			added = append(added, t)
+		}
+	}
+	return added, removed
 }
 
 // displayScopeChanges shows a diff-style preview of scope changes.
