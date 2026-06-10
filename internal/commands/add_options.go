@@ -43,9 +43,17 @@ func (o addOptions) isNonInteractive() bool {
 // legacy). When true, the add flow pre-fills that scope and asks for
 // confirmation instead of opening the interactive menu.
 func (o addOptions) hasScopeFlags() bool {
-	return o.Org || len(o.Repos) > 0 || len(o.Paths) > 0 || len(o.Teams) > 0 ||
-		len(o.Users) > 0 || len(o.Bots) > 0 ||
+	return o.hasUnifiedScopeFlags() ||
 		o.ScopeGlobal || len(o.ScopeRepos) > 0 || o.Scope != ""
+}
+
+// hasUnifiedScopeFlags reports whether any of the new unified scope-target flags
+// (--org/--repo/--path/--team/--user/--bot) is set. The --no-install path uses
+// this to route those flags through resolveScopeFlags instead of the legacy-only
+// getScopes, which would otherwise drop them and globalize the asset.
+func (o addOptions) hasUnifiedScopeFlags() bool {
+	return o.Org || len(o.Repos) > 0 || len(o.Paths) > 0 ||
+		len(o.Teams) > 0 || len(o.Users) > 0 || len(o.Bots) > 0
 }
 
 // toScopeFlags folds the unified and legacy flags into the single scopeFlags

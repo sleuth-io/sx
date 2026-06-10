@@ -11,12 +11,33 @@ import (
 )
 
 // writeLockFileForNoInstall writes the lock entry for an asset added with
-// --no-install. Honors --scope-repo / --scope-global / --scope when set so
-// batch flows ("sx add ... --no-install --scope-repo X" in a loop, then a
-// single sx install at the end) get the scope they asked for rather than
-// silently global. Falls back to global when no scope flag is given,
-// preserving the long-standing default for plain --no-install.
+// --no-install. Honors scope flags when set so batch flows ("sx add ...
+// --no-install --repo X" in a loop, then a single sx install at the end) get
+// the scope they asked for rather than silently global. Falls back to global
+// when no scope flag is given, preserving the long-standing default for plain
+// --no-install.
 func writeLockFileForNoInstall(ctx context.Context, out *outputHelper, repo vault.Vault, asset *lockfile.Asset, opts addOptions) error {
+	// Unified flags (--org/--repo/--path/--team/--user/--bot) go through the
+	// same resolver the install path uses, so --no-install honors them instead
+	// of dropping them and globalizing the asset. No confirmation prompt here:
+	// --no-install is the non-interactive/batch path. Legacy --scope* flags and
+	// the bare no-flag default stay on getScopes below.
+	if opts.hasUnifiedScopeFlags() {
+		change, err := resolveScopeFlags(opts.toScopeFlags())
+		if err != nil {
+			return err
+		}
+		result := &scopeResult{
+			ApplyTargets: true,
+			Targets:      change.Targets,
+			Append:       change.Mode == scopeAdd,
+		}
+		if err := updateLockFile(ctx, out, repo, asset, result); err != nil {
+			return fmt.Errorf("failed to update lock file: %w", err)
+		}
+		return nil
+	}
+
 	result, err := opts.getScopes()
 	if err != nil {
 		return err
