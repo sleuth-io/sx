@@ -112,7 +112,7 @@ a "team not found" warning rather than created implicitly.
 
 | State | Location | Who writes |
 |-------|----------|-----------|
-| Manifest (assets, scopes, teams) | `<vault>/sx.toml` | Vault admins via `sx team *`, `sx add`, `sx install --scope` |
+| Manifest (assets, scopes, teams) | `<vault>/sx.toml` | Vault admins via `sx team *`, `sx add`, `sx install --team` |
 | Audit events | `<vault>/.sx/audit/YYYY-MM.jsonl` | Every mutation (see [audit.md](audit.md)) |
 | Usage events | `<vault>/.sx/usage/YYYY-MM.jsonl` | Every `sx install` (see [stats.md](stats.md)) |
 | Per-user resolved lock | `~/<cache>/sx/lockfiles/<vault-id>.lock` | `sx install` |

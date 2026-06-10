@@ -42,13 +42,16 @@ func NewInstallCommand() *cobra.Command {
 	// Installation targeting flags — when any of these is set together
 	// with a positional asset name, sx install enters "set installation
 	// target" mode instead of the default "install assets for the current
-	// context" mode.
+	// context" mode. These are the same unified, repeatable scope flags
+	// `sx add` exposes, resolved by the same code (resolveScopeFromFlags).
 	var orgFlag bool
-	var repoFlag string
-	var pathFlag string
-	var teamFlag string
-	var userFlag string
-	var botFlag string
+	var repoFlags []string
+	var pathFlags []string
+	var teamFlags []string
+	var userFlags []string
+	var botFlags []string
+	var replaceScopeFlag bool
+	var setTargetYes bool
 
 	cmd := &cobra.Command{
 		Use:   "install [asset]",
@@ -63,11 +66,17 @@ useful when you want to install assets for a project without being in
 that directory (e.g., Docker sandboxes, CI pipelines).
 
 To set an installation target for an existing asset, pass the asset name
-as a positional argument together with one of --org, --repo, --path,
---team, --user, or --bot. Examples:
+as a positional argument together with one or more scope flags (--org,
+--repo, --path, --team, --user, --bot). These are the same scope flags
+'sx add' uses: each is repeatable, several may be combined, and the
+change is previewed and confirmed (use --yes/-y to skip the prompt).
+The named scopes are appended to the asset's existing scope set by
+default; pass --replace-scope to make them the complete set instead.
+Examples:
 
   sx install --team platform my-skill
-  sx install --user alice@example.com my-skill
+  sx install --team platform --team payments my-skill
+  sx install --replace-scope --user alice@example.com my-skill
   sx install --bot python-backend my-skill
   sx install --org my-skill
   sx install --repo https://github.com/acme/infra.git my-skill
@@ -77,22 +86,23 @@ Use --dry-run to preview the resolved asset list for the current
 context without downloading or touching client directories — the
 equivalent of 'pip freeze' against the vault's manifest.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			targetFlags := installTargetFlags{
-				org:  orgFlag,
-				repo: repoFlag,
-				path: pathFlag,
-				team: teamFlag,
-				user: userFlag,
-				bot:  botFlag,
+			targetFlags := scopeFlags{
+				Org:     orgFlag,
+				Repos:   repoFlags,
+				Paths:   pathFlags,
+				Teams:   teamFlags,
+				Users:   userFlags,
+				Bots:    botFlags,
+				Replace: replaceScopeFlag,
 			}
-			if targetFlags.active() {
+			if targetFlags.hasTarget() {
 				if len(args) != 1 {
 					return errors.New("installation target flags require an asset name as a positional argument")
 				}
 				if dryRun {
 					return errors.New("--dry-run cannot be combined with install-target flags")
 				}
-				return runInstallSetTarget(cmd, args[0], targetFlags)
+				return runInstallSetTarget(cmd, args[0], targetFlags, setTargetYes)
 			}
 			return runInstall(cmd, args, hookMode, clientID, fixMode, targetDir, clientsFlag, dryRun, strict)
 		},
@@ -106,12 +116,14 @@ equivalent of 'pip freeze' against the vault's manifest.`,
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the resolved asset list for the current context and exit without downloading or installing")
 	cmd.Flags().BoolVar(&strict, "strict", false, "Treat hook installs that soft-skip (event not supported by client) as failures (also via SX_STRICT=1)")
 
-	cmd.Flags().BoolVar(&orgFlag, "org", false, "Set this asset to install org-wide")
-	cmd.Flags().StringVar(&repoFlag, "repo", "", "Install this asset for a specific repository URL")
-	cmd.Flags().StringVar(&pathFlag, "path", "", "Install this asset for a repo subpath (format: repo_url#path1,path2)")
-	cmd.Flags().StringVar(&teamFlag, "team", "", "Install this asset for every member of a team (by team name, e.g. --team platform; the team must exist in the vault)")
-	cmd.Flags().StringVar(&userFlag, "user", "", "Install this asset for a specific user email (or 'me' for yourself)")
-	cmd.Flags().StringVar(&botFlag, "bot", "", "Install this asset for a specific bot identity")
+	cmd.Flags().BoolVar(&orgFlag, "org", false, "Scope: install org-wide (global, exclusive)")
+	cmd.Flags().StringArrayVar(&repoFlags, "repo", nil, "Scope: a repository URL (repeatable)")
+	cmd.Flags().StringArrayVar(&pathFlags, "path", nil, "Scope: a repo subpath set (repo_url#path1,path2; repeatable)")
+	cmd.Flags().StringArrayVar(&teamFlags, "team", nil, "Scope: every member of a team, by name (the team must exist in the vault; repeatable)")
+	cmd.Flags().StringArrayVar(&userFlags, "user", nil, "Scope: a user email, or 'me' (repeatable)")
+	cmd.Flags().StringArrayVar(&botFlags, "bot", nil, "Scope: a bot identity, by name (repeatable)")
+	cmd.Flags().BoolVar(&replaceScopeFlag, "replace-scope", false, "Replace the asset's whole scope set with the named scopes (default is to append)")
+	cmd.Flags().BoolVarP(&setTargetYes, "yes", "y", false, "Skip the scope-change confirmation prompt")
 
 	_ = cmd.Flags().MarkHidden("hook-mode") // Hide from help output since it's internal
 

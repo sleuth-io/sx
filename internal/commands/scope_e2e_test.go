@@ -98,7 +98,7 @@ func TestScopeE2E_UserScopeWrittenToManifest(t *testing.T) {
 	_, vaultDir := seedScopeVault(t)
 
 	cmd := NewInstallCommand()
-	cmd.SetArgs([]string{"my-skill", "--user", "me"})
+	cmd.SetArgs([]string{"my-skill", "--user", "me", "--yes"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("install --user me: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestScopeE2E_UserScopedAssetInstallsForCaller(t *testing.T) {
 
 	// Scope to me.
 	set := NewInstallCommand()
-	set.SetArgs([]string{"my-skill", "--user", "me"})
+	set.SetArgs([]string{"my-skill", "--user", "me", "--yes"})
 	if err := set.Execute(); err != nil {
 		t.Fatalf("install --user me: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestScopeE2E_TeamScopeByNonAdminWritesToManifest(t *testing.T) {
 
 	// The caller (test@example.com) is not an admin, but scoping must still work.
 	cmd := NewInstallCommand()
-	cmd.SetArgs([]string{"my-skill", "--team", "platform"})
+	cmd.SetArgs([]string{"my-skill", "--team", "platform", "--yes"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("install --team platform by non-admin should succeed: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestScopeE2E_NonexistentTeamNotWritten(t *testing.T) {
 	_, vaultDir := seedScopeVault(t)
 
 	cmd := NewInstallCommand()
-	cmd.SetArgs([]string{"my-skill", "--team", "ghost"})
+	cmd.SetArgs([]string{"my-skill", "--team", "ghost", "--yes"})
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
 	if err := cmd.Execute(); err == nil {
@@ -221,7 +221,7 @@ func TestScopeE2E_GitVaultScopePushedToRemote(t *testing.T) {
 	env.Chdir(env.HomeDir)
 
 	cmd := NewInstallCommand()
-	cmd.SetArgs([]string{"my-skill", "--user", "me"})
+	cmd.SetArgs([]string{"my-skill", "--user", "me", "--yes"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("install --user me on git vault: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestScopeE2E_AddOrgFlagGoesGlobal(t *testing.T) {
 
 	// First give it a non-global scope so we can see --org replace it.
 	set := NewInstallCommand()
-	set.SetArgs([]string{"my-skill", "--user", "me"})
+	set.SetArgs([]string{"my-skill", "--user", "me", "--yes"})
 	if err := set.Execute(); err != nil {
 		t.Fatalf("seed user scope: %v", err)
 	}
@@ -286,6 +286,245 @@ func TestScopeE2E_AddOrgFlagGoesGlobal(t *testing.T) {
 
 	if scopes := manifestScopes(t, vaultDir, "my-skill"); len(scopes) != 0 {
 		t.Fatalf("--org should clear all scopes (global), got %+v", scopes)
+	}
+}
+
+// TestScopeE2E_InstallMultiScope: `sx install <name> --user me --team X --yes`
+// sets BOTH scopes in one call — proving sx install now takes the same
+// repeatable, multi-scope flags as sx add (no more single-exclusive-scope).
+func TestScopeE2E_InstallMultiScope(t *testing.T) {
+	_, vaultDir := seedScopeVault(t)
+
+	v, err := vaultpkg.NewPathVault("file://" + vaultDir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	if err := v.CreateTeam(context.Background(), mgmt.Team{
+		Name: "platform", Members: []string{"other@example.com"}, Admins: []string{"other@example.com"},
+	}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+
+	cmd := NewInstallCommand()
+	cmd.SetArgs([]string{"my-skill", "--user", "me", "--team", "platform", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install --user me --team platform --yes: %v", err)
+	}
+
+	scopes := manifestScopes(t, vaultDir, "my-skill")
+	if !hasScope(scopes, manifest.ScopeKindUser, "test@example.com") {
+		t.Errorf("expected user scope for caller, got %+v", scopes)
+	}
+	if !hasScope(scopes, manifest.ScopeKindTeam, "platform") {
+		t.Errorf("expected team scope platform, got %+v", scopes)
+	}
+}
+
+// TestScopeE2E_InstallAppendsByDefault: a second `sx install` with a new scope
+// appends by default — the first scope must survive without any extra flag.
+func TestScopeE2E_InstallAppendsByDefault(t *testing.T) {
+	_, vaultDir := seedScopeVault(t)
+
+	v, err := vaultpkg.NewPathVault("file://" + vaultDir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	if err := v.CreateTeam(context.Background(), mgmt.Team{
+		Name: "platform", Members: []string{"other@example.com"}, Admins: []string{"other@example.com"},
+	}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+
+	// First scope: just me.
+	set := NewInstallCommand()
+	set.SetArgs([]string{"my-skill", "--user", "me", "--yes"})
+	if err := set.Execute(); err != nil {
+		t.Fatalf("install --user me --yes: %v", err)
+	}
+
+	// Add a team scope with NO append flag — the user scope must survive.
+	add := NewInstallCommand()
+	add.SetArgs([]string{"my-skill", "--team", "platform", "--yes"})
+	if err := add.Execute(); err != nil {
+		t.Fatalf("install --team platform --yes: %v", err)
+	}
+
+	scopes := manifestScopes(t, vaultDir, "my-skill")
+	if !hasScope(scopes, manifest.ScopeKindUser, "test@example.com") {
+		t.Errorf("default append dropped the existing user scope, got %+v", scopes)
+	}
+	if !hasScope(scopes, manifest.ScopeKindTeam, "platform") {
+		t.Errorf("expected appended team scope platform, got %+v", scopes)
+	}
+}
+
+// TestScopeE2E_InstallReplaceScopeDropsExisting: `--replace-scope` makes the
+// named scopes the asset's complete set, dropping anything previously there.
+func TestScopeE2E_InstallReplaceScopeDropsExisting(t *testing.T) {
+	_, vaultDir := seedScopeVault(t)
+
+	v, err := vaultpkg.NewPathVault("file://" + vaultDir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	if err := v.CreateTeam(context.Background(), mgmt.Team{
+		Name: "platform", Members: []string{"other@example.com"}, Admins: []string{"other@example.com"},
+	}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+
+	// Start scoped to me.
+	set := NewInstallCommand()
+	set.SetArgs([]string{"my-skill", "--user", "me", "--yes"})
+	if err := set.Execute(); err != nil {
+		t.Fatalf("install --user me --yes: %v", err)
+	}
+
+	// Replace the whole set with just the team scope.
+	repl := NewInstallCommand()
+	repl.SetArgs([]string{"my-skill", "--team", "platform", "--replace-scope", "--yes"})
+	if err := repl.Execute(); err != nil {
+		t.Fatalf("install --team platform --replace-scope --yes: %v", err)
+	}
+
+	scopes := manifestScopes(t, vaultDir, "my-skill")
+	if hasScope(scopes, manifest.ScopeKindUser, "test@example.com") {
+		t.Errorf("--replace-scope should have dropped the user scope, got %+v", scopes)
+	}
+	if !hasScope(scopes, manifest.ScopeKindTeam, "platform") {
+		t.Errorf("expected team scope platform after replace, got %+v", scopes)
+	}
+}
+
+// seedScopeTeam creates the "platform" team in the path vault at vaultDir so
+// team-scoping tests have a team to target.
+func seedScopeTeam(t *testing.T, vaultDir string) {
+	t.Helper()
+	v, err := vaultpkg.NewPathVault("file://" + vaultDir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	if err := v.CreateTeam(context.Background(), mgmt.Team{
+		Name: "platform", Members: []string{"other@example.com"}, Admins: []string{"other@example.com"},
+	}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+}
+
+// TestScopeE2E_InstallConfirmApplies: without --yes, the change is previewed and
+// applied when the user confirms at the prompt (stdin "y").
+func TestScopeE2E_InstallConfirmApplies(t *testing.T) {
+	_, vaultDir := seedScopeVault(t)
+	seedScopeTeam(t, vaultDir)
+
+	cmd := NewInstallCommand()
+	cmd.SetArgs([]string{"my-skill", "--team", "platform"}) // no --yes
+	cmd.SetIn(strings.NewReader("y\n"))
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install --team platform (confirm y): %v", err)
+	}
+
+	if scopes := manifestScopes(t, vaultDir, "my-skill"); !hasScope(scopes, manifest.ScopeKindTeam, "platform") {
+		t.Errorf("confirming the prompt should apply the scope, got %+v", scopes)
+	}
+}
+
+// TestScopeE2E_InstallDeclineAborts: declining the prompt (stdin "n") leaves the
+// asset's scope untouched and is not an error.
+func TestScopeE2E_InstallDeclineAborts(t *testing.T) {
+	_, vaultDir := seedScopeVault(t)
+	seedScopeTeam(t, vaultDir)
+
+	cmd := NewInstallCommand()
+	cmd.SetArgs([]string{"my-skill", "--team", "platform"}) // no --yes
+	cmd.SetIn(strings.NewReader("n\n"))
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("declining the prompt should not error: %v", err)
+	}
+
+	if scopes := manifestScopes(t, vaultDir, "my-skill"); hasScope(scopes, manifest.ScopeKindTeam, "platform") {
+		t.Errorf("declining should leave the scope unchanged, got %+v", scopes)
+	}
+}
+
+// TestScopeE2E_InstallNoChangeIsNoOp: re-applying a scope the asset already has
+// must detect "no changes" and no-op WITHOUT prompting. Empty stdin is the trap:
+// if it tried to confirm, the read would EOF-error and the command would fail.
+func TestScopeE2E_InstallNoChangeIsNoOp(t *testing.T) {
+	_, vaultDir := seedScopeVault(t)
+	seedScopeTeam(t, vaultDir)
+
+	// Scope to platform once.
+	set := NewInstallCommand()
+	set.SetArgs([]string{"my-skill", "--team", "platform", "--yes"})
+	if err := set.Execute(); err != nil {
+		t.Fatalf("seed scope: %v", err)
+	}
+
+	// Re-apply the same scope with no --yes and empty stdin: must no-op, not prompt.
+	again := NewInstallCommand()
+	again.SetArgs([]string{"my-skill", "--team", "platform"})
+	again.SetIn(strings.NewReader(""))
+	if err := again.Execute(); err != nil {
+		t.Fatalf("re-applying an existing scope should no-op without prompting, got: %v", err)
+	}
+
+	if scopes := manifestScopes(t, vaultDir, "my-skill"); !hasScope(scopes, manifest.ScopeKindTeam, "platform") {
+		t.Errorf("the existing scope should still be present, got %+v", scopes)
+	}
+}
+
+// TestInstallSetTarget_Validations covers the up-front guards that reject bad
+// flag combinations before any vault work.
+func TestInstallSetTarget_Validations(t *testing.T) {
+	t.Run("--dry-run with a scope flag errors", func(t *testing.T) {
+		cmd := NewInstallCommand()
+		cmd.SetArgs([]string{"my-skill", "--team", "platform", "--dry-run"})
+		cmd.SilenceErrors = true
+		cmd.SilenceUsage = true
+		if err := cmd.Execute(); err == nil {
+			t.Fatal("expected an error combining --dry-run with a scope flag")
+		}
+	})
+
+	t.Run("scope flag without an asset name errors", func(t *testing.T) {
+		cmd := NewInstallCommand()
+		cmd.SetArgs([]string{"--team", "platform"})
+		cmd.SilenceErrors = true
+		cmd.SilenceUsage = true
+		if err := cmd.Execute(); err == nil {
+			t.Fatal("expected an error: scope flags require an asset name")
+		}
+	})
+}
+
+// TestScopeE2E_AddReplaceScopeDropsExisting mirrors the install replace test for
+// `sx add`: --replace-scope makes the named scopes the complete set, since both
+// commands share the resolver.
+func TestScopeE2E_AddReplaceScopeDropsExisting(t *testing.T) {
+	_, vaultDir := seedScopeVault(t)
+	seedScopeTeam(t, vaultDir)
+
+	// Seed: scope to me (append to empty).
+	set := NewAddCommand()
+	set.SetArgs([]string{"my-skill", "--user", "me", "--yes", "--no-install"})
+	if err := set.Execute(); err != nil {
+		t.Fatalf("add --user me: %v", err)
+	}
+
+	// Replace the whole set with just the team.
+	repl := NewAddCommand()
+	repl.SetArgs([]string{"my-skill", "--team", "platform", "--replace-scope", "--yes", "--no-install"})
+	if err := repl.Execute(); err != nil {
+		t.Fatalf("add --team platform --replace-scope: %v", err)
+	}
+
+	scopes := manifestScopes(t, vaultDir, "my-skill")
+	if hasScope(scopes, manifest.ScopeKindUser, "test@example.com") {
+		t.Errorf("--replace-scope on sx add should drop the user scope, got %+v", scopes)
+	}
+	if !hasScope(scopes, manifest.ScopeKindTeam, "platform") {
+		t.Errorf("expected team scope platform after replace, got %+v", scopes)
 	}
 }
 

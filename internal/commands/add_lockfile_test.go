@@ -158,8 +158,8 @@ func TestWriteLockFileForNoInstall(t *testing.T) {
 		if len(got) != 1 || got[0].Kind != vault.InstallKindTeam || got[0].Team != "foo" {
 			t.Errorf("targets = %v, want one team:foo target", got)
 		}
-		if spy.bulkCalls[0].appendMode {
-			t.Errorf("appendMode = true, want false (replace without --add-to-scope)")
+		if !spy.bulkCalls[0].appendMode {
+			t.Errorf("appendMode = false, want true (append is the default)")
 		}
 	})
 
@@ -182,11 +182,11 @@ func TestWriteLockFileForNoInstall(t *testing.T) {
 		}
 	})
 
-	t.Run("--no-install --add-to-scope --team uses append mode", func(t *testing.T) {
+	t.Run("--no-install --replace-scope --team uses replace mode", func(t *testing.T) {
 		spy := &spyVault{}
 		out := &outputHelper{}
 		asset := &lockfile.Asset{Name: "my-skill", Version: "1.0.0"}
-		opts := addOptions{NoInstall: true, Teams: []string{"foo"}, AddToScope: true}
+		opts := addOptions{NoInstall: true, Teams: []string{"foo"}, ReplaceScope: true}
 
 		if err := writeLockFileForNoInstall(context.Background(), out, spy, asset, opts); err != nil {
 			t.Fatalf("writeLockFileForNoInstall: %v", err)
@@ -195,8 +195,8 @@ func TestWriteLockFileForNoInstall(t *testing.T) {
 		if len(spy.bulkCalls) != 1 {
 			t.Fatalf("SetAssetInstallations calls = %d, want 1", len(spy.bulkCalls))
 		}
-		if !spy.bulkCalls[0].appendMode {
-			t.Errorf("appendMode = false, want true (--add-to-scope)")
+		if spy.bulkCalls[0].appendMode {
+			t.Errorf("appendMode = true, want false (--replace-scope)")
 		}
 	})
 
