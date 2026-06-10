@@ -66,7 +66,6 @@ func NewAddCommand() *cobra.Command {
 		users        []string
 		bots         []string
 		replaceScope bool
-		addToScope   bool // deprecated: appending is now the default
 		// legacy aliases
 		scopeGlobal bool
 		scopeRepos  []string
@@ -123,8 +122,6 @@ func NewAddCommand() *cobra.Command {
 	cmd.Flags().StringArrayVar(&users, "user", nil, "Scope: a user email, or 'me' (repeatable)")
 	cmd.Flags().StringArrayVar(&bots, "bot", nil, "Scope: a bot identity, by name (repeatable)")
 	cmd.Flags().BoolVar(&replaceScope, "replace-scope", false, "Replace the asset's whole scope set with the named scopes (default is to append)")
-	cmd.Flags().BoolVar(&addToScope, "add-to-scope", false, "Deprecated: appending is now the default; use --replace-scope to replace")
-	_ = cmd.Flags().MarkDeprecated("add-to-scope", "appending is now the default; use --replace-scope to replace the scope set")
 
 	// Legacy scope flags — forwarded to the unified set; kept for compatibility.
 	cmd.Flags().BoolVar(&scopeGlobal, "scope-global", false, "Deprecated: use --org")

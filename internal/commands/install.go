@@ -51,7 +51,6 @@ func NewInstallCommand() *cobra.Command {
 	var userFlags []string
 	var botFlags []string
 	var replaceScopeFlag bool
-	var addToScopeFlag bool // deprecated: appending is now the default
 	var setTargetYes bool
 
 	cmd := &cobra.Command{
@@ -124,8 +123,6 @@ equivalent of 'pip freeze' against the vault's manifest.`,
 	cmd.Flags().StringArrayVar(&userFlags, "user", nil, "Scope: a user email, or 'me' (repeatable)")
 	cmd.Flags().StringArrayVar(&botFlags, "bot", nil, "Scope: a bot identity, by name (repeatable)")
 	cmd.Flags().BoolVar(&replaceScopeFlag, "replace-scope", false, "Replace the asset's whole scope set with the named scopes (default is to append)")
-	cmd.Flags().BoolVar(&addToScopeFlag, "add-to-scope", false, "Deprecated: appending is now the default; use --replace-scope to replace")
-	_ = cmd.Flags().MarkDeprecated("add-to-scope", "appending is now the default; use --replace-scope to replace the scope set")
 	cmd.Flags().BoolVarP(&setTargetYes, "yes", "y", false, "Skip the scope-change confirmation prompt")
 
 	_ = cmd.Flags().MarkHidden("hook-mode") // Hide from help output since it's internal
