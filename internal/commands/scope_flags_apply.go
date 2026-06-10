@@ -15,7 +15,7 @@ import (
 //   - otherwise → open the interactive scope editor.
 func resolveAddScope(out *outputHelper, v vaultpkg.Vault, name, version string, current []vaultpkg.InstallTarget, installed bool, opts addOptions) (*scopeResult, error) {
 	if opts.hasScopeFlags() {
-		return resolveScopeFromFlags(out, name, current, installed, opts)
+		return resolveScopeFromFlags(out, name, current, installed, opts.toScopeFlags(), opts.Yes)
 	}
 	if opts.isNonInteractive() {
 		return opts.getScopes()
@@ -24,11 +24,13 @@ func resolveAddScope(out *outputHelper, v vaultpkg.Vault, name, version string, 
 }
 
 // resolveScopeFromFlags turns the unified scope flags into a proposed change,
-// shows the same diff preview the interactive editor shows, and—unless --yes—
+// shows the same diff preview the interactive editor shows, and—unless autoYes—
 // asks for confirmation before returning a scopeResult to apply. Flags are a
-// shortcut to the menu's outcome, not a way to skip the human's approval.
-func resolveScopeFromFlags(out *outputHelper, name string, current []vaultpkg.InstallTarget, installed bool, opts addOptions) (*scopeResult, error) {
-	change, err := resolveScopeFlags(opts.toScopeFlags())
+// shortcut to the menu's outcome, not a way to skip the human's approval. Both
+// `sx add` and `sx install` feed their (already-folded) scopeFlags through here,
+// so the two commands resolve and confirm scope identically.
+func resolveScopeFromFlags(out *outputHelper, name string, current []vaultpkg.InstallTarget, installed bool, flags scopeFlags, autoYes bool) (*scopeResult, error) {
+	change, err := resolveScopeFlags(flags)
 	if err != nil {
 		return nil, err
 	}
@@ -51,9 +53,9 @@ func resolveScopeFromFlags(out *outputHelper, name string, current []vaultpkg.In
 		return &scopeResult{Inherit: true}, nil
 	}
 
-	// --yes skips the approval (for CI/scripts); otherwise the human confirms,
+	// autoYes skips the approval (for CI/scripts); otherwise the human confirms,
 	// just as they would after editing scopes in the menu.
-	if !opts.Yes {
+	if !autoYes {
 		ok, err := ioc.Confirm("Continue with these changes?", true)
 		if err != nil {
 			return nil, err

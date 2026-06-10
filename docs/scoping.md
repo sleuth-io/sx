@@ -71,14 +71,27 @@ sx install my-skill --bot python-backend
 
 # Org-wide (clears all scopes)
 sx install my-skill --org
+
+# Several scopes at once — flags are repeatable and may be combined
+sx install my-skill --team platform --team payments --user me
+
+# Append to the existing scope set instead of replacing it
+sx install my-skill --add-to-scope --bot python-backend
 ```
+
+`sx install <name>` takes the **same** unified scope flags as `sx add`
+(`--org`, `--repo`, `--path`, `--team`, `--user`, `--bot`), resolved by
+the same code. Each is repeatable and several may be combined. By
+default the named scopes **replace** the asset's current scope set;
+`--add-to-scope` **appends** instead. The change is previewed and you're
+asked to confirm — pass `--yes`/`-y` to skip the prompt in scripts.
 
 > **Vault vs project:** The repo URL in `--scope-repo` / `--repo` is
 > your *project's* git remote — the codebase where you want the asset
 > installed — not your sx vault where assets are stored.
 
 Already added an asset and want to change its scope? Run `sx install
-<name>` with one of the scope flags, or re-run `sx add <name>` for an
+<name>` with one or more scope flags, or re-run `sx add <name>` for an
 interactive prompt.
 
 ## How `sx install` uses scopes

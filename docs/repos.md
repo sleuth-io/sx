@@ -28,13 +28,22 @@ resolve to the same scope row.
 > git remote — the codebase where you want the asset installed — not
 > your sx vault, where assets are stored.
 
-You can install the same asset to multiple repos by passing the flag
-more than once (or by re-running `sx install` with each new repo —
-each call appends a scope row, deduped against existing entries):
+You can scope the same asset to multiple repos by passing `--repo` more
+than once in a single command — the named repos become the asset's
+complete scope set:
 
 ```bash
-sx install my-skill --repo git@github.com:acme/app-a.git
-sx install my-skill --repo git@github.com:acme/app-b.git
+sx install my-skill \
+  --repo git@github.com:acme/app-a.git \
+  --repo git@github.com:acme/app-b.git
+```
+
+A `sx install` scope change **replaces** the asset's existing scopes by
+default, so re-running it with a different repo would drop the earlier
+one. To add a repo to what's already there, use `--add-to-scope`:
+
+```bash
+sx install my-skill --add-to-scope --repo git@github.com:acme/app-c.git
 ```
 
 ## Path scope

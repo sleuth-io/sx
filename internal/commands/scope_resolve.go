@@ -18,11 +18,10 @@ const (
 	scopeAdd
 )
 
-// scopeFlags is the repeatable, multi-scope flag set behind `sx add`. Each kind
-// is repeatable and the command parses its flags into this struct and feeds it
-// to resolveScopeFlags. `sx install` does NOT use this — it parses into
-// installTargetFlags and translates via buildInstallTarget, which is
-// single-scope and replace-only (see scope_install.go).
+// scopeFlags is the unified, repeatable, multi-scope flag set shared by
+// `sx add` and `sx install`. Each kind is repeatable; both commands parse their
+// flags into this struct and feed it to resolveScopeFlags, so identical flags
+// produce identical scope regardless of which command was invoked.
 type scopeFlags struct {
 	Org   bool     // --org (global, exclusive)
 	Repos []string // --repo <url>
@@ -33,6 +32,14 @@ type scopeFlags struct {
 	Add   bool     // --add-to-scope (append instead of replace)
 }
 
+// hasTarget reports whether any concrete scope target is named (--add-to-scope
+// alone is a modifier, not a target). Commands use this to decide whether the
+// user asked to set a scope at all before routing through resolveScopeFlags.
+func (f scopeFlags) hasTarget() bool {
+	return f.Org || len(f.Repos) > 0 || len(f.Paths) > 0 ||
+		len(f.Teams) > 0 || len(f.Users) > 0 || len(f.Bots) > 0
+}
+
 // scopeChange is the resolved outcome of a scopeFlags: a mode plus the ordered
 // list of install targets to apply.
 type scopeChange struct {
@@ -40,8 +47,8 @@ type scopeChange struct {
 	Targets []vaultpkg.InstallTarget
 }
 
-// resolveScopeFlags is the pure resolver behind `sx add`: flags in,
-// (mode + ordered targets) out, with no vault or actor knowledge.
+// resolveScopeFlags is the single, pure resolver both `sx add` and `sx install`
+// run: flags in, (mode + ordered targets) out, with no vault or actor knowledge.
 // Actor-dependent checks (user self-only, team existence) and URL normalization
 // stay in the vault layer — repo URLs pass through here unchanged.
 //

@@ -153,6 +153,18 @@ func bulkSetInstallTargets(ctx context.Context, out *outputHelper, repo vault.Va
 	if err != nil {
 		return fmt.Errorf("failed to set installations: %w", err)
 	}
+	// If every requested target was skipped, nothing landed. Fail loudly
+	// rather than report success with only a warning — otherwise a typo'd
+	// team/user/bot name silently no-ops (the exact bug the singular install
+	// path used to guard against). Partial skips (some targets applied) stay a
+	// success with per-target warnings.
+	if len(skipped) == len(resolved) && len(resolved) > 0 {
+		reasons := make([]string, 0, len(skipped))
+		for _, sk := range skipped {
+			reasons = append(reasons, fmt.Sprintf("%s (%s)", formatTarget(sk.Target), sk.Reason))
+		}
+		return fmt.Errorf("no scopes applied: %s", strings.Join(reasons, "; "))
+	}
 	if selfEmail != "" {
 		out.printf("Assigned to you (%s)\n", selfEmail)
 	}

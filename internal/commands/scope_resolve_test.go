@@ -28,8 +28,8 @@ import (
 //
 // resolveScopeFlags is pure: flags in, (mode + ordered targets) out, with no
 // vault or actor knowledge. Actor-dependent checks (e.g. user self-only) and
-// URL normalization stay in the vault layer, exactly as buildInstallTarget
-// left them today.
+// URL normalization stay in the vault layer. Both `sx add` and `sx install`
+// fold their flags into scopeFlags and run them through this one resolver.
 
 func TestResolveScopeFlags_ReplaceIsDefault(t *testing.T) {
 	tests := []struct {
@@ -438,5 +438,34 @@ func TestResolveScopeFlags_AddAndInstallShareOneResolver(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("scopeChange = %+v, want %+v", got, want)
+	}
+}
+
+// TestScopeFlags_HasTarget pins which flag combinations put a command into
+// "set scope" mode. --add-to-scope is a modifier, not a target, so it must not
+// trigger on its own — otherwise `sx install --add-to-scope x` with no scope
+// would route into the resolver and error instead of doing a normal install.
+func TestScopeFlags_HasTarget(t *testing.T) {
+	tests := []struct {
+		name  string
+		flags scopeFlags
+		want  bool
+	}{
+		{"empty", scopeFlags{}, false},
+		{"add-only", scopeFlags{Add: true}, false},
+		{"org", scopeFlags{Org: true}, true},
+		{"repo", scopeFlags{Repos: []string{"u"}}, true},
+		{"path", scopeFlags{Paths: []string{"u#p"}}, true},
+		{"team", scopeFlags{Teams: []string{"t"}}, true},
+		{"user", scopeFlags{Users: []string{"me"}}, true},
+		{"bot", scopeFlags{Bots: []string{"b"}}, true},
+		{"team+add", scopeFlags{Teams: []string{"t"}, Add: true}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.flags.hasTarget(); got != tt.want {
+				t.Errorf("hasTarget() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
