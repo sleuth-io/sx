@@ -50,7 +50,8 @@ func NewInstallCommand() *cobra.Command {
 	var teamFlags []string
 	var userFlags []string
 	var botFlags []string
-	var addToScopeFlag bool
+	var replaceScopeFlag bool
+	var addToScopeFlag bool // deprecated: appending is now the default
 	var setTargetYes bool
 
 	cmd := &cobra.Command{
@@ -70,12 +71,13 @@ as a positional argument together with one or more scope flags (--org,
 --repo, --path, --team, --user, --bot). These are the same scope flags
 'sx add' uses: each is repeatable, several may be combined, and the
 change is previewed and confirmed (use --yes/-y to skip the prompt).
-By default the named scopes replace the asset's existing scope set; pass
---add-to-scope to append instead. Examples:
+The named scopes are appended to the asset's existing scope set by
+default; pass --replace-scope to make them the complete set instead.
+Examples:
 
   sx install --team platform my-skill
   sx install --team platform --team payments my-skill
-  sx install --add-to-scope --user alice@example.com my-skill
+  sx install --replace-scope --user alice@example.com my-skill
   sx install --bot python-backend my-skill
   sx install --org my-skill
   sx install --repo https://github.com/acme/infra.git my-skill
@@ -86,13 +88,13 @@ context without downloading or touching client directories — the
 equivalent of 'pip freeze' against the vault's manifest.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			targetFlags := scopeFlags{
-				Org:   orgFlag,
-				Repos: repoFlags,
-				Paths: pathFlags,
-				Teams: teamFlags,
-				Users: userFlags,
-				Bots:  botFlags,
-				Add:   addToScopeFlag,
+				Org:     orgFlag,
+				Repos:   repoFlags,
+				Paths:   pathFlags,
+				Teams:   teamFlags,
+				Users:   userFlags,
+				Bots:    botFlags,
+				Replace: replaceScopeFlag,
 			}
 			if targetFlags.hasTarget() {
 				if len(args) != 1 {
@@ -121,7 +123,9 @@ equivalent of 'pip freeze' against the vault's manifest.`,
 	cmd.Flags().StringArrayVar(&teamFlags, "team", nil, "Scope: every member of a team, by name (the team must exist in the vault; repeatable)")
 	cmd.Flags().StringArrayVar(&userFlags, "user", nil, "Scope: a user email, or 'me' (repeatable)")
 	cmd.Flags().StringArrayVar(&botFlags, "bot", nil, "Scope: a bot identity, by name (repeatable)")
-	cmd.Flags().BoolVar(&addToScopeFlag, "add-to-scope", false, "Append the named scopes instead of replacing the asset's scope set")
+	cmd.Flags().BoolVar(&replaceScopeFlag, "replace-scope", false, "Replace the asset's whole scope set with the named scopes (default is to append)")
+	cmd.Flags().BoolVar(&addToScopeFlag, "add-to-scope", false, "Deprecated: appending is now the default; use --replace-scope to replace")
+	_ = cmd.Flags().MarkDeprecated("add-to-scope", "appending is now the default; use --replace-scope to replace the scope set")
 	cmd.Flags().BoolVarP(&setTargetYes, "yes", "y", false, "Skip the scope-change confirmation prompt")
 
 	_ = cmd.Flags().MarkHidden("hook-mode") // Hide from help output since it's internal

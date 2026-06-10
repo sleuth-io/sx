@@ -8,14 +8,15 @@ import (
 )
 
 // scopeMode is the single, command-agnostic way to express how a set of scope
-// flags applies: REPLACE makes the named flags the asset's complete scope set
-// (anything unnamed is dropped); ADD appends them to whatever scope already
-// exists. REPLACE is the default; --add-to-scope selects ADD.
+// flags applies: ADD appends the named flags to whatever scope already exists
+// (the default); REPLACE makes the named flags the asset's complete scope set,
+// dropping anything unnamed. ADD is the default; --replace-scope selects
+// REPLACE. ADD is the zero value so an unset mode appends.
 type scopeMode int
 
 const (
-	scopeReplace scopeMode = iota
-	scopeAdd
+	scopeAdd scopeMode = iota
+	scopeReplace
 )
 
 // scopeFlags is the unified, repeatable, multi-scope flag set shared by
@@ -23,16 +24,16 @@ const (
 // flags into this struct and feed it to resolveScopeFlags, so identical flags
 // produce identical scope regardless of which command was invoked.
 type scopeFlags struct {
-	Org   bool     // --org (global, exclusive)
-	Repos []string // --repo <url>
-	Paths []string // --path <url#p1,p2>
-	Teams []string // --team <name>
-	Users []string // --user <email>
-	Bots  []string // --bot <name>
-	Add   bool     // --add-to-scope (append instead of replace)
+	Org     bool     // --org (global, exclusive)
+	Repos   []string // --repo <url>
+	Paths   []string // --path <url#p1,p2>
+	Teams   []string // --team <name>
+	Users   []string // --user <email>
+	Bots    []string // --bot <name>
+	Replace bool     // --replace-scope (replace the whole scope set instead of appending)
 }
 
-// hasTarget reports whether any concrete scope target is named (--add-to-scope
+// hasTarget reports whether any concrete scope target is named (--replace-scope
 // alone is a modifier, not a target). Commands use this to decide whether the
 // user asked to set a scope at all before routing through resolveScopeFlags.
 func (f scopeFlags) hasTarget() bool {
@@ -53,22 +54,22 @@ type scopeChange struct {
 // stay in the vault layer — repo URLs pass through here unchanged.
 //
 // Rules:
-//   - Default mode is REPLACE; --add-to-scope selects ADD.
-//   - --org is exclusive: it resolves to a single global target and cannot be
-//     combined with any other target or with --add-to-scope.
+//   - Default mode is ADD (append); --replace-scope selects REPLACE.
+//   - --org is exclusive: it resolves to a single global target that clears all
+//     other scopes (it always replaces, regardless of mode), and cannot be
+//     combined with any other scope target.
 //   - Within a kind, input order is preserved; across kinds the order is fixed —
 //     repos, then paths, then teams, then users, then bots — so commit messages
 //     and audit output are stable.
 //   - At least one target is required in either mode; bare flags (including a
-//     lone --add-to-scope) are an error.
+//     lone --replace-scope) are an error.
 func resolveScopeFlags(f scopeFlags) (scopeChange, error) {
 	if f.Org {
-		if f.Add {
-			return scopeChange{}, errors.New("--org cannot be combined with --add-to-scope")
-		}
 		if len(f.Repos) > 0 || len(f.Paths) > 0 || len(f.Teams) > 0 || len(f.Users) > 0 || len(f.Bots) > 0 {
 			return scopeChange{}, errors.New("--org is exclusive and cannot be combined with other scope targets")
 		}
+		// Org is global: it always replaces the whole set with a single
+		// org-wide target, so append-by-default does not apply here.
 		return scopeChange{
 			Mode:    scopeReplace,
 			Targets: []vaultpkg.InstallTarget{{Kind: vaultpkg.InstallKindOrg}},
@@ -97,15 +98,15 @@ func resolveScopeFlags(f scopeFlags) (scopeChange, error) {
 	}
 
 	if len(targets) == 0 {
-		if f.Add {
-			return scopeChange{}, errors.New("--add-to-scope requires at least one scope target (--repo/--path/--team/--user/--bot)")
+		if f.Replace {
+			return scopeChange{}, errors.New("--replace-scope requires at least one scope target (--repo/--path/--team/--user/--bot)")
 		}
 		return scopeChange{}, errors.New("no scope specified: name at least one of --org, --repo, --path, --team, --user, --bot")
 	}
 
-	mode := scopeReplace
-	if f.Add {
-		mode = scopeAdd
+	mode := scopeAdd
+	if f.Replace {
+		mode = scopeReplace
 	}
 	return scopeChange{Mode: mode, Targets: targets}, nil
 }

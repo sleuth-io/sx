@@ -53,19 +53,20 @@ If the argument is an existing asset name, configure its installation scope inst
 // NewAddCommand creates the add command
 func NewAddCommand() *cobra.Command {
 	var (
-		yes        bool
-		noInstall  bool
-		browse     bool
-		name       string
-		assetType  string
-		version    string
-		org        bool
-		repos      []string
-		paths      []string
-		teams      []string
-		users      []string
-		bots       []string
-		addToScope bool
+		yes          bool
+		noInstall    bool
+		browse       bool
+		name         string
+		assetType    string
+		version      string
+		org          bool
+		repos        []string
+		paths        []string
+		teams        []string
+		users        []string
+		bots         []string
+		replaceScope bool
+		addToScope   bool // deprecated: appending is now the default
 		// legacy aliases
 		scopeGlobal bool
 		scopeRepos  []string
@@ -83,22 +84,22 @@ func NewAddCommand() *cobra.Command {
 				input = args[0]
 			}
 			opts := addOptions{
-				Yes:         yes,
-				NoInstall:   noInstall,
-				Browse:      browse,
-				Name:        name,
-				Type:        assetType,
-				Version:     version,
-				Org:         org,
-				Repos:       repos,
-				Paths:       paths,
-				Teams:       teams,
-				Users:       users,
-				Bots:        bots,
-				AddToScope:  addToScope,
-				ScopeGlobal: scopeGlobal,
-				ScopeRepos:  scopeRepos,
-				Scope:       scope,
+				Yes:          yes,
+				NoInstall:    noInstall,
+				Browse:       browse,
+				Name:         name,
+				Type:         assetType,
+				Version:      version,
+				Org:          org,
+				Repos:        repos,
+				Paths:        paths,
+				Teams:        teams,
+				Users:        users,
+				Bots:         bots,
+				ReplaceScope: replaceScope,
+				ScopeGlobal:  scopeGlobal,
+				ScopeRepos:   scopeRepos,
+				Scope:        scope,
 			}
 			return runAddWithFlags(cmd, input, opts)
 		},
@@ -113,14 +114,17 @@ func NewAddCommand() *cobra.Command {
 
 	// Unified scope flags (same vocabulary as `sx install`). Setting any
 	// pre-fills the scope and shows the same confirmation the menu does (skipped
-	// with --yes). Default replaces the asset's scope; --add-to-scope appends.
-	cmd.Flags().BoolVar(&org, "org", false, "Scope: install org-wide (global, exclusive)")
+	// with --yes). The named scopes are appended to the asset's existing scope
+	// set by default; --replace-scope makes them the complete set instead.
+	cmd.Flags().BoolVar(&org, "org", false, "Scope: install org-wide (global, exclusive — clears other scopes)")
 	cmd.Flags().StringArrayVar(&repos, "repo", nil, "Scope: a repository URL (repeatable)")
 	cmd.Flags().StringArrayVar(&paths, "path", nil, "Scope: a repo subpath set (repo_url#path1,path2; repeatable)")
 	cmd.Flags().StringArrayVar(&teams, "team", nil, "Scope: every member of a team, by name (repeatable)")
 	cmd.Flags().StringArrayVar(&users, "user", nil, "Scope: a user email, or 'me' (repeatable)")
 	cmd.Flags().StringArrayVar(&bots, "bot", nil, "Scope: a bot identity, by name (repeatable)")
-	cmd.Flags().BoolVar(&addToScope, "add-to-scope", false, "Append the named scopes instead of replacing the asset's scope set")
+	cmd.Flags().BoolVar(&replaceScope, "replace-scope", false, "Replace the asset's whole scope set with the named scopes (default is to append)")
+	cmd.Flags().BoolVar(&addToScope, "add-to-scope", false, "Deprecated: appending is now the default; use --replace-scope to replace")
+	_ = cmd.Flags().MarkDeprecated("add-to-scope", "appending is now the default; use --replace-scope to replace the scope set")
 
 	// Legacy scope flags — forwarded to the unified set; kept for compatibility.
 	cmd.Flags().BoolVar(&scopeGlobal, "scope-global", false, "Deprecated: use --org")

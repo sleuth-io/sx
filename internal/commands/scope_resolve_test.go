@@ -10,28 +10,28 @@ import (
 // These tests pin down the single, unified scope-resolution logic that both
 // `sx add` and `sx install <name>` must use. The whole point is that there is
 // ONE way to specify an asset's scope: a set of flags (--org/--repo/--path/
-// --team/--user/--bot, plus --add-to-scope) that resolve, via resolveScopeFlags,
+// --team/--user/--bot, plus --replace-scope) that resolve, via resolveScopeFlags,
 // into the same scopeChange regardless of which command parsed them.
 //
 // Semantics (decided with the user):
-//   - Default mode is REPLACE: the flags describe the asset's complete scope
-//     set; anything not named is dropped.
-//   - --add-to-scope switches to ADD mode: the named targets are appended to
-//     the asset's existing scopes.
-//   - --org means "global" and is exclusive: it clears all scopes and cannot
-//     be combined with other targets or with --add-to-scope.
+//   - Default mode is ADD (append): the named targets are appended to the
+//     asset's existing scopes, so calling --repo three times grows the set.
+//   - --replace-scope switches to REPLACE mode: the flags describe the asset's
+//     complete scope set; anything not named is dropped.
+//   - --org means "global" and is exclusive: it clears all scopes (always
+//     replaces) and cannot be combined with other targets.
 //   - Within a kind, the input order is preserved; across kinds the order is
 //     fixed: repos, then paths, then teams, then users, then bots — so commit
 //     messages and audit output are stable.
 //   - At least one target is required in either mode: bare flags (including a
-//     lone --add-to-scope) are an error.
+//     lone --replace-scope) are an error.
 //
 // resolveScopeFlags is pure: flags in, (mode + ordered targets) out, with no
 // vault or actor knowledge. Actor-dependent checks (e.g. user self-only) and
 // URL normalization stay in the vault layer. Both `sx add` and `sx install`
 // fold their flags into scopeFlags and run them through this one resolver.
 
-func TestResolveScopeFlags_ReplaceIsDefault(t *testing.T) {
+func TestResolveScopeFlags_AppendIsDefault(t *testing.T) {
 	tests := []struct {
 		name  string
 		flags scopeFlags
@@ -75,11 +75,6 @@ func TestResolveScopeFlags_ReplaceIsDefault(t *testing.T) {
 			flags: scopeFlags{Bots: []string{"python-backend"}},
 			want:  []vaultpkg.InstallTarget{{Kind: vaultpkg.InstallKindBot, Bot: "python-backend"}},
 		},
-		{
-			name:  "org resolves to a single global target",
-			flags: scopeFlags{Org: true},
-			want:  []vaultpkg.InstallTarget{{Kind: vaultpkg.InstallKindOrg}},
-		},
 	}
 
 	for _, tt := range tests {
@@ -88,8 +83,8 @@ func TestResolveScopeFlags_ReplaceIsDefault(t *testing.T) {
 			if err != nil {
 				t.Fatalf("resolveScopeFlags returned error: %v", err)
 			}
-			if got.Mode != scopeReplace {
-				t.Errorf("Mode = %v, want scopeReplace (default)", got.Mode)
+			if got.Mode != scopeAdd {
+				t.Errorf("Mode = %v, want scopeAdd (default)", got.Mode)
 			}
 			if !reflect.DeepEqual(got.Targets, tt.want) {
 				t.Errorf("Targets = %+v, want %+v", got.Targets, tt.want)
@@ -98,29 +93,47 @@ func TestResolveScopeFlags_ReplaceIsDefault(t *testing.T) {
 	}
 }
 
-// TestResolveScopeFlags_AddModeAllKinds mirrors the REPLACE table but with
-// --add-to-scope set: every kind that can be added must round-trip to the same
-// target it produces in REPLACE mode — only the Mode differs. (--org is absent
-// here on purpose; it is exclusive with add mode and lives in the error table.)
-func TestResolveScopeFlags_AddModeAllKinds(t *testing.T) {
+// TestResolveScopeFlags_OrgIsGlobalReplace: --org always resolves to a single
+// global target in REPLACE mode (it clears every other scope), regardless of the
+// append-by-default and regardless of --replace-scope.
+func TestResolveScopeFlags_OrgIsGlobalReplace(t *testing.T) {
+	for _, f := range []scopeFlags{{Org: true}, {Org: true, Replace: true}} {
+		got, err := resolveScopeFlags(f)
+		if err != nil {
+			t.Fatalf("resolveScopeFlags(%+v) error: %v", f, err)
+		}
+		if got.Mode != scopeReplace {
+			t.Errorf("Mode = %v, want scopeReplace for org", got.Mode)
+		}
+		want := []vaultpkg.InstallTarget{{Kind: vaultpkg.InstallKindOrg}}
+		if !reflect.DeepEqual(got.Targets, want) {
+			t.Errorf("Targets = %+v, want %+v", got.Targets, want)
+		}
+	}
+}
+
+// TestResolveScopeFlags_ReplaceModeAllKinds mirrors the default (append) table
+// but with --replace-scope set: every kind must round-trip to the same target it
+// produces in append mode — only the Mode differs.
+func TestResolveScopeFlags_ReplaceModeAllKinds(t *testing.T) {
 	tests := []struct {
 		name  string
 		flags scopeFlags
 		want  []vaultpkg.InstallTarget
 	}{
 		{
-			name:  "add single team",
-			flags: scopeFlags{Teams: []string{"platform"}, Add: true},
+			name:  "replace single team",
+			flags: scopeFlags{Teams: []string{"platform"}, Replace: true},
 			want:  []vaultpkg.InstallTarget{{Kind: vaultpkg.InstallKindTeam, Team: "platform"}},
 		},
 		{
-			name:  "add single repo",
-			flags: scopeFlags{Repos: []string{"git@github.com:acme/infra.git"}, Add: true},
+			name:  "replace single repo",
+			flags: scopeFlags{Repos: []string{"git@github.com:acme/infra.git"}, Replace: true},
 			want:  []vaultpkg.InstallTarget{{Kind: vaultpkg.InstallKindRepo, Repo: "git@github.com:acme/infra.git"}},
 		},
 		{
-			name:  "add single path",
-			flags: scopeFlags{Paths: []string{"github.com/acme/infra#services/api"}, Add: true},
+			name:  "replace single path",
+			flags: scopeFlags{Paths: []string{"github.com/acme/infra#services/api"}, Replace: true},
 			want: []vaultpkg.InstallTarget{{
 				Kind:  vaultpkg.InstallKindPath,
 				Repo:  "github.com/acme/infra",
@@ -128,13 +141,13 @@ func TestResolveScopeFlags_AddModeAllKinds(t *testing.T) {
 			}},
 		},
 		{
-			name:  "add single user",
-			flags: scopeFlags{Users: []string{"alice@acme.com"}, Add: true},
+			name:  "replace single user",
+			flags: scopeFlags{Users: []string{"alice@acme.com"}, Replace: true},
 			want:  []vaultpkg.InstallTarget{{Kind: vaultpkg.InstallKindUser, User: "alice@acme.com"}},
 		},
 		{
-			name:  "add single bot",
-			flags: scopeFlags{Bots: []string{"python-backend"}, Add: true},
+			name:  "replace single bot",
+			flags: scopeFlags{Bots: []string{"python-backend"}, Replace: true},
 			want:  []vaultpkg.InstallTarget{{Kind: vaultpkg.InstallKindBot, Bot: "python-backend"}},
 		},
 	}
@@ -145,8 +158,8 @@ func TestResolveScopeFlags_AddModeAllKinds(t *testing.T) {
 			if err != nil {
 				t.Fatalf("resolveScopeFlags returned error: %v", err)
 			}
-			if got.Mode != scopeAdd {
-				t.Errorf("Mode = %v, want scopeAdd", got.Mode)
+			if got.Mode != scopeReplace {
+				t.Errorf("Mode = %v, want scopeReplace", got.Mode)
 			}
 			if !reflect.DeepEqual(got.Targets, tt.want) {
 				t.Errorf("Targets = %+v, want %+v", got.Targets, tt.want)
@@ -160,8 +173,9 @@ func TestResolveScopeFlags_MultipleTargetsReplaceWholeSetInOrder(t *testing.T) {
 	// invocation. Order is deterministic: repos, then paths, then teams, then
 	// users, then bots — so commit messages and audit output are stable.
 	flags := scopeFlags{
-		Repos: []string{"git@github.com:acme/app-a.git", "git@github.com:acme/app-b.git"},
-		Teams: []string{"platform"},
+		Repos:   []string{"git@github.com:acme/app-a.git", "git@github.com:acme/app-b.git"},
+		Teams:   []string{"platform"},
+		Replace: true,
 	}
 
 	got, err := resolveScopeFlags(flags)
@@ -199,8 +213,8 @@ func TestResolveScopeFlags_FullMultiScopeOrderingAcrossEveryKind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveScopeFlags returned error: %v", err)
 	}
-	if got.Mode != scopeReplace {
-		t.Errorf("Mode = %v, want scopeReplace", got.Mode)
+	if got.Mode != scopeAdd {
+		t.Errorf("Mode = %v, want scopeAdd (default)", got.Mode)
 	}
 
 	want := []vaultpkg.InstallTarget{
@@ -261,8 +275,8 @@ func TestResolveScopeFlags_MultipleOfSameKind(t *testing.T) {
 			if err != nil {
 				t.Fatalf("resolveScopeFlags returned error: %v", err)
 			}
-			if got.Mode != scopeReplace {
-				t.Errorf("Mode = %v, want scopeReplace", got.Mode)
+			if got.Mode != scopeAdd {
+				t.Errorf("Mode = %v, want scopeAdd (default)", got.Mode)
 			}
 			if !reflect.DeepEqual(got.Targets, tt.want) {
 				t.Errorf("Targets = %+v, want %+v", got.Targets, tt.want)
@@ -317,15 +331,15 @@ func TestResolveScopeFlags_RepoAndPathOnSameRepoCoexist(t *testing.T) {
 	}
 }
 
-func TestResolveScopeFlags_AddToScopeSwitchesToAddMode(t *testing.T) {
-	flags := scopeFlags{Teams: []string{"platform"}, Add: true}
+func TestResolveScopeFlags_ReplaceScopeSwitchesToReplaceMode(t *testing.T) {
+	flags := scopeFlags{Teams: []string{"platform"}, Replace: true}
 
 	got, err := resolveScopeFlags(flags)
 	if err != nil {
 		t.Fatalf("resolveScopeFlags returned error: %v", err)
 	}
-	if got.Mode != scopeAdd {
-		t.Errorf("Mode = %v, want scopeAdd", got.Mode)
+	if got.Mode != scopeReplace {
+		t.Errorf("Mode = %v, want scopeReplace", got.Mode)
 	}
 	want := []vaultpkg.InstallTarget{{Kind: vaultpkg.InstallKindTeam, Team: "platform"}}
 	if !reflect.DeepEqual(got.Targets, want) {
@@ -333,15 +347,14 @@ func TestResolveScopeFlags_AddToScopeSwitchesToAddMode(t *testing.T) {
 	}
 }
 
-// TestResolveScopeFlags_AddModeMultipleMixedTargets shows add mode is not
-// limited to one target: it appends a full mixed set, in the same canonical
-// order replace mode uses.
-func TestResolveScopeFlags_AddModeMultipleMixedTargets(t *testing.T) {
+// TestResolveScopeFlags_AppendModeMultipleMixedTargets shows the default (append)
+// mode is not limited to one target: it appends a full mixed set, in the same
+// canonical order replace mode uses.
+func TestResolveScopeFlags_AppendModeMultipleMixedTargets(t *testing.T) {
 	flags := scopeFlags{
 		Repos: []string{"git@github.com:acme/app.git"},
 		Teams: []string{"platform"},
 		Users: []string{"alice@acme.com"},
-		Add:   true,
 	}
 
 	got, err := resolveScopeFlags(flags)
@@ -349,7 +362,7 @@ func TestResolveScopeFlags_AddModeMultipleMixedTargets(t *testing.T) {
 		t.Fatalf("resolveScopeFlags returned error: %v", err)
 	}
 	if got.Mode != scopeAdd {
-		t.Errorf("Mode = %v, want scopeAdd", got.Mode)
+		t.Errorf("Mode = %v, want scopeAdd (default)", got.Mode)
 	}
 
 	want := []vaultpkg.InstallTarget{
@@ -372,12 +385,8 @@ func TestResolveScopeFlags_Errors(t *testing.T) {
 			flags: scopeFlags{},
 		},
 		{
-			name:  "add-to-scope with no targets",
-			flags: scopeFlags{Add: true},
-		},
-		{
-			name:  "org cannot combine with --add-to-scope",
-			flags: scopeFlags{Org: true, Add: true},
+			name:  "replace-scope with no targets",
+			flags: scopeFlags{Replace: true},
 		},
 		{
 			name:  "org is exclusive and cannot combine with a team",
@@ -433,7 +442,7 @@ func TestResolveScopeFlags_AddAndInstallShareOneResolver(t *testing.T) {
 	}
 
 	want := scopeChange{
-		Mode:    scopeReplace,
+		Mode:    scopeAdd,
 		Targets: []vaultpkg.InstallTarget{{Kind: vaultpkg.InstallKindTeam, Team: "platform"}},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -442,8 +451,8 @@ func TestResolveScopeFlags_AddAndInstallShareOneResolver(t *testing.T) {
 }
 
 // TestScopeFlags_HasTarget pins which flag combinations put a command into
-// "set scope" mode. --add-to-scope is a modifier, not a target, so it must not
-// trigger on its own — otherwise `sx install --add-to-scope x` with no scope
+// "set scope" mode. --replace-scope is a modifier, not a target, so it must not
+// trigger on its own — otherwise `sx install --replace-scope x` with no scope
 // would route into the resolver and error instead of doing a normal install.
 func TestScopeFlags_HasTarget(t *testing.T) {
 	tests := []struct {
@@ -452,14 +461,14 @@ func TestScopeFlags_HasTarget(t *testing.T) {
 		want  bool
 	}{
 		{"empty", scopeFlags{}, false},
-		{"add-only", scopeFlags{Add: true}, false},
+		{"replace-only", scopeFlags{Replace: true}, false},
 		{"org", scopeFlags{Org: true}, true},
 		{"repo", scopeFlags{Repos: []string{"u"}}, true},
 		{"path", scopeFlags{Paths: []string{"u#p"}}, true},
 		{"team", scopeFlags{Teams: []string{"t"}}, true},
 		{"user", scopeFlags{Users: []string{"me"}}, true},
 		{"bot", scopeFlags{Bots: []string{"b"}}, true},
-		{"team+add", scopeFlags{Teams: []string{"t"}, Add: true}, true},
+		{"team+replace", scopeFlags{Teams: []string{"t"}, Replace: true}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

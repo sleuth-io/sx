@@ -19,13 +19,13 @@ type addOptions struct {
 	// resolveScopeFlags). When any is set, the scope is pre-filled as if the
 	// user navigated the menu to it, then the same confirmation is shown
 	// (unless --yes). Each kind is repeatable.
-	Org        bool
-	Repos      []string
-	Paths      []string
-	Teams      []string
-	Users      []string
-	Bots       []string
-	AddToScope bool // --add-to-scope: append instead of replace
+	Org          bool
+	Repos        []string
+	Paths        []string
+	Teams        []string
+	Users        []string
+	Bots         []string
+	ReplaceScope bool // --replace-scope: replace the asset's scope set instead of appending (the default)
 
 	// Legacy scope flags — forwarded into the unified set (see toScopeFlags).
 	// Kept as deprecated aliases so existing scripts keep working.
@@ -62,13 +62,13 @@ func (o addOptions) hasUnifiedScopeFlags() bool {
 // --scope personal → --user me.
 func (o addOptions) toScopeFlags() scopeFlags {
 	f := scopeFlags{
-		Org:   o.Org || o.ScopeGlobal,
-		Repos: append([]string(nil), o.Repos...),
-		Paths: append([]string(nil), o.Paths...),
-		Teams: append([]string(nil), o.Teams...),
-		Users: append([]string(nil), o.Users...),
-		Bots:  append([]string(nil), o.Bots...),
-		Add:   o.AddToScope,
+		Org:     o.Org || o.ScopeGlobal,
+		Repos:   append([]string(nil), o.Repos...),
+		Paths:   append([]string(nil), o.Paths...),
+		Teams:   append([]string(nil), o.Teams...),
+		Users:   append([]string(nil), o.Users...),
+		Bots:    append([]string(nil), o.Bots...),
+		Replace: o.ReplaceScope,
 	}
 	for _, spec := range o.ScopeRepos {
 		if _, paths := parseRepoSpec(spec); len(paths) > 0 {

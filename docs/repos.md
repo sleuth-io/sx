@@ -29,21 +29,21 @@ resolve to the same scope row.
 > your sx vault, where assets are stored.
 
 You can scope the same asset to multiple repos by passing `--repo` more
-than once in a single command — the named repos become the asset's
-complete scope set:
+than once, either in one command or across several — scope changes
+**append** by default, so each new repo is added to the existing set:
 
 ```bash
-sx install my-skill \
-  --repo git@github.com:acme/app-a.git \
-  --repo git@github.com:acme/app-b.git
+sx install my-skill --repo git@github.com:acme/app-a.git
+sx install my-skill --repo git@github.com:acme/app-b.git
 ```
 
-A `sx install` scope change **replaces** the asset's existing scopes by
-default, so re-running it with a different repo would drop the earlier
-one. To add a repo to what's already there, use `--add-to-scope`:
+To make a set of repos the asset's *complete* scope (dropping anything
+else it was scoped to), use `--replace-scope`:
 
 ```bash
-sx install my-skill --add-to-scope --repo git@github.com:acme/app-c.git
+sx install my-skill --replace-scope \
+  --repo git@github.com:acme/app-a.git \
+  --repo git@github.com:acme/app-b.git
 ```
 
 ## Path scope
