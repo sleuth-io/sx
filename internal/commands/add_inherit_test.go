@@ -20,6 +20,7 @@ func TestAddYesWithoutScopeFlagsPreservesExistingScopes(t *testing.T) {
 
 	// Set environment for complete sandboxing
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
@@ -77,11 +78,10 @@ prompt-file = "SKILL.md"
 	mockPrompter := NewMockPrompter().
 		ExpectConfirm("correct", true).                       // Confirm detected asset
 		ExpectPrompt("Version", "1.0.0").                     // Enter version
-		ExpectPrompt("choice", "2").                          // Option 2: Add/modify repository-specific
-		ExpectPrompt("choice", "1").                          // Add new repository
+		ExpectPrompt("choice", "3").                          // Not-installed menu: 3 = Edit scopes
+		ExpectPrompt("choice", "1").                          // Submenu: 1 = Add a repo scope
 		ExpectPrompt("URL", "https://github.com/org/myrepo"). // Repository URL
-		ExpectConfirm("entire repository", true).             // Entire repository
-		ExpectPrompt("choice", "4").                          // Done with modifications
+		ExpectPrompt("choice", "8").                          // Submenu: 8 = Done
 		ExpectConfirm("Continue with these changes", true).   // Confirm changes
 		ExpectConfirm("Run install now", false)               // Don't run install
 
@@ -99,8 +99,8 @@ prompt-file = "SKILL.md"
 	if asset.IsGlobal() {
 		t.Fatalf("Expected repository-specific scope, got global")
 	}
-	if len(asset.Scopes) != 1 || asset.Scopes[0].Repo != "https://github.com/org/myrepo" {
-		t.Fatalf("Expected scope for https://github.com/org/myrepo, got %v", asset.Scopes)
+	if len(asset.Scopes) != 1 || asset.Scopes[0].Repo != "github.com/org/myrepo" {
+		t.Fatalf("Expected scope for github.com/org/myrepo, got %v", asset.Scopes)
 	}
 	t.Log("✓ Asset added with repo-specific scope")
 
@@ -121,8 +121,8 @@ prompt-file = "SKILL.md"
 	if asset2.IsGlobal() {
 		t.Fatalf("Scopes were overwritten to global! Expected repo-specific scope to be preserved")
 	}
-	if len(asset2.Scopes) != 1 || asset2.Scopes[0].Repo != "https://github.com/org/myrepo" {
-		t.Fatalf("Expected preserved scope for https://github.com/org/myrepo, got %v", asset2.Scopes)
+	if len(asset2.Scopes) != 1 || asset2.Scopes[0].Repo != "github.com/org/myrepo" {
+		t.Fatalf("Expected preserved scope for github.com/org/myrepo, got %v", asset2.Scopes)
 	}
 	t.Log("✓ Existing scopes preserved when using --yes without scope flags")
 }
@@ -139,6 +139,7 @@ func TestAddYesWithScopeGlobalOverridesExisting(t *testing.T) {
 
 	// Set environment
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
@@ -192,11 +193,10 @@ prompt-file = "SKILL.md"
 	mockPrompter := NewMockPrompter().
 		ExpectConfirm("correct", true).
 		ExpectPrompt("Version", "1.0.0").
-		ExpectPrompt("choice", "2"). // Add/modify repository-specific
-		ExpectPrompt("choice", "1"). // Add new repository
+		ExpectPrompt("choice", "3"). // Not-installed menu: 3 = Edit scopes
+		ExpectPrompt("choice", "1"). // Submenu: 1 = Add a repo scope
 		ExpectPrompt("URL", "https://github.com/org/myrepo").
-		ExpectConfirm("entire repository", true).
-		ExpectPrompt("choice", "4"). // Done
+		ExpectPrompt("choice", "8"). // Submenu: 8 = Done
 		ExpectConfirm("Continue with these changes", true).
 		ExpectConfirm("Run install now", false)
 
@@ -252,6 +252,7 @@ func TestAddYesWithoutScopeFlagsNewAsset(t *testing.T) {
 
 	// Set environment
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))

@@ -15,6 +15,7 @@ import (
 type spyVault struct {
 	vault.Vault
 	setCalls       []spySetCall
+	bulkCalls      []spyBulkCall
 	inheritCalls   []*lockfile.Asset
 	setShouldError error
 }
@@ -22,6 +23,23 @@ type spyVault struct {
 type spySetCall struct {
 	asset       *lockfile.Asset
 	scopeEntity string
+}
+
+type spyBulkCall struct {
+	assetName  string
+	targets    []vault.InstallTarget
+	appendMode bool
+}
+
+// SetAssetInstallations satisfies installSetter so the unified --no-install
+// path (--repo/--team/...) can be exercised; it records the targets the helper
+// resolved instead of touching a real vault.
+func (s *spyVault) SetAssetInstallations(_ context.Context, assetName string, targets []vault.InstallTarget, appendMode bool) ([]vault.SkippedTarget, error) {
+	if s.setShouldError != nil {
+		return nil, s.setShouldError
+	}
+	s.bulkCalls = append(s.bulkCalls, spyBulkCall{assetName: assetName, targets: targets, appendMode: appendMode})
+	return nil, nil
 }
 
 func (s *spyVault) SetInstallations(_ context.Context, asset *lockfile.Asset, scopeEntity string) error {
@@ -114,6 +132,71 @@ func TestWriteLockFileForNoInstall(t *testing.T) {
 		}
 		if spy.setCalls[0].asset.Scopes == nil || len(spy.setCalls[0].asset.Scopes) != 0 {
 			t.Errorf("Scopes = %v, want empty slice (global)", spy.setCalls[0].asset.Scopes)
+		}
+	})
+
+	t.Run("--no-install --team routes through the bulk installer, not global", func(t *testing.T) {
+		// Regression: getScopes never inspected the unified flags, so
+		// --no-install --team foo fell through to the global fallback and
+		// silently dropped the team. It must now persist the team target.
+		spy := &spyVault{}
+		out := &outputHelper{}
+		asset := &lockfile.Asset{Name: "my-skill", Version: "1.0.0"}
+		opts := addOptions{NoInstall: true, Teams: []string{"foo"}}
+
+		if err := writeLockFileForNoInstall(context.Background(), out, spy, asset, opts); err != nil {
+			t.Fatalf("writeLockFileForNoInstall: %v", err)
+		}
+
+		if len(spy.setCalls) != 0 {
+			t.Fatalf("SetInstallations calls = %d, want 0 (unified flags use the bulk path)", len(spy.setCalls))
+		}
+		if len(spy.bulkCalls) != 1 {
+			t.Fatalf("SetAssetInstallations calls = %d, want 1", len(spy.bulkCalls))
+		}
+		got := spy.bulkCalls[0].targets
+		if len(got) != 1 || got[0].Kind != vault.InstallKindTeam || got[0].Team != "foo" {
+			t.Errorf("targets = %v, want one team:foo target", got)
+		}
+		if spy.bulkCalls[0].appendMode {
+			t.Errorf("appendMode = true, want false (replace without --add-to-scope)")
+		}
+	})
+
+	t.Run("--no-install --repo routes through the bulk installer", func(t *testing.T) {
+		spy := &spyVault{}
+		out := &outputHelper{}
+		asset := &lockfile.Asset{Name: "my-skill", Version: "1.0.0"}
+		opts := addOptions{NoInstall: true, Repos: []string{"git@github.com:org/repo.git"}}
+
+		if err := writeLockFileForNoInstall(context.Background(), out, spy, asset, opts); err != nil {
+			t.Fatalf("writeLockFileForNoInstall: %v", err)
+		}
+
+		if len(spy.bulkCalls) != 1 {
+			t.Fatalf("SetAssetInstallations calls = %d, want 1", len(spy.bulkCalls))
+		}
+		got := spy.bulkCalls[0].targets
+		if len(got) != 1 || got[0].Kind != vault.InstallKindRepo || got[0].Repo != "git@github.com:org/repo.git" {
+			t.Errorf("targets = %v, want one repo target", got)
+		}
+	})
+
+	t.Run("--no-install --add-to-scope --team uses append mode", func(t *testing.T) {
+		spy := &spyVault{}
+		out := &outputHelper{}
+		asset := &lockfile.Asset{Name: "my-skill", Version: "1.0.0"}
+		opts := addOptions{NoInstall: true, Teams: []string{"foo"}, AddToScope: true}
+
+		if err := writeLockFileForNoInstall(context.Background(), out, spy, asset, opts); err != nil {
+			t.Fatalf("writeLockFileForNoInstall: %v", err)
+		}
+
+		if len(spy.bulkCalls) != 1 {
+			t.Fatalf("SetAssetInstallations calls = %d, want 1", len(spy.bulkCalls))
+		}
+		if !spy.bulkCalls[0].appendMode {
+			t.Errorf("appendMode = false, want true (--add-to-scope)")
 		}
 	})
 

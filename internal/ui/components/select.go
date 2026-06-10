@@ -120,8 +120,15 @@ func (m selectModel) View() string {
 	var b strings.Builder
 
 	// Title
-	b.WriteString(styles.Header.Render(m.title))
-	b.WriteString("\n\n")
+	if m.title != "" {
+		b.WriteString(styles.Header.Render(m.title))
+		b.WriteString("\n\n")
+	} else {
+		// No title: emit a single newline instead of the title's two,
+		// so callers that render their own heading aren't preceded by a
+		// blank line.
+		b.WriteString("\n")
+	}
 
 	// Calculate max label width for column alignment
 	maxLabelWidth := 0

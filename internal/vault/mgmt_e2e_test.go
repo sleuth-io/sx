@@ -430,12 +430,12 @@ func TestPathVault_RemoveOrgInstall_Rejected(t *testing.T) {
 	}
 }
 
-// TestPathVault_RemoveTeamInstall_RequiresAdminEvenOnNoOp pins the
-// documented contract that the team-admin precondition in
-// RemoveAssetInstallation runs unconditionally — before the scope walk
-// decides nothing changed. A non-admin removing a team install that
-// doesn't even exist still gets the admin error, not a silent no-op.
-func TestPathVault_RemoveTeamInstall_RequiresAdminEvenOnNoOp(t *testing.T) {
+// TestPathVault_TeamScopeDoesNotRequireAdmin pins SD-10170: scoping an asset TO
+// a team (and unscoping it) only requires the team to EXIST plus vault write
+// access — NOT team-admin. Team *management* still requires admin (see
+// TestPathVault_TeamMutationsRequireAdmin). Scoping to a team that doesn't
+// exist still errors.
+func TestPathVault_TeamScopeDoesNotRequireAdmin(t *testing.T) {
 	mgmt.ResetActorCache()
 	dir := t.TempDir()
 
@@ -462,7 +462,7 @@ func TestPathVault_RemoveTeamInstall_RequiresAdminEvenOnNoOp(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// Team whose only admin is bob — the caller (alice) is not an admin.
+	// Team whose only admin is bob — the caller (alice) is NOT an admin.
 	if err := v.CreateTeam(ctx, mgmt.Team{
 		Name:    "platform",
 		Members: []string{"bob@example.com"},
@@ -471,11 +471,18 @@ func TestPathVault_RemoveTeamInstall_RequiresAdminEvenOnNoOp(t *testing.T) {
 		t.Fatalf("CreateTeam: %v", err)
 	}
 
-	// my-skill has no team install, so the scope walk would no-op — but the
-	// admin check must still fire first and reject the non-admin caller.
-	err = v.RemoveAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindTeam, Team: "platform"})
-	if err == nil || !strings.Contains(err.Error(), "not an admin") {
-		t.Fatalf("RemoveAssetInstallation by non-admin = %v, want team-admin error", err)
+	// Non-admin alice may scope the asset to the team...
+	if err := v.SetAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindTeam, Team: "platform"}); err != nil {
+		t.Fatalf("non-admin should be able to scope an asset to a team: %v", err)
+	}
+	// ...and unscope it.
+	if err := v.RemoveAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindTeam, Team: "platform"}); err != nil {
+		t.Fatalf("non-admin should be able to unscope an asset from a team: %v", err)
+	}
+
+	// But scoping to a team that doesn't exist still fails.
+	if err := v.SetAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindTeam, Team: "ghost"}); err == nil {
+		t.Fatal("scoping to a nonexistent team should fail with team-not-found")
 	}
 }
 

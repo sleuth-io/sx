@@ -1,6 +1,10 @@
-query AssetGID($search: String!) {
+query AssetGID($first: Int, $after: String) {
   vault {
-    assets(search: $search, first: 25) {
+    assets(first: $first, after: $after) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         id
         name

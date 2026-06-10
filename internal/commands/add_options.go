@@ -8,12 +8,27 @@ import (
 
 // addOptions contains flags for non-interactive mode
 type addOptions struct {
-	Yes         bool
-	NoInstall   bool
-	Browse      bool
-	Name        string
-	Type        string
-	Version     string
+	Yes       bool
+	NoInstall bool
+	Browse    bool
+	Name      string
+	Type      string
+	Version   string
+
+	// Unified scope flags (shared vocabulary with `sx install`, resolved by
+	// resolveScopeFlags). When any is set, the scope is pre-filled as if the
+	// user navigated the menu to it, then the same confirmation is shown
+	// (unless --yes). Each kind is repeatable.
+	Org        bool
+	Repos      []string
+	Paths      []string
+	Teams      []string
+	Users      []string
+	Bots       []string
+	AddToScope bool // --add-to-scope: append instead of replace
+
+	// Legacy scope flags — forwarded into the unified set (see toScopeFlags).
+	// Kept as deprecated aliases so existing scripts keep working.
 	ScopeGlobal bool
 	ScopeRepos  []string
 	Scope       string // --scope: vault-specific scope entity (e.g., "personal")
@@ -21,7 +36,51 @@ type addOptions struct {
 
 // isNonInteractive returns true if any non-interactive flag is set
 func (o addOptions) isNonInteractive() bool {
-	return o.Yes || o.Name != "" || o.Type != "" || o.Version != "" || o.ScopeGlobal || len(o.ScopeRepos) > 0 || o.Scope != ""
+	return o.Yes || o.Name != "" || o.Type != "" || o.Version != "" || o.hasScopeFlags()
+}
+
+// hasScopeFlags reports whether the user named any scope target (unified or
+// legacy). When true, the add flow pre-fills that scope and asks for
+// confirmation instead of opening the interactive menu.
+func (o addOptions) hasScopeFlags() bool {
+	return o.hasUnifiedScopeFlags() ||
+		o.ScopeGlobal || len(o.ScopeRepos) > 0 || o.Scope != ""
+}
+
+// hasUnifiedScopeFlags reports whether any of the new unified scope-target flags
+// (--org/--repo/--path/--team/--user/--bot) is set. The --no-install path uses
+// this to route those flags through resolveScopeFlags instead of the legacy-only
+// getScopes, which would otherwise drop them and globalize the asset.
+func (o addOptions) hasUnifiedScopeFlags() bool {
+	return o.Org || len(o.Repos) > 0 || len(o.Paths) > 0 ||
+		len(o.Teams) > 0 || len(o.Users) > 0 || len(o.Bots) > 0
+}
+
+// toScopeFlags folds the unified and legacy flags into the single scopeFlags
+// struct resolveScopeFlags understands. Legacy mappings: --scope-global → --org,
+// --scope-repo → --repo (or --path when it carries a #path spec), and
+// --scope personal → --user me.
+func (o addOptions) toScopeFlags() scopeFlags {
+	f := scopeFlags{
+		Org:   o.Org || o.ScopeGlobal,
+		Repos: append([]string(nil), o.Repos...),
+		Paths: append([]string(nil), o.Paths...),
+		Teams: append([]string(nil), o.Teams...),
+		Users: append([]string(nil), o.Users...),
+		Bots:  append([]string(nil), o.Bots...),
+		Add:   o.AddToScope,
+	}
+	for _, spec := range o.ScopeRepos {
+		if _, paths := parseRepoSpec(spec); len(paths) > 0 {
+			f.Paths = append(f.Paths, spec)
+		} else {
+			f.Repos = append(f.Repos, spec)
+		}
+	}
+	if o.Scope == "personal" {
+		f.Users = append(f.Users, "me")
+	}
+	return f
 }
 
 // getScopes returns the scopes based on flags

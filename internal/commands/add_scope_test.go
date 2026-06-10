@@ -6,6 +6,21 @@ import (
 	"testing"
 )
 
+// configureGitIdentityForTest writes a git identity into the test's sandboxed
+// HOME. Scope writes go through the manifest-mutation path, which requires a
+// real git user.email (RequireRealIdentity rejects the synthetic $USER@host
+// fallback); without this the scope steps fail with "identity not set".
+func configureGitIdentityForTest(t *testing.T, home string) {
+	t.Helper()
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("mkdir home for git identity: %v", err)
+	}
+	cfg := "[user]\n\temail = test@example.com\n\tname = Test User\n"
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(cfg), 0o644); err != nil {
+		t.Fatalf("write .gitconfig: %v", err)
+	}
+}
+
 // TestAddScopeModification tests modifying an existing asset's scope
 func TestAddScopeModification(t *testing.T) {
 	// Create fully isolated test environment
@@ -17,6 +32,7 @@ func TestAddScopeModification(t *testing.T) {
 
 	// Set environment for complete sandboxing
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
@@ -107,11 +123,10 @@ prompt-file = "SKILL.md"
 	// Option 4: Remove from installation
 	t.Log("Step 3: Reconfigure asset to repository-specific")
 	mockPrompter2 := NewMockPrompter().
-		ExpectPrompt("choice", "3").                         // Option 3: Add/modify repository-specific
-		ExpectPrompt("choice", "1").                         // In modify menu, option 1: Add new repository
+		ExpectPrompt("choice", "4").                         // Installed menu: 4 = Edit scopes
+		ExpectPrompt("choice", "1").                         // Submenu: 1 = Add a repo scope
 		ExpectPrompt("URL", "https://github.com/user/repo"). // Repository URL
-		ExpectConfirm("entire repository", true).            // Yes, entire repository
-		ExpectPrompt("choice", "4").                         // Option 4: Done with modifications
+		ExpectPrompt("choice", "8").                         // Submenu: 8 = Done
 		ExpectConfirm("Continue with these changes", true).  // Confirm changes
 		ExpectConfirm("Run install now", false)              // Don't run install
 
@@ -132,8 +147,8 @@ prompt-file = "SKILL.md"
 	if len(asset2.Scopes) != 1 {
 		t.Fatalf("Expected 1 repository, got %d", len(asset2.Scopes))
 	}
-	if asset2.Scopes[0].Repo != "https://github.com/user/repo" {
-		t.Fatalf("Expected repo https://github.com/user/repo, got %s", asset2.Scopes[0].Repo)
+	if asset2.Scopes[0].Repo != "github.com/user/repo" {
+		t.Fatalf("Expected normalized repo github.com/user/repo, got %s", asset2.Scopes[0].Repo)
 	}
 	t.Log("✓ Asset reconfigured to repository-specific scope")
 }
@@ -149,6 +164,7 @@ func TestAddKeepCurrentSettings(t *testing.T) {
 
 	// Set environment
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
@@ -210,13 +226,12 @@ prompt-file = "SKILL.md"
 	mockPrompter := NewMockPrompter().
 		ExpectConfirm("correct", true).                       // Confirm detected asset
 		ExpectPrompt("Version", "1.0.0").                     // Enter version
-		ExpectPrompt("choice", "2").                          // Option 2: Add/modify repository-specific
-		ExpectPrompt("choice", "1").                          // Add new repository
+		ExpectPrompt("choice", "3").                          // Not-installed menu: 3 = Edit scopes
+		ExpectPrompt("choice", "2").                          // Submenu: 2 = Add a path scope
 		ExpectPrompt("URL", "https://github.com/user/repo1"). // Repository URL
-		ExpectConfirm("entire repository", false).            // No, specific paths
-		ExpectPrompt("path", "/backend").                     // Path
+		ExpectPrompt("Path", "/backend").                     // Path within repository
 		ExpectConfirm("Add another path", false).             // No more paths
-		ExpectPrompt("choice", "4").                          // Done with modifications
+		ExpectPrompt("choice", "8").                          // Submenu: 8 = Done
 		ExpectConfirm("Continue with these changes", true).   // Confirm changes
 		ExpectConfirm("Run install now", false)               // Don't run install
 
@@ -272,6 +287,7 @@ func TestAddRemoveFromInstallation(t *testing.T) {
 
 	// Set environment
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
@@ -353,7 +369,7 @@ prompt-file = "SKILL.md"
 	// For existing assets: Option 4 = Remove from installation
 	t.Log("Step 3: Remove asset from installation")
 	mockPrompter2 := NewMockPrompter().
-		ExpectPrompt("choice", "4").            // Option 4: Remove from installation
+		ExpectPrompt("choice", "5").            // Installed menu: 5 = Remove from installation
 		ExpectConfirm("Run install now", false) // Don't run install
 
 	addCmd2 := NewAddCommand()
@@ -388,6 +404,7 @@ func TestAddFirstTimeNoScopes(t *testing.T) {
 
 	// Set environment
 	t.Setenv("HOME", homeDir)
+	configureGitIdentityForTest(t, homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
@@ -450,7 +467,7 @@ prompt-file = "SKILL.md"
 	mockPrompter := NewMockPrompter().
 		ExpectConfirm("correct", true).         // Confirm detected asset
 		ExpectPrompt("Version", "1.0.0").       // Enter version
-		ExpectPrompt("choice", "3").            // Option 3: Remove from installation (don't install)
+		ExpectPrompt("choice", "4").            // Not-installed menu: 4 = Remove from installation
 		ExpectConfirm("Run install now", false) // Don't run install
 
 	addCmd := NewAddCommand()

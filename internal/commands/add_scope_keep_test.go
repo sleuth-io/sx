@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -32,12 +31,12 @@ type emptyVault struct {
 // Inherit defaulted to false, so the prompt's "no changes" promise silently
 // became "overwrite to whatever the stripped lockfile view shows".
 func TestPromptKeepCurrentSettingsSetsInherit(t *testing.T) {
-	// currentRepos is empty-but-not-nil, which maps to a global install in
-	// displayCurrentInstallation. "Keep current" is shown because nil vs
-	// empty slice is the prompt's "installed" gate.
-	currentRepos := []lockfile.Scope{}
+	// An installed asset with no targets is a global install in
+	// displayCurrentTargets. "Keep current" is shown because installed=true is
+	// the prompt's gate.
+	current := []vaultpkg.InstallTarget{}
 
-	// "1\n" selects the first option. With currentRepos != nil, that's
+	// "1\n" selects the first option. With installed=true, that's
 	// "Keep current settings".
 	in := bufio.NewReader(strings.NewReader("1\n"))
 	out := io.Discard
@@ -46,7 +45,7 @@ func TestPromptKeepCurrentSettingsSetsInherit(t *testing.T) {
 
 	result, err := promptForRepositoriesWithUI(
 		"my-skill", "1",
-		currentRepos,
+		current, true,
 		&emptyVault{},
 		styledOut,
 		ioc,

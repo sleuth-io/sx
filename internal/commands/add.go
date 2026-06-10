@@ -15,7 +15,7 @@ import (
 	"github.com/sleuth-io/sx/internal/github"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
-	"github.com/sleuth-io/sx/internal/ui"
+	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	"github.com/sleuth-io/sx/internal/ui/theme"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -53,12 +53,20 @@ If the argument is an existing asset name, configure its installation scope inst
 // NewAddCommand creates the add command
 func NewAddCommand() *cobra.Command {
 	var (
-		yes         bool
-		noInstall   bool
-		browse      bool
-		name        string
-		assetType   string
-		version     string
+		yes        bool
+		noInstall  bool
+		browse     bool
+		name       string
+		assetType  string
+		version    string
+		org        bool
+		repos      []string
+		paths      []string
+		teams      []string
+		users      []string
+		bots       []string
+		addToScope bool
+		// legacy aliases
 		scopeGlobal bool
 		scopeRepos  []string
 		scope       string
@@ -81,6 +89,13 @@ func NewAddCommand() *cobra.Command {
 				Name:        name,
 				Type:        assetType,
 				Version:     version,
+				Org:         org,
+				Repos:       repos,
+				Paths:       paths,
+				Teams:       teams,
+				Users:       users,
+				Bots:        bots,
+				AddToScope:  addToScope,
 				ScopeGlobal: scopeGlobal,
 				ScopeRepos:  scopeRepos,
 				Scope:       scope,
@@ -89,22 +104,44 @@ func NewAddCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Accept all defaults and skip prompts")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Accept all defaults and skip prompts (including the scope confirmation)")
 	cmd.Flags().BoolVar(&noInstall, "no-install", false, "Skip running install after adding")
 	cmd.Flags().BoolVar(&browse, "browse", false, "Search and browse skills from skills.sh")
 	cmd.Flags().StringVar(&name, "name", "", "Override detected asset name")
 	cmd.Flags().StringVar(&assetType, "type", "", "Override detected asset type (skill, rule, agent, command, mcp, hook)")
 	cmd.Flags().StringVar(&version, "version", "", "Override suggested version")
-	cmd.Flags().BoolVar(&scopeGlobal, "scope-global", false, "Install globally (all repositories)")
-	cmd.Flags().StringArrayVar(&scopeRepos, "scope-repo", nil, "Install for specific repository, optionally with paths (format: repo_url or repo_url#path1,path2)")
-	cmd.Flags().StringVar(&scope, "scope", "", "Vault-specific scope (e.g., personal for Sleuth vaults)")
+
+	// Unified scope flags (same vocabulary as `sx install`). Setting any
+	// pre-fills the scope and shows the same confirmation the menu does (skipped
+	// with --yes). Default replaces the asset's scope; --add-to-scope appends.
+	cmd.Flags().BoolVar(&org, "org", false, "Scope: install org-wide (global, exclusive)")
+	cmd.Flags().StringArrayVar(&repos, "repo", nil, "Scope: a repository URL (repeatable)")
+	cmd.Flags().StringArrayVar(&paths, "path", nil, "Scope: a repo subpath set (repo_url#path1,path2; repeatable)")
+	cmd.Flags().StringArrayVar(&teams, "team", nil, "Scope: every member of a team, by name (repeatable)")
+	cmd.Flags().StringArrayVar(&users, "user", nil, "Scope: a user email, or 'me' (repeatable)")
+	cmd.Flags().StringArrayVar(&bots, "bot", nil, "Scope: a bot identity, by name (repeatable)")
+	cmd.Flags().BoolVar(&addToScope, "add-to-scope", false, "Append the named scopes instead of replacing the asset's scope set")
+
+	// Legacy scope flags — forwarded to the unified set; kept for compatibility.
+	cmd.Flags().BoolVar(&scopeGlobal, "scope-global", false, "Deprecated: use --org")
+	cmd.Flags().StringArrayVar(&scopeRepos, "scope-repo", nil, "Deprecated: use --repo / --path")
+	cmd.Flags().StringVar(&scope, "scope", "", "Deprecated: use --user me (for 'personal')")
+	_ = cmd.Flags().MarkDeprecated("scope-global", "use --org")
+	_ = cmd.Flags().MarkDeprecated("scope-repo", "use --repo or --path")
+	_ = cmd.Flags().MarkDeprecated("scope", "use --user me")
 
 	return cmd
 }
 
 // runAddWithFlags is the main entry point
 func runAddWithFlags(cmd *cobra.Command, input string, opts addOptions) error {
-	// Validate scope flags upfront
+	// Validate scope flags upfront.
+	// --scope only ever supported the "personal" entity (Sleuth's "just for me",
+	// now expressed as --user me); any other value silently did nothing, so
+	// reject it explicitly rather than ignoring it.
+	if opts.Scope != "" && opts.Scope != "personal" {
+		return fmt.Errorf("--scope only accepts \"personal\" (deprecated; use --user me); got %q", opts.Scope)
+	}
 	if opts.Scope != "" && (opts.ScopeGlobal || len(opts.ScopeRepos) > 0) {
 		return errors.New("cannot use --scope with --scope-global or --scope-repo")
 	}
@@ -322,25 +359,19 @@ func configureExistingAsset(ctx context.Context, cmd *cobra.Command, out *output
 func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHelper, vault vaultpkg.Vault, foundAsset *lockfile.Asset, promptInstall bool, opts addOptions) error {
 	out.printf("Configuring scope for %s@%s\n", foundAsset.Name, foundAsset.Version)
 
-	// Normalize nil to empty slice for global installations
-	currentScopes := foundAsset.Scopes
-	if currentScopes == nil {
-		currentScopes = []lockfile.Scope{}
+	// Read the real current installation from the vault (the server view for
+	// Sleuth, which includes team/user/bot scopes). The asset is already in the
+	// lock file, so if that read can't see it, fall back to the lock-file
+	// scopes and still treat it as installed.
+	current, installed := resolveCurrentTargets(ctx, vault, foundAsset.Name)
+	if !installed {
+		current, installed = scopesToTargets(foundAsset.Scopes), true
 	}
 
-	// Get scopes (from flags if non-interactive, otherwise prompt)
-	var result *scopeResult
-	var err error
-	if opts.isNonInteractive() {
-		result, err = opts.getScopes()
-		if err != nil {
-			return err
-		}
-	} else {
-		result, err = promptForRepositories(out, foundAsset.Name, foundAsset.Version, currentScopes, vault)
-		if err != nil {
-			return fmt.Errorf("failed to configure repositories: %w", err)
-		}
+	// Get scopes: scope flags pre-fill + confirm, otherwise the interactive editor.
+	result, err := resolveAddScope(out, vault, foundAsset.Name, foundAsset.Version, current, installed, opts)
+	if err != nil {
+		return fmt.Errorf("failed to configure repositories: %w", err)
 	}
 
 	// If remove, user chose to remove from installation
@@ -361,7 +392,7 @@ func configureFoundAsset(ctx context.Context, cmd *cobra.Command, out *outputHel
 	foundAsset.Scopes = result.Scopes
 
 	// Update lock file
-	if err := updateLockFile(ctx, out, vault, foundAsset, result.ScopeEntity); err != nil {
+	if err := updateLockFile(ctx, out, vault, foundAsset, result); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 
@@ -423,6 +454,18 @@ func createVault() (vaultpkg.Vault, error) {
 		return nil, fmt.Errorf("failed to load configuration: %w\nRun 'sx init' to configure", err)
 	}
 
+	// Apply the active profile's identity before any vault op so "me"/user
+	// scopes and audit entries resolve to the profile's configured email
+	// rather than the system git config. The install paths do this via
+	// loadConfigAndVault; sx add must do it too or --profile <git vault> falls
+	// back to git config user.email (SD-10170). Only override when the profile
+	// actually sets an identity — an empty one must NOT clobber the git-config
+	// fallback (the process-global override is sticky).
+	if cfg.Identity != "" {
+		mgmt.SetIdentityOverride(cfg.Identity)
+	}
+	mgmt.SetAuditProfileTag(cfg.ProfileName)
+
 	return vaultpkg.NewFromConfig(cfg)
 }
 
@@ -468,21 +511,14 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 	// Get scopes (from flags if --yes, otherwise prompt)
 	var result *scopeResult
 	var err error
-	if opts.Yes {
-		result, err = opts.getScopes()
-		if err != nil {
-			return err
-		}
-	} else {
-		currentScopes := resolveCurrentScopes(vault, name)
-		result, err = promptForRepositories(out, name, version, currentScopes, vault)
-		if err != nil {
-			return fmt.Errorf("failed to configure repositories: %w", err)
-		}
-		if result.Remove {
-			out.printf("Run 'sx add %s' to configure where to install it.\n", name)
-			return nil
-		}
+	current, installed := resolveCurrentTargets(ctx, vault, name)
+	result, err = resolveAddScope(out, vault, name, version, current, installed, opts)
+	if err != nil {
+		return fmt.Errorf("failed to configure repositories: %w", err)
+	}
+	if result.Remove {
+		out.printf("Run 'sx add %s' to configure where to install it.\n", name)
+		return nil
 	}
 
 	// If inherit, preserve existing installations
@@ -495,7 +531,7 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 	}
 
 	lockAsset.Scopes = result.Scopes
-	if err := updateLockFile(ctx, out, vault, lockAsset, result.ScopeEntity); err != nil {
+	if err := updateLockFile(ctx, out, vault, lockAsset, result); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 
@@ -567,22 +603,15 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 
 	// Get scopes (from flags if --yes, otherwise prompt)
 	var result *scopeResult
-	if opts.Yes {
-		result, err = opts.getScopes()
-		if err != nil {
-			return err
-		}
-	} else {
-		currentScopes := resolveCurrentScopes(vault, lockAsset.Name)
-		result, err = promptForRepositories(out, lockAsset.Name, lockAsset.Version, currentScopes, vault)
-		if err != nil {
-			return fmt.Errorf("failed to configure scopes: %w", err)
-		}
-		// If remove, user chose not to install
-		if result.Remove {
-			out.printf("Run 'sx add %s' to configure where to install it.\n", lockAsset.Name)
-			return nil
-		}
+	current, installed := resolveCurrentTargets(ctx, vault, lockAsset.Name)
+	result, err = resolveAddScope(out, vault, lockAsset.Name, lockAsset.Version, current, installed, opts)
+	if err != nil {
+		return fmt.Errorf("failed to configure scopes: %w", err)
+	}
+	// If remove, user chose not to install
+	if result.Remove {
+		out.printf("Run 'sx add %s' to configure where to install it.\n", lockAsset.Name)
+		return nil
 	}
 
 	// If inherit, preserve existing installations
@@ -597,19 +626,9 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 	lockAsset.Scopes = result.Scopes
 
 	// Update lock file with asset
-	if err := updateLockFile(ctx, out, vault, lockAsset, result.ScopeEntity); err != nil {
+	if err := updateLockFile(ctx, out, vault, lockAsset, result); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 
 	return nil
-}
-
-// promptForRepositories prompts user for repository configurations and returns them
-// Takes currentRepos (nil if not installed, empty slice if global, or list of repos)
-// Returns scopeResult with Remove=true if user chooses not to install
-func promptForRepositories(out *outputHelper, assetName, version string, currentRepos []lockfile.Scope, v vaultpkg.Vault) (*scopeResult, error) {
-	// Use the new UI components (they automatically fall back to simple text in non-TTY)
-	styledOut := ui.NewOutput(out.cmd.OutOrStdout(), out.cmd.ErrOrStderr())
-	ioc := components.NewIOContext(out.cmd.InOrStdin(), out.cmd.OutOrStdout())
-	return promptForRepositoriesWithUI(assetName, version, currentRepos, v, styledOut, ioc)
 }

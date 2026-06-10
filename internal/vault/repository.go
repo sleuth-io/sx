@@ -241,6 +241,25 @@ type InstallTarget struct {
 	Team  string   // Team
 	User  string   // User (email)
 	Bot   string   // Bot (name)
+
+	// EntityID is the server GID of the installed entity, populated when a
+	// target is read back from the server (the current-installation view). It
+	// lets a removal target the exact installation via uninstallAssetTargets
+	// without re-resolving the entity by name/email. Empty for targets the user
+	// is adding (those resolve by name/email at apply time).
+	EntityID string
+	// MonoRepoConfigID is the server GID of the mono-repo config for a
+	// path-scoped repository install, needed to remove that specific install.
+	MonoRepoConfigID string
+}
+
+// SkippedTarget is an install target that SetAssetInstallations could not apply,
+// paired with a human-readable reason — e.g. a team that doesn't exist in the
+// vault, or one the caller is not an admin of (a permissions problem). Callers
+// surface the reason so a skip isn't mistaken for "team not found".
+type SkippedTarget struct {
+	Target InstallTarget
+	Reason string
 }
 
 // AuditData returns the payload attached to an install.set audit event

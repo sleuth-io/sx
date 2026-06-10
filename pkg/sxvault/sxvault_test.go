@@ -394,9 +394,9 @@ func TestDeleteAssetForSkillsNewRequestsPermanentDelete(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch req.OperationName {
 		case "AssetGID":
-			if got := req.Variables["search"]; got != "Reviewer Agent" {
-				t.Fatalf("AssetGID search = %v, want Reviewer Agent", got)
-			}
+			// AssetGID now pages the whole connection (first/after) and
+			// matches client-side, so there is no search arg to assert; the
+			// downstream RemoveAssetInstallations assertion pins resolution.
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"data": map[string]any{
 					"vault": map[string]any{
@@ -974,7 +974,7 @@ func sxvaultAgentGraphQLResponse(t *testing.T, operation string, vars map[string
 // requested name, which could collide with a different same-named asset.
 func TestPutSkillZipRepublishRoutesBotInstallToServerSlug(t *testing.T) {
 	ctx := context.Background()
-	var assetGIDSearch string
+	var installedSkillID string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/skills/assets":
@@ -999,8 +999,11 @@ func TestPutSkillZipRepublishRoutesBotInstallToServerSlug(t *testing.T) {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			if req.OperationName == "AssetGID" {
-				assetGIDSearch, _ = req.Variables["search"].(string)
+			// AssetGID no longer takes a search arg (it pages and matches
+			// client-side), so assert resolution landed on the server slug
+			// by capturing the skill GID handed to the bot-install mutation.
+			if req.OperationName == "InstallSkillToBot" {
+				installedSkillID, _ = req.Variables["skillId"].(string)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": sxvaultRepublishGraphQLResponse(t, req.OperationName, req.Variables)})
@@ -1026,8 +1029,11 @@ func TestPutSkillZipRepublishRoutesBotInstallToServerSlug(t *testing.T) {
 	if got.Name != "foo_skill" {
 		t.Fatalf("republish result Name = %q, want server slug foo_skill", got.Name)
 	}
-	if assetGIDSearch != "foo_skill" {
-		t.Fatalf("bot install resolved %q, want the server slug foo_skill", assetGIDSearch)
+	// The republish conflict response carries server slug "foo_skill"; the
+	// bot install must resolve that slug (GID "skill-foo"), not the local
+	// name "foo", which the AssetGID node set never matches.
+	if installedSkillID != "skill-foo" {
+		t.Fatalf("bot install resolved skillId %q, want skill-foo (server slug foo_skill)", installedSkillID)
 	}
 }
 
@@ -1119,9 +1125,8 @@ func sxvaultTestGraphQLResponse(t *testing.T, operation string, vars map[string]
 			},
 		}
 	case "AssetGID":
-		if got := vars["search"]; got != "copied-skill" {
-			t.Fatalf("AssetGID search = %v, want copied-skill", got)
-		}
+		// AssetGID now pages the whole connection (first/after) and matches
+		// client-side, so there is no search arg to assert.
 		return map[string]any{
 			"vault": map[string]any{
 				"assets": map[string]any{

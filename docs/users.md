@@ -12,23 +12,43 @@ the broader scope picker, see [scoping.md](scoping.md).
 ## Installing for yourself
 
 ```bash
+sx install my-skill --user me            # 'me' = your own account
 sx install my-skill --user alice@acme.com
 ```
 
+The magic value **`me`** resolves to your own account (via the same
+identity lookup described below), so you never have to type your own
+address. It works wherever a user email is accepted — the `--user`
+flag and the interactive `sx add` scope editor, where the "Add a user
+scope" prompt is prefilled with `me` (just press Enter) and also
+accepts a comma-separated list of emails.
+
+Who you may target depends on the vault:
+
+- **File-backed vaults (Path/Git):** the self-only restriction below
+  applies, so `me` (your own address) is the only value `--user`
+  accepts.
+- **Sleuth vault:** you can also scope to other org users by email,
+  subject to your `INSTALL_SELF` permission on the asset — the server
+  checks the permission but does not pin the target to the caller.
+
 The Sleuth-only **"personal"** option offered in the interactive
-`sx add` TUI is the same scope — included as a convenience so you
-don't have to type your own address.
+`sx add` TUI is the same scope — another convenience for the same thing.
 
-## Self-only restriction
+## Self-only restriction (file-backed vaults)
 
-`--user <email>` is allowed only when `<email>` matches the caller's
-git identity (`git config user.email`, normalized for case). This stops
-someone with vault write access from silently flipping an asset to
-"global" in a teammate's resolved lock file.
+On Path/Git vaults, `--user <email>` is allowed only when `<email>`
+matches the caller's git identity (`git config user.email`, normalized
+for case). This stops someone with vault write access from silently
+flipping an asset to "global" in a teammate's resolved lock file.
 
 The check runs inside the vault mutation transaction, after the flock
 + manifest reload — not just in the CLI — so it cannot be bypassed by
 racing two processes.
+
+The Sleuth vault does not apply this restriction; it gates user-scoped
+installs on the server-side `INSTALL_SELF` permission instead (see
+above), which permits targeting other org users.
 
 ## Identity model
 

@@ -106,25 +106,17 @@ func handleNewAssetFromVault(ctx context.Context, cmd *cobra.Command, out *outpu
 
 	latestVersion := versions[len(versions)-1]
 
-	currentScopes := resolveCurrentScopes(vault, assetName)
-	if currentScopes != nil {
+	current, installed := resolveCurrentTargets(ctx, vault, assetName)
+	if installed {
 		out.printf("Found asset: %s v%s in vault (installed)\n", assetName, latestVersion)
 	} else {
 		out.printf("Found asset: %s v%s in vault (not yet installed)\n", assetName, latestVersion)
 	}
 
-	// Get scopes (from flags if non-interactive, otherwise prompt)
-	var result *scopeResult
-	if opts.isNonInteractive() {
-		result, err = opts.getScopes()
-		if err != nil {
-			return err
-		}
-	} else {
-		result, err = promptForRepositories(out, assetName, latestVersion, currentScopes, vault)
-		if err != nil {
-			return fmt.Errorf("failed to configure repositories: %w", err)
-		}
+	// Get scopes: scope flags pre-fill + confirm, otherwise the interactive editor.
+	result, err := resolveAddScope(out, vault, assetName, latestVersion, current, installed, opts)
+	if err != nil {
+		return fmt.Errorf("failed to configure repositories: %w", err)
 	}
 
 	if result.Remove {
@@ -156,7 +148,7 @@ func handleNewAssetFromVault(ctx context.Context, cmd *cobra.Command, out *outpu
 		return nil
 	}
 
-	if err := updateLockFile(ctx, out, vault, newAsset, result.ScopeEntity); err != nil {
+	if err := updateLockFile(ctx, out, vault, newAsset, result); err != nil {
 		return fmt.Errorf("failed to update lock file: %w", err)
 	}
 

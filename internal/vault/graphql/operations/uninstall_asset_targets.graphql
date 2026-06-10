@@ -1,0 +1,12 @@
+mutation UninstallAssetTargets($input: UninstallAssetTargetsInput!) {
+  uninstallAssetTargets(input: $input) {
+    asset {
+      name
+    }
+    removedCount
+    errors {
+      field
+      messages
+    }
+  }
+}

@@ -92,6 +92,16 @@ func requireTeamAdminInTx(m *manifest.Manifest, teamName string, actor mgmt.Acto
 	return team, nil
 }
 
+// teamExistsInTx returns ErrTeamNotFound unless teamName is a team in the
+// manifest. Scoping an asset TO a team (distributing a skill to its members)
+// only requires the team to exist plus write access to the vault — NOT
+// team-admin. The admin gate (requireTeamAdminInTx) is reserved for modifying
+// the team itself: its members, admins, and repos. See SD-10170.
+func teamExistsInTx(m *manifest.Manifest, teamName string) error {
+	_, err := m.FindTeam(teamName)
+	return err
+}
+
 const defaultListTeamsLimit = 20
 
 func commonListTeams(vaultRoot string, opts ListTeamsOptions) (*ListTeamsResult, error) {
@@ -829,7 +839,7 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 		// Re-check team admin membership inside the transaction to close
 		// the TOCTOU window between CLI pre-check and commit.
 		if target.Kind == InstallKindTeam {
-			if _, err := requireTeamAdminInTx(m, target.Team, actor); err != nil {
+			if err := teamExistsInTx(m, target.Team); err != nil {
 				return nil, err
 			}
 		}
@@ -874,7 +884,7 @@ func commonRemoveAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName
 	}
 	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
 		if target.Kind == InstallKindTeam {
-			if _, err := requireTeamAdminInTx(m, target.Team, actor); err != nil {
+			if err := teamExistsInTx(m, target.Team); err != nil {
 				return nil, err
 			}
 		}
@@ -938,6 +948,246 @@ func commonClearAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName
 		}, nil
 	})
 }
+
+// commonSetAssetInstallations applies a batch of install targets to the named
+// asset in a single manifest transaction (one commit/push for git vaults).
+// appendMode merges the targets into the asset's existing scopes; otherwise the
+// asset's scope set is replaced wholesale. An --org target is exclusive: it
+// clears every scope so the asset becomes global.
+//
+// It is the file-backed counterpart to SleuthVault.SetAssetInstallations and
+// mirrors its semantics: set every target that CAN be set and collect the rest
+// (a team that doesn't exist or the caller can't admin, a missing bot, a user
+// scope aimed at someone else) into the returned unresolved slice for the
+// caller to surface — it never aborts the whole batch on one bad target. If
+// NOTHING resolves, the asset is left untouched rather than cleared, so a
+// REPLACE whose targets all fail can't silently globalize the asset.
+func commonSetAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName string, targets []InstallTarget, appendMode bool) ([]SkippedTarget, error) {
+	if len(targets) == 0 {
+		return nil, nil
+	}
+
+	orgWide := false
+	for _, t := range targets {
+		if t.Kind == InstallKindOrg {
+			orgWide = true
+		}
+	}
+
+	var skipped []SkippedTarget
+	err := withManifestEvents(vaultRoot, actor, func(m *manifest.Manifest) ([]mgmt.AuditEvent, error) {
+		// Resolve each non-org target against the in-transaction manifest,
+		// skipping any that can't be set (with the reason why). Org is exclusive
+		// and needs no resolution (it clears the scope set).
+		type resolvedScope struct {
+			target InstallTarget
+			scope  manifest.Scope
+		}
+		var resolved []resolvedScope
+		if !orgWide {
+			for _, t := range targets {
+				s, reason := resolveSetTarget(m, t, actor)
+				if reason != "" {
+					skipped = append(skipped, SkippedTarget{Target: t, Reason: reason})
+					continue
+				}
+				resolved = append(resolved, resolvedScope{t, s})
+			}
+			// Nothing resolvable: leave the asset untouched. Clearing here would
+			// turn a fully-unresolved REPLACE into a silent org-wide install.
+			if len(resolved) == 0 {
+				return nil, nil
+			}
+		}
+
+		asset := m.FindAsset(assetName)
+		var recoveredAuditData map[string]any
+		if asset == nil {
+			recovered, ok, err := assetFromStorage(vaultRoot, assetName)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				return nil, fmt.Errorf("asset %q not found", assetName)
+			}
+			recoveredAuditData = map[string]any{
+				"recovered_from_storage": true,
+				"version":                recovered.Version,
+				"type":                   recovered.Type.Key,
+				"source":                 "path",
+				"path":                   filepath.ToSlash(filepath.Join("assets", recovered.Name, recovered.Version)),
+			}
+			m.Assets = append(m.Assets, lockfileAssetToManifest(*recovered))
+			asset = m.FindAsset(assetName)
+			if asset == nil {
+				return nil, fmt.Errorf("asset %q not found after manifest repair", assetName)
+			}
+		}
+
+		if orgWide || !appendMode {
+			// Replace (and org-global) clear the whole picture: scopes inherit
+			// onto every same-name version row (see commonRemoveAssetInstallation),
+			// so clear them all before re-adding, or stale rows would keep the
+			// asset installed in places the new set doesn't name.
+			for i := range m.Assets {
+				if m.Assets[i].Name == assetName {
+					m.Assets[i].Scopes = nil
+				}
+			}
+		}
+
+		events := make([]mgmt.AuditEvent, 0, len(resolved)+2)
+		if recoveredAuditData != nil {
+			events = append(events, mgmt.AuditEvent{
+				Event:      mgmt.EventAssetRecovered,
+				TargetType: mgmt.TargetTypeAsset,
+				Target:     assetName,
+				Data:       recoveredAuditData,
+			})
+		}
+		if orgWide {
+			events = append(events, mgmt.AuditEvent{
+				Event:      mgmt.EventInstallSet,
+				TargetType: mgmt.TargetTypeInstallation,
+				Target:     assetName,
+				Data:       InstallTarget{Kind: InstallKindOrg}.AuditData(),
+			})
+		} else {
+			for _, r := range resolved {
+				if !scopeExistsOnAsset(asset.Scopes, r.scope) {
+					asset.Scopes = append(asset.Scopes, r.scope)
+				}
+				events = append(events, mgmt.AuditEvent{
+					Event:      mgmt.EventInstallSet,
+					TargetType: mgmt.TargetTypeInstallation,
+					Target:     assetName,
+					Data:       r.target.AuditData(),
+				})
+			}
+		}
+		return events, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return skipped, nil
+}
+
+// resolveSetTarget converts one install target into the manifest scope to store.
+// It returns a non-empty reason string when the target can't be set against this
+// manifest — a malformed repo/path, a user scope not targeting the caller, a
+// team that doesn't exist OR the caller isn't an admin of (a permissions
+// problem), or a missing bot. Callers skip those and surface the reason
+// verbatim (mirrors the Sleuth vault's GID-resolution skip). Org is never
+// resolved here (handled as a scope clear). The team/bot errors carry their own
+// distinct wording (ErrTeamNotFound vs the "not an admin" message), so the user
+// can tell a missing team from a permissions problem.
+func resolveSetTarget(m *manifest.Manifest, t InstallTarget, actor mgmt.Actor) (manifest.Scope, string) {
+	s, err := installTargetScope(t, actor)
+	if err != nil {
+		return manifest.Scope{}, err.Error()
+	}
+	switch t.Kind {
+	case InstallKindTeam:
+		if err := teamExistsInTx(m, t.Team); err != nil {
+			return manifest.Scope{}, err.Error()
+		}
+	case InstallKindBot:
+		if _, err := findBotForMgmt(m, t.Bot); err != nil {
+			return manifest.Scope{}, err.Error()
+		}
+	case InstallKindOrg, InstallKindRepo, InstallKindPath, InstallKindUser:
+		// no manifest-dependent resolution beyond installTargetScope above
+	}
+	return s, ""
+}
+
+// commonUninstallAssetTargets removes a batch of install targets from the named
+// asset in a single manifest transaction, returning how many scope rows were
+// removed and a per-target failure message for any that couldn't be resolved
+// (e.g. an org target, which has no scope row to remove). It is the file-backed
+// counterpart to SleuthVault.UninstallAssetTargets and satisfies the
+// targetUninstaller interface. A row left with no scopes is dropped rather than
+// reinterpreted as global, matching commonRemoveAssetInstallation.
+func commonUninstallAssetTargets(vaultRoot string, actor mgmt.Actor, assetName string, targets []InstallTarget) (int, []string, error) {
+	if len(targets) == 0 {
+		return 0, nil, nil
+	}
+
+	var needles []manifest.Scope
+	var teamTargets []InstallTarget
+	var failures []string
+	for _, t := range targets {
+		needle, err := installTargetScope(t, actor)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", t.Kind, err))
+			continue
+		}
+		needles = append(needles, needle)
+		if t.Kind == InstallKindTeam {
+			teamTargets = append(teamTargets, t)
+		}
+	}
+	if len(needles) == 0 {
+		return 0, failures, nil
+	}
+
+	removed := 0
+	err := withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		for _, t := range teamTargets {
+			if err := teamExistsInTx(m, t.Team); err != nil {
+				return nil, err
+			}
+		}
+		changed := false
+		kept := m.Assets[:0]
+		for _, a := range m.Assets {
+			if a.Name != assetName || len(a.Scopes) == 0 {
+				kept = append(kept, a)
+				continue
+			}
+			nextScopes := a.Scopes[:0]
+			for _, s := range a.Scopes {
+				match := false
+				for _, needle := range needles {
+					if installScopeMatches(s, needle) {
+						match = true
+						break
+					}
+				}
+				if match {
+					removed++
+					changed = true
+					continue
+				}
+				nextScopes = append(nextScopes, s)
+			}
+			a.Scopes = nextScopes
+			if len(a.Scopes) > 0 {
+				kept = append(kept, a)
+			}
+		}
+		if !changed {
+			return nil, errUninstallNoMatch
+		}
+		m.Assets = kept
+		return &mgmt.AuditEvent{
+			Event:      mgmt.EventInstallRemoved,
+			TargetType: mgmt.TargetTypeInstallation,
+			Target:     assetName,
+			Data:       map[string]any{"removed_count": removed},
+		}, nil
+	})
+	if err != nil && !errors.Is(err, errUninstallNoMatch) {
+		return 0, failures, err
+	}
+	return removed, failures, nil
+}
+
+// errUninstallNoMatch signals that a bulk uninstall matched no scopes — a no-op,
+// not a failure. The closure returns it so withManifest skips the (unchanged)
+// save, and commonUninstallAssetTargets swallows it, reporting zero removed.
+var errUninstallNoMatch = errors.New("no matching installation to remove")
 
 // canonicalPaths returns a sorted copy of paths so path-scope rows are
 // stored and compared in a canonical order. Set and remove route their

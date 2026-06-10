@@ -101,8 +101,8 @@ prompt-file = "SKILL.md"
 		}
 
 		scope := asset.Scopes[0]
-		if scope.Repo != "git@github.com:org/repo.git" {
-			t.Errorf("Expected repo 'git@github.com:org/repo.git', got %q", scope.Repo)
+		if scope.Repo != "github.com/org/repo" {
+			t.Errorf("Expected repo 'github.com/org/repo' (normalized), got %q", scope.Repo)
 		}
 		if len(scope.Paths) != 0 {
 			t.Errorf("Expected no paths, got %v", scope.Paths)
@@ -132,8 +132,8 @@ prompt-file = "SKILL.md"
 		}
 
 		scope := asset.Scopes[0]
-		if scope.Repo != "git@github.com:org/repo.git" {
-			t.Errorf("Expected repo 'git@github.com:org/repo.git', got %q", scope.Repo)
+		if scope.Repo != "github.com/org/repo" {
+			t.Errorf("Expected repo 'github.com/org/repo' (normalized), got %q", scope.Repo)
 		}
 		if len(scope.Paths) != 1 || scope.Paths[0] != "backend/services" {
 			t.Errorf("Expected paths ['backend/services'], got %v", scope.Paths)
@@ -193,16 +193,16 @@ prompt-file = "SKILL.md"
 		}
 
 		// Verify first repo scope
-		if asset.Scopes[0].Repo != "git@github.com:org/repo-a.git" {
-			t.Errorf("Expected first repo 'git@github.com:org/repo-a.git', got %q", asset.Scopes[0].Repo)
+		if asset.Scopes[0].Repo != "github.com/org/repo-a" {
+			t.Errorf("Expected first repo 'github.com/org/repo-a' (normalized), got %q", asset.Scopes[0].Repo)
 		}
 		if len(asset.Scopes[0].Paths) != 0 {
 			t.Errorf("Expected first scope to have no paths, got %v", asset.Scopes[0].Paths)
 		}
 
 		// Verify second repo scope with path
-		if asset.Scopes[1].Repo != "git@github.com:org/repo-b.git" {
-			t.Errorf("Expected second repo 'git@github.com:org/repo-b.git', got %q", asset.Scopes[1].Repo)
+		if asset.Scopes[1].Repo != "github.com/org/repo-b" {
+			t.Errorf("Expected second repo 'github.com/org/repo-b' (normalized), got %q", asset.Scopes[1].Repo)
 		}
 		if len(asset.Scopes[1].Paths) != 1 || asset.Scopes[1].Paths[0] != "backend" {
 			t.Errorf("Expected second scope paths ['backend'], got %v", asset.Scopes[1].Paths)

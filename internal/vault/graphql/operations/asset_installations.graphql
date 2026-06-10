@@ -1,12 +1,17 @@
-query AssetInstallations($search: String!) {
+query AssetInstallations($first: Int, $after: String) {
   vault {
-    assets(search: $search, first: 50) {
+    assets(first: $first, after: $after) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         slug
         name
         installations {
           entityType
           entityName
+          entityRef
           entityId
           monoRepoConfigId
         }
