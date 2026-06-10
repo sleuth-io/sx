@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/asset"
@@ -70,12 +71,7 @@ func scopeKinds(t *testing.T, dir string) []manifest.ScopeKind {
 }
 
 func hasKind(kinds []manifest.ScopeKind, want manifest.ScopeKind) bool {
-	for _, k := range kinds {
-		if k == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(kinds, want)
 }
 
 // TestPathVault_SetAssetInstallations_Replace pins SD-10170: a file-backed vault

@@ -1096,6 +1096,8 @@ func resolveSetTarget(m *manifest.Manifest, t InstallTarget, actor mgmt.Actor) (
 		if _, err := findBotForMgmt(m, t.Bot); err != nil {
 			return manifest.Scope{}, err.Error()
 		}
+	case InstallKindOrg, InstallKindRepo, InstallKindPath, InstallKindUser:
+		// no manifest-dependent resolution beyond installTargetScope above
 	}
 	return s, ""
 }
@@ -1166,7 +1168,7 @@ func commonUninstallAssetTargets(vaultRoot string, actor mgmt.Actor, assetName s
 			}
 		}
 		if !changed {
-			return nil, nil
+			return nil, errUninstallNoMatch
 		}
 		m.Assets = kept
 		return &mgmt.AuditEvent{
@@ -1176,11 +1178,16 @@ func commonUninstallAssetTargets(vaultRoot string, actor mgmt.Actor, assetName s
 			Data:       map[string]any{"removed_count": removed},
 		}, nil
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, errUninstallNoMatch) {
 		return 0, failures, err
 	}
 	return removed, failures, nil
 }
+
+// errUninstallNoMatch signals that a bulk uninstall matched no scopes — a no-op,
+// not a failure. The closure returns it so withManifest skips the (unchanged)
+// save, and commonUninstallAssetTargets swallows it, reporting zero removed.
+var errUninstallNoMatch = errors.New("no matching installation to remove")
 
 // canonicalPaths returns a sorted copy of paths so path-scope rows are
 // stored and compared in a canonical order. Set and remove route their

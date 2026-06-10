@@ -377,9 +377,8 @@ func TestSleuthVault_InstallSkillToBotResolvesListedSkillSlug(t *testing.T) {
 			}
 		},
 		"AssetGID": func(vars map[string]any) any {
-			if got := vars["search"]; got != "fix-pr" {
-				t.Fatalf("AssetGID search = %v, want fix-pr", got)
-			}
+			// AssetGID now pages the whole connection (first/after) and
+			// matches client-side, so there is no search arg to assert.
 			return map[string]any{
 				"vault": map[string]any{
 					"assets": map[string]any{
@@ -637,9 +636,8 @@ func TestSleuthVault_ClearAssetInstallationsIgnoresMissingBotInstall(t *testing.
 			}
 		},
 		"AssetGID": func(vars map[string]any) any {
-			if got := vars["search"]; got != "database-migrations" {
-				t.Fatalf("AssetGID search = %v, want database-migrations", got)
-			}
+			// AssetGID now pages the whole connection (first/after) and
+			// matches client-side, so there is no search arg to assert.
 			return map[string]any{
 				"vault": map[string]any{
 					"assets": map[string]any{

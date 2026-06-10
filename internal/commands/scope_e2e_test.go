@@ -84,6 +84,8 @@ func hasScope(scopes []manifest.Scope, kind manifest.ScopeKind, value string) bo
 			if s.Repo == value {
 				return true
 			}
+		case manifest.ScopeKindOrg:
+			// org has no value to match
 		}
 	}
 	return false

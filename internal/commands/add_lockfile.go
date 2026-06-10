@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -59,7 +60,7 @@ func resolveSelfUserScopes(ctx context.Context, repo vault.Vault, targets []vaul
 						return nil, "", fmt.Errorf("could not resolve 'me' to your account: %w", err)
 					}
 					if actor.Email == "" {
-						return nil, "", fmt.Errorf("could not resolve 'me': your account has no email")
+						return nil, "", errors.New("could not resolve 'me': your account has no email")
 					}
 					meEmail = actor.Email
 				}
@@ -79,8 +80,9 @@ func resolveSelfUserScopes(ctx context.Context, repo vault.Vault, targets []vaul
 // installSetter is implemented by vaults that can persist a full set of
 // kind-aware install targets — team/user/bot in addition to repo/path — in one
 // atomic call. appendMode merges with the asset's existing installations
-// server-side instead of replacing them. The Sleuth/skills.io vault implements
-// it; file-backed vaults don't, so they stay repo/path-only.
+// instead of replacing them. The Sleuth/skills.io vault implements it against
+// the server; file-backed vaults (git/path) implement it too via
+// commonSetAssetInstallations, resolving identity targets against the manifest.
 type installSetter interface {
 	SetAssetInstallations(ctx context.Context, assetName string, targets []vault.InstallTarget, appendMode bool) (skipped []vault.SkippedTarget, err error)
 }
@@ -120,7 +122,7 @@ func updateLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, as
 func bulkSetInstallTargets(ctx context.Context, out *outputHelper, repo vault.Vault, assetName string, targets []vault.InstallTarget, appendMode bool) error {
 	setter, ok := repo.(installSetter)
 	if !ok {
-		return fmt.Errorf("this vault does not support team/user/bot scopes")
+		return errors.New("this vault does not support team/user/bot scopes")
 	}
 	resolved, selfEmail, err := resolveSelfUserScopes(ctx, repo, targets)
 	if err != nil {
@@ -149,7 +151,7 @@ func applyScopeEdit(ctx context.Context, out *outputHelper, repo vault.Vault, as
 	if len(removed) > 0 {
 		uninstaller, ok := repo.(targetUninstaller)
 		if !ok {
-			return fmt.Errorf("this vault does not support removing individual scopes")
+			return errors.New("this vault does not support removing individual scopes")
 		}
 		n, failures, err := uninstaller.UninstallAssetTargets(ctx, assetName, removed)
 		if err != nil {

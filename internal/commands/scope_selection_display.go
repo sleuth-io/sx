@@ -38,6 +38,24 @@ func formatTarget(t vault.InstallTarget) string {
 	return string(t.Kind)
 }
 
+// targetKey returns a structural identity for an install target, independent of
+// its human-facing label. Diff and preview maps key on this rather than
+// formatTarget so two distinct targets that happen to render to the same string
+// don't collapse, and a path target whose Paths differ only in order isn't
+// mistaken for a different target.
+func targetKey(t vault.InstallTarget) string {
+	paths := append([]string(nil), t.Paths...)
+	slices.Sort(paths)
+	return strings.Join([]string{
+		string(t.Kind),
+		t.Repo,
+		strings.Join(paths, "\x00"),
+		t.Team,
+		t.User,
+		t.Bot,
+	}, "\x1f")
+}
+
 // scopesToTargets converts the repo/path scopes the rest of the add flow uses
 // into kind-aware install targets for the editor.
 func scopesToTargets(scopes []lockfile.Scope) []vault.InstallTarget {
@@ -73,6 +91,8 @@ func hasIdentityScope(targets []vault.InstallTarget) bool {
 		switch t.Kind {
 		case vault.InstallKindTeam, vault.InstallKindUser, vault.InstallKindBot:
 			return true
+		case vault.InstallKindOrg, vault.InstallKindRepo, vault.InstallKindPath:
+			// not identity scopes
 		}
 	}
 	return false
@@ -129,25 +149,25 @@ func displayCurrentInstallation(currentRepos []lockfile.Scope, styledOut *ui.Out
 }
 
 // diffTargets computes the change between the original install set and the
-// edited working set, keyed by display identity (formatTarget). removed entries
+// edited working set, keyed by structural identity (targetKey). removed entries
 // are taken from original (so they keep the server EntityID needed to uninstall
 // by GID); added entries are taken from working.
 func diffTargets(original, working []vault.InstallTarget) (added, removed []vault.InstallTarget) {
 	originalKeys := make(map[string]bool, len(original))
 	for _, t := range original {
-		originalKeys[formatTarget(t)] = true
+		originalKeys[targetKey(t)] = true
 	}
 	workingKeys := make(map[string]bool, len(working))
 	for _, t := range working {
-		workingKeys[formatTarget(t)] = true
+		workingKeys[targetKey(t)] = true
 	}
 	for _, t := range original {
-		if !workingKeys[formatTarget(t)] {
+		if !workingKeys[targetKey(t)] {
 			removed = append(removed, t)
 		}
 	}
 	for _, t := range working {
-		if !originalKeys[formatTarget(t)] {
+		if !originalKeys[targetKey(t)] {
 			added = append(added, t)
 		}
 	}
@@ -157,24 +177,26 @@ func diffTargets(original, working []vault.InstallTarget) (added, removed []vaul
 // displayScopeChanges shows a diff-style preview of scope changes.
 // Returns true if changes were detected, false otherwise.
 func displayScopeChanges(before, after []vault.InstallTarget, styledOut *ui.Output) bool {
-	beforeSet := make(map[string]bool, len(before))
+	// Map structural key → human label so distinct targets that render alike
+	// don't collapse, while the preview still shows the friendly label.
+	beforeLabels := make(map[string]string, len(before))
 	for _, t := range before {
-		beforeSet[formatTarget(t)] = true
+		beforeLabels[targetKey(t)] = formatTarget(t)
 	}
-	afterSet := make(map[string]bool, len(after))
+	afterLabels := make(map[string]string, len(after))
 	for _, t := range after {
-		afterSet[formatTarget(t)] = true
+		afterLabels[targetKey(t)] = formatTarget(t)
 	}
 
 	var removed, added []string
-	for key := range beforeSet {
-		if !afterSet[key] {
-			removed = append(removed, key)
+	for key, label := range beforeLabels {
+		if _, ok := afterLabels[key]; !ok {
+			removed = append(removed, label)
 		}
 	}
-	for key := range afterSet {
-		if !beforeSet[key] {
-			added = append(added, key)
+	for key, label := range afterLabels {
+		if _, ok := beforeLabels[key]; !ok {
+			added = append(added, label)
 		}
 	}
 

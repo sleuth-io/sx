@@ -184,6 +184,69 @@ func promptForRepositoriesWithUI(assetName, version string, current []vault.Inst
 	}
 }
 
+// addIdentityScopes prompts for a comma-separated list of identity values
+// (team names, user emails, or bot names), builds a target for each via build,
+// appends them to working, and reports each. Returns true if any were added.
+// Extracted from modifyScopes so the three near-identical add-team/user/bot
+// cases don't each carry their own prompt+loop.
+func addIdentityScopes(ioc *components.IOContext, styledOut *ui.Output, label, def, what string, build func(string) vault.InstallTarget, working *[]vault.InstallTarget) bool {
+	vals, err := promptForScopeList(ioc, label, def, what)
+	if err != nil {
+		styledOut.Error(err.Error())
+		return false
+	}
+	for _, v := range vals {
+		t := build(v)
+		*working = append(*working, t)
+		styledOut.Success("Added " + formatTarget(t))
+	}
+	return len(vals) > 0
+}
+
+// removeScopesInteractive shows a multi-select of the current scopes and
+// returns the set with the chosen ones removed, plus whether anything changed.
+// Extracted from modifyScopes to keep that function's complexity in check.
+func removeScopesInteractive(ioc *components.IOContext, styledOut *ui.Output, working []vault.InstallTarget) ([]vault.InstallTarget, bool) {
+	if len(working) == 0 {
+		styledOut.Warning("No scopes to remove")
+		return working, false
+	}
+	// Build a multi-select list with indices as values, so several scopes can
+	// be removed in one pass.
+	scopeOptions := make([]components.MultiSelectOption, len(working))
+	for i, t := range working {
+		scopeOptions[i] = components.MultiSelectOption{Label: formatTarget(t), Value: strconv.Itoa(i)}
+	}
+	chosen, err := ioc.MultiSelect("Which scope(s) would you like to remove?", scopeOptions)
+	if err != nil {
+		// User pressed esc or cancelled.
+		return working, false
+	}
+	removeIdx := make(map[int]bool)
+	for _, opt := range chosen {
+		if !opt.Selected {
+			continue
+		}
+		idx, err := strconv.Atoi(opt.Value)
+		if err != nil {
+			continue
+		}
+		removeIdx[idx] = true
+	}
+	if len(removeIdx) == 0 {
+		return working, false
+	}
+	var kept []vault.InstallTarget
+	for i, t := range working {
+		if removeIdx[i] {
+			styledOut.Success("Removed " + formatTarget(t))
+		} else {
+			kept = append(kept, t)
+		}
+	}
+	return kept, true
+}
+
 // modifyScopes runs the interactive scope editor over a kind-aware target
 // list. allowIdentity gates the team/user/bot actions to vaults that can
 // persist them. It returns the edited working set plus the diff against the
@@ -263,94 +326,34 @@ func modifyScopes(current []vault.InstallTarget, allowIdentity bool, styledOut *
 			styledOut.Success("Added " + formatTarget(t))
 
 		case "add-team":
-			names, err := promptForScopeList(ioc, "Team name(s) — comma-separated", "", "team name")
-			if err != nil {
-				styledOut.Error(err.Error())
-				continue
-			}
-			for _, name := range names {
-				t := vault.InstallTarget{Kind: vault.InstallKindTeam, Team: name}
-				working = append(working, t)
+			if addIdentityScopes(ioc, styledOut, "Team name(s) — comma-separated", "", "team name",
+				func(v string) vault.InstallTarget { return vault.InstallTarget{Kind: vault.InstallKindTeam, Team: v} },
+				&working) {
 				changedScope = true
-				styledOut.Success("Added " + formatTarget(t))
 			}
 
 		case "add-user":
 			// Prefill "me" so the common case (assign to yourself) is just
 			// Enter; "me" resolves to your account at save time. Accepts a
 			// comma-separated list so you can add several users at once.
-			emails, err := promptForScopeList(ioc, "User email(s) — comma-separated, 'me' = you", "me", "user email")
-			if err != nil {
-				styledOut.Error(err.Error())
-				continue
-			}
-			for _, email := range emails {
-				t := vault.InstallTarget{Kind: vault.InstallKindUser, User: email}
-				working = append(working, t)
+			if addIdentityScopes(ioc, styledOut, "User email(s) — comma-separated, 'me' = you", "me", "user email",
+				func(v string) vault.InstallTarget { return vault.InstallTarget{Kind: vault.InstallKindUser, User: v} },
+				&working) {
 				changedScope = true
-				styledOut.Success("Added " + formatTarget(t))
 			}
 
 		case "add-bot":
-			names, err := promptForScopeList(ioc, "Bot name(s) — comma-separated", "", "bot name")
-			if err != nil {
-				styledOut.Error(err.Error())
-				continue
-			}
-			for _, name := range names {
-				t := vault.InstallTarget{Kind: vault.InstallKindBot, Bot: name}
-				working = append(working, t)
+			if addIdentityScopes(ioc, styledOut, "Bot name(s) — comma-separated", "", "bot name",
+				func(v string) vault.InstallTarget { return vault.InstallTarget{Kind: vault.InstallKindBot, Bot: v} },
+				&working) {
 				changedScope = true
-				styledOut.Success("Added " + formatTarget(t))
 			}
 
 		case "remove":
-			if len(working) == 0 {
-				styledOut.Warning("No scopes to remove")
-				continue
+			if next, changed := removeScopesInteractive(ioc, styledOut, working); changed {
+				working = next
+				changedScope = true
 			}
-
-			// Build a multi-select list with indices as values, so several
-			// scopes can be removed in one pass.
-			scopeOptions := make([]components.MultiSelectOption, len(working))
-			for i, t := range working {
-				scopeOptions[i] = components.MultiSelectOption{
-					Label: formatTarget(t),
-					Value: strconv.Itoa(i),
-				}
-			}
-
-			chosen, err := ioc.MultiSelect("Which scope(s) would you like to remove?", scopeOptions)
-			if err != nil {
-				// User pressed esc or cancelled
-				continue
-			}
-
-			// Collect the chosen indices, then rebuild working without them.
-			removeIdx := make(map[int]bool)
-			for _, opt := range chosen {
-				if !opt.Selected {
-					continue
-				}
-				var idx int
-				if _, err := fmt.Sscanf(opt.Value, "%d", &idx); err != nil {
-					continue
-				}
-				removeIdx[idx] = true
-			}
-			if len(removeIdx) == 0 {
-				continue
-			}
-			var kept []vault.InstallTarget
-			for i, t := range working {
-				if removeIdx[i] {
-					styledOut.Success("Removed " + formatTarget(t))
-				} else {
-					kept = append(kept, t)
-				}
-			}
-			working = kept
-			changedScope = true
 
 		case "remove-all":
 			if len(working) == 0 {
@@ -417,7 +420,7 @@ func promptForScopeList(ioc *components.IOContext, label, def, what string) ([]s
 		return nil, err
 	}
 	var vals []string
-	for _, part := range strings.Split(raw, ",") {
+	for part := range strings.SplitSeq(raw, ",") {
 		if v := strings.TrimSpace(part); v != "" {
 			vals = append(vals, v)
 		}

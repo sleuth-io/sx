@@ -250,6 +250,9 @@ func manifestScopeToTarget(s manifest.Scope) (InstallTarget, bool) {
 		return InstallTarget{Kind: InstallKindUser, User: s.User}, true
 	case manifest.ScopeKindBot:
 		return InstallTarget{Kind: InstallKindBot, Bot: s.Bot}, true
+	case manifest.ScopeKindOrg:
+		// org-wide is the empty scope set, never a stored row
+		return InstallTarget{}, false
 	default:
 		return InstallTarget{}, false
 	}

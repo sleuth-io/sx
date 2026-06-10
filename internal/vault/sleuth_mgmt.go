@@ -421,10 +421,14 @@ func (s *SleuthVault) SetAssetInstallation(ctx context.Context, assetName string
 			{EntityType: vaultgql.VaultAssetInstallationEntityTypeTeam, EntityId: &teamGID},
 		}, false)
 	case InstallKindBot:
-		// Bot installs go through the dedicated installSkillToBot
-		// mutation, not setAssetInstallations — the latter does not yet
-		// accept bot targets. The server-side mutation is idempotent, so
-		// repeated calls for the same (asset, bot) pair are safe.
+		// Single-target bot installs use the dedicated installSkillToBot
+		// mutation, which is idempotent (repeated calls for the same
+		// (asset, bot) pair are safe) and pairs with uninstallSkillFromBot
+		// for removal. The bulk SetAssetInstallations path instead sends a
+		// BOT entity through setAssetInstallations, since it replaces a
+		// whole multi-scope set in one atomic call. Both are valid server
+		// entry points; collapsing them onto one mutation is tracked
+		// separately (it also touches uninstall + ClearAssetInstallations).
 		return s.installSkillToBot(ctx, assetName, target.Bot)
 	}
 	return fmt.Errorf("unknown install kind: %q", target.Kind)
@@ -1162,12 +1166,14 @@ func appendDistinctAssetMatch(matches []assetIDMatch, m assetIDMatch) []assetIDM
 	return append(matches, m)
 }
 
-// installSkillToBot installs an asset directly to a bot via the existing
-// pair of mutations. setAssetInstallations does NOT yet support bot
-// targets — installSkillToBot is the dedicated endpoint. The mutation
-// returns both `errors` and `success`; checkSuccessMutation requires
-// success=true so a server returning {success:false, errors:[]} surfaces
-// as an error rather than silently passing.
+// installSkillToBot installs an asset directly to a bot via the dedicated
+// install/uninstall-skill-to-bot mutation pair. The bulk
+// SetAssetInstallations path can also target a bot (BOT entity type), but
+// the single-target install/uninstall flows use this dedicated endpoint for
+// its precise idempotency semantics. The mutation returns both `errors` and
+// `success`; we require success=true so a server returning
+// {success:false, errors:[]} surfaces as an error rather than silently
+// passing.
 func (s *SleuthVault) installSkillToBot(ctx context.Context, assetName, botName string) error {
 	botGID, err := s.botGIDByName(ctx, botName)
 	if err != nil {
