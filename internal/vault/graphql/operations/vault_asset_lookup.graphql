@@ -1,7 +1,8 @@
-query VaultAssetsByName($search: String!) {
+query VaultAssetLookup($slug: String, $search: String, $first: Int) {
   vault {
-    assets(search: $search, first: 50) {
+    assets(slug: $slug, search: $search, first: $first) {
       nodes {
+        slug
         name
         type
         description

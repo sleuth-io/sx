@@ -1166,3 +1166,91 @@ func TestSleuthVault_CreateTeam_NoAdminsSkipsSetTeamAdmin(t *testing.T) {
 		}
 	}
 }
+
+// skillVaultAssetNode builds a VaultAssetLookup "Skill" node for the mock
+// GraphQL server: the polymorphic VaultAsset is unmarshalled by __typename, so
+// it must be present alongside the selected fields.
+func skillVaultAssetNode(slug, name string) map[string]any {
+	return map[string]any{
+		"__typename":  "Skill",
+		"slug":        slug,
+		"name":        name,
+		"type":        "SKILL",
+		"description": "Use for personal stuff",
+		"createdAt":   "2026-06-09T13:26:58Z",
+		"updatedAt":   "2026-06-09T13:26:58Z",
+		"versions": []any{
+			map[string]any{"version": "1", "createdAt": "2026-06-09T13:26:58Z", "filesCount": 1},
+		},
+	}
+}
+
+// TestSleuthVault_GetAssetDetails_BySlug: `sx vault show <slug>` resolves the
+// asset via the exact server-side slug filter in a single lookup — no name
+// fallback when the slug matches.
+func TestSleuthVault_GetAssetDetails_BySlug(t *testing.T) {
+	srv, records := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
+		"VaultAssetLookup": func(vars map[string]any) any {
+			// Only the exact-slug query matches; any other call sees nothing.
+			var nodes []any
+			if vars["slug"] == "personal-skill-2" {
+				nodes = []any{skillVaultAssetNode("personal-skill-2", "Personal skill 2")}
+			}
+			return map[string]any{"vault": map[string]any{"assets": map[string]any{"nodes": nodes}}}
+		},
+	})
+
+	v := NewSleuthVault(srv.URL, "test-token")
+	details, err := v.GetAssetDetails(context.Background(), "personal-skill-2")
+	if err != nil {
+		t.Fatalf("GetAssetDetails by slug failed: %v", err)
+	}
+	if details.Name != "Personal skill 2" {
+		t.Errorf("Name = %q, want %q", details.Name, "Personal skill 2")
+	}
+
+	// Slug hit resolves on the first lookup; the name fallback must not fire.
+	if len(*records) != 1 {
+		t.Fatalf("expected 1 VaultAssetLookup request, got %d: %+v", len(*records), *records)
+	}
+	if (*records)[0].Variables["slug"] != "personal-skill-2" {
+		t.Errorf("expected slug variable %q, got: %+v", "personal-skill-2", (*records)[0].Variables)
+	}
+}
+
+// TestSleuthVault_GetAssetDetails_ByName: `sx vault show <display name>` finds
+// nothing by slug, then falls back to a name search and matches on the exact
+// display name.
+func TestSleuthVault_GetAssetDetails_ByName(t *testing.T) {
+	srv, records := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
+		"VaultAssetLookup": func(vars map[string]any) any {
+			// Slug lookup misses (the input is a display name, not a slug); the
+			// name search returns the asset.
+			var nodes []any
+			if vars["search"] == "Personal skill 2" {
+				nodes = []any{skillVaultAssetNode("personal-skill-2", "Personal skill 2")}
+			}
+			return map[string]any{"vault": map[string]any{"assets": map[string]any{"nodes": nodes}}}
+		},
+	})
+
+	v := NewSleuthVault(srv.URL, "test-token")
+	details, err := v.GetAssetDetails(context.Background(), "Personal skill 2")
+	if err != nil {
+		t.Fatalf("GetAssetDetails by name failed: %v", err)
+	}
+	if details.Name != "Personal skill 2" {
+		t.Errorf("Name = %q, want %q", details.Name, "Personal skill 2")
+	}
+
+	// Two lookups: a slug miss, then the name-search hit.
+	if len(*records) != 2 {
+		t.Fatalf("expected 2 VaultAssetLookup requests, got %d: %+v", len(*records), *records)
+	}
+	if (*records)[0].Variables["slug"] != "Personal skill 2" {
+		t.Errorf("first request should be the slug miss, got: %+v", (*records)[0].Variables)
+	}
+	if (*records)[1].Variables["search"] != "Personal skill 2" {
+		t.Errorf("second request should be the name search, got: %+v", (*records)[1].Variables)
+	}
+}
