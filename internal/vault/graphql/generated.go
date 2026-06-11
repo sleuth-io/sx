@@ -4097,52 +4097,52 @@ var AllVaultAssetInstallationEntityType = []VaultAssetInstallationEntityType{
 	VaultAssetInstallationEntityTypeBot,
 }
 
-// VaultAssetsByNameResponse is returned by VaultAssetsByName on success.
-type VaultAssetsByNameResponse struct {
-	Vault VaultAssetsByNameVault `json:"vault"`
+// VaultAssetLookupResponse is returned by VaultAssetLookup on success.
+type VaultAssetLookupResponse struct {
+	Vault VaultAssetLookupVault `json:"vault"`
 }
 
-// GetVault returns VaultAssetsByNameResponse.Vault, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameResponse) GetVault() VaultAssetsByNameVault { return v.Vault }
+// GetVault returns VaultAssetLookupResponse.Vault, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupResponse) GetVault() VaultAssetLookupVault { return v.Vault }
 
-// VaultAssetsByNameVault includes the requested fields of the GraphQL type Vault.
+// VaultAssetLookupVault includes the requested fields of the GraphQL type Vault.
 // The GraphQL type's documentation follows.
 //
 // Vault containing assets.
-type VaultAssetsByNameVault struct {
-	Assets VaultAssetsByNameVaultAssetsVaultAssetsConnection `json:"assets"`
+type VaultAssetLookupVault struct {
+	Assets VaultAssetLookupVaultAssetsVaultAssetsConnection `json:"assets"`
 }
 
-// GetAssets returns VaultAssetsByNameVault.Assets, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVault) GetAssets() VaultAssetsByNameVaultAssetsVaultAssetsConnection {
+// GetAssets returns VaultAssetLookupVault.Assets, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVault) GetAssets() VaultAssetLookupVaultAssetsVaultAssetsConnection {
 	return v.Assets
 }
 
-// VaultAssetsByNameVaultAssetsVaultAssetsConnection includes the requested fields of the GraphQL type VaultAssetsConnection.
+// VaultAssetLookupVaultAssetsVaultAssetsConnection includes the requested fields of the GraphQL type VaultAssetsConnection.
 // The GraphQL type's documentation follows.
 //
 // Paginated list of vault assets.
-type VaultAssetsByNameVaultAssetsVaultAssetsConnection struct {
-	Nodes []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset `json:"-"`
+type VaultAssetLookupVaultAssetsVaultAssetsConnection struct {
+	Nodes []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset `json:"-"`
 }
 
-// GetNodes returns VaultAssetsByNameVaultAssetsVaultAssetsConnection.Nodes, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnection) GetNodes() []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset {
+// GetNodes returns VaultAssetLookupVaultAssetsVaultAssetsConnection.Nodes, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnection) GetNodes() []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset {
 	return v.Nodes
 }
 
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnection) UnmarshalJSON(b []byte) error {
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnection) UnmarshalJSON(b []byte) error {
 
 	if string(b) == "null" {
 		return nil
 	}
 
 	var firstPass struct {
-		*VaultAssetsByNameVaultAssetsVaultAssetsConnection
+		*VaultAssetLookupVaultAssetsVaultAssetsConnection
 		Nodes []json.RawMessage `json:"nodes"`
 		graphql.NoUnmarshalJSON
 	}
-	firstPass.VaultAssetsByNameVaultAssetsVaultAssetsConnection = v
+	firstPass.VaultAssetLookupVaultAssetsVaultAssetsConnection = v
 
 	err := json.Unmarshal(b, &firstPass)
 	if err != nil {
@@ -4153,16 +4153,16 @@ func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnection) UnmarshalJSON(b []by
 		dst := &v.Nodes
 		src := firstPass.Nodes
 		*dst = make(
-			[]VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset,
+			[]VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset,
 			len(src))
 		for i, src := range src {
 			dst := &(*dst)[i]
 			if len(src) != 0 && string(src) != "null" {
-				err = __unmarshalVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset(
+				err = __unmarshalVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset(
 					src, dst)
 				if err != nil {
 					return fmt.Errorf(
-						"unable to unmarshal VaultAssetsByNameVaultAssetsVaultAssetsConnection.Nodes: %w", err)
+						"unable to unmarshal VaultAssetLookupVaultAssetsVaultAssetsConnection.Nodes: %w", err)
 				}
 			}
 		}
@@ -4170,11 +4170,11 @@ func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnection) UnmarshalJSON(b []by
 	return nil
 }
 
-type __premarshalVaultAssetsByNameVaultAssetsVaultAssetsConnection struct {
+type __premarshalVaultAssetLookupVaultAssetsVaultAssetsConnection struct {
 	Nodes []json.RawMessage `json:"nodes"`
 }
 
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnection) MarshalJSON() ([]byte, error) {
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnection) MarshalJSON() ([]byte, error) {
 	premarshaled, err := v.__premarshalJSON()
 	if err != nil {
 		return nil, err
@@ -4182,8 +4182,8 @@ func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnection) MarshalJSON() ([]byt
 	return json.Marshal(premarshaled)
 }
 
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnection) __premarshalJSON() (*__premarshalVaultAssetsByNameVaultAssetsVaultAssetsConnection, error) {
-	var retval __premarshalVaultAssetsByNameVaultAssetsVaultAssetsConnection
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnection) __premarshalJSON() (*__premarshalVaultAssetLookupVaultAssetsVaultAssetsConnection, error) {
+	var retval __premarshalVaultAssetLookupVaultAssetsVaultAssetsConnection
 
 	{
 
@@ -4195,351 +4195,387 @@ func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnection) __premarshalJSON() (
 		for i, src := range src {
 			dst := &(*dst)[i]
 			var err error
-			*dst, err = __marshalVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset(
+			*dst, err = __marshalVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset(
 				&src)
 			if err != nil {
 				return nil, fmt.Errorf(
-					"unable to marshal VaultAssetsByNameVaultAssetsVaultAssetsConnection.Nodes: %w", err)
+					"unable to marshal VaultAssetLookupVaultAssetsVaultAssetsConnection.Nodes: %w", err)
 			}
 		}
 	}
 	return &retval, nil
 }
 
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent includes the requested fields of the GraphQL type Agent.
-type VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent struct {
-	Typename    *string                                                                                     `json:"__typename"`
-	Name        string                                                                                      `json:"name"`
-	Type        AssetType                                                                                   `json:"type"`
-	Description string                                                                                      `json:"description"`
-	CreatedAt   time.Time                                                                                   `json:"createdAt"`
-	UpdatedAt   time.Time                                                                                   `json:"updatedAt"`
-	Versions    []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent includes the requested fields of the GraphQL type Agent.
+type VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent struct {
+	Typename    *string                                                                                    `json:"__typename"`
+	Slug        string                                                                                     `json:"slug"`
+	Name        string                                                                                     `json:"name"`
+	Type        AssetType                                                                                  `json:"type"`
+	Description string                                                                                     `json:"description"`
+	CreatedAt   time.Time                                                                                  `json:"createdAt"`
+	UpdatedAt   time.Time                                                                                  `json:"updatedAt"`
+	Versions    []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
 }
 
-// GetTypename returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent.Typename, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent) GetTypename() *string {
+// GetTypename returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent.Typename, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent) GetTypename() *string {
 	return v.Typename
 }
 
-// GetName returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent.Name, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent) GetName() string { return v.Name }
+// GetSlug returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent.Slug, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent) GetSlug() string { return v.Slug }
 
-// GetType returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent.Type, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent) GetType() AssetType {
+// GetName returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent.Name, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent) GetName() string { return v.Name }
+
+// GetType returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent.Type, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent) GetType() AssetType {
 	return v.Type
 }
 
-// GetDescription returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent.Description, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent) GetDescription() string {
+// GetDescription returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent.Description, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent) GetDescription() string {
 	return v.Description
 }
 
-// GetCreatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent.CreatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent) GetCreatedAt() time.Time {
+// GetCreatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent.CreatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent) GetCreatedAt() time.Time {
 	return v.CreatedAt
 }
 
-// GetUpdatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent.UpdatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent) GetUpdatedAt() time.Time {
+// GetUpdatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent) GetUpdatedAt() time.Time {
 	return v.UpdatedAt
 }
 
-// GetVersions returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent.Versions, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent) GetVersions() []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
+// GetVersions returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent.Versions, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent) GetVersions() []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
 	return v.Versions
 }
 
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
-type VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin struct {
-	Typename    *string                                                                                     `json:"__typename"`
-	Name        string                                                                                      `json:"name"`
-	Type        AssetType                                                                                   `json:"type"`
-	Description string                                                                                      `json:"description"`
-	CreatedAt   time.Time                                                                                   `json:"createdAt"`
-	UpdatedAt   time.Time                                                                                   `json:"updatedAt"`
-	Versions    []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
+type VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin struct {
+	Typename    *string                                                                                    `json:"__typename"`
+	Slug        string                                                                                     `json:"slug"`
+	Name        string                                                                                     `json:"name"`
+	Type        AssetType                                                                                  `json:"type"`
+	Description string                                                                                     `json:"description"`
+	CreatedAt   time.Time                                                                                  `json:"createdAt"`
+	UpdatedAt   time.Time                                                                                  `json:"updatedAt"`
+	Versions    []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
 }
 
-// GetTypename returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Typename, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetTypename() *string {
+// GetTypename returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Typename, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetTypename() *string {
 	return v.Typename
 }
 
-// GetName returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Name, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetName() string {
+// GetSlug returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Slug, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetSlug() string {
+	return v.Slug
+}
+
+// GetName returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Name, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetName() string {
 	return v.Name
 }
 
-// GetType returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Type, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetType() AssetType {
+// GetType returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Type, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetType() AssetType {
 	return v.Type
 }
 
-// GetDescription returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Description, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetDescription() string {
+// GetDescription returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Description, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetDescription() string {
 	return v.Description
 }
 
-// GetCreatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.CreatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetCreatedAt() time.Time {
+// GetCreatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.CreatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetCreatedAt() time.Time {
 	return v.CreatedAt
 }
 
-// GetUpdatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.UpdatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetUpdatedAt() time.Time {
+// GetUpdatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetUpdatedAt() time.Time {
 	return v.UpdatedAt
 }
 
-// GetVersions returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Versions, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetVersions() []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
+// GetVersions returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Versions, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetVersions() []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
 	return v.Versions
 }
 
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand includes the requested fields of the GraphQL type Command.
-type VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand struct {
-	Typename    *string                                                                                     `json:"__typename"`
-	Name        string                                                                                      `json:"name"`
-	Type        AssetType                                                                                   `json:"type"`
-	Description string                                                                                      `json:"description"`
-	CreatedAt   time.Time                                                                                   `json:"createdAt"`
-	UpdatedAt   time.Time                                                                                   `json:"updatedAt"`
-	Versions    []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand includes the requested fields of the GraphQL type Command.
+type VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand struct {
+	Typename    *string                                                                                    `json:"__typename"`
+	Slug        string                                                                                     `json:"slug"`
+	Name        string                                                                                     `json:"name"`
+	Type        AssetType                                                                                  `json:"type"`
+	Description string                                                                                     `json:"description"`
+	CreatedAt   time.Time                                                                                  `json:"createdAt"`
+	UpdatedAt   time.Time                                                                                  `json:"updatedAt"`
+	Versions    []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
 }
 
-// GetTypename returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand.Typename, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand) GetTypename() *string {
+// GetTypename returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand.Typename, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand) GetTypename() *string {
 	return v.Typename
 }
 
-// GetName returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand.Name, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand) GetName() string {
+// GetSlug returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand.Slug, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand) GetSlug() string {
+	return v.Slug
+}
+
+// GetName returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand.Name, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand) GetName() string {
 	return v.Name
 }
 
-// GetType returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand.Type, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand) GetType() AssetType {
+// GetType returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand.Type, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand) GetType() AssetType {
 	return v.Type
 }
 
-// GetDescription returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand.Description, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand) GetDescription() string {
+// GetDescription returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand.Description, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand) GetDescription() string {
 	return v.Description
 }
 
-// GetCreatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand.CreatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand) GetCreatedAt() time.Time {
+// GetCreatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand.CreatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand) GetCreatedAt() time.Time {
 	return v.CreatedAt
 }
 
-// GetUpdatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand.UpdatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand) GetUpdatedAt() time.Time {
+// GetUpdatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand) GetUpdatedAt() time.Time {
 	return v.UpdatedAt
 }
 
-// GetVersions returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand.Versions, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand) GetVersions() []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
+// GetVersions returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand.Versions, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand) GetVersions() []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
 	return v.Versions
 }
 
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook includes the requested fields of the GraphQL type Hook.
-type VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook struct {
-	Typename    *string                                                                                     `json:"__typename"`
-	Name        string                                                                                      `json:"name"`
-	Type        AssetType                                                                                   `json:"type"`
-	Description string                                                                                      `json:"description"`
-	CreatedAt   time.Time                                                                                   `json:"createdAt"`
-	UpdatedAt   time.Time                                                                                   `json:"updatedAt"`
-	Versions    []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook includes the requested fields of the GraphQL type Hook.
+type VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook struct {
+	Typename    *string                                                                                    `json:"__typename"`
+	Slug        string                                                                                     `json:"slug"`
+	Name        string                                                                                     `json:"name"`
+	Type        AssetType                                                                                  `json:"type"`
+	Description string                                                                                     `json:"description"`
+	CreatedAt   time.Time                                                                                  `json:"createdAt"`
+	UpdatedAt   time.Time                                                                                  `json:"updatedAt"`
+	Versions    []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
 }
 
-// GetTypename returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook.Typename, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook) GetTypename() *string {
+// GetTypename returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook.Typename, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook) GetTypename() *string {
 	return v.Typename
 }
 
-// GetName returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook.Name, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook) GetName() string { return v.Name }
+// GetSlug returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook.Slug, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook) GetSlug() string { return v.Slug }
 
-// GetType returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook.Type, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook) GetType() AssetType {
+// GetName returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook.Name, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook) GetName() string { return v.Name }
+
+// GetType returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook.Type, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook) GetType() AssetType {
 	return v.Type
 }
 
-// GetDescription returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook.Description, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook) GetDescription() string {
+// GetDescription returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook.Description, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook) GetDescription() string {
 	return v.Description
 }
 
-// GetCreatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook.CreatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook) GetCreatedAt() time.Time {
+// GetCreatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook.CreatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook) GetCreatedAt() time.Time {
 	return v.CreatedAt
 }
 
-// GetUpdatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook.UpdatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook) GetUpdatedAt() time.Time {
+// GetUpdatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook) GetUpdatedAt() time.Time {
 	return v.UpdatedAt
 }
 
-// GetVersions returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook.Versions, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook) GetVersions() []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
+// GetVersions returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook.Versions, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook) GetVersions() []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
 	return v.Versions
 }
 
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer includes the requested fields of the GraphQL type McpServer.
-type VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer struct {
-	Typename    *string                                                                                     `json:"__typename"`
-	Name        string                                                                                      `json:"name"`
-	Type        AssetType                                                                                   `json:"type"`
-	Description string                                                                                      `json:"description"`
-	CreatedAt   time.Time                                                                                   `json:"createdAt"`
-	UpdatedAt   time.Time                                                                                   `json:"updatedAt"`
-	Versions    []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer includes the requested fields of the GraphQL type McpServer.
+type VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer struct {
+	Typename    *string                                                                                    `json:"__typename"`
+	Slug        string                                                                                     `json:"slug"`
+	Name        string                                                                                     `json:"name"`
+	Type        AssetType                                                                                  `json:"type"`
+	Description string                                                                                     `json:"description"`
+	CreatedAt   time.Time                                                                                  `json:"createdAt"`
+	UpdatedAt   time.Time                                                                                  `json:"updatedAt"`
+	Versions    []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
 }
 
-// GetTypename returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer.Typename, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer) GetTypename() *string {
+// GetTypename returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer.Typename, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer) GetTypename() *string {
 	return v.Typename
 }
 
-// GetName returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer.Name, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer) GetName() string {
+// GetSlug returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer.Slug, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer) GetSlug() string {
+	return v.Slug
+}
+
+// GetName returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer.Name, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer) GetName() string {
 	return v.Name
 }
 
-// GetType returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer.Type, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer) GetType() AssetType {
+// GetType returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer.Type, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer) GetType() AssetType {
 	return v.Type
 }
 
-// GetDescription returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer.Description, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer) GetDescription() string {
+// GetDescription returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer.Description, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer) GetDescription() string {
 	return v.Description
 }
 
-// GetCreatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer.CreatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer) GetCreatedAt() time.Time {
+// GetCreatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer.CreatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer) GetCreatedAt() time.Time {
 	return v.CreatedAt
 }
 
-// GetUpdatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer.UpdatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer) GetUpdatedAt() time.Time {
+// GetUpdatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer) GetUpdatedAt() time.Time {
 	return v.UpdatedAt
 }
 
-// GetVersions returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer.Versions, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer) GetVersions() []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
+// GetVersions returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer.Versions, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer) GetVersions() []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
 	return v.Versions
 }
 
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule includes the requested fields of the GraphQL type Rule.
-type VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule struct {
-	Typename    *string                                                                                     `json:"__typename"`
-	Name        string                                                                                      `json:"name"`
-	Type        AssetType                                                                                   `json:"type"`
-	Description string                                                                                      `json:"description"`
-	CreatedAt   time.Time                                                                                   `json:"createdAt"`
-	UpdatedAt   time.Time                                                                                   `json:"updatedAt"`
-	Versions    []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule includes the requested fields of the GraphQL type Rule.
+type VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule struct {
+	Typename    *string                                                                                    `json:"__typename"`
+	Slug        string                                                                                     `json:"slug"`
+	Name        string                                                                                     `json:"name"`
+	Type        AssetType                                                                                  `json:"type"`
+	Description string                                                                                     `json:"description"`
+	CreatedAt   time.Time                                                                                  `json:"createdAt"`
+	UpdatedAt   time.Time                                                                                  `json:"updatedAt"`
+	Versions    []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
 }
 
-// GetTypename returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule.Typename, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule) GetTypename() *string {
+// GetTypename returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule.Typename, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule) GetTypename() *string {
 	return v.Typename
 }
 
-// GetName returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule.Name, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule) GetName() string { return v.Name }
+// GetSlug returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule.Slug, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule) GetSlug() string { return v.Slug }
 
-// GetType returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule.Type, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule) GetType() AssetType {
+// GetName returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule.Name, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule) GetName() string { return v.Name }
+
+// GetType returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule.Type, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule) GetType() AssetType {
 	return v.Type
 }
 
-// GetDescription returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule.Description, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule) GetDescription() string {
+// GetDescription returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule.Description, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule) GetDescription() string {
 	return v.Description
 }
 
-// GetCreatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule.CreatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule) GetCreatedAt() time.Time {
+// GetCreatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule.CreatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule) GetCreatedAt() time.Time {
 	return v.CreatedAt
 }
 
-// GetUpdatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule.UpdatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule) GetUpdatedAt() time.Time {
+// GetUpdatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule) GetUpdatedAt() time.Time {
 	return v.UpdatedAt
 }
 
-// GetVersions returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule.Versions, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule) GetVersions() []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
+// GetVersions returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule.Versions, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule) GetVersions() []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
 	return v.Versions
 }
 
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill includes the requested fields of the GraphQL type Skill.
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill includes the requested fields of the GraphQL type Skill.
 // The GraphQL type's documentation follows.
 //
 // GraphQL type for skill.
-type VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill struct {
-	Typename    *string                                                                                     `json:"__typename"`
-	Name        string                                                                                      `json:"name"`
-	Type        AssetType                                                                                   `json:"type"`
-	Description string                                                                                      `json:"description"`
-	CreatedAt   time.Time                                                                                   `json:"createdAt"`
-	UpdatedAt   time.Time                                                                                   `json:"updatedAt"`
-	Versions    []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
+type VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill struct {
+	Typename    *string                                                                                    `json:"__typename"`
+	Slug        string                                                                                     `json:"slug"`
+	Name        string                                                                                     `json:"name"`
+	Type        AssetType                                                                                  `json:"type"`
+	Description string                                                                                     `json:"description"`
+	CreatedAt   time.Time                                                                                  `json:"createdAt"`
+	UpdatedAt   time.Time                                                                                  `json:"updatedAt"`
+	Versions    []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
 }
 
-// GetTypename returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill.Typename, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill) GetTypename() *string {
+// GetTypename returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill.Typename, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill) GetTypename() *string {
 	return v.Typename
 }
 
-// GetName returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill.Name, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill) GetName() string { return v.Name }
+// GetSlug returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill.Slug, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill) GetSlug() string { return v.Slug }
 
-// GetType returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill.Type, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill) GetType() AssetType {
+// GetName returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill.Name, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill) GetName() string { return v.Name }
+
+// GetType returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill.Type, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill) GetType() AssetType {
 	return v.Type
 }
 
-// GetDescription returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill.Description, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill) GetDescription() string {
+// GetDescription returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill.Description, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill) GetDescription() string {
 	return v.Description
 }
 
-// GetCreatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill.CreatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill) GetCreatedAt() time.Time {
+// GetCreatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill.CreatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill) GetCreatedAt() time.Time {
 	return v.CreatedAt
 }
 
-// GetUpdatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill.UpdatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill) GetUpdatedAt() time.Time {
+// GetUpdatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill) GetUpdatedAt() time.Time {
 	return v.UpdatedAt
 }
 
-// GetVersions returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill.Versions, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill) GetVersions() []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
+// GetVersions returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill.Versions, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill) GetVersions() []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
 	return v.Versions
 }
 
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset includes the requested fields of the GraphQL interface VaultAsset.
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset includes the requested fields of the GraphQL interface VaultAsset.
 //
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset is implemented by the following types:
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset is implemented by the following types:
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill
 // The GraphQL type's documentation follows.
 //
 // Asset in the vault (Skill, MCP, Agent, etc.).
-type VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset interface {
-	implementsGraphQLInterfaceVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset()
+type VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset interface {
+	implementsGraphQLInterfaceVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset()
 	// GetTypename returns the receiver's concrete GraphQL type-name (see interface doc for possible values).
 	GetTypename() *string
+	// GetSlug returns the interface-field "slug" from its implementation.
+	GetSlug() string
 	// GetName returns the interface-field "name" from its implementation.
 	GetName() string
 	// GetType returns the interface-field "type" from its implementation.
@@ -4551,25 +4587,25 @@ type VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset interface 
 	// GetUpdatedAt returns the interface-field "updatedAt" from its implementation.
 	GetUpdatedAt() time.Time
 	// GetVersions returns the interface-field "versions" from its implementation.
-	GetVersions() []VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion
+	GetVersions() []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion
 }
 
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent) implementsGraphQLInterfaceVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent) implementsGraphQLInterfaceVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) implementsGraphQLInterfaceVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) implementsGraphQLInterfaceVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand) implementsGraphQLInterfaceVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand) implementsGraphQLInterfaceVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook) implementsGraphQLInterfaceVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook) implementsGraphQLInterfaceVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer) implementsGraphQLInterfaceVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer) implementsGraphQLInterfaceVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule) implementsGraphQLInterfaceVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule) implementsGraphQLInterfaceVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill) implementsGraphQLInterfaceVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill) implementsGraphQLInterfaceVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
 
-func __unmarshalVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset(b []byte, v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset) error {
+func __unmarshalVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset(b []byte, v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset) error {
 	if string(b) == "null" {
 		return nil
 	}
@@ -4584,125 +4620,125 @@ func __unmarshalVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset
 
 	switch tn.TypeName {
 	case "Agent":
-		*v = new(VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent)
+		*v = new(VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent)
 		return json.Unmarshal(b, *v)
 	case "ClaudeCodePlugin":
-		*v = new(VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin)
+		*v = new(VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin)
 		return json.Unmarshal(b, *v)
 	case "Command":
-		*v = new(VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand)
+		*v = new(VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand)
 		return json.Unmarshal(b, *v)
 	case "Hook":
-		*v = new(VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook)
+		*v = new(VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook)
 		return json.Unmarshal(b, *v)
 	case "McpServer":
-		*v = new(VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer)
+		*v = new(VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer)
 		return json.Unmarshal(b, *v)
 	case "Rule":
-		*v = new(VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule)
+		*v = new(VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule)
 		return json.Unmarshal(b, *v)
 	case "Skill":
-		*v = new(VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill)
+		*v = new(VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill)
 		return json.Unmarshal(b, *v)
 	case "":
 		return fmt.Errorf(
 			"response was missing VaultAsset.__typename")
 	default:
 		return fmt.Errorf(
-			`unexpected concrete type for VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset: "%v"`, tn.TypeName)
+			`unexpected concrete type for VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset: "%v"`, tn.TypeName)
 	}
 }
 
-func __marshalVaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset(v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset) ([]byte, error) {
+func __marshalVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset(v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset) ([]byte, error) {
 
 	var typename string
 	switch v := (*v).(type) {
-	case *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent:
+	case *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent:
 		typename = "Agent"
 
 		result := struct {
 			TypeName string `json:"__typename"`
-			*VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesAgent
+			*VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent
 		}{typename, v}
 		return json.Marshal(result)
-	case *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin:
+	case *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin:
 		typename = "ClaudeCodePlugin"
 
 		result := struct {
 			TypeName string `json:"__typename"`
-			*VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
+			*VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
 		}{typename, v}
 		return json.Marshal(result)
-	case *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand:
+	case *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand:
 		typename = "Command"
 
 		result := struct {
 			TypeName string `json:"__typename"`
-			*VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesCommand
+			*VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand
 		}{typename, v}
 		return json.Marshal(result)
-	case *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook:
+	case *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook:
 		typename = "Hook"
 
 		result := struct {
 			TypeName string `json:"__typename"`
-			*VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesHook
+			*VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook
 		}{typename, v}
 		return json.Marshal(result)
-	case *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer:
+	case *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer:
 		typename = "McpServer"
 
 		result := struct {
 			TypeName string `json:"__typename"`
-			*VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesMcpServer
+			*VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesMcpServer
 		}{typename, v}
 		return json.Marshal(result)
-	case *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule:
+	case *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule:
 		typename = "Rule"
 
 		result := struct {
 			TypeName string `json:"__typename"`
-			*VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesRule
+			*VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesRule
 		}{typename, v}
 		return json.Marshal(result)
-	case *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill:
+	case *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill:
 		typename = "Skill"
 
 		result := struct {
 			TypeName string `json:"__typename"`
-			*VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesSkill
+			*VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill
 		}{typename, v}
 		return json.Marshal(result)
 	case nil:
 		return []byte("null"), nil
 	default:
 		return nil, fmt.Errorf(
-			`unexpected concrete type for VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset: "%T"`, v)
+			`unexpected concrete type for VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset: "%T"`, v)
 	}
 }
 
-// VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion includes the requested fields of the GraphQL type VaultAssetVersion.
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion includes the requested fields of the GraphQL type VaultAssetVersion.
 // The GraphQL type's documentation follows.
 //
 // Version information for a vault asset.
-type VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion struct {
+type VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion struct {
 	Version    string    `json:"version"`
 	CreatedAt  time.Time `json:"createdAt"`
 	FilesCount int       `json:"filesCount"`
 }
 
-// GetVersion returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion.Version, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion) GetVersion() string {
+// GetVersion returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion.Version, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion) GetVersion() string {
 	return v.Version
 }
 
-// GetCreatedAt returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion.CreatedAt, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion) GetCreatedAt() time.Time {
+// GetCreatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion.CreatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion) GetCreatedAt() time.Time {
 	return v.CreatedAt
 }
 
-// GetFilesCount returns VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion.FilesCount, and is useful for accessing the field via an interface.
-func (v *VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion) GetFilesCount() int {
+// GetFilesCount returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion.FilesCount, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion) GetFilesCount() int {
 	return v.FilesCount
 }
 
@@ -5657,13 +5693,21 @@ type __UpdateTeamInput struct {
 // GetInput returns __UpdateTeamInput.Input, and is useful for accessing the field via an interface.
 func (v *__UpdateTeamInput) GetInput() UpdateTeamInput { return v.Input }
 
-// __VaultAssetsByNameInput is used internally by genqlient
-type __VaultAssetsByNameInput struct {
-	Search string `json:"search"`
+// __VaultAssetLookupInput is used internally by genqlient
+type __VaultAssetLookupInput struct {
+	Slug   *string `json:"slug"`
+	Search *string `json:"search"`
+	First  *int    `json:"first"`
 }
 
-// GetSearch returns __VaultAssetsByNameInput.Search, and is useful for accessing the field via an interface.
-func (v *__VaultAssetsByNameInput) GetSearch() string { return v.Search }
+// GetSlug returns __VaultAssetLookupInput.Slug, and is useful for accessing the field via an interface.
+func (v *__VaultAssetLookupInput) GetSlug() *string { return v.Slug }
+
+// GetSearch returns __VaultAssetLookupInput.Search, and is useful for accessing the field via an interface.
+func (v *__VaultAssetLookupInput) GetSearch() *string { return v.Search }
+
+// GetFirst returns __VaultAssetLookupInput.First, and is useful for accessing the field via an interface.
+func (v *__VaultAssetLookupInput) GetFirst() *int { return v.First }
 
 // __VaultAssetsInput is used internally by genqlient
 type __VaultAssetsInput struct {
@@ -7009,6 +7053,59 @@ func UpdateTeam(
 	return data_, err_
 }
 
+// The query executed by VaultAssetLookup.
+const VaultAssetLookup_Operation = `
+query VaultAssetLookup ($slug: String, $search: String, $first: Int) {
+	vault {
+		assets(slug: $slug, search: $search, first: $first) {
+			nodes {
+				__typename
+				slug
+				name
+				type
+				description
+				createdAt
+				updatedAt
+				versions {
+					version
+					createdAt
+					filesCount
+				}
+			}
+		}
+	}
+}
+`
+
+func VaultAssetLookup(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	slug *string,
+	search *string,
+	first *int,
+) (data_ *VaultAssetLookupResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "VaultAssetLookup",
+		Query:  VaultAssetLookup_Operation,
+		Variables: &__VaultAssetLookupInput{
+			Slug:   slug,
+			Search: search,
+			First:  first,
+		},
+	}
+
+	data_ = &VaultAssetLookupResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
 // The query executed by VaultAssets.
 const VaultAssets_Operation = `
 query VaultAssets ($first: Int, $after: String, $assetType: AssetType!, $search: String) {
@@ -7053,54 +7150,6 @@ func VaultAssets(
 	}
 
 	data_ = &VaultAssetsResponse{}
-	resp_ := &graphql.Response{Data: data_}
-
-	err_ = client_.MakeRequest(
-		ctx_,
-		req_,
-		resp_,
-	)
-
-	return data_, err_
-}
-
-// The query executed by VaultAssetsByName.
-const VaultAssetsByName_Operation = `
-query VaultAssetsByName ($search: String!) {
-	vault {
-		assets(search: $search, first: 50) {
-			nodes {
-				__typename
-				name
-				type
-				description
-				createdAt
-				updatedAt
-				versions {
-					version
-					createdAt
-					filesCount
-				}
-			}
-		}
-	}
-}
-`
-
-func VaultAssetsByName(
-	ctx_ context.Context,
-	client_ graphql.Client,
-	search string,
-) (data_ *VaultAssetsByNameResponse, err_ error) {
-	req_ := &graphql.Request{
-		OpName: "VaultAssetsByName",
-		Query:  VaultAssetsByName_Operation,
-		Variables: &__VaultAssetsByNameInput{
-			Search: search,
-		},
-	}
-
-	data_ = &VaultAssetsByNameResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(

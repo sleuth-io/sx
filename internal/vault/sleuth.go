@@ -58,12 +58,6 @@ func (s *SleuthVault) gqlClient() graphql.Client {
 // scopeEntityPersonal is the scope entity value for personal (user-only) installations.
 const scopeEntityPersonal = "personal"
 
-// vaultAssetsByNamePageSize must mirror the `first:` value in
-// internal/vault/graphql/operations/vault_assets_by_name.graphql. Used to
-// detect a saturated result page so the caller can be told that more
-// matches exist beyond the page.
-const vaultAssetsByNamePageSize = 50
-
 // SleuthVault implements Vault for Sleuth HTTP servers
 type SleuthVault struct {
 	serverURL       string
@@ -673,31 +667,14 @@ const sleuthAssetsPageSize = 50
 
 // GetAssetDetails retrieves detailed information about a specific asset using GraphQL
 func (s *SleuthVault) GetAssetDetails(ctx context.Context, name string) (*AssetDetails, error) {
-	resp, err := vaultgql.VaultAssetsByName(ctx, s.gqlClient(), name)
+	match, err := s.resolveAssetNode(ctx, name)
 	if err != nil {
 		return nil, err
 	}
 
-	// Find exact match by name. VaultAsset is a polymorphic interface
-	// (Skill/MCP/Agent/...); the shared getters cover every concrete subtype
-	// so we don't switch on type here.
-	var match vaultgql.VaultAssetsByNameVaultAssetsVaultAssetsConnectionNodesVaultAsset
-	for _, node := range resp.Vault.Assets.Nodes {
-		if node.GetName() == name {
-			match = node
-			break
-		}
-	}
-	if match == nil {
-		if len(resp.Vault.Assets.Nodes) >= vaultAssetsByNamePageSize {
-			logger.Get().Warn(
-				"VaultAssetsByName result saturated page size; exact match may exist beyond the page",
-				"page_size", vaultAssetsByNamePageSize,
-				"search", name,
-			)
-		}
-		return nil, fmt.Errorf("asset '%s' not found", name)
-	}
+	// GetMetadata and asset content are keyed by slug, so use the resolved slug
+	// for any follow-up lookups rather than the caller's input.
+	slug := match.GetSlug()
 
 	versions := match.GetVersions()
 	details := &AssetDetails{
@@ -726,7 +703,7 @@ func (s *SleuthVault) GetAssetDetails(ctx context.Context, name string) (*AssetD
 	// Get metadata for latest version if available
 	if len(details.Versions) > 0 {
 		latestVersion := details.Versions[len(details.Versions)-1].Version
-		meta, err := s.GetMetadata(ctx, name, latestVersion)
+		meta, err := s.GetMetadata(ctx, slug, latestVersion)
 		if err == nil {
 			details.Metadata = meta
 		}
@@ -734,6 +711,44 @@ func (s *SleuthVault) GetAssetDetails(ctx context.Context, name string) (*AssetD
 	}
 
 	return details, nil
+}
+
+// resolveAssetNode resolves an asset by the user-supplied identifier, preferring
+// the canonical slug and falling back to the display name. It first tries the
+// server-side `slug:` filter — an exact, indexed, per-org-unique lookup — because
+// the `search` argument is an icontains over name/description only, so a slug
+// like "personal-skill-2" (display name "Personal skill 2") would never match.
+// When no slug matches, it falls back to a name `search` and takes the first
+// asset whose slug or display name equals the identifier (case-insensitively),
+// so users can also pass the display name. Returns a "not found" error when
+// neither resolves.
+func (s *SleuthVault) resolveAssetNode(
+	ctx context.Context,
+	identifier string,
+) (vaultgql.VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset, error) {
+	one := 1
+	bySlug, err := vaultgql.VaultAssetLookup(ctx, s.gqlClient(), &identifier, nil, &one)
+	if err != nil {
+		return nil, err
+	}
+	if nodes := bySlug.Vault.Assets.Nodes; len(nodes) > 0 {
+		return nodes[0], nil
+	}
+
+	// Fallback: the identifier may be a display name. `search` is an icontains, so
+	// it can return near-matches too; keep only an exact slug/name hit. Bounded by
+	// the page size — an exact name beyond the first page is not resolved here.
+	pageSize := sleuthAssetsPageSize
+	byName, err := vaultgql.VaultAssetLookup(ctx, s.gqlClient(), nil, &identifier, &pageSize)
+	if err != nil {
+		return nil, err
+	}
+	for _, node := range byName.Vault.Assets.Nodes {
+		if strings.EqualFold(node.GetSlug(), identifier) || strings.EqualFold(node.GetName(), identifier) {
+			return node, nil
+		}
+	}
+	return nil, fmt.Errorf("asset '%s' not found", identifier)
 }
 
 // QueryIntegrationStream queries integrated services using SSE streaming.

@@ -3354,6 +3354,9 @@ type Vault {
     """Match name or description (icontains)"""
     search: String
 
+    """Exact slug match (unique per org)"""
+    slug: String
+
     """Filter by status values"""
     status: [SkillStatusEnum!]
 
@@ -4687,6 +4690,9 @@ type Query {
 
     """Match name or description (icontains)"""
     search: String
+
+    """Exact slug match (unique per org)"""
+    slug: String
 
     """Filter by status values"""
     status: [SkillStatusEnum!]
