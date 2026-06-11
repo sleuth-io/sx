@@ -4,22 +4,16 @@ Assets don't have to be everywhere. You can choose where each one is installed, 
 
 ## Scopes
 
-| Scope | Target | Available when |
-|-------|--------|----------------|
-| `org` (global) | every caller in the vault | always — installs to `~/.claude/` |
-| `repo` | one git repository | running in a clone of that repo — installs to `myapp/.claude/` |
-| `path` | specific paths within a repo | running under one of those paths — installs to `myapp/services/api/.claude/` |
-| `team` | every member of a named team | caller is a team member; expands to the team's repositories |
-| `user` | a single user (email) | caller's git identity matches the email; the asset becomes global for that user |
-| `bot` | a bot identity (CI runner, agent) | `SX_BOT=<name>` is set in the runtime — see [bots.md](bots.md) |
+| Scope          | Target                            | Available when                                                                  |
+|----------------|-----------------------------------|---------------------------------------------------------------------------------|
+| `org` (global) | every caller in the vault         | always — installs to `~/.claude/`                                               |
+| `repo`         | one git repository                | running in a clone of that repo — installs to `myapp/.claude/`                  |
+| `path`         | specific paths within a repo      | running under one of those paths — installs to `myapp/services/api/.claude/`    |
+| `team`         | every member of a named team      | caller is a team member; expands to the team's repositories                     |
+| `user`         | a single user (email)             | caller's git identity matches the email; the asset becomes global for that user |
+| `bot`          | a bot identity (CI runner, agent) | `SX_BOT=<name>` is set in the runtime — see [bots.md](bots.md)                  |
 
-The first three are structural and apply to every caller. `team`,
-`user`, and `bot` are identity-dependent and resolved at install time:
-human callers go through `git config user.email`, bots through
-`SX_BOT`. The Sleuth-only **"personal"** scope offered in the
-interactive `sx add` TUI is the same as `--user <your-email>` —
-included as a convenience so users don't have to type their own
-address.
+The first three are structural and apply to every caller. `team`, `user`, and `bot` are identity-dependent and resolved at install time: human callers go through `git config user.email`, bots through `SX_BOT`. The Sleuth-only **"personal"** scope offered in the interactive `sx add` TUI is the same as `--user <your-email>` — included as a convenience so users don't have to type their own address.
 
 ### Per-scope deep dives
 
@@ -99,6 +93,12 @@ unnamed). The change is previewed and you're asked to confirm — pass
 Already added an asset and want to change its scope? Run `sx install
 <name>` with one or more scope flags, or re-run `sx add <name>` for an
 interactive prompt.
+
+## Who can set scope (permissions)
+
+Who may set a skill's scope is specified in [rbac.md](rbac.md). In short: with no org-admins the vault is ungoverned (anyone can set any scope); once org-admins exist, broad scopes (org/repo/path/bot) are org-admins-only, a team scope needs an admin of that team, and "just-me" is always open.
+
+> **Status:** design — not yet enforced on the github (git/path) vault. The Sleuth (skills.new) vault already enforces its own server-side permissions.
 
 ## How `sx install` uses scopes
 
