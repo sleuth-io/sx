@@ -247,8 +247,7 @@ func copyAssets(ctx context.Context, src, dst vault.Vault, opts Options, r *Repo
 			}
 			la := &lockfile.Asset{Name: a.Name, Version: v, Type: a.Type}
 			if err := dst.AddAsset(ctx, la, data); err != nil {
-				var exists *vault.ErrVersionExists
-				if errors.As(err, &exists) {
+				if _, ok := errors.AsType[*vault.ErrVersionExists](err); ok {
 					r.SkippedVersions++
 					continue
 				}

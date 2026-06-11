@@ -764,8 +764,7 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, s
 				// Aggregate unsupported-event skips into a per-client summary
 				// (rendered after the loop). All other skip reasons keep
 				// their per-asset ⊘ line.
-				var details *hook.UnsupportedEventDetails
-				if errors.As(result.Error, &details) {
+				if details, ok := errors.AsType[*hook.UnsupportedEventDetails](result.Error); ok {
 					unsupportedByClient[clientID] = append(unsupportedByClient[clientID], unsupportedSkip{
 						asset: result.AssetName,
 						event: details.Event,

@@ -109,7 +109,7 @@ func TestClaudeCodePluginHandler_ShouldAutoEnable(t *testing.T) {
 			name: "AutoEnable true",
 			metadata: &metadata.Metadata{
 				ClaudeCodePlugin: &metadata.ClaudeCodePluginConfig{
-					AutoEnable: boolPtr(true),
+					AutoEnable: new(true),
 				},
 			},
 			expected: true,
@@ -118,7 +118,7 @@ func TestClaudeCodePluginHandler_ShouldAutoEnable(t *testing.T) {
 			name: "AutoEnable false",
 			metadata: &metadata.Metadata{
 				ClaudeCodePlugin: &metadata.ClaudeCodePluginConfig{
-					AutoEnable: boolPtr(false),
+					AutoEnable: new(false),
 				},
 			},
 			expected: false,
@@ -421,9 +421,4 @@ func createPluginTestZip(t *testing.T, metadataContent string, extraFiles map[st
 	}
 
 	return zipData
-}
-
-// Helper function to create bool pointer
-func boolPtr(b bool) *bool {
-	return &b
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -589,8 +590,7 @@ func printVaultShowText(out *outputHelper, details *vaultpkg.AssetDetails, insta
 
 		ui.Bold("Versions")
 		// Display in descending order (newest first) for readability
-		for i := len(details.Versions) - 1; i >= 0; i-- {
-			v := details.Versions[i]
+		for _, v := range slices.Backward(details.Versions) {
 			versionLine := "  " + ui.EmphasisText("v"+v.Version)
 
 			if !v.CreatedAt.IsZero() {
