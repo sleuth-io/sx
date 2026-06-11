@@ -211,15 +211,14 @@ func runVaultShow(cmd *cobra.Command, assetName string, jsonOutput bool) error {
 
 	out := newOutputHelper(cmd)
 
-	// Load config and create vault
-	cfg, err := config.Load()
+	// Build the vault the same way sx add does (createVault), which applies the
+	// active profile's identity override before any vault op. Without it, a
+	// --profile <git vault> resolves "me"/user scopes against the system git
+	// config instead of the profile's email, so a user-scoped install reads as
+	// "Global" here while sx add shows it correctly (SD-10170).
+	vault, err := createVault()
 	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w\nRun 'sx init' to configure", err)
-	}
-
-	vault, err := vaultpkg.NewFromConfig(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to create vault: %w", err)
+		return err
 	}
 
 	// Only show status for text output (not JSON)
@@ -239,26 +238,15 @@ func runVaultShow(cmd *cobra.Command, assetName string, jsonOutput bool) error {
 		return fmt.Errorf("failed to get asset details: %w", err)
 	}
 
-	// Check if asset is installed by looking in lock file
-	var currentScopes []lockfile.Scope
-	var scopesFound bool
-	lockFileData, _, _, err := vault.GetLockFile(ctx, "")
-	if err == nil {
-		if lockFile, err := lockfile.Parse(lockFileData); err == nil {
-			for i := range lockFile.Assets {
-				if lockFile.Assets[i].Name == assetName {
-					currentScopes = lockFile.Assets[i].Scopes
-					scopesFound = true
-					break
-				}
-			}
-		}
-	}
+	// Resolve the asset's real, kind-aware installation set (repo/path/team/
+	// user/bot/org) using the same path sx add uses, so user/team/bot installs
+	// show up instead of only the repo/path subset the lockfile carries.
+	currentTargets, installed := resolveCurrentTargets(ctx, vault, assetName)
 
 	if jsonOutput {
-		return printVaultShowJSON(out, details, scopesFound, currentScopes)
+		return printVaultShowJSON(out, details, installed, currentTargets)
 	}
-	return printVaultShowText(out, details, scopesFound, currentScopes)
+	return printVaultShowText(out, details, installed, currentTargets)
 }
 
 // getTypeLabel returns a display label for an asset type, with fallback for unknown types
@@ -576,28 +564,21 @@ func printInstalledListJSON(out *outputHelper, assets []lockfile.Asset, typeFilt
 	return nil
 }
 
-func printVaultShowText(out *outputHelper, details *vaultpkg.AssetDetails, scopesFound bool, currentScopes []lockfile.Scope) error {
+func printVaultShowText(out *outputHelper, details *vaultpkg.AssetDetails, installed bool, currentTargets []vaultpkg.InstallTarget) error {
 	ui := ui.NewOutput(out.cmd.OutOrStdout(), out.cmd.ErrOrStderr())
 
-	ui.Newline()
 	ui.Header(details.Name)
 	ui.Muted(details.Type.Label)
 	ui.Newline()
 
 	if details.Description != "" {
 		ui.Println(details.Description)
-		ui.Newline()
 	}
 
-	// Show installation status
-	if scopesFound {
-		displayCurrentInstallation(currentScopes, ui)
-	} else {
-		ui.Newline()
-		ui.Info("Installation Status:")
-		ui.Println("  Not installed (available in vault only)")
-		ui.Newline()
-	}
+	// Show installation status using the same kind-aware display sx add uses.
+	// displayCurrentTargets emits its own leading newline as the separator.
+	displayCurrentTargets(currentTargets, installed, ui)
+	ui.Newline()
 
 	if len(details.Versions) > 0 {
 		// Versions are in ascending order (oldest first), so last element is latest
@@ -638,7 +619,7 @@ func printVaultShowText(out *outputHelper, details *vaultpkg.AssetDetails, scope
 	return nil
 }
 
-func printVaultShowJSON(out *outputHelper, details *vaultpkg.AssetDetails, scopesFound bool, currentScopes []lockfile.Scope) error {
+func printVaultShowJSON(out *outputHelper, details *vaultpkg.AssetDetails, installed bool, currentTargets []vaultpkg.InstallTarget) error {
 	// Create JSON-friendly output
 	versions := make([]map[string]any, 0, len(details.Versions))
 	for _, v := range details.Versions {
@@ -656,11 +637,15 @@ func printVaultShowJSON(out *outputHelper, details *vaultpkg.AssetDetails, scope
 		"versions":    versions,
 		"createdAt":   details.CreatedAt,
 		"updatedAt":   details.UpdatedAt,
-		"installed":   scopesFound,
+		"installed":   installed,
 	}
 
-	if scopesFound {
-		output["installationScopes"] = currentScopes
+	if installed {
+		scopes := make([]map[string]any, 0, len(currentTargets))
+		for _, t := range currentTargets {
+			scopes = append(scopes, t.AuditData())
+		}
+		output["installationScopes"] = scopes
 	}
 
 	if details.Metadata != nil {
