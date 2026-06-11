@@ -10,14 +10,6 @@ import (
 	"github.com/sleuth-io/sx/internal/vault"
 )
 
-// formatRepository formats a repository entry for display
-func formatRepository(repo lockfile.Scope) string {
-	if len(repo.Paths) == 0 {
-		return repo.Repo + " (entire repository)"
-	}
-	return fmt.Sprintf("%s → %s", repo.Repo, strings.Join(repo.Paths, ", "))
-}
-
 // formatTarget formats a kind-aware install target for display in the scope
 // editor.
 func formatTarget(t vault.InstallTarget) string {
@@ -119,31 +111,6 @@ func displayCurrentTargets(targets []vault.InstallTarget, installed bool, styled
 	items := make([]string, len(targets))
 	for i, t := range targets {
 		items[i] = formatTarget(t)
-	}
-	styledOut.List(items)
-}
-
-// displayCurrentInstallation shows the current installation state of an asset
-func displayCurrentInstallation(currentRepos []lockfile.Scope, styledOut *ui.Output) {
-	styledOut.Newline()
-	styledOut.Println("Current installation:")
-
-	if currentRepos == nil {
-		styledOut.Println("  Not installed (available in vault only)")
-		return
-	}
-
-	if len(currentRepos) == 0 {
-		// Global installation
-		styledOut.Println("  → Global (available in all projects)")
-		return
-	}
-
-	// Repository-specific installations
-	styledOut.Println("  → Repository-specific")
-	items := make([]string, len(currentRepos))
-	for i, repo := range currentRepos {
-		items[i] = formatRepository(repo)
 	}
 	styledOut.List(items)
 }

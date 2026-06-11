@@ -333,7 +333,7 @@ func TestAddAlreadyInstalled(t *testing.T) {
 	// interactive prompt must still reflect the existing installation —
 	// not "Not installed". `--yes` mode bypasses the prompt itself, so we
 	// assert against resolveCurrentScopes directly: this is the exact data
-	// that displayCurrentInstallation would render, and the bug the user
+	// that displayCurrentTargets would render, and the bug the user
 	// reported (`✓ Successfully added check-sx@3` followed by "Not installed
 	// (available in vault only)") is precisely a regression where this
 	// helper returns nil when it shouldn't.

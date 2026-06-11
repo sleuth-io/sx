@@ -74,7 +74,7 @@ func existingAssetScopes(vault vaultpkg.Vault, name string) []lockfile.Scope {
 // local install tracker when the vault can't answer — e.g. the sleuth vault,
 // where user-scope installs live server-side and aren't surfaced to the
 // client. A returned empty slice means "installed globally" (no repo/path
-// scope). Callers downstream (promptForRepositories / displayCurrentInstallation)
+// scope). Callers downstream (promptForRepositories / displayCurrentTargets)
 // already treat nil vs. empty distinctly, so the tristate matters.
 func resolveCurrentScopes(vault vaultpkg.Vault, name string) []lockfile.Scope {
 	if s := existingAssetScopes(vault, name); s != nil {
