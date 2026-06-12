@@ -29,7 +29,7 @@ func enforceAssetEditPermission(ctx context.Context, v vaultpkg.Vault, name stri
 
 // currentInstallReader is implemented by vaults that can report an asset's
 // complete, kind-aware installation set (repo/path/team/user/bot/org) including
-// the server entity GIDs. The Sleuth/skills.io vault answers this from the
+// the server entity GIDs. The Sleuth/skills.new vault answers this from the
 // server, the only authoritative source for identity-scoped installs the
 // stripped lockfile view and the local tracker never see. The GIDs let a later
 // removal target the exact installation without re-resolving by name/email.

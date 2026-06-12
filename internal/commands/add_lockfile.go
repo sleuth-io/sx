@@ -101,7 +101,7 @@ func resolveSelfUserScopes(ctx context.Context, repo vault.Vault, targets []vaul
 // installSetter is implemented by vaults that can persist a full set of
 // kind-aware install targets — team/user/bot in addition to repo/path — in one
 // atomic call. appendMode merges with the asset's existing installations
-// instead of replacing them. The Sleuth/skills.io vault implements it against
+// instead of replacing them. The Sleuth/skills.new vault implements it against
 // the server; file-backed vaults (git/path) implement it too via
 // commonSetAssetInstallations, resolving identity targets against the manifest.
 type installSetter interface {
@@ -109,7 +109,7 @@ type installSetter interface {
 }
 
 // targetUninstaller is implemented by vaults that can remove specific
-// installations by server GID in one best-effort call (the Sleuth/skills.io
+// installations by server GID in one best-effort call (the Sleuth/skills.new
 // vault). It returns how many installs were removed and a per-target failure
 // message for any the server couldn't remove.
 type targetUninstaller interface {
