@@ -1226,3 +1226,48 @@ func TestPathVault_CreateTeam_ExplicitAdminNotCaller(t *testing.T) {
 		t.Errorf("admin should be auto-added as member, got members=%v", team.Members)
 	}
 }
+
+// TestRemoveTeamMember_SelfRemoval: a plain member can always remove themselves
+// (leave) without being a team admin; removing someone else still needs admin.
+func TestRemoveTeamMember_SelfRemoval(t *testing.T) {
+	ctx := context.Background()
+	seed := func(actorEmail string) *PathVault {
+		mgmt.ResetActorCache()
+		dir := t.TempDir()
+		runGit(t, dir, "init")
+		runGit(t, dir, "config", "user.email", actorEmail)
+		runGit(t, dir, "config", "user.name", "U")
+		m := &manifest.Manifest{
+			SchemaVersion: manifest.CurrentSchemaVersion,
+			Teams: []manifest.Team{{
+				Name:    "my-team",
+				Members: []string{"alice@example.com", "bob@example.com"},
+				Admins:  []string{"alice@example.com"},
+			}},
+		}
+		if err := manifest.Save(dir, m); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		v, err := NewPathVault("file://" + dir)
+		if err != nil {
+			t.Fatalf("NewPathVault: %v", err)
+		}
+		return v
+	}
+
+	// bob (a non-admin member) removes himself — allowed.
+	v := seed("bob@example.com")
+	if err := v.RemoveTeamMember(ctx, "my-team", "bob@example.com"); err != nil {
+		t.Fatalf("self-removal by a non-admin should succeed: %v", err)
+	}
+	if team, _ := v.GetTeam(ctx, "my-team"); team != nil && team.IsMember("bob@example.com") {
+		t.Fatalf("bob should no longer be a member")
+	}
+
+	// bob (a non-admin) tries to remove alice — denied.
+	v = seed("bob@example.com")
+	if err := v.RemoveTeamMember(ctx, "my-team", "alice@example.com"); err == nil ||
+		!strings.Contains(err.Error(), "not an admin") {
+		t.Fatalf("non-admin removing another member should be denied, got %v", err)
+	}
+}

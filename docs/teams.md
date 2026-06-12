@@ -53,8 +53,14 @@ Every destructive mutation re-checks admin membership inside the
 transaction, after acquiring the vault flock, so a concurrent
 demotion can't race past the pre-check.
 
+**You can always remove *yourself* from a team** (leaving), admin or
+not — `sx team member remove <team> <your-email>` succeeds even if you
+are only a plain member. Removing *anyone else* still requires being a
+team admin.
+
 A mutation that would leave the team with zero admins is rejected; you
-must promote another admin before removing or demoting the last one.
+must promote another admin before removing or demoting the last one
+(so the sole admin can't leave a team and orphan it).
 
 Repeating an idempotent mutation (adding an existing member, granting
 admin to someone who already has it, etc.) is a silent no-op that does
