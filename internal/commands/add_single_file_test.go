@@ -19,6 +19,8 @@ func TestIsSingleFileAsset(t *testing.T) {
 		{"my-agent.md", true},
 		{"my-agent.MD", true},
 		{"path/to/agent.md", true},
+		{"path/to/agents/security-reviewer.toml", true},
+		{"path/to/config.toml", false},
 		{"my-skill.zip", false},
 		{"my-skill", false},
 		{"README.md", true}, // Any .md file is considered via fallback
@@ -64,6 +66,21 @@ func TestDetectAssetTypeFromPath(t *testing.T) {
 			path:     "/home/user/skills/my-skill.md",
 			content:  "Just some content",
 			expected: asset.TypeSkill,
+		},
+		{
+			name:     "codex agent toml by path",
+			path:     "/home/user/.codex/agents/security-reviewer.toml",
+			content:  `name = "security_reviewer"`,
+			expected: asset.TypeAgent,
+		},
+		{
+			name: "codex agent toml by content",
+			path: "/some/path/security-reviewer.toml",
+			content: `name = "security_reviewer"
+description = "Security reviewer"
+developer_instructions = "Review security risks."
+`,
+			expected: asset.TypeAgent,
 		},
 		{
 			name: "agent frontmatter with tools",
@@ -149,6 +166,19 @@ func TestCreateZipFromSingleFile(t *testing.T) {
 			expectedType:      asset.TypeCommand,
 			expectedPrompt:    "review-pr.md",
 			expectedAssetName: "review-pr",
+		},
+		{
+			name:     "codex agent toml uses name from file",
+			filename: "security-reviewer.toml",
+			dirPath:  "agents",
+			content: `name = "security_reviewer"
+description = "Security reviewer"
+developer_instructions = "Review security risks."
+model = "gpt-5.4"
+`,
+			expectedType:      asset.TypeAgent,
+			expectedPrompt:    "security_reviewer.toml",
+			expectedAssetName: "security_reviewer",
 		},
 		{
 			name:     "agent detected from frontmatter",
@@ -238,6 +268,14 @@ Agent with tools`,
 				if meta.Agent.PromptFile != tc.expectedPrompt {
 					t.Errorf("Agent.PromptFile = %q, want %q", meta.Agent.PromptFile, tc.expectedPrompt)
 				}
+				if filepath.Ext(tc.expectedPrompt) == ".toml" {
+					if meta.Asset.Description != "Security reviewer" {
+						t.Errorf("Asset.Description = %q, want %q", meta.Asset.Description, "Security reviewer")
+					}
+					if len(meta.Asset.Clients) != 1 || meta.Asset.Clients[0] != "codex" {
+						t.Errorf("Asset.Clients = %v, want [codex]", meta.Asset.Clients)
+					}
+				}
 			} else {
 				if meta.Command == nil {
 					t.Fatal("Command config is nil")
@@ -247,5 +285,22 @@ Agent with tools`,
 				}
 			}
 		})
+	}
+}
+
+func TestCreateZipFromSingleFile_CodexAgentTOMLMissingRequiredField(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	if err := os.MkdirAll(agentsDir, 0755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+
+	filePath := filepath.Join(agentsDir, "security-reviewer.toml")
+	if err := os.WriteFile(filePath, []byte(`name = "security_reviewer"`), 0644); err != nil {
+		t.Fatalf("Failed to write file: %v", err)
+	}
+
+	if _, err := createZipFromSingleFile(filePath); err == nil {
+		t.Fatal("createZipFromSingleFile succeeded, want missing required field error")
 	}
 }

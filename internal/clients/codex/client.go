@@ -30,6 +30,7 @@ func NewClient() *Client {
 			[]asset.Type{
 				asset.TypeSkill,
 				asset.TypeCommand,
+				asset.TypeAgent,
 				asset.TypeMCP,
 			},
 		),
@@ -98,6 +99,9 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeCommand:
 			handler := handlers.NewCommandHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeAgent:
+			handler := handlers.NewAgentHandler(bundle.Metadata)
+			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
 		case asset.TypeMCP:
 			handler := handlers.NewMCPHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
@@ -156,6 +160,9 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 			uninstallErr = handler.Remove(ctx, targetBase)
 		case asset.TypeCommand:
 			handler := handlers.NewCommandHandler(meta)
+			uninstallErr = handler.Remove(ctx, targetBase)
+		case asset.TypeAgent:
+			handler := handlers.NewAgentHandler(meta)
 			uninstallErr = handler.Remove(ctx, targetBase)
 		case asset.TypeMCP:
 			handler := handlers.NewMCPHandler(meta)
@@ -475,6 +482,8 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 		return filepath.Join(targetBase, handlers.DirSkills, name), nil
 	case asset.TypeCommand:
 		return filepath.Join(targetBase, handlers.DirCommands, name+".md"), nil
+	case asset.TypeAgent:
+		return filepath.Join(targetBase, handlers.DirAgents, name+".toml"), nil
 	case asset.TypeMCP:
 		return filepath.Join(targetBase, handlers.DirMCPServers, name), nil
 	default:

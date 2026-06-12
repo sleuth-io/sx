@@ -53,7 +53,7 @@ func TestCodexSupportedAssetTypes(t *testing.T) {
 	}
 
 	// Should support
-	supported := []string{"skill", "command", "mcp"}
+	supported := []string{"skill", "command", "agent", "mcp"}
 	for _, typeName := range supported {
 		if !client.SupportsAssetType(asset.FromString(typeName)) {
 			t.Errorf("Codex should support %s assets", typeName)
@@ -61,7 +61,7 @@ func TestCodexSupportedAssetTypes(t *testing.T) {
 	}
 
 	// Should not support
-	unsupported := []string{"agent", "rule", "hook"}
+	unsupported := []string{"rule", "hook"}
 	for _, typeName := range unsupported {
 		if client.SupportsAssetType(asset.FromString(typeName)) {
 			t.Errorf("Codex should not support %s assets", typeName)
