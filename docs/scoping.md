@@ -9,7 +9,7 @@ Assets don't have to be everywhere. You can choose where each one is installed, 
 | `org` (global) | every caller in the vault         | always — installs to `~/.claude/`                                               |
 | `repo`         | one git repository                | running in a clone of that repo — installs to `myapp/.claude/`                  |
 | `path`         | specific paths within a repo      | running under one of those paths — installs to `myapp/services/api/.claude/`    |
-| `team`         | every member of a named team      | caller is a team member; expands to the team's repositories                     |
+| `team`         | every member of a named team      | caller is a team member; expands to the team's repositories, or global if the team owns none |
 | `user`         | a single user (email)             | caller's git identity matches the email; the asset becomes global for that user |
 | `bot`          | a bot identity (CI runner, agent) | `SX_BOT=<name>` is set in the runtime — see [bots.md](bots.md)                  |
 
@@ -94,11 +94,28 @@ Already added an asset and want to change its scope? Run `sx install
 <name>` with one or more scope flags, or re-run `sx add <name>` for an
 interactive prompt.
 
+## Removing a scope
+
+There is no `--remove` flag. To drop a scope, either:
+
+- **Interactive editor** — re-run `sx add <name>` (or `sx install <name>`
+  without scope flags) and pick *Edit scopes*, then deselect the scope.
+  This applies a precise diff, touching only the scope you remove.
+- **`--replace-scope`** — `sx install <name> --replace-scope <scopes to
+  keep>` sets the complete scope set, dropping anything unnamed. Note it
+  *re-asserts* the scopes you keep, so you need permission for those too —
+  use the interactive editor when you only control the one scope you're
+  removing.
+
+Removing a scope needs the **same authority as setting it** (e.g.
+removing a `team X` scope requires being an admin of team X, or an
+org-admin).
+
 ## Who can set scope (permissions)
 
 Who may set a skill's scope is specified in [rbac.md](rbac.md). In short: with no org-admins the vault is ungoverned (anyone can set any scope); once org-admins exist, broad scopes (org/repo/path/bot) are org-admins-only, a team scope needs an admin of that team, and "just-me" is always open.
 
-> **Status:** design — not yet enforced on the github (git/path) vault. The Sleuth (skills.new) vault already enforces its own server-side permissions.
+> **Note:** Enforced client-side on the github (git/path) vault — a file vault can't stop a raw `git push`, so it steers correct usage rather than guaranteeing it. The Sleuth (skills.new) vault enforces server-side.
 
 ## How `sx install` uses scopes
 
