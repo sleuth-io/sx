@@ -28,6 +28,8 @@ func NewHandler(assetType asset.Type, meta *metadata.Metadata) (Handler, error) 
 		return NewSkillHandler(meta), nil
 	case asset.TypeCommand:
 		return NewCommandHandler(meta), nil
+	case asset.TypeAgent:
+		return NewAgentHandler(meta), nil
 	case asset.TypeMCP:
 		return NewMCPHandler(meta), nil
 	default:

@@ -36,7 +36,7 @@ func TestCodexClient_SupportsAssetType(t *testing.T) {
 		{asset.TypeSkill, true},
 		{asset.TypeCommand, true},
 		{asset.TypeMCP, true},
-		{asset.TypeAgent, false},
+		{asset.TypeAgent, true},
 		{asset.TypeRule, false},
 		{asset.TypeHook, false},
 		{asset.TypeClaudeCodePlugin, false},
@@ -136,6 +136,15 @@ func TestCodexClient_DetermineTargetBase_RepoScope(t *testing.T) {
 	expected = filepath.Join(repoRoot, ".codex")
 	if target != expected {
 		t.Errorf("Repo command target = %q, want %q", target, expected)
+	}
+
+	// For agents - uses .codex/
+	target, err = client.determineTargetBase(scope, asset.TypeAgent)
+	if err != nil {
+		t.Fatalf("determineTargetBase error: %v", err)
+	}
+	if target != expected {
+		t.Errorf("Repo agent target = %q, want %q", target, expected)
 	}
 }
 
@@ -277,6 +286,24 @@ func TestCodexClient_GetAssetPath_Command(t *testing.T) {
 	}
 }
 
+func TestCodexClient_GetAssetPath_Agent(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	client := NewClient()
+	scope := &clients.InstallScope{Type: clients.ScopeGlobal}
+
+	path, err := client.GetAssetPath(context.Background(), "security_reviewer", asset.TypeAgent, scope)
+	if err != nil {
+		t.Fatalf("GetAssetPath error: %v", err)
+	}
+
+	expected := filepath.Join(tempDir, ".codex", "agents", "security_reviewer.toml")
+	if path != expected {
+		t.Errorf("GetAssetPath(agent) = %q, want %q", path, expected)
+	}
+}
+
 func TestCodexClient_GetAssetPath_UnsupportedType(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
@@ -284,7 +311,7 @@ func TestCodexClient_GetAssetPath_UnsupportedType(t *testing.T) {
 	client := NewClient()
 	scope := &clients.InstallScope{Type: clients.ScopeGlobal}
 
-	_, err := client.GetAssetPath(context.Background(), "my-agent", asset.TypeAgent, scope)
+	_, err := client.GetAssetPath(context.Background(), "my-rule", asset.TypeRule, scope)
 	if err == nil {
 		t.Error("GetAssetPath should error for unsupported type")
 	}

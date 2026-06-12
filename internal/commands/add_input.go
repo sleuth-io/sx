@@ -231,7 +231,12 @@ func downloadSingleFileFromGitHub(ctx context.Context, status *components.Status
 		}
 		tmpFile.Close()
 		return createZipFromRuleFile(tmpPath)
-	case asset.TypeAgent, asset.TypeCommand, asset.TypeSkill:
+	case asset.TypeAgent:
+		if strings.EqualFold(filepath.Ext(fileName), ".toml") {
+			return createZipFromCodexAgentContent(fileName, content)
+		}
+		return createZipFromPromptFile(fileName, *detectedType, content)
+	case asset.TypeCommand, asset.TypeSkill:
 		return createZipFromPromptFile(fileName, *detectedType, content)
 	default:
 		return nil, fmt.Errorf("unsupported asset type for single file: %s", detectedType.Label)

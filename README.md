@@ -224,7 +224,7 @@ See [docs/library.md](docs/library.md) for the full API guide.
 |-------------------------|----------------|-----------------------------------------------------------|
 | Claude Code             | ✅ Supported   | Full support for all asset types                          |
 | Cline                   | ✅ Supported   | Skills, rules, workflows as commands, MCP servers, hooks  |
-| Codex                   | ✅ Supported   | Skills, commands, MCP servers                             |
+| Codex                   | ✅ Supported   | Skills, commands, agents, MCP servers                     |
 | Cursor                  | ✅ Supported   | Skills, rules, commands, MCP servers, hooks               |
 | GitHub Copilot          | ✅ Supported   | Skills, rules, commands, agents, MCP servers, local hooks |
 | Gemini (CLI/VS Code)    | ✅ Supported   | Skills, rules, commands, MCP servers, hooks               |
