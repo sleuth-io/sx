@@ -133,10 +133,11 @@ func TestScopeE2E_UserScopedAssetInstallsForCaller(t *testing.T) {
 	env.AssertFileExists(env.GlobalClaudeDir() + "/skills/my-skill")
 }
 
-// TestScopeE2E_TeamScopeByNonAdminWritesToManifest: scoping an asset to a team
-// you are NOT an admin of succeeds and records the team scope (SD-10170: scoping
-// is distribution, not team management).
-func TestScopeE2E_TeamScopeByNonAdminWritesToManifest(t *testing.T) {
+// TestScopeE2E_TeamScopeByNonAdminDenied: in a governed vault (org-admins set),
+// scoping to a team you are NOT an admin of is denied and writes nothing
+// (SD-10190 RBAC). This deliberately reverses SD-10170's earlier "scoping is
+// distribution, not team management" stance — see docs/scoping.md.
+func TestScopeE2E_TeamScopeByNonAdminDenied(t *testing.T) {
 	_, vaultDir := seedScopeVault(t)
 
 	// Create a team admined by someone else, directly via the vault API.
@@ -152,15 +153,27 @@ func TestScopeE2E_TeamScopeByNonAdminWritesToManifest(t *testing.T) {
 		t.Fatalf("CreateTeam: %v", err)
 	}
 
-	// The caller (test@example.com) is not an admin, but scoping must still work.
-	cmd := NewInstallCommand()
-	cmd.SetArgs([]string{"my-skill", "--team", "platform", "--yes"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("install --team platform by non-admin should succeed: %v", err)
+	// Switch governance on: an org-admin exists. The caller (test@example.com)
+	// is neither an org-admin nor a platform admin.
+	mm, _, err := manifest.Load(vaultDir)
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	mm.AddOrgAdmins("boss@example.com")
+	if err := manifest.Save(vaultDir, mm); err != nil {
+		t.Fatalf("save manifest: %v", err)
 	}
 
-	if scopes := manifestScopes(t, vaultDir, "my-skill"); !hasScope(scopes, manifest.ScopeKindTeam, "platform") {
-		t.Fatalf("expected a team scope for platform, got %+v", scopes)
+	// The caller (test@example.com) is not an admin of platform, so it's denied.
+	cmd := NewInstallCommand()
+	cmd.SetArgs([]string{"my-skill", "--team", "platform", "--yes"})
+	err = cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "admin of team") {
+		t.Fatalf("non-admin team scope should be denied, got err=%v", err)
+	}
+
+	if scopes := manifestScopes(t, vaultDir, "my-skill"); hasScope(scopes, manifest.ScopeKindTeam, "platform") {
+		t.Fatalf("denied team scope must not be recorded, got %+v", scopes)
 	}
 }
 
@@ -246,7 +259,7 @@ func TestScopeE2E_AddFlagsApplyScopeWithYes(t *testing.T) {
 		t.Fatalf("NewPathVault: %v", err)
 	}
 	if err := v.CreateTeam(context.Background(), mgmt.Team{
-		Name: "platform", Members: []string{"other@example.com"}, Admins: []string{"other@example.com"},
+		Name: "platform", Members: []string{"test@example.com"}, Admins: []string{"test@example.com"},
 	}); err != nil {
 		t.Fatalf("CreateTeam: %v", err)
 	}
@@ -300,7 +313,7 @@ func TestScopeE2E_InstallMultiScope(t *testing.T) {
 		t.Fatalf("NewPathVault: %v", err)
 	}
 	if err := v.CreateTeam(context.Background(), mgmt.Team{
-		Name: "platform", Members: []string{"other@example.com"}, Admins: []string{"other@example.com"},
+		Name: "platform", Members: []string{"test@example.com"}, Admins: []string{"test@example.com"},
 	}); err != nil {
 		t.Fatalf("CreateTeam: %v", err)
 	}
@@ -330,7 +343,7 @@ func TestScopeE2E_InstallAppendsByDefault(t *testing.T) {
 		t.Fatalf("NewPathVault: %v", err)
 	}
 	if err := v.CreateTeam(context.Background(), mgmt.Team{
-		Name: "platform", Members: []string{"other@example.com"}, Admins: []string{"other@example.com"},
+		Name: "platform", Members: []string{"test@example.com"}, Admins: []string{"test@example.com"},
 	}); err != nil {
 		t.Fatalf("CreateTeam: %v", err)
 	}
@@ -368,7 +381,7 @@ func TestScopeE2E_InstallReplaceScopeDropsExisting(t *testing.T) {
 		t.Fatalf("NewPathVault: %v", err)
 	}
 	if err := v.CreateTeam(context.Background(), mgmt.Team{
-		Name: "platform", Members: []string{"other@example.com"}, Admins: []string{"other@example.com"},
+		Name: "platform", Members: []string{"test@example.com"}, Admins: []string{"test@example.com"},
 	}); err != nil {
 		t.Fatalf("CreateTeam: %v", err)
 	}
@@ -405,7 +418,7 @@ func seedScopeTeam(t *testing.T, vaultDir string) {
 		t.Fatalf("NewPathVault: %v", err)
 	}
 	if err := v.CreateTeam(context.Background(), mgmt.Team{
-		Name: "platform", Members: []string{"other@example.com"}, Admins: []string{"other@example.com"},
+		Name: "platform", Members: []string{"test@example.com"}, Admins: []string{"test@example.com"},
 	}); err != nil {
 		t.Fatalf("CreateTeam: %v", err)
 	}

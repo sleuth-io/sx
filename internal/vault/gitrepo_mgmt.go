@@ -352,7 +352,7 @@ func (g *GitVault) SetAssetInstallations(ctx context.Context, assetName string, 
 	}
 	msg := verb + assetName
 	err = g.runInVaultTx(ctx, msg, func(root string, actor mgmt.Actor) error {
-		skipped, err = commonSetAssetInstallations(root, actor, assetName, targets, appendMode)
+		skipped, err = commonSetAssetInstallations(ctx, root, actor, assetName, targets, appendMode)
 		return err
 	})
 	return skipped, err
@@ -364,7 +364,7 @@ func (g *GitVault) SetAssetInstallations(ctx context.Context, assetName string, 
 func (g *GitVault) UninstallAssetTargets(ctx context.Context, assetName string, targets []InstallTarget) (removed int, failures []string, err error) {
 	msg := "Remove installations for " + assetName
 	err = g.runInVaultTx(ctx, msg, func(root string, actor mgmt.Actor) error {
-		removed, failures, err = commonUninstallAssetTargets(root, actor, assetName, targets)
+		removed, failures, err = commonUninstallAssetTargets(ctx, root, actor, assetName, targets)
 		return err
 	})
 	return removed, failures, err

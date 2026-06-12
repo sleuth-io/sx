@@ -4,7 +4,9 @@
 Teams are first-class objects in the vault — they have members,
 admins, and a list of repositories the team owns. Team-scoped installs
 flatten to the team's repositories at resolve time, so a team install
-both targets the people in the team and the codebases they work on.
+both targets the people in the team and the codebases they work on. If
+the team owns **no** repositories, the asset installs globally for every
+member instead.
 
 This document covers the team CRUD surface and team-scoped installs.
 For the manifest schema, see
@@ -51,8 +53,14 @@ Every destructive mutation re-checks admin membership inside the
 transaction, after acquiring the vault flock, so a concurrent
 demotion can't race past the pre-check.
 
+**You can always remove *yourself* from a team** (leaving), admin or
+not — `sx team member remove <team> <your-email>` succeeds even if you
+are only a plain member. Removing *anyone else* still requires being a
+team admin.
+
 A mutation that would leave the team with zero admins is rejected; you
-must promote another admin before removing or demoting the last one.
+must promote another admin before removing or demoting the last one
+(so the sole admin can't leave a team and orphan it).
 
 Repeating an idempotent mutation (adding an existing member, granting
 admin to someone who already has it, etc.) is a silent no-op that does
@@ -62,7 +70,9 @@ not rewrite the manifest or emit an audit event.
 
 Team repositories drive scope resolution: if an asset is installed with
 `--team platform`, every member gets it flattened to the team's
-repositories at install time.
+repositories at install time. **If the team has no repositories, the
+asset installs globally for every member** (so a team scope is never a
+no-op just because the team owns no repos).
 
 ```bash
 sx team repo add platform github.com/acme/billing
@@ -100,23 +110,25 @@ one of the team's repositories" — so the asset reaches the right
 people in the right codebases without you listing every repo
 separately.
 
-`--team <name>` only requires the named team to **exist** in the vault
-(re-checked inside the transaction) plus write access to the vault —
-**not** team-admin. Scoping an asset to a team is distribution, not team
-management: anyone who can write to the vault may target a team with an
-asset. Admin is reserved for modifying the team itself (`sx team
-member/admin/repo …`). A `--team` naming an unknown team is skipped with
-a "team not found" warning rather than created implicitly.
+`--team <name>` requires you to be an **admin of that team** (or an
+org-admin) — **always**, in every vault, governed or not. Scoping a
+skill to a team **locks it to that team**: teams own skills, so once a
+skill is team-scoped only that team's members may edit it (see
+[rbac.md](rbac.md)). Claiming a skill for a team is therefore a
+team-management decision, not open distribution, so only a team admin
+may do it. The named team must also **exist** (re-checked inside the
+transaction); a `--team` naming an unknown team is skipped with a "team
+not found" warning rather than created implicitly.
 
 ## Where state lives
 
-| State | Location | Who writes |
-|-------|----------|-----------|
-| Manifest (assets, scopes, teams) | `<vault>/sx.toml` | Vault admins via `sx team *`, `sx add`, `sx install --team` |
-| Audit events | `<vault>/.sx/audit/YYYY-MM.jsonl` | Every mutation (see [audit.md](audit.md)) |
-| Usage events | `<vault>/.sx/usage/YYYY-MM.jsonl` | Every `sx install` (see [stats.md](stats.md)) |
-| Per-user resolved lock | `~/<cache>/sx/lockfiles/<vault-id>.lock` | `sx install` |
-| Rotated lock history | `~/<cache>/sx/lockfiles/<vault-id>-<ts>.lock` | Every install whose resolved content differs from the previous |
+| State                            | Location                                      | Who writes                                                     |
+|----------------------------------|-----------------------------------------------|----------------------------------------------------------------|
+| Manifest (assets, scopes, teams) | `<vault>/sx.toml`                             | Vault admins via `sx team *`, `sx add`, `sx install --team`    |
+| Audit events                     | `<vault>/.sx/audit/YYYY-MM.jsonl`             | Every mutation (see [audit.md](audit.md))                      |
+| Usage events                     | `<vault>/.sx/usage/YYYY-MM.jsonl`             | Every `sx install` (see [stats.md](stats.md))                  |
+| Per-user resolved lock           | `~/<cache>/sx/lockfiles/<vault-id>.lock`      | `sx install`                                                   |
+| Rotated lock history             | `~/<cache>/sx/lockfiles/<vault-id>-<ts>.lock` | Every install whose resolved content differs from the previous |
 
 ## Sleuth vault
 

@@ -203,6 +203,13 @@ func resolveScopes(in []Scope, m *Manifest, actorEmail string) (_ []lockfile.Sco
 			if actorEmail == "" || !team.IsMember(actorEmail) {
 				continue
 			}
+			if len(team.Repositories) == 0 {
+				// A team with no repositories installs globally for its members
+				// (matches skills.new). Expanding to zero repos would otherwise
+				// drop the asset, so a team-scoped skill would never install.
+				becameGlobal = true
+				continue
+			}
 			for _, repoURL := range team.Repositories {
 				accumulated = append(accumulated, lockfile.Scope{Repo: repoURL})
 			}

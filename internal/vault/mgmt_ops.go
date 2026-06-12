@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -348,11 +349,25 @@ func commonAddTeamMember(vaultRoot string, actor mgmt.Actor, teamName, email str
 // admin.
 func commonRemoveTeamMember(vaultRoot string, actor mgmt.Actor, teamName, email string) error {
 	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
-		team, err := requireTeamAdminInTx(m, teamName, actor)
-		if err != nil {
-			return nil, err
-		}
 		normalized := manifest.NormalizeEmail(email)
+
+		// Anyone may remove themselves from a team (leave), admin or not.
+		// Removing someone else still requires being a team admin.
+		var team *manifest.Team
+		if normalized != "" && normalized == manifest.NormalizeEmail(actor.Email) {
+			t, err := m.FindTeam(teamName)
+			if err != nil {
+				return nil, err
+			}
+			team = t
+		} else {
+			t, err := requireTeamAdminInTx(m, teamName, actor)
+			if err != nil {
+				return nil, err
+			}
+			team = t
+		}
+
 		team.Members = removeString(team.Members, normalized)
 		team.Admins = removeString(team.Admins, normalized)
 		if len(team.Admins) == 0 {
@@ -962,10 +977,14 @@ func commonClearAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName
 // caller to surface — it never aborts the whole batch on one bad target. If
 // NOTHING resolves, the asset is left untouched rather than cleared, so a
 // REPLACE whose targets all fail can't silently globalize the asset.
-func commonSetAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName string, targets []InstallTarget, appendMode bool) ([]SkippedTarget, error) {
+func commonSetAssetInstallations(ctx context.Context, vaultRoot string, actor mgmt.Actor, assetName string, targets []InstallTarget, appendMode bool) ([]SkippedTarget, error) {
 	if len(targets) == 0 {
 		return nil, nil
 	}
+
+	// Trusted bulk writers (vault copy faithfully replicating a source's scopes)
+	// opt out of the interactive RBAC; a normal user-driven scope change enforces.
+	enforce := !scopeRBACBypassed(ctx)
 
 	orgWide := false
 	for _, t := range targets {
@@ -976,6 +995,15 @@ func commonSetAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName s
 
 	var skipped []SkippedTarget
 	err := withManifestEvents(vaultRoot, actor, func(m *manifest.Manifest) ([]mgmt.AuditEvent, error) {
+		// Org-wide is exclusive and bypasses the per-target resolve loop below,
+		// so gate its RBAC permission here. Denied → record it and leave the
+		// asset untouched (the caller turns an all-skipped set into a hard error).
+		if enforce && orgWide {
+			if reason := scopeSetPermissionReason(m, InstallTarget{Kind: InstallKindOrg}, actor); reason != "" {
+				skipped = append(skipped, SkippedTarget{Target: InstallTarget{Kind: InstallKindOrg}, Reason: reason})
+				return nil, nil
+			}
+		}
 		// Resolve each non-org target against the in-transaction manifest,
 		// skipping any that can't be set (with the reason why). Org is exclusive
 		// and needs no resolution (it clears the scope set).
@@ -987,6 +1015,10 @@ func commonSetAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName s
 		if !orgWide {
 			for _, t := range targets {
 				s, reason := resolveSetTarget(m, t, actor)
+				// Existence/format settled; now the RBAC gate (who may set it).
+				if reason == "" && enforce {
+					reason = scopeSetPermissionReason(m, t, actor)
+				}
 				if reason != "" {
 					skipped = append(skipped, SkippedTarget{Target: t, Reason: reason})
 					continue
@@ -1102,6 +1134,72 @@ func resolveSetTarget(m *manifest.Manifest, t InstallTarget, actor mgmt.Actor) (
 	return s, ""
 }
 
+// scopeRBACBypassKey carries the trusted-write opt-out (see
+// ContextWithTrustedScopeWrite). Pointer-free empty struct = standard ctx key.
+type scopeRBACBypassKey struct{}
+
+// ContextWithTrustedScopeWrite marks ctx as a trusted bulk scope write that
+// skips the file-backed RBAC gate. Used by `sx vault copy`, which replicates a
+// source vault's existing scopes verbatim and must not be blocked just because
+// the operator isn't a team admin in the destination. User-driven scope changes
+// (sx add) never set this, so they stay governed by scopeSetPermissionReason.
+func ContextWithTrustedScopeWrite(ctx context.Context) context.Context {
+	return context.WithValue(ctx, scopeRBACBypassKey{}, true)
+}
+
+// scopeRBACBypassed reports whether ctx was marked trusted.
+func scopeRBACBypassed(ctx context.Context) bool {
+	v, _ := ctx.Value(scopeRBACBypassKey{}).(bool)
+	return v
+}
+
+// scopeSetPermissionReason is the file-backed (git/path) vault's RBAC gate for
+// setting (or removing) an install scope. It returns "" when actor may set the
+// target, or a human-readable reason when they may not. The org-admins list is
+// the single on/off switch — see docs/rbac.md:
+//
+//   - No org-admins configured → ungoverned: anyone may set any scope.
+//   - org-admin → may set any scope.
+//   - team scope → actor must be an admin of THAT team (or an org-admin).
+//   - user scope ("just for me") → always allowed; installTargetScope already
+//     forbids targeting anyone but the caller, so user is self-only.
+//   - org / repo / path / bot → org-admins only.
+//
+// This is a client-side gate — a file-backed vault can't stop a raw `git push`
+// — so it steers correct usage rather than guaranteeing it.
+func scopeSetPermissionReason(m *manifest.Manifest, t InstallTarget, actor mgmt.Actor) string {
+	// Org-admins may set any scope.
+	if m.IsOrgAdmin(actor.Email) {
+		return ""
+	}
+	// A team scope locks a skill to that team (teams own skills), so setting it
+	// ALWAYS requires being an admin of that team — in every vault, governed or
+	// ungoverned. This is the one scope the ungoverned free-for-all below never
+	// covers; only an org-admin (above) may otherwise act.
+	if t.Kind == InstallKindTeam {
+		if team, err := m.FindTeam(t.Team); err == nil && team.IsAdmin(actor.Email) {
+			return ""
+		}
+		return fmt.Sprintf("permission denied: only an admin of team %q (or an org-admin) may scope a skill to it", t.Team)
+	}
+	// Without org-admins the vault is ungoverned: anyone may set any other scope.
+	if !m.HasOrgAdmins() {
+		return ""
+	}
+	switch t.Kind {
+	case InstallKindUser:
+		if actor.Email != "" && manifest.NormalizeEmail(t.User) == manifest.NormalizeEmail(actor.Email) {
+			return "" // your own account
+		}
+		return "permission denied: a user scope may only target your own account"
+	case InstallKindOrg, InstallKindRepo, InstallKindPath, InstallKindBot:
+		return fmt.Sprintf("permission denied: setting a %s scope requires being an org-admin", t.Kind)
+	case InstallKindTeam:
+		// Handled above (always team-admin gated).
+	}
+	return fmt.Sprintf("permission denied: setting a %s scope requires being an org-admin", t.Kind)
+}
+
 // commonUninstallAssetTargets removes a batch of install targets from the named
 // asset in a single manifest transaction, returning how many scope rows were
 // removed and a per-target failure message for any that couldn't be resolved
@@ -1109,13 +1207,16 @@ func resolveSetTarget(m *manifest.Manifest, t InstallTarget, actor mgmt.Actor) (
 // counterpart to SleuthVault.UninstallAssetTargets and satisfies the
 // targetUninstaller interface. A row left with no scopes is dropped rather than
 // reinterpreted as global, matching commonRemoveAssetInstallation.
-func commonUninstallAssetTargets(vaultRoot string, actor mgmt.Actor, assetName string, targets []InstallTarget) (int, []string, error) {
+func commonUninstallAssetTargets(ctx context.Context, vaultRoot string, actor mgmt.Actor, assetName string, targets []InstallTarget) (int, []string, error) {
 	if len(targets) == 0 {
 		return 0, nil, nil
 	}
 
+	enforce := !scopeRBACBypassed(ctx)
+
 	var needles []manifest.Scope
 	var teamTargets []InstallTarget
+	var resolvedTargets []InstallTarget
 	var failures []string
 	for _, t := range targets {
 		needle, err := installTargetScope(t, actor)
@@ -1124,6 +1225,7 @@ func commonUninstallAssetTargets(vaultRoot string, actor mgmt.Actor, assetName s
 			continue
 		}
 		needles = append(needles, needle)
+		resolvedTargets = append(resolvedTargets, t)
 		if t.Kind == InstallKindTeam {
 			teamTargets = append(teamTargets, t)
 		}
@@ -1133,10 +1235,27 @@ func commonUninstallAssetTargets(vaultRoot string, actor mgmt.Actor, assetName s
 	}
 
 	removed := 0
+	var rbacFailures []string
 	err := withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		rbacFailures = nil // reset so a transaction retry doesn't double-count
 		for _, t := range teamTargets {
 			if err := teamExistsInTx(m, t.Team); err != nil {
 				return nil, err
+			}
+		}
+		// Removing a scope needs the same authority as setting it. Deny
+		// per-target (like the set path) so the caller still removes what it
+		// is allowed to and reports the rest as failures, rather than aborting
+		// the whole batch on one denied target.
+		activeNeedles := needles
+		if enforce {
+			activeNeedles = make([]manifest.Scope, 0, len(needles))
+			for i, t := range resolvedTargets {
+				if reason := scopeSetPermissionReason(m, t, actor); reason != "" {
+					rbacFailures = append(rbacFailures, fmt.Sprintf("%s: %s", t.Kind, reason))
+					continue
+				}
+				activeNeedles = append(activeNeedles, needles[i])
 			}
 		}
 		changed := false
@@ -1149,7 +1268,7 @@ func commonUninstallAssetTargets(vaultRoot string, actor mgmt.Actor, assetName s
 			nextScopes := a.Scopes[:0]
 			for _, s := range a.Scopes {
 				match := false
-				for _, needle := range needles {
+				for _, needle := range activeNeedles {
 					if installScopeMatches(s, needle) {
 						match = true
 						break
@@ -1181,6 +1300,7 @@ func commonUninstallAssetTargets(vaultRoot string, actor mgmt.Actor, assetName s
 	if err != nil && !errors.Is(err, errUninstallNoMatch) {
 		return 0, failures, err
 	}
+	failures = append(failures, rbacFailures...)
 	return removed, failures, nil
 }
 
