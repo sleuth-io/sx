@@ -113,7 +113,7 @@ org-admin).
 
 ## Who can set scope (permissions)
 
-Who may set a skill's scope is specified in [rbac.md](rbac.md). In short: with no org-admins the vault is ungoverned (anyone can set any scope); once org-admins exist, broad scopes (org/repo/path/bot) are org-admins-only, a team scope needs an admin of that team, and "just-me" is always open.
+Who may set a skill's scope is specified in [rbac.md](rbac.md). In short: locking a skill to **team X** always requires being an admin of team X (or an org-admin), even in an ungoverned vault — teams own skills. For the other scopes: with no org-admins anyone can set them; once org-admins exist, broad scopes (org/repo/path/bot) are org-admins-only and "just-me" is always open.
 
 > **Note:** Enforced client-side on the github (git/path) vault — a file vault can't stop a raw `git push`, so it steers correct usage rather than guaranteeing it. The Sleuth (skills.new) vault enforces server-side.
 

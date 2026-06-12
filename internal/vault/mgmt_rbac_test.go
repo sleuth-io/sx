@@ -55,20 +55,44 @@ func platformTeam() manifest.Team {
 }
 
 // TestScopeRBAC_NoOrgAdminsIsUngoverned: with no org-admins, anyone may set any
-// scope — including a team scope they don't admin. Governance is off until
-// org-admins exist.
+// non-team scope. (Team scope is the exception — always team-admin gated; see
+// TestScopeRBAC_TeamScopeAlwaysRequiresAdmin.)
 func TestScopeRBAC_NoOrgAdminsIsUngoverned(t *testing.T) {
 	v := seedRBACVault(t, "mallory@example.com", []manifest.Team{platformTeam()}, nil)
 	skipped, err := v.SetAssetInstallations(context.Background(), "my-skill", []InstallTarget{
-		{Kind: InstallKindTeam, Team: "platform"},
 		{Kind: InstallKindRepo, Repo: "github.com/acme/x"},
-		{Kind: InstallKindOrg},
 	}, false)
 	if err != nil {
 		t.Fatalf("SetAssetInstallations: %v", err)
 	}
 	if len(skipped) != 0 {
-		t.Fatalf("no org-admins = ungoverned; expected nothing skipped, got %+v", skipped)
+		t.Fatalf("ungoverned: a non-admin should set a repo scope, got %+v", skipped)
+	}
+}
+
+// TestScopeRBAC_TeamScopeAlwaysRequiresAdmin: locking a skill to a team requires
+// being an admin of that team even in an ungoverned vault — a random user can't
+// scope someone's skill to a team they don't run.
+func TestScopeRBAC_TeamScopeAlwaysRequiresAdmin(t *testing.T) {
+	ctx := context.Background()
+	team := []manifest.Team{platformTeam()} // alice admins platform; mallory is nobody
+
+	// Ungoverned (no org-admins): non-admin denied.
+	v := seedRBACVault(t, "mallory@example.com", team, nil)
+	skipped, err := v.SetAssetInstallations(ctx, "my-skill",
+		[]InstallTarget{{Kind: InstallKindTeam, Team: "platform"}}, true)
+	if err != nil {
+		t.Fatalf("SetAssetInstallations: %v", err)
+	}
+	if len(skipped) != 1 || !strings.Contains(skipped[0].Reason, "admin of team") {
+		t.Fatalf("ungoverned non-admin should be denied a team scope, got %+v", skipped)
+	}
+
+	// Ungoverned: the team's admin is allowed.
+	v = seedRBACVault(t, "alice@example.com", team, nil)
+	if skipped, err := v.SetAssetInstallations(ctx, "my-skill",
+		[]InstallTarget{{Kind: InstallKindTeam, Team: "platform"}}, true); err != nil || len(skipped) != 0 {
+		t.Fatalf("ungoverned team admin should set the team scope: skipped=%+v err=%v", skipped, err)
 	}
 }
 
@@ -188,12 +212,14 @@ func TestScopeSetPermission_Matrix(t *testing.T) {
 		actor   mgmt.Actor
 		allowed bool
 	}{
-		// Ungoverned: anyone may set anything.
+		// Ungoverned: anyone may set any scope EXCEPT a team scope, which always
+		// requires being an admin of that team (teams own skills).
 		{"ungoverned/random/org", ungoverned, org, a("nobody@x.com"), true},
 		{"ungoverned/random/repo", ungoverned, repo, a("nobody@x.com"), true},
-		{"ungoverned/random/team-not-admin", ungoverned, teamPlatform, a("nobody@x.com"), true},
-		{"ungoverned/member/team", ungoverned, teamPlatform, a("carol@x.com"), true},
-		{"ungoverned/empty-identity/team", ungoverned, teamPlatform, a(""), true},
+		{"ungoverned/team-admin/team", ungoverned, teamPlatform, a("alice@x.com"), true},
+		{"ungoverned/random/team-denied", ungoverned, teamPlatform, a("nobody@x.com"), false},
+		{"ungoverned/member/team-denied", ungoverned, teamPlatform, a("carol@x.com"), false},
+		{"ungoverned/empty-identity/team-denied", ungoverned, teamPlatform, a(""), false},
 
 		// Governed: broad scopes require org-admin.
 		{"governed/org-admin/org", governed, org, a("boss@x.com"), true},

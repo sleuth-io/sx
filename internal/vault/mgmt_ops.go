@@ -1168,18 +1168,25 @@ func scopeRBACBypassed(ctx context.Context) bool {
 // This is a client-side gate — a file-backed vault can't stop a raw `git push`
 // — so it steers correct usage rather than guaranteeing it.
 func scopeSetPermissionReason(m *manifest.Manifest, t InstallTarget, actor mgmt.Actor) string {
-	if !m.HasOrgAdmins() {
-		return "" // ungoverned: no org-admins configured
-	}
+	// Org-admins may set any scope.
 	if m.IsOrgAdmin(actor.Email) {
-		return "" // org-admins may set any scope
+		return ""
 	}
-	switch t.Kind {
-	case InstallKindTeam:
+	// A team scope locks a skill to that team (teams own skills), so setting it
+	// ALWAYS requires being an admin of that team — in every vault, governed or
+	// ungoverned. This is the one scope the ungoverned free-for-all below never
+	// covers; only an org-admin (above) may otherwise act.
+	if t.Kind == InstallKindTeam {
 		if team, err := m.FindTeam(t.Team); err == nil && team.IsAdmin(actor.Email) {
 			return ""
 		}
-		return fmt.Sprintf("permission denied: setting a team scope requires being an admin of team %q or an org-admin", t.Team)
+		return fmt.Sprintf("permission denied: only an admin of team %q (or an org-admin) may scope a skill to it", t.Team)
+	}
+	// Without org-admins the vault is ungoverned: anyone may set any other scope.
+	if !m.HasOrgAdmins() {
+		return ""
+	}
+	switch t.Kind {
 	case InstallKindUser:
 		if actor.Email != "" && manifest.NormalizeEmail(t.User) == manifest.NormalizeEmail(actor.Email) {
 			return "" // your own account
@@ -1187,6 +1194,8 @@ func scopeSetPermissionReason(m *manifest.Manifest, t InstallTarget, actor mgmt.
 		return "permission denied: a user scope may only target your own account"
 	case InstallKindOrg, InstallKindRepo, InstallKindPath, InstallKindBot:
 		return fmt.Sprintf("permission denied: setting a %s scope requires being an org-admin", t.Kind)
+	case InstallKindTeam:
+		// Handled above (always team-admin gated).
 	}
 	return fmt.Sprintf("permission denied: setting a %s scope requires being an org-admin", t.Kind)
 }

@@ -430,62 +430,6 @@ func TestPathVault_RemoveOrgInstall_Rejected(t *testing.T) {
 	}
 }
 
-// TestPathVault_TeamScopeDoesNotRequireAdmin pins SD-10170: scoping an asset TO
-// a team (and unscoping it) only requires the team to EXIST plus vault write
-// access — NOT team-admin. Team *management* still requires admin (see
-// TestPathVault_TeamMutationsRequireAdmin). Scoping to a team that doesn't
-// exist still errors.
-func TestPathVault_TeamScopeDoesNotRequireAdmin(t *testing.T) {
-	mgmt.ResetActorCache()
-	dir := t.TempDir()
-
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "alice@example.com")
-	runGit(t, dir, "config", "user.name", "Alice")
-
-	if err := manifest.Save(dir, &manifest.Manifest{
-		SchemaVersion: manifest.CurrentSchemaVersion,
-		Assets: []manifest.Asset{
-			{
-				Name:       "my-skill",
-				Version:    "1.0.0",
-				Type:       asset.TypeSkill,
-				SourceHTTP: &manifest.SourceHTTP{URL: "https://example.com/my-skill.zip"},
-			},
-		},
-	}); err != nil {
-		t.Fatalf("seed manifest: %v", err)
-	}
-	v, err := NewPathVault("file://" + dir)
-	if err != nil {
-		t.Fatalf("NewPathVault: %v", err)
-	}
-	ctx := context.Background()
-
-	// Team whose only admin is bob — the caller (alice) is NOT an admin.
-	if err := v.CreateTeam(ctx, mgmt.Team{
-		Name:    "platform",
-		Members: []string{"bob@example.com"},
-		Admins:  []string{"bob@example.com"},
-	}); err != nil {
-		t.Fatalf("CreateTeam: %v", err)
-	}
-
-	// Non-admin alice may scope the asset to the team...
-	if err := v.SetAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindTeam, Team: "platform"}); err != nil {
-		t.Fatalf("non-admin should be able to scope an asset to a team: %v", err)
-	}
-	// ...and unscope it.
-	if err := v.RemoveAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindTeam, Team: "platform"}); err != nil {
-		t.Fatalf("non-admin should be able to unscope an asset from a team: %v", err)
-	}
-
-	// But scoping to a team that doesn't exist still fails.
-	if err := v.SetAssetInstallation(ctx, "my-skill", InstallTarget{Kind: InstallKindTeam, Team: "ghost"}); err == nil {
-		t.Fatal("scoping to a nonexistent team should fail with team-not-found")
-	}
-}
-
 func countPathScopes(a *manifest.Asset) int {
 	if a == nil {
 		return 0
