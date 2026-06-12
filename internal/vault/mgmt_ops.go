@@ -1235,18 +1235,27 @@ func commonUninstallAssetTargets(ctx context.Context, vaultRoot string, actor mg
 	}
 
 	removed := 0
+	var rbacFailures []string
 	err := withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
+		rbacFailures = nil // reset so a transaction retry doesn't double-count
 		for _, t := range teamTargets {
 			if err := teamExistsInTx(m, t.Team); err != nil {
 				return nil, err
 			}
 		}
-		// Removing a scope needs the same authority as setting it.
+		// Removing a scope needs the same authority as setting it. Deny
+		// per-target (like the set path) so the caller still removes what it
+		// is allowed to and reports the rest as failures, rather than aborting
+		// the whole batch on one denied target.
+		activeNeedles := needles
 		if enforce {
-			for _, t := range resolvedTargets {
+			activeNeedles = make([]manifest.Scope, 0, len(needles))
+			for i, t := range resolvedTargets {
 				if reason := scopeSetPermissionReason(m, t, actor); reason != "" {
-					return nil, errors.New(reason)
+					rbacFailures = append(rbacFailures, fmt.Sprintf("%s: %s", t.Kind, reason))
+					continue
 				}
+				activeNeedles = append(activeNeedles, needles[i])
 			}
 		}
 		changed := false
@@ -1259,7 +1268,7 @@ func commonUninstallAssetTargets(ctx context.Context, vaultRoot string, actor mg
 			nextScopes := a.Scopes[:0]
 			for _, s := range a.Scopes {
 				match := false
-				for _, needle := range needles {
+				for _, needle := range activeNeedles {
 					if installScopeMatches(s, needle) {
 						match = true
 						break
@@ -1291,6 +1300,7 @@ func commonUninstallAssetTargets(ctx context.Context, vaultRoot string, actor mg
 	if err != nil && !errors.Is(err, errUninstallNoMatch) {
 		return 0, failures, err
 	}
+	failures = append(failures, rbacFailures...)
 	return removed, failures, nil
 }
 

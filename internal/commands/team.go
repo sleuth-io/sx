@@ -248,7 +248,7 @@ func newTeamMemberCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if !strings.EqualFold(strings.TrimSpace(args[1]), actor.Email) {
+			if mgmt.NormalizeEmail(args[1]) != mgmt.NormalizeEmail(actor.Email) {
 				if err := requireTeamAdmin(ctx, v, args[0]); err != nil {
 					return err
 				}
