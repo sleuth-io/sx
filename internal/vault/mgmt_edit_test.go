@@ -26,6 +26,7 @@ func TestAssetEditPermission_Matrix(t *testing.T) {
 	}
 	team := func(n string) manifest.Scope { return manifest.Scope{Kind: manifest.ScopeKindTeam, Team: n} }
 	repo := manifest.Scope{Kind: manifest.ScopeKindRepo, Repo: "github.com/acme/r"}
+	user := func(e string) manifest.Scope { return manifest.Scope{Kind: manifest.ScopeKindUser, User: e} }
 	a := func(e string) mgmt.Actor { return mgmt.Actor{Email: e} }
 
 	cases := []struct {
@@ -54,6 +55,11 @@ func TestAssetEditPermission_Matrix(t *testing.T) {
 		// Team + repo scopes → team scope still restricts editing to members.
 		{"team+repo/member", mk([]manifest.Scope{team("platform"), repo}, nil), a("carol@x.com"), true},
 		{"team+repo/non-member-denied", mk([]manifest.Scope{team("platform"), repo}, nil), a("nobody@x.com"), false},
+
+		// Team + user scopes → the team scope still rules; being the scoped user
+		// does not grant edit rights (must be a team member).
+		{"team+user/scoped-user-non-member-denied", mk([]manifest.Scope{team("platform"), user("bob@x.com")}, nil), a("bob@x.com"), false},
+		{"team+user/team-member-allowed", mk([]manifest.Scope{team("platform"), user("bob@x.com")}, nil), a("carol@x.com"), true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
