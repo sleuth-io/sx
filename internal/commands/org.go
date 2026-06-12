@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
 )
 
@@ -60,8 +61,8 @@ func newOrgAdminAddCommand() *cobra.Command {
 			}
 			// Bootstrap: seeding the first org-admin locks scope governance.
 			if len(current) == 0 && !yes {
-				out.println("⚠ This vault has no org-admins yet. Setting them turns on scope governance:")
-				out.println("  from now on only these people can set broad scopes and change this list.")
+				styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
+				styledOut.Warning("This vault has no org-admins yet. Setting them turns on scope governance:\n  from now on only these people can set broad scopes and change this list.")
 				confirmed, err := components.ConfirmWithIO("Continue?", false, cmd.InOrStdin(), cmd.OutOrStdout())
 				if err != nil {
 					return err
