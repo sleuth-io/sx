@@ -349,11 +349,25 @@ func commonAddTeamMember(vaultRoot string, actor mgmt.Actor, teamName, email str
 // admin.
 func commonRemoveTeamMember(vaultRoot string, actor mgmt.Actor, teamName, email string) error {
 	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
-		team, err := requireTeamAdminInTx(m, teamName, actor)
-		if err != nil {
-			return nil, err
-		}
 		normalized := manifest.NormalizeEmail(email)
+
+		// Anyone may remove themselves from a team (leave), admin or not.
+		// Removing someone else still requires being a team admin.
+		var team *manifest.Team
+		if normalized != "" && normalized == manifest.NormalizeEmail(actor.Email) {
+			t, err := m.FindTeam(teamName)
+			if err != nil {
+				return nil, err
+			}
+			team = t
+		} else {
+			t, err := requireTeamAdminInTx(m, teamName, actor)
+			if err != nil {
+				return nil, err
+			}
+			team = t
+		}
+
 		team.Members = removeString(team.Members, normalized)
 		team.Admins = removeString(team.Admins, normalized)
 		if len(team.Admins) == 0 {

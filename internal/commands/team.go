@@ -235,11 +235,33 @@ func newTeamMemberCommand() *cobra.Command {
 		Short: "Remove a member from a team",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTeamMutation(cmd, args[0], func(ctx context.Context, v vault.Vault) error {
-				return v.RemoveTeamMember(ctx, args[0], args[1])
-			},
-				fmt.Sprintf("Removing %s from team %s", args[1], args[0]),
-				fmt.Sprintf("Removed %s from team %s", args[1], args[0]))
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+
+			v, err := loadVault()
+			if err != nil {
+				return err
+			}
+			// You can always remove yourself from a team (leave); removing
+			// someone else requires being a team admin.
+			actor, err := v.CurrentActor(ctx)
+			if err != nil {
+				return err
+			}
+			if !strings.EqualFold(strings.TrimSpace(args[1]), actor.Email) {
+				if err := requireTeamAdmin(ctx, v, args[0]); err != nil {
+					return err
+				}
+			}
+
+			status := components.NewStatus(cmd.OutOrStdout())
+			status.Start(fmt.Sprintf("Removing %s from team %s", args[1], args[0]))
+			if err := v.RemoveTeamMember(ctx, args[0], args[1]); err != nil {
+				status.Fail(err.Error())
+				return err
+			}
+			status.Done(fmt.Sprintf("Removed %s from team %s", args[1], args[0]))
+			return nil
 		},
 	}
 
@@ -434,11 +456,11 @@ func printTeamDetails(cmd *cobra.Command, team *mgmt.Team) error {
 	}
 	out.Bold(fmt.Sprintf("Members (%d)", memberCount))
 	for _, m := range team.Members {
-		marker := " "
+		line := "  " + m
 		if team.IsAdmin(m) {
-			marker = "*"
+			line += " (admin)"
 		}
-		out.Println(fmt.Sprintf("  %s %s", marker, m))
+		out.Println(line)
 	}
 	if memberCount > len(team.Members) {
 		out.Muted(fmt.Sprintf("  … and %d more", memberCount-len(team.Members)))
