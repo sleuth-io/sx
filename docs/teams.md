@@ -110,13 +110,15 @@ one of the team's repositories" — so the asset reaches the right
 people in the right codebases without you listing every repo
 separately.
 
-`--team <name>` only requires the named team to **exist** in the vault
-(re-checked inside the transaction) plus write access to the vault —
-**not** team-admin. Scoping an asset to a team is distribution, not team
-management: anyone who can write to the vault may target a team with an
-asset. Admin is reserved for modifying the team itself (`sx team
-member/admin/repo …`). A `--team` naming an unknown team is skipped with
-a "team not found" warning rather than created implicitly.
+`--team <name>` requires you to be an **admin of that team** (or an
+org-admin) — **always**, in every vault, governed or not. Scoping a
+skill to a team **locks it to that team**: teams own skills, so once a
+skill is team-scoped only that team's members may edit it (see
+[rbac.md](rbac.md)). Claiming a skill for a team is therefore a
+team-management decision, not open distribution, so only a team admin
+may do it. The named team must also **exist** (re-checked inside the
+transaction); a `--team` naming an unknown team is skipped with a "team
+not found" warning rather than created implicitly.
 
 ## Where state lives
 
