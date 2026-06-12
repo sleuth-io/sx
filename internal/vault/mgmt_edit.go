@@ -37,8 +37,9 @@ func assetEditReason(m *manifest.Manifest, name string, actor mgmt.Actor) string
 		return "" // not team-scoped → anyone may edit
 	}
 	for _, tn := range teamScopes {
-		if team, err := m.FindTeam(tn); err == nil &&
-			(team.IsMember(actor.Email) || team.IsAdmin(actor.Email)) {
+		// Editing is member-level: team admins are auto-added as members, so a
+		// membership check alone suffices (admin status gates *scoping*, not edits).
+		if team, err := m.FindTeam(tn); err == nil && team.IsMember(actor.Email) {
 			return ""
 		}
 	}

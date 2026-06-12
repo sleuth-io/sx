@@ -1,6 +1,6 @@
 # Permissions — github vault
 
-This controls **who can set a skill's scope** (where it installs) and **who can edit it**. Scope is governed by the vault's **org-admins**; editing is governed by a skill's **team scope**. Org-admins can always do both.
+This controls **who can set a skill's scope** (where it installs) and **who can edit it**. Scope is governed by the vault's **org-admins**; editing is governed by a skill's **team scope**. Org-admins can always do both. This is the model for the **github (git/path) vault**, enforced client-side; the Sleuth (skills.new) vault enforces the same model server-side.
 
 ## Setting scope — the two states
 
@@ -32,6 +32,8 @@ Who can edit/publish a skill depends only on whether it is scoped to a team — 
 | not scoped to a team | **anyone**                                 |
 
 A skill scoped to several teams is editable by a member of any of them. Org-admins can always edit anything.
+
+These edit rules hold **regardless of governance state** — even in an ungoverned vault (no org-admins), a team-scoped skill is editable only by that team's members, and with no org-admins there is no one to override it. That's safe because scoping a skill to a team is itself always team-admin gated (above), so a skill can't be locked away from you by someone who doesn't run the team.
 
 ## Q & A — common flows
 

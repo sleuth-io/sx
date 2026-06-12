@@ -47,7 +47,7 @@ func newOrgAdminAddCommand() *cobra.Command {
 		Short: "Add org-admins (turns on scope governance)",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 			out := newOutputHelper(cmd)
 
@@ -91,7 +91,7 @@ func newOrgAdminListCommand() *cobra.Command {
 		Short: "List org-admins",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 			out := newOutputHelper(cmd)
 
@@ -121,7 +121,7 @@ func newOrgAdminRemoveCommand() *cobra.Command {
 		Short: "Remove an org-admin",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 			out := newOutputHelper(cmd)
 

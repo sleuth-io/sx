@@ -291,18 +291,66 @@ func TestUninstallScopeRBAC(t *testing.T) {
 		return v
 	}
 
+	// A denied removal is reported per-target (no hard error), mirroring set.
 	v := seed("mallory@example.com")
-	if _, _, err := v.UninstallAssetTargets(ctx, "my-skill",
-		[]InstallTarget{{Kind: InstallKindTeam, Team: "platform"}}); err == nil ||
-		!strings.Contains(err.Error(), "admin of team") {
-		t.Fatalf("non-admin removing a team scope should be denied, got %v", err)
+	removed, failures, err := v.UninstallAssetTargets(ctx, "my-skill",
+		[]InstallTarget{{Kind: InstallKindTeam, Team: "platform"}})
+	if err != nil {
+		t.Fatalf("a denied removal should not hard-error: %v", err)
+	}
+	if removed != 0 || len(failures) != 1 || !strings.Contains(failures[0], "admin of team") {
+		t.Fatalf("non-admin team-scope removal should be a reported failure: removed=%d failures=%+v", removed, failures)
 	}
 
 	v = seed("alice@example.com")
-	removed, _, err := v.UninstallAssetTargets(ctx, "my-skill",
+	removed, _, err = v.UninstallAssetTargets(ctx, "my-skill",
 		[]InstallTarget{{Kind: InstallKindTeam, Team: "platform"}})
 	if err != nil || removed != 1 {
 		t.Fatalf("team admin should remove the team scope: removed=%d err=%v", removed, err)
+	}
+}
+
+// TestUninstallScopeRBAC_PartialBatch: a removal batch removes what the actor is
+// allowed to and reports the rest as failures, instead of aborting everything on
+// one denied target.
+func TestUninstallScopeRBAC_PartialBatch(t *testing.T) {
+	ctx := context.Background()
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "mallory@example.com")
+	runGit(t, dir, "config", "user.name", "Mallory")
+	m := &manifest.Manifest{
+		SchemaVersion: manifest.CurrentSchemaVersion,
+		Assets: []manifest.Asset{{
+			Name: "my-skill", Version: "1", Type: asset.TypeSkill,
+			SourceHTTP: &manifest.SourceHTTP{URL: "https://example.com/s.zip"},
+			Scopes: []manifest.Scope{
+				{Kind: manifest.ScopeKindTeam, Team: "platform"},
+				{Kind: manifest.ScopeKindUser, User: "mallory@example.com"},
+			},
+		}},
+		Teams: []manifest.Team{platformTeam()}, // mallory is not a platform admin
+		Org:   &manifest.Org{Admins: []string{"boss@example.com"}},
+	}
+	if err := manifest.Save(dir, m); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+
+	// Mallory may remove her own user scope but not the team scope.
+	removed, failures, err := v.UninstallAssetTargets(ctx, "my-skill", []InstallTarget{
+		{Kind: InstallKindTeam, Team: "platform"},
+		{Kind: InstallKindUser, User: "mallory@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("partial batch should not hard-error: %v", err)
+	}
+	if removed != 1 || len(failures) != 1 || !strings.Contains(failures[0], "admin of team") {
+		t.Fatalf("expected the user scope removed and the team scope reported: removed=%d failures=%+v", removed, failures)
 	}
 }
 
