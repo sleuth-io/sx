@@ -98,7 +98,7 @@ type Manifest struct {
 // Org is vault-level governance configuration.
 type Org struct {
 	// Admins is the set of org-admin emails — the file-vault stand-in for
-	// skills.io's org admin / asset-manager role. Empty = ungoverned.
+	// skills.new's org admin / asset-manager role. Empty = ungoverned.
 	Admins []string `toml:"admins,omitempty"`
 }
 
