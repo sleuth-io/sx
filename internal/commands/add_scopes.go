@@ -11,6 +11,22 @@ import (
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
+// assetEditChecker is the capability a file-backed vault exposes to gate
+// publishing a new version on the skill's team scope (see docs/rbac.md). The
+// Sleuth vault enforces edit permission server-side and does not implement it.
+type assetEditChecker interface {
+	CheckAssetEditPermission(ctx context.Context, name string) error
+}
+
+// enforceAssetEditPermission returns the vault's edit-permission error for the
+// named asset, or nil when the vault doesn't gate edits client-side.
+func enforceAssetEditPermission(ctx context.Context, v vaultpkg.Vault, name string) error {
+	if c, ok := v.(assetEditChecker); ok {
+		return c.CheckAssetEditPermission(ctx, name)
+	}
+	return nil
+}
+
 // currentInstallReader is implemented by vaults that can report an asset's
 // complete, kind-aware installation set (repo/path/team/user/bot/org) including
 // the server entity GIDs. The Sleuth/skills.io vault answers this from the

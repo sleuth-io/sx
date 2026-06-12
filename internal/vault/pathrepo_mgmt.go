@@ -223,7 +223,7 @@ func (p *PathVault) ClearAssetInstallations(ctx context.Context, assetName strin
 // the unified scope flow works against path vaults, not just the Sleuth vault.
 func (p *PathVault) SetAssetInstallations(ctx context.Context, assetName string, targets []InstallTarget, appendMode bool) (skipped []SkippedTarget, err error) {
 	err = p.withLock(ctx, func(actor mgmt.Actor) error {
-		skipped, err = commonSetAssetInstallations(p.repoPath, actor, assetName, targets, appendMode)
+		skipped, err = commonSetAssetInstallations(ctx, p.repoPath, actor, assetName, targets, appendMode)
 		return err
 	})
 	return skipped, err
@@ -234,7 +234,7 @@ func (p *PathVault) SetAssetInstallations(ctx context.Context, assetName string,
 // remove individual scopes from a path vault.
 func (p *PathVault) UninstallAssetTargets(ctx context.Context, assetName string, targets []InstallTarget) (removed int, failures []string, err error) {
 	err = p.withLock(ctx, func(actor mgmt.Actor) error {
-		removed, failures, err = commonUninstallAssetTargets(p.repoPath, actor, assetName, targets)
+		removed, failures, err = commonUninstallAssetTargets(ctx, p.repoPath, actor, assetName, targets)
 		return err
 	})
 	return removed, failures, err

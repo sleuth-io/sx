@@ -541,6 +541,13 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 
 // addNewAsset adds a new or updated asset to the vault
 func addNewAsset(ctx context.Context, out *outputHelper, status *components.Status, vault vaultpkg.Vault, name string, assetType asset.Type, version, zipFile string, zipData []byte, metadataExists bool, opts addOptions) error {
+	// RBAC edit gate: a skill scoped to a team may only be re-published by a
+	// member of that team (or an org-admin); a non-team-scoped or brand-new
+	// skill is open to anyone. See docs/rbac.md.
+	if err := enforceAssetEditPermission(ctx, vault, name); err != nil {
+		return err
+	}
+
 	// Prompt user for version (skip if --yes)
 	if !opts.Yes {
 		var err error

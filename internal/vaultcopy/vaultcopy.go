@@ -334,7 +334,10 @@ func copyAssetScopes(ctx context.Context, dst scopeInstaller, name string, scope
 	// best-effort: it applies all resolvable targets atomically and reports the
 	// rest as unresolved (so we never fall back to clobbering per-target calls).
 	if bulk, ok := dst.(bulkInstaller); ok {
-		skipped, err := bulk.SetAssetInstallations(ctx, name, targets, false)
+		// A copy replicates the source's existing scopes verbatim, so it bypasses
+		// the destination's file-backed RBAC gate — the operator needn't be a team
+		// admin there to migrate scopes that were already valid in the source.
+		skipped, err := bulk.SetAssetInstallations(vault.ContextWithTrustedScopeWrite(ctx), name, targets, false)
 		if err != nil {
 			// The set failed, so the asset still carries any auto-applied install
 			// (org-wide on skills.new). Clear it so a failed scope-set doesn't
