@@ -42,8 +42,14 @@ Remove every org-admin with `sx org admin remove <email>`. Only a current org-ad
 **Who can scope a skill to team X?**
 An admin of team X, or an org-admin. (If the vault has no org-admins, anyone can.)
 
+**If I scope a skill to a team, who actually gets it installed, and where?**
+Every **member** of the team — but *where* depends on the team's repositories. If the team owns repos, members get it **in those repos** (so a member only sees it when working in one of them). If the team owns **no** repositories, members get it **globally** (everywhere). Non-members never get it. So a team scope is "these people, in these repos" — or, with no repos, just "these people, everywhere."
+
 **Why can't I set an org-wide / repo scope?**
 The vault has org-admins and you're not one. Ask an org-admin to do it, or to add you.
 
 **Who can edit a skill?**
 If it's scoped to a team, only members of that team (plus org-admins, who can always edit anything). If it isn't scoped to any team, anyone can.
+
+**A skill is scoped to a team *and* to specific users — who can edit it?**
+The team scope still rules: only a member of (one of) those teams, or an org-admin. Being named in the user scope does **not** grant edit rights — any team scope means team members only.

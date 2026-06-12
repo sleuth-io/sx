@@ -4,7 +4,9 @@
 Teams are first-class objects in the vault — they have members,
 admins, and a list of repositories the team owns. Team-scoped installs
 flatten to the team's repositories at resolve time, so a team install
-both targets the people in the team and the codebases they work on.
+both targets the people in the team and the codebases they work on. If
+the team owns **no** repositories, the asset installs globally for every
+member instead.
 
 This document covers the team CRUD surface and team-scoped installs.
 For the manifest schema, see
@@ -62,7 +64,9 @@ not rewrite the manifest or emit an audit event.
 
 Team repositories drive scope resolution: if an asset is installed with
 `--team platform`, every member gets it flattened to the team's
-repositories at install time.
+repositories at install time. **If the team has no repositories, the
+asset installs globally for every member** (so a team scope is never a
+no-op just because the team owns no repos).
 
 ```bash
 sx team repo add platform github.com/acme/billing
