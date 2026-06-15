@@ -789,7 +789,10 @@ func (g *GitVault) PostUsageStats(ctx context.Context, jsonlData string) error {
 	return g.RecordUsageEvents(ctx, events)
 }
 
-// SetInstallations upserts the asset into the vault's manifest and pushes.
+// SetInstallations upserts the asset into the vault's manifest and pushes. The
+// incoming asset's scopes replace the stored set, except for existing scopes the
+// actor isn't allowed to remove (e.g. a team they don't admin), which are
+// carried through — see commonSetInstallations and docs/rbac.md.
 func (g *GitVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, scopeEntity string) error {
 	fileLock, err := g.acquireFileLock(ctx)
 	if err != nil {
@@ -801,7 +804,11 @@ func (g *GitVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, 
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
 
-	if err := upsertAssetInManifest(g.repoPath, asset); err != nil {
+	actor, err := g.CurrentActor(ctx)
+	if err != nil {
+		return err
+	}
+	if err := commonSetInstallations(g.repoPath, actor, asset); err != nil {
 		return fmt.Errorf("failed to update manifest: %w", err)
 	}
 

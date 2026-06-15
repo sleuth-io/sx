@@ -224,10 +224,16 @@ func (p *PathVault) ManifestPath() string {
 	return filepath.Join(p.repoPath, manifest.FileName)
 }
 
-// SetInstallations upserts an asset into the vault's manifest. Scopes on
-// the incoming asset are preserved verbatim.
+// SetInstallations upserts an asset into the vault's manifest. The incoming
+// asset's scopes replace the stored set, except for existing scopes the actor
+// isn't allowed to remove (e.g. a team they don't admin), which are carried
+// through — see commonSetInstallations and docs/rbac.md.
 func (p *PathVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, scopeEntity string) error {
-	return upsertAssetInManifest(p.repoPath, asset)
+	actor, err := p.CurrentActor(ctx)
+	if err != nil {
+		return err
+	}
+	return commonSetInstallations(p.repoPath, actor, asset)
 }
 
 // InheritInstallations copies scopes from any existing entry of this

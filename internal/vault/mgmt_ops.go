@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/scope"
@@ -1057,6 +1058,23 @@ func commonSetAssetInstallations(ctx context.Context, vaultRoot string, actor mg
 		}
 
 		if orgWide || !appendMode {
+			// A replace/global clears the whole scope set — but removing a scope
+			// needs the same authority as setting it (docs/rbac.md). Before
+			// clearing, gather any existing scopes the actor isn't allowed to
+			// remove (chiefly team scopes they don't admin) so they survive; else
+			// a non-team-admin could strip a team just by re-scoping the skill to
+			// themselves or to global. Each kept scope is reported as skipped.
+			var preserved []manifest.Scope
+			if enforce {
+				desired := make([]manifest.Scope, 0, len(resolved))
+				for _, r := range resolved {
+					desired = append(desired, r.scope)
+				}
+				for _, d := range protectedScopesForActor(m, assetName, actor, desired) {
+					preserved = append(preserved, d.scope)
+					skipped = append(skipped, SkippedTarget{Target: d.target, Reason: d.reason + " (kept — not removed)"})
+				}
+			}
 			// Replace (and org-global) clear the whole picture: scopes inherit
 			// onto every same-name version row (see commonRemoveAssetInstallation),
 			// so clear them all before re-adding, or stale rows would keep the
@@ -1066,6 +1084,9 @@ func commonSetAssetInstallations(ctx context.Context, vaultRoot string, actor mg
 					m.Assets[i].Scopes = nil
 				}
 			}
+			// Re-seed the protected scopes onto the canonical row; the resolved
+			// targets below append onto it (deduped).
+			asset.Scopes = append(asset.Scopes, preserved...)
 		}
 
 		events := make([]mgmt.AuditEvent, 0, len(resolved)+2)
@@ -1198,6 +1219,93 @@ func scopeSetPermissionReason(m *manifest.Manifest, t InstallTarget, actor mgmt.
 		// Handled above (always team-admin gated).
 	}
 	return fmt.Sprintf("permission denied: setting a %s scope requires being an org-admin", t.Kind)
+}
+
+// scopeDenial records an existing scope the actor is not permitted to remove,
+// with the reason and the equivalent install target for reporting.
+type scopeDenial struct {
+	scope  manifest.Scope
+	target InstallTarget
+	reason string
+}
+
+// protectedScopesForActor returns the named asset's existing scopes that actor
+// may NOT remove (per scopeSetPermissionReason) and that are absent from the
+// desired set — i.e. the scopes a wholesale replace or "go global" would
+// silently strip. Removing a scope needs the same authority as setting it
+// (docs/rbac.md), so callers carry these through and report them; without this
+// a non-team-admin could drop a team scope just by re-scoping a skill to
+// themselves or to global. Scopes are gathered across the asset's per-version
+// rows and deduped.
+func protectedScopesForActor(m *manifest.Manifest, assetName string, actor mgmt.Actor, desired []manifest.Scope) []scopeDenial {
+	seen := make(map[string]bool)
+	var denials []scopeDenial
+	for i := range m.Assets {
+		if m.Assets[i].Name != assetName {
+			continue
+		}
+		for _, s := range m.Assets[i].Scopes {
+			tgt, ok := manifestScopeToTarget(s)
+			if !ok {
+				continue // org rows aren't stored; nothing to protect
+			}
+			reason := scopeSetPermissionReason(m, tgt, actor)
+			if reason == "" {
+				continue // actor may remove it
+			}
+			if scopeExistsOnAsset(desired, s) {
+				continue // staying anyway — not a removal
+			}
+			key := scopeDedupKey(s)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			denials = append(denials, scopeDenial{scope: s, target: tgt, reason: reason})
+		}
+	}
+	return denials
+}
+
+// scopeDedupKey is a stable identity for a scope row, used to dedupe protected
+// scopes gathered across an asset's per-version rows.
+func scopeDedupKey(s manifest.Scope) string {
+	return strings.Join([]string{
+		string(s.Kind), s.Repo, strings.Join(canonicalPaths(s.Paths), ","), s.Team, s.User, s.Bot,
+	}, "\x00")
+}
+
+// commonSetInstallations upserts asset into the manifest like
+// upsertAssetInManifest, but first carries through any existing scopes actor is
+// not allowed to remove (docs/rbac.md) so a "go global" or repo/path replace
+// can't silently strip a team scope from someone who isn't that team's admin.
+// Kept scopes are reported to stderr — this singular path has no structured
+// output channel. It's the actor-aware counterpart used by the file-backed
+// SetInstallations methods.
+func commonSetInstallations(vaultRoot string, actor mgmt.Actor, asset *lockfile.Asset) error {
+	m, err := loadManifest(vaultRoot)
+	if err != nil {
+		return err
+	}
+	ma := lockfileAssetToManifest(*asset)
+	// Preserve Clients from any existing same name+version entry when the
+	// incoming asset declares none (mirrors upsertAssetInManifest).
+	if len(ma.Clients) == 0 {
+		for i := range m.Assets {
+			if m.Assets[i].Name == ma.Name && m.Assets[i].Version == ma.Version && len(m.Assets[i].Clients) > 0 {
+				ma.Clients = append([]string(nil), m.Assets[i].Clients...)
+				break
+			}
+		}
+	}
+	for _, d := range protectedScopesForActor(m, asset.Name, actor, ma.Scopes) {
+		if !scopeExistsOnAsset(ma.Scopes, d.scope) {
+			ma.Scopes = append(ma.Scopes, d.scope)
+		}
+		fmt.Fprintf(os.Stderr, "⚠ Kept %s scope: %s\n", d.target.Kind, d.reason)
+	}
+	m.UpsertAsset(ma)
+	return manifest.Save(vaultRoot, m)
 }
 
 // commonUninstallAssetTargets removes a batch of install targets from the named

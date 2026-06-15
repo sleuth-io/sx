@@ -6,9 +6,137 @@ import (
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
 )
+
+// seedScopedRBACVault is seedRBACVault plus a starting scope set on my-skill, so
+// removal-gating (replace/global) can be exercised. Returns the vault and its
+// on-disk root for reading the resulting manifest back.
+func seedScopedRBACVault(t *testing.T, actorEmail string, scopes []manifest.Scope, teams []manifest.Team, orgAdmins []string) (*PathVault, string) {
+	t.Helper()
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", actorEmail)
+	runGit(t, dir, "config", "user.name", "Test User")
+
+	m := &manifest.Manifest{
+		SchemaVersion: manifest.CurrentSchemaVersion,
+		Assets: []manifest.Asset{{
+			Name:       "my-skill",
+			Version:    "1.0.0",
+			Type:       asset.TypeSkill,
+			SourceHTTP: &manifest.SourceHTTP{URL: "https://example.com/my-skill.zip"},
+			Scopes:     scopes,
+		}},
+		Teams: teams,
+	}
+	if len(orgAdmins) > 0 {
+		m.Org = &manifest.Org{Admins: orgAdmins}
+	}
+	if err := manifest.Save(dir, m); err != nil {
+		t.Fatalf("seed manifest: %v", err)
+	}
+	v, err := NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	return v, dir
+}
+
+// assetScopes reads my-skill's current scopes from the vault's manifest.
+func assetScopes(t *testing.T, dir string) []manifest.Scope {
+	t.Helper()
+	m, ok, err := manifest.Load(dir)
+	if err != nil || !ok {
+		t.Fatalf("load manifest: ok=%v err=%v", ok, err)
+	}
+	a := m.FindAsset("my-skill")
+	if a == nil {
+		t.Fatal("my-skill missing from manifest")
+	}
+	return a.Scopes
+}
+
+// TestScopeRBAC_ReplaceKeepsProtectedTeam reproduces the reported bug: a
+// non-admin re-scoping a team-scoped skill to "just for me" (a wholesale
+// replace) must NOT silently drop the team scope. The team is preserved and
+// reported as skipped, while the user's own scope still applies.
+func TestScopeRBAC_ReplaceKeepsProtectedTeam(t *testing.T) {
+	ctx := context.Background()
+	startScopes := []manifest.Scope{{Kind: manifest.ScopeKindTeam, Team: "platform"}}
+
+	// mallory is not a platform admin (governed vault, she's no org-admin either).
+	v, dir := seedScopedRBACVault(t, "mallory@example.com", startScopes,
+		[]manifest.Team{platformTeam()}, []string{"boss@example.com"})
+
+	skipped, err := v.SetAssetInstallations(ctx, "my-skill",
+		[]InstallTarget{{Kind: InstallKindUser, User: "mallory@example.com"}}, false)
+	if err != nil {
+		t.Fatalf("SetAssetInstallations: %v", err)
+	}
+	if len(skipped) != 1 || skipped[0].Target.Kind != InstallKindTeam ||
+		!strings.Contains(skipped[0].Reason, "admin of team") {
+		t.Fatalf("expected the team scope reported as kept, got %+v", skipped)
+	}
+
+	scopes := assetScopes(t, dir)
+	if !scopeExistsOnAsset(scopes, manifest.Scope{Kind: manifest.ScopeKindTeam, Team: "platform"}) {
+		t.Fatalf("team scope must be preserved through a non-admin replace, got %+v", scopes)
+	}
+	if !scopeExistsOnAsset(scopes, manifest.Scope{Kind: manifest.ScopeKindUser, User: "mallory@example.com"}) {
+		t.Fatalf("the actor's own user scope should have applied, got %+v", scopes)
+	}
+}
+
+// TestScopeRBAC_ReplaceTeamAdminCanRemove is the allowed counterpart: the team's
+// admin re-scoping to "just for me" DOES remove the team scope.
+func TestScopeRBAC_ReplaceTeamAdminCanRemove(t *testing.T) {
+	ctx := context.Background()
+	startScopes := []manifest.Scope{{Kind: manifest.ScopeKindTeam, Team: "platform"}}
+
+	v, dir := seedScopedRBACVault(t, "alice@example.com", startScopes,
+		[]manifest.Team{platformTeam()}, []string{"boss@example.com"})
+
+	skipped, err := v.SetAssetInstallations(ctx, "my-skill",
+		[]InstallTarget{{Kind: InstallKindUser, User: "alice@example.com"}}, false)
+	if err != nil {
+		t.Fatalf("SetAssetInstallations: %v", err)
+	}
+	if len(skipped) != 0 {
+		t.Fatalf("team admin should replace freely, got skipped=%+v", skipped)
+	}
+	scopes := assetScopes(t, dir)
+	if scopeExistsOnAsset(scopes, manifest.Scope{Kind: manifest.ScopeKindTeam, Team: "platform"}) {
+		t.Fatalf("team admin's replace should drop the team scope, got %+v", scopes)
+	}
+}
+
+// TestScopeRBAC_GlobalKeepsProtectedTeam covers the singular SetInstallations
+// ("go global") path: a non-admin can't strip a team scope by globalizing the
+// skill — the team survives.
+func TestScopeRBAC_GlobalKeepsProtectedTeam(t *testing.T) {
+	ctx := context.Background()
+	startScopes := []manifest.Scope{{Kind: manifest.ScopeKindTeam, Team: "platform"}}
+
+	v, dir := seedScopedRBACVault(t, "mallory@example.com", startScopes,
+		[]manifest.Team{platformTeam()}, []string{"boss@example.com"})
+
+	// "Global" sends an asset with an empty scope set through SetInstallations.
+	if err := v.SetInstallations(ctx, &lockfile.Asset{
+		Name: "my-skill", Version: "1.0.0", Type: asset.TypeSkill,
+		SourceHTTP: &lockfile.SourceHTTP{URL: "https://example.com/my-skill.zip"},
+	}, ""); err != nil {
+		t.Fatalf("SetInstallations: %v", err)
+	}
+
+	scopes := assetScopes(t, dir)
+	if !scopeExistsOnAsset(scopes, manifest.Scope{Kind: manifest.ScopeKindTeam, Team: "platform"}) {
+		t.Fatalf("non-admin going global must not strip the team scope, got %+v", scopes)
+	}
+}
 
 // seedRBACVault creates a path vault holding one asset, git-identified as
 // actorEmail, with the given teams and org-admins. The org-admins list is the
