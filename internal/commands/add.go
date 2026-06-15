@@ -308,14 +308,21 @@ func addFromZipSource(ctx context.Context, cmd *cobra.Command, out *outputHelper
 
 	// Handle identical content case
 	var addErr error
+	prOpened := false
 	if contentsIdentical {
 		addErr = handleIdenticalAsset(ctx, out, status, vault, name, version, assetType, opts)
 	} else {
-		addErr = addNewAsset(ctx, out, status, vault, name, assetType, version, zipFile, zipData, metadataExists, opts)
+		prOpened, addErr = addNewAsset(ctx, out, status, vault, name, assetType, version, zipFile, zipData, metadataExists, opts)
 	}
 
 	if addErr != nil {
 		return addErr
+	}
+
+	// A pull request was opened instead of a direct publish: the asset isn't live
+	// until the PR merges, so there's nothing to install now.
+	if prOpened {
+		return nil
 	}
 
 	// Handle install: auto-run if --yes, prompt if interactive, skip if --no-install
@@ -539,21 +546,40 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 	return nil
 }
 
-// addNewAsset adds a new or updated asset to the vault
-func addNewAsset(ctx context.Context, out *outputHelper, status *components.Status, vault vaultpkg.Vault, name string, assetType asset.Type, version, zipFile string, zipData []byte, metadataExists bool, opts addOptions) error {
+// addNewAsset adds a new or updated asset to the vault. It returns prOpened=true
+// when the RBAC edit gate diverted the add into a pull request instead of a
+// direct publish — in that case the asset isn't live yet, so the caller must not
+// offer to install it.
+func addNewAsset(ctx context.Context, out *outputHelper, status *components.Status, vault vaultpkg.Vault, name string, assetType asset.Type, version, zipFile string, zipData []byte, metadataExists bool, opts addOptions) (prOpened bool, err error) {
 	// RBAC edit gate: a skill scoped to a team may only be re-published by a
 	// member of that team (or an org-admin); a non-team-scoped or brand-new
 	// skill is open to anyone. See docs/rbac.md.
-	if err := enforceAssetEditPermission(ctx, vault, name); err != nil {
-		return err
+	//
+	// When the gate blocks a git vault we don't just fail: the caller can still
+	// push to a branch, so we offer to open a pull request and route the rest of
+	// the add through that branch instead of the default branch.
+	var prv prVault
+	if permErr := enforceAssetEditPermission(ctx, vault, name); permErr != nil {
+		var denial *vaultpkg.AssetEditPermissionError
+		pv, prCapable := vault.(prVault)
+		if !errors.As(permErr, &denial) || !prCapable {
+			return false, permErr
+		}
+		open, askErr := promptOpenPR(out, opts.Yes, denial)
+		if askErr != nil {
+			return false, askErr
+		}
+		if !open {
+			return false, permErr
+		}
+		prv = pv
 	}
 
 	// Prompt user for version (skip if --yes)
 	if !opts.Yes {
-		var err error
 		version, err = promptForVersion(out, version)
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
 
@@ -561,9 +587,9 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 	meta := createMetadata(name, version, assetType, zipFile, zipData)
 
 	// Always update metadata.toml to ensure version is correct
-	zipData, err := updateMetadataInZip(meta, zipData, metadataExists)
+	zipData, err = updateMetadataInZip(meta, zipData, metadataExists)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// Validate the (possibly user-authored) metadata before it enters the
@@ -571,7 +597,7 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 	// pass `sx add` and only fail at install time. ValidateZip already wraps
 	// its errors with a "metadata validation failed:" prefix.
 	if err := metadata.ValidateZip(zipData, &assetType); err != nil {
-		return err
+		return false, err
 	}
 
 	// Create asset entry (what it is). Mirror metadata's client filter into
@@ -589,7 +615,14 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 
 	// Check for context cancellation before vault upload
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return false, ctx.Err()
+	}
+
+	// PR fallback: stage the add on a branch instead of the default branch, then
+	// push it and open a pull request. The asset isn't published (or installed
+	// locally) until the PR is merged, so we stop after creating it.
+	if prv != nil {
+		return true, addViaPullRequest(ctx, out, status, prv, vault, lockAsset, zipData)
 	}
 
 	// Upload asset files to vault
@@ -597,7 +630,7 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 	status.Start("Adding asset to vault")
 	if err := vault.AddAsset(ctx, lockAsset, zipData); err != nil {
 		status.Fail("Failed to add asset")
-		return fmt.Errorf("failed to add asset: %w", err)
+		return false, fmt.Errorf("failed to add asset: %w", err)
 	}
 	status.Done("")
 
@@ -606,7 +639,7 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 	// --no-install: write lock file but skip install prompt. Honors any
 	// scope flags so batch flows can pin assets to a target repo/path/scope.
 	if opts.NoInstall {
-		return writeLockFileForNoInstall(ctx, out, vault, lockAsset, opts)
+		return false, writeLockFileForNoInstall(ctx, out, vault, lockAsset, opts)
 	}
 
 	// Get scopes (from flags if --yes, otherwise prompt)
@@ -614,20 +647,20 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 	current, installed := resolveCurrentTargets(ctx, vault, lockAsset.Name)
 	result, err = resolveAddScope(out, vault, lockAsset.Name, lockAsset.Version, current, installed, opts)
 	if err != nil {
-		return fmt.Errorf("failed to configure scopes: %w", err)
+		return false, fmt.Errorf("failed to configure scopes: %w", err)
 	}
 	// If remove, user chose not to install
 	if result.Remove {
 		out.printf("Run 'sx add %s' to configure where to install it.\n", lockAsset.Name)
-		return nil
+		return false, nil
 	}
 
 	// If inherit, preserve existing installations
 	if result.Inherit {
 		if err := inheritLockFile(ctx, out, vault, lockAsset); err != nil {
-			return fmt.Errorf("failed to inherit installations: %w", err)
+			return false, fmt.Errorf("failed to inherit installations: %w", err)
 		}
-		return nil
+		return false, nil
 	}
 
 	// Set scopes on asset
@@ -635,8 +668,91 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 
 	// Update lock file with asset
 	if err := updateLockFile(ctx, out, vault, lockAsset, result); err != nil {
-		return fmt.Errorf("failed to update lock file: %w", err)
+		return false, fmt.Errorf("failed to update lock file: %w", err)
 	}
 
+	return false, nil
+}
+
+// promptOpenPR explains why a direct publish was blocked and asks whether to open
+// a pull request instead. With --yes it proceeds without prompting.
+func promptOpenPR(out *outputHelper, assumeYes bool, permErr *vaultpkg.AssetEditPermissionError) (bool, error) {
+	out.println()
+	out.printf("You don't have permission to publish %q directly — it's scoped to team %s.\n",
+		permErr.Asset, strings.Join(permErr.Teams, ", "))
+	if assumeYes {
+		return true, nil
+	}
+	return out.prompter.Confirm("Open a pull request with your changes instead?")
+}
+
+// addViaPullRequest stages the asset add on a branch and opens a pull request for
+// it, returning after reporting the PR URL. Used when the RBAC edit gate blocks a
+// direct publish but the vault can still push to a branch. The asset is not
+// published or installed locally until the PR is merged.
+func addViaPullRequest(ctx context.Context, out *outputHelper, status *components.Status, prv prVault, vault vaultpkg.Vault, lockAsset *lockfile.Asset, zipData []byte) error {
+	branch := prBranchName(lockAsset.Name, lockAsset.Version)
+	if err := prv.StartPRBranch(ctx, branch); err != nil {
+		return fmt.Errorf("failed to start PR branch: %w", err)
+	}
+
+	out.println()
+	status.Start("Preparing pull request")
+	if err := vault.AddAsset(ctx, lockAsset, zipData); err != nil {
+		status.Fail("Failed to prepare pull request")
+		return fmt.Errorf("failed to add asset: %w", err)
+	}
+
+	title := fmt.Sprintf("Add %s %s", lockAsset.Name, lockAsset.Version)
+	body := fmt.Sprintf("Adds %s@%s via `sx add`.", lockAsset.Name, lockAsset.Version)
+	res, err := prv.FinishPRBranch(ctx, title, body)
+	if err != nil {
+		status.Fail("Failed to open pull request")
+		return fmt.Errorf("failed to open pull request: %w", err)
+	}
+	status.Done("")
+
+	if res.Created {
+		out.printf("✓ Opened pull request for %s@%s\n", lockAsset.Name, lockAsset.Version)
+		if res.URL != "" {
+			out.printf("  %s\n", res.URL)
+		}
+		out.println("It will be published once the pull request is merged.")
+		return nil
+	}
+
+	// The branch was pushed but no PR was opened — tell the user why and give them
+	// the compare link to finish it by hand, so the outcome isn't reported as done.
+	out.printf("Pushed branch for %s@%s, but couldn't open the pull request automatically", lockAsset.Name, lockAsset.Version)
+	if res.Fallback != "" {
+		out.printf(" (%s)", res.Fallback)
+	}
+	out.println(".")
+	out.println("Open it manually here:")
+	if res.URL != "" {
+		out.printf("  %s\n", res.URL)
+	}
+	out.println("It will be published once the pull request is merged.")
 	return nil
+}
+
+// prBranchName builds a filesystem- and git-safe branch name for an add PR, e.g.
+// "sx/add-my-skill-1.2.0".
+func prBranchName(name, version string) string {
+	return "sx/add-" + sanitizeBranchComponent(name) + "-" + sanitizeBranchComponent(version)
+}
+
+// sanitizeBranchComponent keeps git-ref-safe characters and replaces the rest
+// with a hyphen, trimming leading/trailing hyphens.
+func sanitizeBranchComponent(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }

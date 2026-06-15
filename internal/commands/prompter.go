@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/sleuth-io/sx/internal/ui/theme"
 )
 
 // Prompter provides an interface for interactive prompts
@@ -57,7 +59,8 @@ func (p *StdPrompter) PromptWithDefault(message, defaultValue string) (string, e
 
 // Confirm asks a yes/no question
 func (p *StdPrompter) Confirm(message string) (bool, error) {
-	response, err := p.Prompt(message + " (Y/n): ")
+	styled := theme.Current().Styles().Info.Render(message)
+	response, err := p.Prompt(styled + " (Y/n): ")
 	if err != nil {
 		return false, err
 	}

@@ -2,7 +2,6 @@ package vault
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -10,22 +9,37 @@ import (
 	"github.com/sleuth-io/sx/internal/mgmt"
 )
 
-// assetEditReason returns "" if actor may edit/publish the named asset, or a
-// human-readable denial reason. Per docs/rbac.md, editing is governed by the
-// skill's team scope (not the org-admins state):
+// AssetEditPermissionError is returned by the file-backed edit gate when the
+// actor may not publish a new version of a team-scoped asset. It carries the
+// asset name and the gating teams so callers (notably `sx add`) can recognize
+// the denial via errors.As and offer a pull-request fallback instead of just
+// failing. See docs/rbac.md.
+type AssetEditPermissionError struct {
+	Asset string
+	Teams []string
+}
+
+func (e *AssetEditPermissionError) Error() string {
+	return fmt.Sprintf("permission denied: %q is scoped to team %s — only a member of that team (or an org-admin) may edit it",
+		e.Asset, strings.Join(e.Teams, ", "))
+}
+
+// assetEditDenial returns nil if actor may edit/publish the named asset, or an
+// *AssetEditPermissionError describing why not. Per docs/rbac.md, editing is
+// governed by the skill's team scope (not the org-admins state):
 //
 //   - A brand-new asset (absent from the manifest) → anyone may create it.
 //   - Org-admins → may always edit anything.
 //   - A skill scoped to a team → only a member of that team may edit it.
 //     Scoped to several teams → a member of any of them.
 //   - A skill not scoped to any team → anyone may edit it.
-func assetEditReason(m *manifest.Manifest, name string, actor mgmt.Actor) string {
+func assetEditDenial(m *manifest.Manifest, name string, actor mgmt.Actor) *AssetEditPermissionError {
 	a := m.FindAsset(name)
 	if a == nil {
-		return "" // new asset → anyone may create it
+		return nil // new asset → anyone may create it
 	}
 	if m.IsOrgAdmin(actor.Email) {
-		return "" // org-admins may always edit
+		return nil // org-admins may always edit
 	}
 	var teamScopes []string
 	for _, s := range a.Scopes {
@@ -34,29 +48,28 @@ func assetEditReason(m *manifest.Manifest, name string, actor mgmt.Actor) string
 		}
 	}
 	if len(teamScopes) == 0 {
-		return "" // not team-scoped → anyone may edit
+		return nil // not team-scoped → anyone may edit
 	}
 	for _, tn := range teamScopes {
 		// Editing is member-level: team admins are auto-added as members, so a
 		// membership check alone suffices (admin status gates *scoping*, not edits).
 		if team, err := m.FindTeam(tn); err == nil && team.IsMember(actor.Email) {
-			return ""
+			return nil
 		}
 	}
-	return fmt.Sprintf("permission denied: %q is scoped to team %s — only a member of that team (or an org-admin) may edit it",
-		name, strings.Join(teamScopes, ", "))
+	return &AssetEditPermissionError{Asset: name, Teams: teamScopes}
 }
 
 // commonAssetEditPermission is the file-backed (git/path) edit gate. It reads
-// the manifest and returns an error when actor may not publish a new version of
-// the named asset.
+// the manifest and returns an *AssetEditPermissionError when actor may not
+// publish a new version of the named asset.
 func commonAssetEditPermission(vaultRoot string, actor mgmt.Actor, name string) error {
 	m, err := loadManifest(vaultRoot)
 	if err != nil {
 		return err
 	}
-	if reason := assetEditReason(m, name, actor); reason != "" {
-		return errors.New(reason)
+	if denial := assetEditDenial(m, name, actor); denial != nil {
+		return denial
 	}
 	return nil
 }

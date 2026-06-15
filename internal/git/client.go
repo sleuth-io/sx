@@ -270,7 +270,7 @@ func (c *Client) Push(ctx context.Context, repoPath string) error {
 
 // PushSetUpstream pushes and sets the upstream tracking branch (for first push to empty repos)
 func (c *Client) PushSetUpstream(ctx context.Context, repoPath, branch string) error {
-	cmd := c.command(ctx, "push", "--quiet", "-u", "origin", branch)
+	cmd := c.command(ctx, "push", "--quiet", "--force", "-u", "origin", branch)
 	cmd.Dir = repoPath
 
 	output, err := cmd.CombinedOutput()
@@ -396,6 +396,23 @@ func (c *Client) CheckoutNewBranch(ctx context.Context, repoPath, branch string)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git checkout -b failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// CheckoutNewBranchForce creates (or resets, if it already exists) a branch at
+// the current HEAD and switches to it. Unlike CheckoutNewBranch it does not fail
+// when the branch name is already present locally — important for the cached
+// vault clone, which is reused across runs and may carry a leftover branch from
+// a previous attempt.
+func (c *Client) CheckoutNewBranchForce(ctx context.Context, repoPath, branch string) error {
+	cmd := c.command(ctx, "checkout", "-B", branch)
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git checkout -B failed: %w\nOutput: %s", err, string(output))
 	}
 
 	return nil

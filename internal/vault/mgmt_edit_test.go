@@ -63,17 +63,17 @@ func TestAssetEditPermission_Matrix(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			reason := assetEditReason(c.m, "skill", c.actor)
-			if (reason == "") != c.allowed {
-				t.Fatalf("allowed=%v want=%v (reason=%q)", reason == "", c.allowed, reason)
+			denial := assetEditDenial(c.m, "skill", c.actor)
+			if (denial == nil) != c.allowed {
+				t.Fatalf("allowed=%v want=%v (denial=%v)", denial == nil, c.allowed, denial)
 			}
 		})
 	}
 
 	// A brand-new asset (absent from the manifest) is editable by anyone.
 	t.Run("new-asset/anyone", func(t *testing.T) {
-		if r := assetEditReason(mk(nil, nil), "does-not-exist", a("nobody@x.com")); r != "" {
-			t.Fatalf("new asset should be editable, got %q", r)
+		if d := assetEditDenial(mk(nil, nil), "does-not-exist", a("nobody@x.com")); d != nil {
+			t.Fatalf("new asset should be editable, got %v", d)
 		}
 	})
 }
