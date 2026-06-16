@@ -72,3 +72,78 @@ prompt-file = "security_reviewer.toml"
 		t.Fatalf("Agent file still exists after remove")
 	}
 }
+
+func TestCodexAgentHandler_InstallRejectsInvalidTOML(t *testing.T) {
+	targetBase := t.TempDir()
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{
+			Name:    "security_reviewer",
+			Version: "1.0.0",
+			Type:    asset.TypeAgent,
+		},
+		Agent: &metadata.AgentConfig{PromptFile: "security_reviewer.toml"},
+	}
+
+	zipData := createTestZip(t, map[string]string{
+		"metadata.toml": `[asset]
+name = "security_reviewer"
+version = "1.0.0"
+type = "agent"
+
+[agent]
+prompt-file = "security_reviewer.toml"
+`,
+		"security_reviewer.toml": "# Markdown agent\n",
+	})
+
+	handler := NewAgentHandler(meta)
+	if err := handler.Install(context.Background(), zipData, targetBase); err == nil {
+		t.Fatal("Install succeeded, want invalid TOML error")
+	}
+}
+
+func TestCodexAgentHandler_InstalledCodexAgentState(t *testing.T) {
+	targetBase := t.TempDir()
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "security_reviewer", Type: asset.TypeAgent},
+	}
+	handler := NewAgentHandler(meta)
+
+	state, err := handler.InstalledCodexAgentState(targetBase)
+	if err != nil {
+		t.Fatalf("InstalledCodexAgentState returned error: %v", err)
+	}
+	if state != "missing" {
+		t.Fatalf("state = %q, want missing", state)
+	}
+
+	agentPath := filepath.Join(targetBase, DirAgents, "security_reviewer.toml")
+	if err := os.MkdirAll(filepath.Dir(agentPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(agentPath, []byte("# Markdown agent\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	state, err = handler.InstalledCodexAgentState(targetBase)
+	if err != nil {
+		t.Fatalf("InstalledCodexAgentState returned error: %v", err)
+	}
+	if state != "invalid" {
+		t.Fatalf("state = %q, want invalid", state)
+	}
+
+	if err := os.WriteFile(agentPath, []byte(`name = "security_reviewer"
+description = "Security reviewer"
+developer_instructions = "Review security risks."
+`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	state, err = handler.InstalledCodexAgentState(targetBase)
+	if err != nil {
+		t.Fatalf("InstalledCodexAgentState returned error: %v", err)
+	}
+	if state != "valid" {
+		t.Fatalf("state = %q, want valid", state)
+	}
+}

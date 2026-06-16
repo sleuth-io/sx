@@ -6,11 +6,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/BurntSushi/toml"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
 )
+
+type codexAgentDefinition struct {
+	Name                  string `toml:"name"`
+	Description           string `toml:"description"`
+	DeveloperInstructions string `toml:"developer_instructions"`
+}
 
 // AgentHandler installs Codex custom agent definitions as standalone TOML files.
 type AgentHandler struct {
@@ -36,6 +45,9 @@ func (h *AgentHandler) Install(ctx context.Context, zipData []byte, targetBase s
 	content, err := utils.ReadZipFile(zipData, promptFile)
 	if err != nil {
 		return fmt.Errorf("failed to read agent TOML file: %w", err)
+	}
+	if err := validateCodexAgentTOML(content); err != nil {
+		return fmt.Errorf("invalid agent TOML file: %w", err)
 	}
 
 	agentsDir := filepath.Join(targetBase, DirAgents)
@@ -69,6 +81,22 @@ func (h *AgentHandler) VerifyInstalled(targetBase string) (bool, string) {
 	return true, "installed"
 }
 
+// InstalledCodexAgentState reports whether the target file is missing, a valid
+// Codex agent TOML file, or a non-Codex file that should not be removed.
+func (h *AgentHandler) InstalledCodexAgentState(targetBase string) (string, error) {
+	content, err := os.ReadFile(h.agentPath(targetBase))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "missing", nil
+		}
+		return "", fmt.Errorf("failed to read agent TOML file: %w", err)
+	}
+	if err := validateCodexAgentTOML(content); err != nil {
+		return "invalid", nil
+	}
+	return "valid", nil
+}
+
 func (h *AgentHandler) getPromptFile() string {
 	if h.metadata.Agent != nil && h.metadata.Agent.PromptFile != "" {
 		return h.metadata.Agent.PromptFile
@@ -78,4 +106,26 @@ func (h *AgentHandler) getPromptFile() string {
 
 func (h *AgentHandler) agentPath(targetBase string) string {
 	return filepath.Join(targetBase, DirAgents, h.metadata.Asset.Name+".toml")
+}
+
+func validateCodexAgentTOML(content []byte) error {
+	var def codexAgentDefinition
+	if err := toml.Unmarshal(content, &def); err != nil {
+		return err
+	}
+
+	def.Name = strings.TrimSpace(def.Name)
+	def.Description = strings.TrimSpace(def.Description)
+	def.DeveloperInstructions = strings.TrimSpace(def.DeveloperInstructions)
+
+	if def.Name == "" {
+		return errors.New("missing required field: name")
+	}
+	if def.Description == "" {
+		return errors.New("missing required field: description")
+	}
+	if def.DeveloperInstructions == "" {
+		return errors.New("missing required field: developer_instructions")
+	}
+	return nil
 }

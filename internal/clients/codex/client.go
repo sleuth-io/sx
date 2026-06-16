@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/bootstrap"
@@ -100,6 +101,12 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 			handler := handlers.NewCommandHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
 		case asset.TypeAgent:
+			if !isCodexAgentMetadata(bundle.Metadata) {
+				result.Status = clients.StatusSkipped
+				result.Message = "Skipped non-Codex agent format"
+				resp.Results = append(resp.Results, result)
+				continue
+			}
 			handler := handlers.NewAgentHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
 		case asset.TypeMCP:
@@ -163,6 +170,19 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 			uninstallErr = handler.Remove(ctx, targetBase)
 		case asset.TypeAgent:
 			handler := handlers.NewAgentHandler(meta)
+			state, err := handler.InstalledCodexAgentState(targetBase)
+			if err != nil {
+				result.Status = clients.StatusFailed
+				result.Error = err
+				resp.Results = append(resp.Results, result)
+				continue
+			}
+			if state == "invalid" {
+				result.Status = clients.StatusSkipped
+				result.Message = "Skipped non-Codex agent format"
+				resp.Results = append(resp.Results, result)
+				continue
+			}
 			uninstallErr = handler.Remove(ctx, targetBase)
 		case asset.TypeMCP:
 			handler := handlers.NewMCPHandler(meta)
@@ -186,6 +206,13 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 	}
 
 	return resp, nil
+}
+
+func isCodexAgentMetadata(meta *metadata.Metadata) bool {
+	if meta == nil || meta.Agent == nil {
+		return false
+	}
+	return strings.EqualFold(filepath.Ext(meta.Agent.PromptFile), ".toml")
 }
 
 // determineTargetBase returns the installation directory based on scope and asset type.

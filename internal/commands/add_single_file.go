@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,7 +41,7 @@ func createZipFromSingleFile(filePath string) ([]byte, error) {
 		return createZipFromRuleFile(filePath)
 	case asset.TypeAgent:
 		if strings.EqualFold(filepath.Ext(filePath), ".toml") {
-			return createZipFromCodexAgentFile(filePath, content)
+			return createZipFromCodexAgentContent(filePath, content)
 		}
 		return createZipFromPromptFile(filePath, *detectedType, content)
 	case asset.TypeCommand, asset.TypeSkill:
@@ -54,10 +55,6 @@ type codexAgentDefinition struct {
 	Name                  string `toml:"name"`
 	Description           string `toml:"description"`
 	DeveloperInstructions string `toml:"developer_instructions"`
-}
-
-func createZipFromCodexAgentFile(filePath string, content []byte) ([]byte, error) {
-	return createZipFromCodexAgentContent(filePath, content)
 }
 
 func createZipFromCodexAgentContent(source string, content []byte) ([]byte, error) {
@@ -78,6 +75,9 @@ func createZipFromCodexAgentContent(source string, content []byte) ([]byte, erro
 	}
 	if def.DeveloperInstructions == "" {
 		return nil, fmt.Errorf("codex agent TOML %s is missing required field: developer_instructions", source)
+	}
+	if err := validateCodexAgentName(def.Name); err != nil {
+		return nil, fmt.Errorf("codex agent TOML %s has invalid name %q: %w", source, def.Name, err)
 	}
 
 	promptFileName := def.Name + ".toml"
@@ -104,6 +104,16 @@ func createZipFromCodexAgentContent(source string, content []byte) ([]byte, erro
 	}
 
 	return utils.AddFileToZip(zipData, "metadata.toml", metaBytes)
+}
+
+func validateCodexAgentName(name string) error {
+	if strings.ContainsAny(name, `/\`) {
+		return errors.New("must not contain path separators")
+	}
+	if strings.Contains(name, "..") {
+		return errors.New("must not contain '..'")
+	}
+	return nil
 }
 
 // createZipFromPromptFile creates a zip for agent/command/skill files

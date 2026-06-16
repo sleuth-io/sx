@@ -11,14 +11,9 @@ import (
 func DetectAssetTypeFromPath(path string, content []byte) *asset.Type {
 	lower := strings.ToLower(path)
 
-	if strings.HasSuffix(lower, ".toml") {
-		if strings.Contains(lower, "/agents/") || looksLikeCodexAgentTOML(content) {
-			return &asset.TypeAgent
-		}
-		return nil
-	}
-
-	// Only handle .md files after TOML-specific detection.
+	// Generic single-file detection only handles markdown prompt files.
+	// Client-specific formats, such as Codex agent TOML, are claimed by
+	// the owning client's RuleCapabilities.
 	if !strings.HasSuffix(lower, ".md") {
 		return nil
 	}
@@ -44,17 +39,6 @@ func DetectAssetTypeFromPath(path string, content []byte) *asset.Type {
 
 	// Default .md files to command
 	return &asset.TypeCommand
-}
-
-func looksLikeCodexAgentTOML(content []byte) bool {
-	if content == nil {
-		return false
-	}
-
-	contentStr := string(content)
-	return strings.Contains(contentStr, "developer_instructions") &&
-		strings.Contains(contentStr, "description") &&
-		strings.Contains(contentStr, "name")
 }
 
 // looksLikeAgent checks if content has YAML frontmatter with agent-specific fields

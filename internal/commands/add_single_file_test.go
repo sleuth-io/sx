@@ -19,7 +19,8 @@ func TestIsSingleFileAsset(t *testing.T) {
 		{"my-agent.md", true},
 		{"my-agent.MD", true},
 		{"path/to/agent.md", true},
-		{"path/to/agents/security-reviewer.toml", true},
+		{"path/to/.codex/agents/security-reviewer.toml", true},
+		{"path/to/agents/security-reviewer.toml", false},
 		{"path/to/config.toml", false},
 		{"my-skill.zip", false},
 		{"my-skill", false},
@@ -66,21 +67,6 @@ func TestDetectAssetTypeFromPath(t *testing.T) {
 			path:     "/home/user/skills/my-skill.md",
 			content:  "Just some content",
 			expected: asset.TypeSkill,
-		},
-		{
-			name:     "codex agent toml by path",
-			path:     "/home/user/.codex/agents/security-reviewer.toml",
-			content:  `name = "security_reviewer"`,
-			expected: asset.TypeAgent,
-		},
-		{
-			name: "codex agent toml by content",
-			path: "/some/path/security-reviewer.toml",
-			content: `name = "security_reviewer"
-description = "Security reviewer"
-developer_instructions = "Review security risks."
-`,
-			expected: asset.TypeAgent,
 		},
 		{
 			name: "agent frontmatter with tools",
@@ -139,6 +125,36 @@ Command prompt here.`,
 	}
 }
 
+func TestDetectAssetTypeFromPath_IgnoresTOML(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		content string
+	}{
+		{
+			name:    "codex agent toml belongs to codex client detection",
+			path:    "/home/user/.codex/agents/security-reviewer.toml",
+			content: `name = "security_reviewer"`,
+		},
+		{
+			name: "content-shaped toml is not generic",
+			path: "/some/path/security-reviewer.toml",
+			content: `name = "security_reviewer"
+description = "Security reviewer"
+developer_instructions = "Review security risks."
+`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := detectors.DetectAssetTypeFromPath(tc.path, []byte(tc.content)); got != nil {
+				t.Fatalf("DetectAssetTypeFromPath() = %v, want nil", got)
+			}
+		})
+	}
+}
+
 func TestCreateZipFromSingleFile(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -170,7 +186,7 @@ func TestCreateZipFromSingleFile(t *testing.T) {
 		{
 			name:     "codex agent toml uses name from file",
 			filename: "security-reviewer.toml",
-			dirPath:  "agents",
+			dirPath:  ".codex/agents",
 			content: `name = "security_reviewer"
 description = "Security reviewer"
 developer_instructions = "Review security risks."
@@ -290,7 +306,7 @@ Agent with tools`,
 
 func TestCreateZipFromSingleFile_CodexAgentTOMLMissingRequiredField(t *testing.T) {
 	tmpDir := t.TempDir()
-	agentsDir := filepath.Join(tmpDir, "agents")
+	agentsDir := filepath.Join(tmpDir, ".codex", "agents")
 	if err := os.MkdirAll(agentsDir, 0755); err != nil {
 		t.Fatalf("Failed to create dir: %v", err)
 	}
@@ -302,5 +318,39 @@ func TestCreateZipFromSingleFile_CodexAgentTOMLMissingRequiredField(t *testing.T
 
 	if _, err := createZipFromSingleFile(filePath); err == nil {
 		t.Fatal("createZipFromSingleFile succeeded, want missing required field error")
+	}
+}
+
+func TestCreateZipFromSingleFile_CodexAgentTOMLInvalidName(t *testing.T) {
+	tests := []struct {
+		name          string
+		agentNameTOML string
+	}{
+		{name: "slash", agentNameTOML: `"security/reviewer"`},
+		{name: "backslash", agentNameTOML: `'security\reviewer'`},
+		{name: "dotdot", agentNameTOML: `"security..reviewer"`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			agentsDir := filepath.Join(tmpDir, ".codex", "agents")
+			if err := os.MkdirAll(agentsDir, 0755); err != nil {
+				t.Fatalf("Failed to create dir: %v", err)
+			}
+
+			filePath := filepath.Join(agentsDir, "security-reviewer.toml")
+			content := []byte(`name = ` + tc.agentNameTOML + `
+description = "Security reviewer"
+developer_instructions = "Review security risks."
+`)
+			if err := os.WriteFile(filePath, content, 0644); err != nil {
+				t.Fatalf("Failed to write file: %v", err)
+			}
+
+			if _, err := createZipFromSingleFile(filePath); err == nil {
+				t.Fatal("createZipFromSingleFile succeeded, want invalid name error")
+			}
+		})
 	}
 }
