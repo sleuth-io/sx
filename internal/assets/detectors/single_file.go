@@ -11,7 +11,9 @@ import (
 func DetectAssetTypeFromPath(path string, content []byte) *asset.Type {
 	lower := strings.ToLower(path)
 
-	// Only handle .md files
+	// Generic single-file detection only handles markdown prompt files.
+	// Client-specific formats, such as Codex agent TOML, are claimed by
+	// the owning client's RuleCapabilities.
 	if !strings.HasSuffix(lower, ".md") {
 		return nil
 	}

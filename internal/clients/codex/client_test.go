@@ -1,6 +1,8 @@
 package codex
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -10,6 +12,8 @@ import (
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/bootstrap"
 	"github.com/sleuth-io/sx/internal/clients"
+	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/metadata"
 )
 
 func TestCodexClient_ID(t *testing.T) {
@@ -36,7 +40,7 @@ func TestCodexClient_SupportsAssetType(t *testing.T) {
 		{asset.TypeSkill, true},
 		{asset.TypeCommand, true},
 		{asset.TypeMCP, true},
-		{asset.TypeAgent, false},
+		{asset.TypeAgent, true},
 		{asset.TypeRule, false},
 		{asset.TypeHook, false},
 		{asset.TypeClaudeCodePlugin, false},
@@ -136,6 +140,15 @@ func TestCodexClient_DetermineTargetBase_RepoScope(t *testing.T) {
 	expected = filepath.Join(repoRoot, ".codex")
 	if target != expected {
 		t.Errorf("Repo command target = %q, want %q", target, expected)
+	}
+
+	// For agents - uses .codex/
+	target, err = client.determineTargetBase(scope, asset.TypeAgent)
+	if err != nil {
+		t.Fatalf("determineTargetBase error: %v", err)
+	}
+	if target != expected {
+		t.Errorf("Repo agent target = %q, want %q", target, expected)
 	}
 }
 
@@ -277,6 +290,24 @@ func TestCodexClient_GetAssetPath_Command(t *testing.T) {
 	}
 }
 
+func TestCodexClient_GetAssetPath_Agent(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	client := NewClient()
+	scope := &clients.InstallScope{Type: clients.ScopeGlobal}
+
+	path, err := client.GetAssetPath(context.Background(), "security_reviewer", asset.TypeAgent, scope)
+	if err != nil {
+		t.Fatalf("GetAssetPath error: %v", err)
+	}
+
+	expected := filepath.Join(tempDir, ".codex", "agents", "security_reviewer.toml")
+	if path != expected {
+		t.Errorf("GetAssetPath(agent) = %q, want %q", path, expected)
+	}
+}
+
 func TestCodexClient_GetAssetPath_UnsupportedType(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
@@ -284,7 +315,7 @@ func TestCodexClient_GetAssetPath_UnsupportedType(t *testing.T) {
 	client := NewClient()
 	scope := &clients.InstallScope{Type: clients.ScopeGlobal}
 
-	_, err := client.GetAssetPath(context.Background(), "my-agent", asset.TypeAgent, scope)
+	_, err := client.GetAssetPath(context.Background(), "my-rule", asset.TypeRule, scope)
 	if err == nil {
 		t.Error("GetAssetPath should error for unsupported type")
 	}
@@ -305,8 +336,194 @@ func TestCodexClient_RuleCapabilities(t *testing.T) {
 	client := NewClient()
 
 	caps := client.RuleCapabilities()
-	if caps != nil {
-		t.Error("RuleCapabilities should be nil - Codex doesn't support rules")
+	if caps == nil {
+		t.Fatal("RuleCapabilities should be non-nil for Codex asset detection")
+	}
+	if caps.ClientName != clients.ClientIDCodex {
+		t.Errorf("ClientName = %q, want %q", caps.ClientName, clients.ClientIDCodex)
+	}
+	if caps.RulesDirectory != "" {
+		t.Errorf("RulesDirectory = %q, want empty", caps.RulesDirectory)
+	}
+	if caps.MatchesPath != nil {
+		t.Error("MatchesPath should be nil - Codex doesn't support rules")
+	}
+	if caps.DetectAssetType == nil {
+		t.Fatal("DetectAssetType should be set")
+	}
+	if got := caps.DetectAssetType("/home/user/.codex/agents/security-reviewer.toml", nil); got == nil || *got != asset.TypeAgent {
+		t.Fatalf("DetectAssetType(.codex/agents/*.toml) = %v, want agent", got)
+	}
+	if got := caps.DetectAssetType("/home/user/agents/security-reviewer.toml", nil); got != nil {
+		t.Fatalf("DetectAssetType(generic agents TOML) = %v, want nil", got)
+	}
+}
+
+func TestCodexClient_InstallAssets_SkipsNonCodexAgentFormats(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	client := NewClient()
+	resp, err := client.InstallAssets(context.Background(), clients.InstallRequest{
+		Scope: &clients.InstallScope{Type: clients.ScopeGlobal},
+		Assets: []*clients.AssetBundle{
+			{
+				Asset: &lockfile.Asset{Name: "markdown-reviewer", Type: asset.TypeAgent},
+				Metadata: &metadata.Metadata{
+					Asset: metadata.Asset{Name: "markdown-reviewer", Type: asset.TypeAgent},
+					Agent: &metadata.AgentConfig{PromptFile: "markdown-reviewer.md"},
+				},
+				ZipData: []byte("not read because install is skipped"),
+			},
+			{
+				Asset: &lockfile.Asset{Name: "missing-agent-config", Type: asset.TypeAgent},
+				Metadata: &metadata.Metadata{
+					Asset: metadata.Asset{Name: "missing-agent-config", Type: asset.TypeAgent},
+				},
+				ZipData: []byte("not read because install is skipped"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("InstallAssets returned error: %v", err)
+	}
+	if len(resp.Results) != 2 {
+		t.Fatalf("got %d results, want 2", len(resp.Results))
+	}
+	for _, result := range resp.Results {
+		if result.Status != clients.StatusSkipped {
+			t.Fatalf("status for %s = %v, want skipped", result.AssetName, result.Status)
+		}
+	}
+
+	for _, name := range []string{"markdown-reviewer.toml", "missing-agent-config.toml"} {
+		path := filepath.Join(tempDir, ".codex", "agents", name)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected %s to be absent, stat err = %v", path, err)
+		}
+	}
+}
+
+func TestCodexClient_InstallAssets_InstallsCodexAgentTOML(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	agentTOML := `name = "security_reviewer"
+description = "Security reviewer"
+developer_instructions = "Review security risks."
+`
+	client := NewClient()
+	resp, err := client.InstallAssets(context.Background(), clients.InstallRequest{
+		Scope: &clients.InstallScope{Type: clients.ScopeGlobal},
+		Assets: []*clients.AssetBundle{
+			{
+				Asset: &lockfile.Asset{Name: "security_reviewer", Type: asset.TypeAgent},
+				Metadata: &metadata.Metadata{
+					Asset: metadata.Asset{Name: "security_reviewer", Type: asset.TypeAgent},
+					Agent: &metadata.AgentConfig{PromptFile: "security_reviewer.toml"},
+				},
+				ZipData: createZip(t, map[string]string{
+					"metadata.toml": `[asset]
+name = "security_reviewer"
+version = "1.0.0"
+type = "agent"
+
+[agent]
+prompt-file = "security_reviewer.toml"
+`,
+					"security_reviewer.toml": agentTOML,
+				}),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("InstallAssets returned error: %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("got %d results, want 1", len(resp.Results))
+	}
+	if resp.Results[0].Status != clients.StatusSuccess {
+		t.Fatalf("status = %v, want success: %v", resp.Results[0].Status, resp.Results[0].Error)
+	}
+
+	installedPath := filepath.Join(tempDir, ".codex", "agents", "security_reviewer.toml")
+	got, err := os.ReadFile(installedPath)
+	if err != nil {
+		t.Fatalf("failed to read installed agent: %v", err)
+	}
+	if string(got) != agentTOML {
+		t.Fatalf("installed TOML = %q, want %q", string(got), agentTOML)
+	}
+}
+
+func TestCodexClient_UninstallAssets_SkipsNonCodexAgentFile(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	agentPath := filepath.Join(tempDir, ".codex", "agents", "markdown-reviewer.toml")
+	if err := os.MkdirAll(filepath.Dir(agentPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("# Markdown agent\n\nThis was not a Codex agent TOML file.")
+	if err := os.WriteFile(agentPath, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	client := NewClient()
+	resp, err := client.UninstallAssets(context.Background(), clients.UninstallRequest{
+		Scope:  &clients.InstallScope{Type: clients.ScopeGlobal},
+		Assets: []asset.Asset{{Name: "markdown-reviewer", Type: asset.TypeAgent}},
+	})
+	if err != nil {
+		t.Fatalf("UninstallAssets returned error: %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("got %d results, want 1", len(resp.Results))
+	}
+	if resp.Results[0].Status != clients.StatusSkipped {
+		t.Fatalf("status = %v, want skipped", resp.Results[0].Status)
+	}
+
+	got, err := os.ReadFile(agentPath)
+	if err != nil {
+		t.Fatalf("failed to read skipped file: %v", err)
+	}
+	if string(got) != string(content) {
+		t.Fatalf("file was modified during skipped uninstall")
+	}
+}
+
+func TestCodexClient_UninstallAssets_RemovesCodexAgentTOML(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	agentPath := filepath.Join(tempDir, ".codex", "agents", "security_reviewer.toml")
+	if err := os.MkdirAll(filepath.Dir(agentPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(agentPath, []byte(`name = "security_reviewer"
+description = "Security reviewer"
+developer_instructions = "Review security risks."
+`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	client := NewClient()
+	resp, err := client.UninstallAssets(context.Background(), clients.UninstallRequest{
+		Scope:  &clients.InstallScope{Type: clients.ScopeGlobal},
+		Assets: []asset.Asset{{Name: "security_reviewer", Type: asset.TypeAgent}},
+	})
+	if err != nil {
+		t.Fatalf("UninstallAssets returned error: %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("got %d results, want 1", len(resp.Results))
+	}
+	if resp.Results[0].Status != clients.StatusSuccess {
+		t.Fatalf("status = %v, want success", resp.Results[0].Status)
+	}
+	if _, err := os.Stat(agentPath); !os.IsNotExist(err) {
+		t.Fatalf("agent file still exists after uninstall, stat err = %v", err)
 	}
 }
 
@@ -392,4 +609,24 @@ command = "/usr/bin/test"
 	if strings.Contains(string(content), "test-server") {
 		t.Error("test-server should be removed from config.toml")
 	}
+}
+
+func createZip(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+
+	buf := new(bytes.Buffer)
+	writer := zip.NewWriter(buf)
+	for name, content := range files {
+		entry, err := writer.Create(name)
+		if err != nil {
+			t.Fatalf("failed to create zip entry %q: %v", name, err)
+		}
+		if _, err := entry.Write([]byte(content)); err != nil {
+			t.Fatalf("failed to write zip entry %q: %v", name, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("failed to close zip writer: %v", err)
+	}
+	return buf.Bytes()
 }

@@ -10,5 +10,6 @@ const (
 	// Asset subdirectories
 	DirSkills     = "skills"
 	DirCommands   = "commands"
+	DirAgents     = "agents"
 	DirMCPServers = "mcp-servers"
 )

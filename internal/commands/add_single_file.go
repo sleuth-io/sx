@@ -1,10 +1,13 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/clients"
@@ -36,11 +39,81 @@ func createZipFromSingleFile(filePath string) ([]byte, error) {
 	switch *detectedType {
 	case asset.TypeRule:
 		return createZipFromRuleFile(filePath)
-	case asset.TypeAgent, asset.TypeCommand, asset.TypeSkill:
+	case asset.TypeAgent:
+		if strings.EqualFold(filepath.Ext(filePath), ".toml") {
+			return createZipFromCodexAgentContent(filePath, content)
+		}
+		return createZipFromPromptFile(filePath, *detectedType, content)
+	case asset.TypeCommand, asset.TypeSkill:
 		return createZipFromPromptFile(filePath, *detectedType, content)
 	default:
 		return nil, fmt.Errorf("unsupported asset type: %s", detectedType.Label)
 	}
+}
+
+type codexAgentDefinition struct {
+	Name                  string `toml:"name"`
+	Description           string `toml:"description"`
+	DeveloperInstructions string `toml:"developer_instructions"`
+}
+
+func createZipFromCodexAgentContent(source string, content []byte) ([]byte, error) {
+	var def codexAgentDefinition
+	if err := toml.Unmarshal(content, &def); err != nil {
+		return nil, fmt.Errorf("failed to parse Codex agent TOML: %w", err)
+	}
+
+	def.Name = strings.TrimSpace(def.Name)
+	def.Description = strings.TrimSpace(def.Description)
+	def.DeveloperInstructions = strings.TrimSpace(def.DeveloperInstructions)
+
+	if def.Name == "" {
+		return nil, fmt.Errorf("codex agent TOML %s is missing required field: name", source)
+	}
+	if def.Description == "" {
+		return nil, fmt.Errorf("codex agent TOML %s is missing required field: description", source)
+	}
+	if def.DeveloperInstructions == "" {
+		return nil, fmt.Errorf("codex agent TOML %s is missing required field: developer_instructions", source)
+	}
+	if err := validateCodexAgentName(def.Name); err != nil {
+		return nil, fmt.Errorf("codex agent TOML %s has invalid name %q: %w", source, def.Name, err)
+	}
+
+	promptFileName := def.Name + ".toml"
+	zipData, err := utils.CreateZipFromContent(promptFileName, content)
+	if err != nil {
+		return nil, err
+	}
+
+	meta := &metadata.Metadata{
+		MetadataVersion: "1.0",
+		Asset: metadata.Asset{
+			Name:        def.Name,
+			Type:        asset.TypeAgent,
+			Version:     "1.0",
+			Description: def.Description,
+			Clients:     []string{clients.ClientIDCodex},
+		},
+		Agent: &metadata.AgentConfig{PromptFile: promptFileName},
+	}
+
+	metaBytes, err := metadata.Marshal(meta)
+	if err != nil {
+		return nil, err
+	}
+
+	return utils.AddFileToZip(zipData, "metadata.toml", metaBytes)
+}
+
+func validateCodexAgentName(name string) error {
+	if strings.ContainsAny(name, `/\`) {
+		return errors.New("must not contain path separators")
+	}
+	if strings.Contains(name, "..") {
+		return errors.New("must not contain '..'")
+	}
+	return nil
 }
 
 // createZipFromPromptFile creates a zip for agent/command/skill files

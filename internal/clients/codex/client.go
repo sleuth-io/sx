@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/bootstrap"
@@ -30,6 +31,7 @@ func NewClient() *Client {
 			[]asset.Type{
 				asset.TypeSkill,
 				asset.TypeCommand,
+				asset.TypeAgent,
 				asset.TypeMCP,
 			},
 		),
@@ -98,6 +100,15 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeCommand:
 			handler := handlers.NewCommandHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
+		case asset.TypeAgent:
+			if !isCodexAgentMetadata(bundle.Metadata) {
+				result.Status = clients.StatusSkipped
+				result.Message = "Skipped non-Codex agent format"
+				resp.Results = append(resp.Results, result)
+				continue
+			}
+			handler := handlers.NewAgentHandler(bundle.Metadata)
+			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
 		case asset.TypeMCP:
 			handler := handlers.NewMCPHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
@@ -157,6 +168,22 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 		case asset.TypeCommand:
 			handler := handlers.NewCommandHandler(meta)
 			uninstallErr = handler.Remove(ctx, targetBase)
+		case asset.TypeAgent:
+			handler := handlers.NewAgentHandler(meta)
+			state, err := handler.InstalledCodexAgentState(targetBase)
+			if err != nil {
+				result.Status = clients.StatusFailed
+				result.Error = err
+				resp.Results = append(resp.Results, result)
+				continue
+			}
+			if state == "invalid" {
+				result.Status = clients.StatusSkipped
+				result.Message = "Skipped non-Codex agent format"
+				resp.Results = append(resp.Results, result)
+				continue
+			}
+			uninstallErr = handler.Remove(ctx, targetBase)
 		case asset.TypeMCP:
 			handler := handlers.NewMCPHandler(meta)
 			uninstallErr = handler.Remove(ctx, targetBase)
@@ -179,6 +206,13 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 	}
 
 	return resp, nil
+}
+
+func isCodexAgentMetadata(meta *metadata.Metadata) bool {
+	if meta == nil || meta.Agent == nil {
+		return false
+	}
+	return strings.EqualFold(filepath.Ext(meta.Agent.PromptFile), ".toml")
 }
 
 // determineTargetBase returns the installation directory based on scope and asset type.
@@ -475,6 +509,8 @@ func (c *Client) GetAssetPath(ctx context.Context, name string, assetType asset.
 		return filepath.Join(targetBase, handlers.DirSkills, name), nil
 	case asset.TypeCommand:
 		return filepath.Join(targetBase, handlers.DirCommands, name+".md"), nil
+	case asset.TypeAgent:
+		return filepath.Join(targetBase, handlers.DirAgents, name+".toml"), nil
 	case asset.TypeMCP:
 		return filepath.Join(targetBase, handlers.DirMCPServers, name), nil
 	default:
