@@ -164,6 +164,20 @@ resolution rules. File-based vaults (path/git) treat bots as
 identity-only — there are no API keys stored in the manifest. Sleuth
 vaults issue real OAuth tokens via `sx bot key create`.
 
+## `[org]` — vault governance
+
+Optional. Holds the **org-admins** list — the file-vault stand-in for an org
+admin. When non-empty, the vault is "governed": only org-admins may set broad
+scopes (org/repo/path/bot) and change this list. Empty/absent = ungoverned
+(anyone can set any scope). See [rbac.md](rbac.md).
+
+```toml
+[org]
+admins = ["alice@acme.com", "bob@acme.com"]
+```
+
+Manage it with `sx org admin add|list|remove`.
+
 ## Mutation semantics
 
 * Every CLI that mutates the manifest reads the file, applies the change,

@@ -88,6 +88,18 @@ type Manifest struct {
 	// member does) and can also be a direct install target via
 	// ScopeKindBot.
 	Bots []Bot `toml:"bots,omitempty"`
+
+	// Org holds vault-level governance. When Org.Admins is non-empty the
+	// vault is "governed": only org-admins may set broad scopes and change
+	// the admin list. Nil/empty = ungoverned. See docs/rbac.md.
+	Org *Org `toml:"org,omitempty"`
+}
+
+// Org is vault-level governance configuration.
+type Org struct {
+	// Admins is the set of org-admin emails — the file-vault stand-in for
+	// skills.new's org admin / asset-manager role. Empty = ungoverned.
+	Admins []string `toml:"admins,omitempty"`
 }
 
 // Asset is one managed asset: its identity, source, and install scopes.
@@ -389,6 +401,63 @@ func (m *Manifest) RemoveAsset(name, version string) int {
 // NormalizeEmail lowercases and trims an email for comparison and storage.
 func NormalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// OrgAdmins returns the configured org-admin emails (nil-safe).
+func (m *Manifest) OrgAdmins() []string {
+	if m.Org == nil {
+		return nil
+	}
+	return m.Org.Admins
+}
+
+// HasOrgAdmins reports whether the vault is governed (has any org-admin).
+func (m *Manifest) HasOrgAdmins() bool {
+	return len(m.OrgAdmins()) > 0
+}
+
+// IsOrgAdmin reports whether email is an org-admin.
+func (m *Manifest) IsOrgAdmin(email string) bool {
+	needle := NormalizeEmail(email)
+	if needle == "" {
+		return false
+	}
+	return slices.Contains(m.OrgAdmins(), needle)
+}
+
+// AddOrgAdmins adds the given emails to the org-admin list (normalized,
+// deduped, sorted). Returns how many were newly added.
+func (m *Manifest) AddOrgAdmins(emails ...string) int {
+	if m.Org == nil {
+		m.Org = &Org{}
+	}
+	before := len(m.Org.Admins)
+	m.Org.Admins = dedupeSorted(append(m.Org.Admins, normalizeEmails(emails)...))
+	return len(m.Org.Admins) - before
+}
+
+// RemoveOrgAdmin removes email from the org-admin list. Returns true if it
+// was present. Clears the Org table entirely once the last admin is removed,
+// returning the vault to ungoverned.
+func (m *Manifest) RemoveOrgAdmin(email string) bool {
+	if m.Org == nil {
+		return false
+	}
+	needle := NormalizeEmail(email)
+	kept := m.Org.Admins[:0]
+	removed := false
+	for _, a := range m.Org.Admins {
+		if a == needle {
+			removed = true
+			continue
+		}
+		kept = append(kept, a)
+	}
+	m.Org.Admins = kept
+	if len(m.Org.Admins) == 0 {
+		m.Org = nil
+	}
+	return removed
 }
 
 // normalizeTeamInPlace trims and deduplicates a team's string slices. The

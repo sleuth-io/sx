@@ -47,6 +47,9 @@ const (
 	EventInstallSet     = "install.set"
 	EventInstallCleared = "install.cleared"
 	EventInstallRemoved = "install.removed"
+
+	EventOrgAdminAdded   = "org.admin_added"
+	EventOrgAdminRemoved = "org.admin_removed"
 )
 
 // Audit target type constants.
@@ -55,6 +58,7 @@ const (
 	TargetTypeBot          = "bot"
 	TargetTypeAsset        = "asset"
 	TargetTypeInstallation = "installation"
+	TargetTypeOrg          = "org"
 )
 
 // AuditEvent is a single row in .sx/audit/YYYY-MM.jsonl.

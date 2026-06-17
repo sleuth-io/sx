@@ -150,7 +150,7 @@ func promptForRepositoriesWithUI(assetName, version string, current []vault.Inst
 	case "modify": // Add/modify scopes
 		// Identity scopes (team/user/bot) are only offered when the vault can
 		// persist them — i.e. it implements the bulk SetAssetInstallations
-		// setter (the Sleuth/skills.io vault). File-backed vaults stay
+		// setter (the Sleuth/skills.new vault). File-backed vaults stay
 		// repo/path-only.
 		_, allowIdentity := v.(installSetter)
 		working, added, removed, err := modifyScopes(current, allowIdentity, styledOut, ioc)

@@ -228,6 +228,7 @@ Use "{{muted (printf "%s [command] --help" .CommandPath)}}" for more information
 	rootCmd.AddCommand(commands.NewRoleCommand())
 	rootCmd.AddCommand(commands.NewTeamCommand())
 	rootCmd.AddCommand(commands.NewBotCommand())
+	rootCmd.AddCommand(commands.NewOrgCommand())
 	rootCmd.AddCommand(commands.NewStatsCommand())
 	rootCmd.AddCommand(commands.NewAuditCommand())
 	rootCmd.AddCommand(commands.NewCloudCommand())
