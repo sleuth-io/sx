@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -143,8 +144,8 @@ func TestRepro_NonAdminCannotAddTeamScope_GitVault(t *testing.T) {
 	t.Logf("updateLockFile err = %v\noutput:\n%s", applyErr, buf.String())
 
 	remoteToml := gitOutRepro(t, bare, "show", "main:sx.toml")
-	if bytes.Contains([]byte(remoteToml), []byte("platform")) &&
-		bytes.Contains([]byte(remoteToml), []byte(`kind = "team"`)) {
+	if strings.Contains(remoteToml, "platform") &&
+		strings.Contains(remoteToml, `kind = "team"`) {
 		t.Fatalf("BUG REPRODUCED: non-admin added team scope on git vault; remote sx.toml:\n%s", remoteToml)
 	}
 }
