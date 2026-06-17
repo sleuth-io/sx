@@ -171,6 +171,92 @@ func TestResolveMarketplacePluginPathFromFile(t *testing.T) {
 		}
 	})
 
+	t.Run("found plugin via object source", func(t *testing.T) {
+		// marketplace.json where the plugin's source is an object form:
+		// {"source": "local", "path": "./pkg"} rather than a bare string.
+		objMarketDir := filepath.Join(tmpDir, "object-source-market")
+		claudePluginDir := filepath.Join(objMarketDir, ".claude-plugin")
+		if err := os.MkdirAll(claudePluginDir, 0755); err != nil {
+			t.Fatalf("failed to create .claude-plugin dir: %v", err)
+		}
+		pluginDir := filepath.Join(objMarketDir, "pkg")
+		if err := os.MkdirAll(pluginDir, 0755); err != nil {
+			t.Fatalf("failed to create plugin dir: %v", err)
+		}
+		marketplaceJSON := `{
+			"name": "object-source-market",
+			"plugins": [
+				{"name": "obj-plugin", "source": {"source": "local", "path": "./pkg"}}
+			]
+		}`
+		if err := os.WriteFile(filepath.Join(claudePluginDir, "marketplace.json"), []byte(marketplaceJSON), 0644); err != nil {
+			t.Fatalf("failed to write marketplace.json: %v", err)
+		}
+
+		markets := map[string]any{
+			"my-market":            map[string]any{"installLocation": marketplaceDir},
+			"object-source-market": map[string]any{"installLocation": objMarketDir},
+		}
+		data, _ := json.Marshal(markets)
+		if err := os.WriteFile(knownMarketsPath, data, 0644); err != nil {
+			t.Fatalf("failed to write known_marketplaces.json: %v", err)
+		}
+
+		path, err := ResolveMarketplacePluginPathFromFile(knownMarketsPath, "object-source-market", "obj-plugin")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if path != pluginDir {
+			t.Errorf("expected %q, got %q", pluginDir, path)
+		}
+	})
+
+	t.Run("non-local object source falls back to directory search", func(t *testing.T) {
+		// A github-sourced plugin object doesn't resolve to a path inside the
+		// marketplace dir; resolution must not crash on the object and should
+		// fall through to the plugins/ directory search.
+		ghMarketDir := filepath.Join(tmpDir, "github-source-market")
+		claudePluginDir := filepath.Join(ghMarketDir, ".claude-plugin")
+		if err := os.MkdirAll(claudePluginDir, 0755); err != nil {
+			t.Fatalf("failed to create .claude-plugin dir: %v", err)
+		}
+		// The plugin actually lives under plugins/<name>.
+		fallbackDir := filepath.Join(ghMarketDir, "plugins", "gh-plugin", ".claude-plugin")
+		if err := os.MkdirAll(fallbackDir, 0755); err != nil {
+			t.Fatalf("failed to create fallback dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(fallbackDir, "plugin.json"), []byte(`{}`), 0644); err != nil {
+			t.Fatalf("failed to write plugin.json: %v", err)
+		}
+		marketplaceJSON := `{
+			"name": "github-source-market",
+			"plugins": [
+				{"name": "gh-plugin", "source": {"source": "github", "repo": "org/gh-plugin"}}
+			]
+		}`
+		if err := os.WriteFile(filepath.Join(claudePluginDir, "marketplace.json"), []byte(marketplaceJSON), 0644); err != nil {
+			t.Fatalf("failed to write marketplace.json: %v", err)
+		}
+
+		markets := map[string]any{
+			"my-market":            map[string]any{"installLocation": marketplaceDir},
+			"github-source-market": map[string]any{"installLocation": ghMarketDir},
+		}
+		data, _ := json.Marshal(markets)
+		if err := os.WriteFile(knownMarketsPath, data, 0644); err != nil {
+			t.Fatalf("failed to write known_marketplaces.json: %v", err)
+		}
+
+		path, err := ResolveMarketplacePluginPathFromFile(knownMarketsPath, "github-source-market", "gh-plugin")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := filepath.Join(ghMarketDir, "plugins", "gh-plugin")
+		if path != expected {
+			t.Errorf("expected fallback %q, got %q", expected, path)
+		}
+	})
+
 	t.Run("plugins dir takes precedence over external_plugins", func(t *testing.T) {
 		// Create plugin in both plugins/ and external_plugins/
 		for _, subdir := range []string{"plugins", "external_plugins"} {
