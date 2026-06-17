@@ -401,6 +401,41 @@ func ResolveMarketplacePluginPath(marketplaceName, pluginName string) (string, e
 	return ResolveMarketplacePluginPathFromFile(knownMarketsPath, marketplaceName, pluginName)
 }
 
+// pluginSourceLocalPath extracts a marketplace-relative directory path from a
+// plugin's "source" field in marketplace.json. The field may be either:
+//
+//   - a string: a relative path, e.g. "./" or "./plugins/foo"
+//   - an object: {"source": "local", "path": "./plugins/foo"} (plus the
+//     "github"/"git" variants, which point outside the marketplace dir)
+//
+// It returns the relative path for the string form and for local object
+// sources, or "" for non-local object sources (github/git) and anything it
+// can't interpret, signalling the caller to fall back to its directory search.
+func pluginSourceLocalPath(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	// String form.
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	// Object form.
+	var obj struct {
+		Source string `json:"source"`
+		Path   string `json:"path"`
+	}
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return ""
+	}
+	// Only local object sources resolve to a path inside the marketplace dir;
+	// treat a bare {"path": ...} (no source type) as local too.
+	if obj.Source == "" || strings.EqualFold(obj.Source, "local") {
+		return obj.Path
+	}
+	return ""
+}
+
 // ResolveMarketplacePluginPathFromFile looks up a plugin using a specific known_marketplaces.json path.
 // The marketplaceName must be the resolved name (as registered in known_marketplaces.json).
 func ResolveMarketplacePluginPathFromFile(knownMarketsPath, marketplaceName, pluginName string) (string, error) {
@@ -434,23 +469,32 @@ func ResolveMarketplacePluginPathFromFile(knownMarketsPath, marketplaceName, plu
 	if mjData, err := os.ReadFile(marketplaceJSONPath); err == nil {
 		var mj struct {
 			Plugins []struct {
-				Name   string `json:"name"`
-				Source string `json:"source"`
+				Name string `json:"name"`
+				// Source may be a string (relative path) or an object
+				// ({"source": "local"|"github"|"git", ...}); parse it lazily.
+				Source json.RawMessage `json:"source"`
 			} `json:"plugins"`
 		}
 		if err := json.Unmarshal(mjData, &mj); err != nil {
 			fmt.Fprintf(os.Stderr, "  ⚠ Failed to parse marketplace.json: %v\n", err)
 		} else {
 			for _, p := range mj.Plugins {
-				if p.Name == pluginName {
-					resolved := filepath.Join(marketplace.InstallLocation, p.Source)
-					// Ensure resolved path stays within the marketplace directory
-					if !strings.HasPrefix(resolved+string(filepath.Separator), marketplace.InstallLocation+string(filepath.Separator)) {
-						continue
-					}
-					if utils.IsDirectory(resolved) {
-						return resolved, nil
-					}
+				if p.Name != pluginName {
+					continue
+				}
+				relPath := pluginSourceLocalPath(p.Source)
+				if relPath == "" {
+					// Non-local source (github/git) or uninterpretable;
+					// fall back to the standard directory search below.
+					continue
+				}
+				resolved := filepath.Join(marketplace.InstallLocation, relPath)
+				// Ensure resolved path stays within the marketplace directory
+				if !strings.HasPrefix(resolved+string(filepath.Separator), marketplace.InstallLocation+string(filepath.Separator)) {
+					continue
+				}
+				if utils.IsDirectory(resolved) {
+					return resolved, nil
 				}
 			}
 		}
