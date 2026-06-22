@@ -92,8 +92,10 @@ func TestAddPR_OpenPRWhenDenied_Yes(t *testing.T) {
 		t.Fatalf("sx add (PR yes) should succeed, got: %v", err)
 	}
 
-	// The new version must be committed on the PR branch...
-	branch := "sx/add-my-skill-1.1.0"
+	// The new version must be committed on the PR branch. The branch name carries
+	// a random uniqueness suffix (sx/add-my-skill-1.1.0-<hex>), so resolve it by
+	// prefix rather than asserting an exact name.
+	branch := findRemoteBranchE2E(t, bare, "sx/add-my-skill-1.1.0-")
 	got := gitOutE2E(t, "", "--git-dir", bare, "show", branch+":assets/my-skill/1.1.0/metadata.toml")
 	if !strings.Contains(got, `version = "1.1.0"`) {
 		t.Fatalf("expected my-skill@1.1.0 on branch %s, got:\n%s", branch, got)
@@ -133,4 +135,22 @@ func TestAddPR_OpenPRWhenDenied_No(t *testing.T) {
 	if strings.Contains(branches, "sx/add-my-skill") {
 		t.Fatalf("declining the PR must push no branch, found:\n%s", branches)
 	}
+}
+
+// findRemoteBranchE2E returns the single branch in the bare repo whose name
+// starts with prefix, failing if zero or more than one match. PR branches carry
+// a random suffix, so tests resolve them by prefix instead of an exact name.
+func findRemoteBranchE2E(t *testing.T, bare, prefix string) string {
+	t.Helper()
+	out := gitOutE2E(t, "", "--git-dir", bare, "branch", "--list", prefix+"*", "--format=%(refname:short)")
+	var matches []string
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		if b := strings.TrimSpace(line); b != "" {
+			matches = append(matches, b)
+		}
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected exactly one branch with prefix %q, found %v", prefix, matches)
+	}
+	return matches[0]
 }

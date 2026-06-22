@@ -35,6 +35,10 @@ func enforceAssetEditPermission(ctx context.Context, v vaultpkg.Vault, name stri
 type prVault interface {
 	StartPRBranch(ctx context.Context, branch string) error
 	FinishPRBranch(ctx context.Context, title, body string) (vaultpkg.PRResult, error)
+	// AbortPRBranch restores the clone to its base branch and clears PR mode
+	// without pushing. The caller defers it so a failure between StartPRBranch
+	// and FinishPRBranch can't leave the shared clone stuck on the PR branch.
+	AbortPRBranch(ctx context.Context) error
 }
 
 // currentInstallReader is implemented by vaults that can report an asset's

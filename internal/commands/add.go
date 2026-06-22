@@ -2,6 +2,8 @@ package commands
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -696,6 +698,16 @@ func addViaPullRequest(ctx context.Context, out *outputHelper, status *component
 		return fmt.Errorf("failed to start PR branch: %w", err)
 	}
 
+	// FinishPRBranch restores the clone to its base branch itself; this defer
+	// covers every earlier exit (a failed AddAsset, a cancelled context) so the
+	// shared clone is never left stranded on the PR branch with a local commit.
+	finished := false
+	defer func() {
+		if !finished {
+			_ = prv.AbortPRBranch(ctx)
+		}
+	}()
+
 	out.println()
 	status.Start("Preparing pull request")
 	if err := vault.AddAsset(ctx, lockAsset, zipData); err != nil {
@@ -706,6 +718,7 @@ func addViaPullRequest(ctx context.Context, out *outputHelper, status *component
 	title := fmt.Sprintf("Add %s %s", lockAsset.Name, lockAsset.Version)
 	body := fmt.Sprintf("Adds %s@%s via `sx add`.", lockAsset.Name, lockAsset.Version)
 	res, err := prv.FinishPRBranch(ctx, title, body)
+	finished = true // FinishPRBranch owns the restore from here, even on error.
 	if err != nil {
 		status.Fail("Failed to open pull request")
 		return fmt.Errorf("failed to open pull request: %w", err)
@@ -737,9 +750,24 @@ func addViaPullRequest(ctx context.Context, out *outputHelper, status *component
 }
 
 // prBranchName builds a filesystem- and git-safe branch name for an add PR, e.g.
-// "sx/add-my-skill-1.2.0".
+// "sx/add-my-skill-1.2.0-a1b2c3". The random suffix keeps the branch unique per
+// attempt: two people adding the same asset/version — or one person retrying —
+// each get their own branch, so FinishPRBranch never has to force-push and can't
+// clobber a branch (or open PR) someone else already pushed. See docs/rbac.md.
 func prBranchName(name, version string) string {
-	return "sx/add-" + sanitizeBranchComponent(name) + "-" + sanitizeBranchComponent(version)
+	return "sx/add-" + sanitizeBranchComponent(name) + "-" + sanitizeBranchComponent(version) + "-" + randomBranchSuffix()
+}
+
+// randomBranchSuffix returns a short hex token used to make PR branch names
+// unique. It falls back to a fixed token only if the system RNG is unavailable,
+// which is vanishingly unlikely; even then the non-forcing push simply fails
+// loudly on a collision rather than overwriting anything.
+func randomBranchSuffix() string {
+	var b [3]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "branch"
+	}
+	return hex.EncodeToString(b[:])
 }
 
 // sanitizeBranchComponent keeps git-ref-safe characters and replaces the rest

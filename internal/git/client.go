@@ -268,9 +268,13 @@ func (c *Client) Push(ctx context.Context, repoPath string) error {
 	return nil
 }
 
-// PushSetUpstream pushes and sets the upstream tracking branch (for first push to empty repos)
+// PushSetUpstream pushes a branch and sets its upstream tracking ref. Used for
+// the first push to an empty repo and for the (uniquely named, never-preexisting)
+// PR branch — neither needs --force, so this is a plain non-forcing push and must
+// stay that way; force-pushing here would let a caller silently clobber a remote
+// branch that already exists.
 func (c *Client) PushSetUpstream(ctx context.Context, repoPath, branch string) error {
-	cmd := c.command(ctx, "push", "--quiet", "--force", "-u", "origin", branch)
+	cmd := c.command(ctx, "push", "--quiet", "-u", "origin", branch)
 	cmd.Dir = repoPath
 
 	output, err := cmd.CombinedOutput()
@@ -386,6 +390,24 @@ func (c *Client) GetCurrentBranchSymbolic(ctx context.Context, repoPath string) 
 	}
 
 	return strings.TrimSpace(string(output)), nil
+}
+
+// GetDefaultBranch returns the remote's default branch (e.g. "main") by reading
+// the origin/HEAD symbolic ref that `git clone` records. Use this instead of the
+// clone's current HEAD when you need the repo's real base branch: the cached
+// clone is long-lived and may be left checked out on some other branch.
+func (c *Client) GetDefaultBranch(ctx context.Context, repoPath string) (string, error) {
+	cmd := c.command(ctx, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("git symbolic-ref refs/remotes/origin/HEAD failed: %w\nOutput: %s", err, string(output))
+	}
+
+	// "origin/main" -> "main"
+	ref := strings.TrimSpace(string(output))
+	return strings.TrimPrefix(ref, "origin/"), nil
 }
 
 // CheckoutNewBranch creates and switches to a new branch

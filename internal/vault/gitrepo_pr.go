@@ -27,9 +27,17 @@ func (g *GitVault) StartPRBranch(ctx context.Context, branch string) error {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
 
-	base, err := g.gitClient.GetCurrentBranch(ctx, g.repoPath)
+	// Resolve the base from the remote's default branch, not the clone's current
+	// HEAD: this clone is a long-lived cache that may have been left on some other
+	// branch, and opening the PR against that would target the wrong base.
+	base, err := g.gitClient.GetDefaultBranch(ctx, g.repoPath)
 	if err != nil {
 		return fmt.Errorf("failed to determine base branch: %w", err)
+	}
+
+	// Start the PR branch from a clean base so it never inherits a leftover branch.
+	if err := g.gitClient.Checkout(ctx, g.repoPath, base); err != nil {
+		return fmt.Errorf("failed to check out base branch %q: %w", base, err)
 	}
 
 	if err := g.gitClient.CheckoutNewBranchForce(ctx, g.repoPath, branch); err != nil {
@@ -38,6 +46,35 @@ func (g *GitVault) StartPRBranch(ctx context.Context, branch string) error {
 
 	g.prBranch = branch
 	g.prBaseBranch = base
+	return nil
+}
+
+// AbortPRBranch tears down PR mode without pushing: it clears the in-memory PR
+// state and restores the cached clone to its base branch, discarding any
+// uncommitted PR changes. It's the cleanup path for a PR add that failed after
+// StartPRBranch but before FinishPRBranch — without it the persistent clone is
+// left checked out on the PR branch (with a local-only commit), which a later
+// cloneOrUpdate would then read from. Safe to call when PR mode isn't active.
+func (g *GitVault) AbortPRBranch(ctx context.Context) error {
+	fileLock, err := g.acquireFileLock(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	defer func() { _ = fileLock.Unlock() }()
+
+	base := g.prBaseBranch
+	g.prBranch = ""
+	g.prBaseBranch = ""
+	if base == "" {
+		return nil
+	}
+
+	// Discard the staged/working PR changes before switching back, so a dirty
+	// tree from the failed add doesn't block (or follow us onto) the base branch.
+	_ = g.gitClient.Reset(ctx, g.repoPath, "hard", "HEAD")
+	if err := g.gitClient.Checkout(ctx, g.repoPath, base); err != nil {
+		return fmt.Errorf("failed to restore base branch: %w", err)
+	}
 	return nil
 }
 
