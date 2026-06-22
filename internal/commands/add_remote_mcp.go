@@ -97,14 +97,20 @@ func addRemoteMCP(ctx context.Context, cmd *cobra.Command, out *outputHelper, st
 	}
 
 	var addErr error
+	prOpened := false
 	if contentsIdentical {
 		addErr = handleIdenticalAsset(ctx, out, status, vault, name, version, asset.TypeMCP, opts)
 	} else {
-		addErr = addNewAsset(ctx, out, status, vault, name, asset.TypeMCP, version, rawURL, zipData, true, opts)
+		prOpened, addErr = addNewAsset(ctx, out, status, vault, name, asset.TypeMCP, version, rawURL, zipData, true, opts)
 	}
 
 	if addErr != nil {
 		return addErr
+	}
+
+	// A PR was opened instead of a direct publish — nothing to install yet.
+	if prOpened {
+		return nil
 	}
 
 	// Handle install: auto-run if --yes, prompt if interactive, skip if --no-install

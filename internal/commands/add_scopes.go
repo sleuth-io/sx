@@ -27,6 +27,20 @@ func enforceAssetEditPermission(ctx context.Context, v vaultpkg.Vault, name stri
 	return nil
 }
 
+// prVault is implemented by file-backed vaults that can stage an add on a branch
+// and open a pull request for it. It's the fallback `sx add` offers when the
+// caller is blocked by the RBAC edit gate (see docs/rbac.md): StartPRBranch
+// diverts subsequent commits onto a branch, and FinishPRBranch pushes that branch
+// and opens the PR, returning its URL. Only the git vault implements this.
+type prVault interface {
+	StartPRBranch(ctx context.Context, branch string) error
+	FinishPRBranch(ctx context.Context, title, body string) (vaultpkg.PRResult, error)
+	// AbortPRBranch restores the clone to its base branch and clears PR mode
+	// without pushing. The caller defers it so a failure between StartPRBranch
+	// and FinishPRBranch can't leave the shared clone stuck on the PR branch.
+	AbortPRBranch(ctx context.Context) error
+}
+
 // currentInstallReader is implemented by vaults that can report an asset's
 // complete, kind-aware installation set (repo/path/team/user/bot/org) including
 // the server entity GIDs. The Sleuth/skills.new vault answers this from the

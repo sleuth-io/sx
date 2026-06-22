@@ -268,7 +268,11 @@ func (c *Client) Push(ctx context.Context, repoPath string) error {
 	return nil
 }
 
-// PushSetUpstream pushes and sets the upstream tracking branch (for first push to empty repos)
+// PushSetUpstream pushes a branch and sets its upstream tracking ref. Used for
+// the first push to an empty repo and for the (uniquely named, never-preexisting)
+// PR branch — neither needs --force, so this is a plain non-forcing push and must
+// stay that way; force-pushing here would let a caller silently clobber a remote
+// branch that already exists.
 func (c *Client) PushSetUpstream(ctx context.Context, repoPath, branch string) error {
 	cmd := c.command(ctx, "push", "--quiet", "-u", "origin", branch)
 	cmd.Dir = repoPath
@@ -388,6 +392,24 @@ func (c *Client) GetCurrentBranchSymbolic(ctx context.Context, repoPath string) 
 	return strings.TrimSpace(string(output)), nil
 }
 
+// GetDefaultBranch returns the remote's default branch (e.g. "main") by reading
+// the origin/HEAD symbolic ref that `git clone` records. Use this instead of the
+// clone's current HEAD when you need the repo's real base branch: the cached
+// clone is long-lived and may be left checked out on some other branch.
+func (c *Client) GetDefaultBranch(ctx context.Context, repoPath string) (string, error) {
+	cmd := c.command(ctx, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("git symbolic-ref refs/remotes/origin/HEAD failed: %w\nOutput: %s", err, string(output))
+	}
+
+	// "origin/main" -> "main"
+	ref := strings.TrimSpace(string(output))
+	return strings.TrimPrefix(ref, "origin/"), nil
+}
+
 // CheckoutNewBranch creates and switches to a new branch
 func (c *Client) CheckoutNewBranch(ctx context.Context, repoPath, branch string) error {
 	cmd := c.command(ctx, "checkout", "-b", branch)
@@ -396,6 +418,23 @@ func (c *Client) CheckoutNewBranch(ctx context.Context, repoPath, branch string)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git checkout -b failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// CheckoutNewBranchForce creates (or resets, if it already exists) a branch at
+// the current HEAD and switches to it. Unlike CheckoutNewBranch it does not fail
+// when the branch name is already present locally — important for the cached
+// vault clone, which is reused across runs and may carry a leftover branch from
+// a previous attempt.
+func (c *Client) CheckoutNewBranchForce(ctx context.Context, repoPath, branch string) error {
+	cmd := c.command(ctx, "checkout", "-B", branch)
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git checkout -B failed: %w\nOutput: %s", err, string(output))
 	}
 
 	return nil

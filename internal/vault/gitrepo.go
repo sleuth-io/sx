@@ -60,6 +60,14 @@ type GitVault struct {
 	// every subsequent caller.
 	syncMu    sync.Mutex
 	hasSynced bool
+
+	// prBranch is set by StartPRBranch when the caller lacks RBAC permission to
+	// publish directly and has opted to open a pull request instead. While it is
+	// non-empty, commitAndPush commits to the working clone but does NOT push —
+	// FinishPRBranch performs the single branch push and opens the PR. prBaseBranch
+	// records the branch to restore the clone to afterwards. See gitrepo_pr.go.
+	prBranch     string
+	prBaseBranch string
 }
 
 type GitVaultOption func(*gitVaultOptions)
@@ -654,6 +662,12 @@ func (g *GitVault) commitAndPush(ctx context.Context, asset *lockfile.Asset) err
 	commitMsg := fmt.Sprintf("Add %s %s", asset.Name, asset.Version)
 	if err := g.gitClient.Commit(ctx, g.repoPath, commitMsg); err != nil {
 		return err
+	}
+
+	// PR mode: the commit stays local on the PR branch; FinishPRBranch pushes it
+	// once and opens the pull request. Skip the direct push to the base branch.
+	if g.prBranch != "" {
+		return nil
 	}
 
 	// Push — first commit on empty repo needs to set upstream

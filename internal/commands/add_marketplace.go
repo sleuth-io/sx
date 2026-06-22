@@ -264,14 +264,20 @@ func runAddWithZipData(ctx context.Context, cmd *cobra.Command, out *outputHelpe
 	}
 
 	var addErr error
+	prOpened := false
 	if contentsIdentical {
 		addErr = handleIdenticalAsset(ctx, out, status, vault, name, version, assetType, opts)
 	} else {
-		addErr = addNewAsset(ctx, out, status, vault, name, assetType, version, sourcePath, zipData, metadataExists, opts)
+		prOpened, addErr = addNewAsset(ctx, out, status, vault, name, assetType, version, sourcePath, zipData, metadataExists, opts)
 	}
 
 	if addErr != nil {
 		return addErr
+	}
+
+	// A PR was opened instead of a direct publish — nothing to install yet.
+	if prOpened {
+		return nil
 	}
 
 	if promptInstall {
