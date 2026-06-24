@@ -11,6 +11,87 @@ import (
 	"github.com/Khan/genqlient/graphql"
 )
 
+// AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutation includes the requested fields of the GraphQL type AddAssetPullRequestFileChangeMutation.
+// The GraphQL type's documentation follows.
+//
+// Add or update a file change in a pull request.
+type AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutation struct {
+	Success bool                                                                                                             `json:"success"`
+	Errors  []AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutationErrorsErrorType `json:"errors"`
+}
+
+// GetSuccess returns AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutation.Success, and is useful for accessing the field via an interface.
+func (v *AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutation) GetSuccess() bool {
+	return v.Success
+}
+
+// GetErrors returns AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutation.Errors, and is useful for accessing the field via an interface.
+func (v *AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutation) GetErrors() []AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutationErrorsErrorType {
+	return v.Errors
+}
+
+// AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+type AddAssetPullRequestFileChangeInput struct {
+	// GID of the pull request
+	PullRequestId string `json:"pullRequestId"`
+	// File name
+	Name string `json:"name"`
+	// File path
+	Path *string `json:"path"`
+	// File action type
+	Action SkillPullRequestFileActionEnum `json:"action"`
+	// New file content
+	Content *string `json:"content"`
+	// Original content before editing (for diffs)
+	PreviousContent *string `json:"previousContent"`
+}
+
+// GetPullRequestId returns AddAssetPullRequestFileChangeInput.PullRequestId, and is useful for accessing the field via an interface.
+func (v *AddAssetPullRequestFileChangeInput) GetPullRequestId() string { return v.PullRequestId }
+
+// GetName returns AddAssetPullRequestFileChangeInput.Name, and is useful for accessing the field via an interface.
+func (v *AddAssetPullRequestFileChangeInput) GetName() string { return v.Name }
+
+// GetPath returns AddAssetPullRequestFileChangeInput.Path, and is useful for accessing the field via an interface.
+func (v *AddAssetPullRequestFileChangeInput) GetPath() *string { return v.Path }
+
+// GetAction returns AddAssetPullRequestFileChangeInput.Action, and is useful for accessing the field via an interface.
+func (v *AddAssetPullRequestFileChangeInput) GetAction() SkillPullRequestFileActionEnum {
+	return v.Action
+}
+
+// GetContent returns AddAssetPullRequestFileChangeInput.Content, and is useful for accessing the field via an interface.
+func (v *AddAssetPullRequestFileChangeInput) GetContent() *string { return v.Content }
+
+// GetPreviousContent returns AddAssetPullRequestFileChangeInput.PreviousContent, and is useful for accessing the field via an interface.
+func (v *AddAssetPullRequestFileChangeInput) GetPreviousContent() *string { return v.PreviousContent }
+
+// AddAssetPullRequestFileChangeResponse is returned by AddAssetPullRequestFileChange on success.
+type AddAssetPullRequestFileChangeResponse struct {
+	// Add or update a file change in a pull request.
+	AddAssetPullRequestFileChange *AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutation `json:"addAssetPullRequestFileChange"`
+}
+
+// GetAddAssetPullRequestFileChange returns AddAssetPullRequestFileChangeResponse.AddAssetPullRequestFileChange, and is useful for accessing the field via an interface.
+func (v *AddAssetPullRequestFileChangeResponse) GetAddAssetPullRequestFileChange() *AddAssetPullRequestFileChangeAddAssetPullRequestFileChangeAddAssetPullRequestFileChangeMutation {
+	return v.AddAssetPullRequestFileChange
+}
+
 // AssetAuditLogAssetAuditLogAssetAuditEventConnection includes the requested fields of the GraphQL type AssetAuditEventConnection.
 type AssetAuditLogAssetAuditLogAssetAuditEventConnection struct {
 	// Pagination data for this connection.
@@ -1945,6 +2026,89 @@ func (v *CreateAssetInput) GetRuleGlobs() []string { return v.RuleGlobs }
 // GetPluginMarketplaceUrl returns CreateAssetInput.PluginMarketplaceUrl, and is useful for accessing the field via an interface.
 func (v *CreateAssetInput) GetPluginMarketplaceUrl() *string { return v.PluginMarketplaceUrl }
 
+// CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutation includes the requested fields of the GraphQL type CreateAssetPullRequestMutation.
+// The GraphQL type's documentation follows.
+//
+// Create a new pull request for a skill.
+type CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutation struct {
+	PullRequest *CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationPullRequestSkillPullRequest `json:"pullRequest"`
+	Errors      []CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationErrorsErrorType            `json:"errors"`
+}
+
+// GetPullRequest returns CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutation.PullRequest, and is useful for accessing the field via an interface.
+func (v *CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutation) GetPullRequest() *CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationPullRequestSkillPullRequest {
+	return v.PullRequest
+}
+
+// GetErrors returns CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutation.Errors, and is useful for accessing the field via an interface.
+func (v *CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutation) GetErrors() []CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationErrorsErrorType {
+	return v.Errors
+}
+
+// CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+// CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationPullRequestSkillPullRequest includes the requested fields of the GraphQL type SkillPullRequest.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for skill pull request.
+type CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationPullRequestSkillPullRequest struct {
+	Id        string `json:"id"`
+	SourceUrl string `json:"sourceUrl"`
+}
+
+// GetId returns CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationPullRequestSkillPullRequest.Id, and is useful for accessing the field via an interface.
+func (v *CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationPullRequestSkillPullRequest) GetId() string {
+	return v.Id
+}
+
+// GetSourceUrl returns CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationPullRequestSkillPullRequest.SourceUrl, and is useful for accessing the field via an interface.
+func (v *CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutationPullRequestSkillPullRequest) GetSourceUrl() string {
+	return v.SourceUrl
+}
+
+type CreateAssetPullRequestInput struct {
+	// GID of the skill
+	AssetId string `json:"assetId"`
+	// Pull request title
+	Title string `json:"title"`
+	// Pull request description
+	Description *string `json:"description"`
+}
+
+// GetAssetId returns CreateAssetPullRequestInput.AssetId, and is useful for accessing the field via an interface.
+func (v *CreateAssetPullRequestInput) GetAssetId() string { return v.AssetId }
+
+// GetTitle returns CreateAssetPullRequestInput.Title, and is useful for accessing the field via an interface.
+func (v *CreateAssetPullRequestInput) GetTitle() string { return v.Title }
+
+// GetDescription returns CreateAssetPullRequestInput.Description, and is useful for accessing the field via an interface.
+func (v *CreateAssetPullRequestInput) GetDescription() *string { return v.Description }
+
+// CreateAssetPullRequestResponse is returned by CreateAssetPullRequest on success.
+type CreateAssetPullRequestResponse struct {
+	// Create a new pull request for a skill.
+	CreateAssetPullRequest *CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutation `json:"createAssetPullRequest"`
+}
+
+// GetCreateAssetPullRequest returns CreateAssetPullRequestResponse.CreateAssetPullRequest, and is useful for accessing the field via an interface.
+func (v *CreateAssetPullRequestResponse) GetCreateAssetPullRequest() *CreateAssetPullRequestCreateAssetPullRequestCreateAssetPullRequestMutation {
+	return v.CreateAssetPullRequest
+}
+
 // CreateBotApiKeyCreateBotApiKeyCreateBotApiKeyMutation includes the requested fields of the GraphQL type CreateBotApiKeyMutation.
 type CreateBotApiKeyCreateBotApiKeyCreateBotApiKeyMutation struct {
 	BotKey string `json:"botKey"`
@@ -3446,6 +3610,21 @@ func (v *SetTeamAdminSetTeamAdminSetTeamAdminMutationErrorsErrorType) GetField()
 // GetMessages returns SetTeamAdminSetTeamAdminSetTeamAdminMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
 func (v *SetTeamAdminSetTeamAdminSetTeamAdminMutationErrorsErrorType) GetMessages() []string {
 	return v.Messages
+}
+
+// File action type for pull request changes.
+type SkillPullRequestFileActionEnum string
+
+const (
+	SkillPullRequestFileActionEnumAdd    SkillPullRequestFileActionEnum = "ADD"
+	SkillPullRequestFileActionEnumModify SkillPullRequestFileActionEnum = "MODIFY"
+	SkillPullRequestFileActionEnumDelete SkillPullRequestFileActionEnum = "DELETE"
+)
+
+var AllSkillPullRequestFileActionEnum = []SkillPullRequestFileActionEnum{
+	SkillPullRequestFileActionEnumAdd,
+	SkillPullRequestFileActionEnumModify,
+	SkillPullRequestFileActionEnumDelete,
 }
 
 // Input for team-repository association with optional mono_repo_config
@@ -5385,6 +5564,16 @@ func (v *VaultAssetsVaultAssetsVaultAssetsConnectionPageInfo) GetEndCursor() *st
 	return v.EndCursor
 }
 
+// __AddAssetPullRequestFileChangeInput is used internally by genqlient
+type __AddAssetPullRequestFileChangeInput struct {
+	Input AddAssetPullRequestFileChangeInput `json:"input"`
+}
+
+// GetInput returns __AddAssetPullRequestFileChangeInput.Input, and is useful for accessing the field via an interface.
+func (v *__AddAssetPullRequestFileChangeInput) GetInput() AddAssetPullRequestFileChangeInput {
+	return v.Input
+}
+
 // __AssetAuditLogInput is used internally by genqlient
 type __AssetAuditLogInput struct {
 	First *int    `json:"first"`
@@ -5476,6 +5665,14 @@ type __CreateAgentAssetInput struct {
 
 // GetInput returns __CreateAgentAssetInput.Input, and is useful for accessing the field via an interface.
 func (v *__CreateAgentAssetInput) GetInput() CreateAssetInput { return v.Input }
+
+// __CreateAssetPullRequestInput is used internally by genqlient
+type __CreateAssetPullRequestInput struct {
+	Input CreateAssetPullRequestInput `json:"input"`
+}
+
+// GetInput returns __CreateAssetPullRequestInput.Input, and is useful for accessing the field via an interface.
+func (v *__CreateAssetPullRequestInput) GetInput() CreateAssetPullRequestInput { return v.Input }
 
 // __CreateBotApiKeyInput is used internally by genqlient
 type __CreateBotApiKeyInput struct {
@@ -5728,6 +5925,44 @@ func (v *__VaultAssetsInput) GetAssetType() AssetType { return v.AssetType }
 
 // GetSearch returns __VaultAssetsInput.Search, and is useful for accessing the field via an interface.
 func (v *__VaultAssetsInput) GetSearch() *string { return v.Search }
+
+// The mutation executed by AddAssetPullRequestFileChange.
+const AddAssetPullRequestFileChange_Operation = `
+mutation AddAssetPullRequestFileChange ($input: AddAssetPullRequestFileChangeInput!) {
+	addAssetPullRequestFileChange(input: $input) {
+		success
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func AddAssetPullRequestFileChange(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input AddAssetPullRequestFileChangeInput,
+) (data_ *AddAssetPullRequestFileChangeResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "AddAssetPullRequestFileChange",
+		Query:  AddAssetPullRequestFileChange_Operation,
+		Variables: &__AddAssetPullRequestFileChangeInput{
+			Input: input,
+		},
+	}
+
+	data_ = &AddAssetPullRequestFileChangeResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
 
 // The query executed by AssetAuditLog.
 const AssetAuditLog_Operation = `
@@ -6046,6 +6281,47 @@ func CreateAgentAsset(
 	}
 
 	data_ = &CreateAgentAssetResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by CreateAssetPullRequest.
+const CreateAssetPullRequest_Operation = `
+mutation CreateAssetPullRequest ($input: CreateAssetPullRequestInput!) {
+	createAssetPullRequest(input: $input) {
+		pullRequest {
+			id
+			sourceUrl
+		}
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func CreateAssetPullRequest(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input CreateAssetPullRequestInput,
+) (data_ *CreateAssetPullRequestResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "CreateAssetPullRequest",
+		Query:  CreateAssetPullRequest_Operation,
+		Variables: &__CreateAssetPullRequestInput{
+			Input: input,
+		},
+	}
+
+	data_ = &CreateAssetPullRequestResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(

@@ -41,6 +41,16 @@ type prVault interface {
 	AbortPRBranch(ctx context.Context) error
 }
 
+// assetPRProposer is implemented by the Sleuth vault, which enforces the edit
+// gate server-side: a blocked publish surfaces as an AssetEditPermissionError
+// from AddAsset (a 403), and `sx add` then offers to propose the change as a
+// pull request instead. OpenAssetPullRequest creates the PR for the asset GID
+// carried by that error and uploads the asset's files into it. This is the
+// server-side analogue of the git vault's prVault branch flow (see docs/rbac.md).
+type assetPRProposer interface {
+	OpenAssetPullRequest(ctx context.Context, assetGID, title, body string, zipData []byte) (vaultpkg.PRResult, error)
+}
+
 // currentInstallReader is implemented by vaults that can report an asset's
 // complete, kind-aware installation set (repo/path/team/user/bot/org) including
 // the server entity GIDs. The Sleuth/skills.new vault answers this from the

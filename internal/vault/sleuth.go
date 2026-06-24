@@ -251,6 +251,13 @@ func (s *SleuthVault) AddAssetWithResult(ctx context.Context, asset *lockfile.As
 			URL            string `json:"url"`
 			IsFirstVersion bool   `json:"is_first_version"`
 		} `json:"asset"`
+		// Set when the upload was blocked because the user can't publish to an
+		// existing asset directly. PermissionDenied is the machine-readable
+		// signal; SkillID is the asset GID to pass to createAssetPullRequest so
+		// `sx add` can offer a pull request instead. See docs/rbac.md.
+		PermissionDenied bool   `json:"permission_denied"`
+		SkillID          string `json:"skill_id"`
+		SkillSlug        string `json:"skill_slug"`
 	}
 
 	respBody, err := io.ReadAll(resp.Body)
@@ -283,6 +290,21 @@ func (s *SleuthVault) AddAssetWithResult(ctx context.Context, asset *lockfile.As
 				// different one sharing the requested name.
 				Slug:    uploadResp.Asset.Name,
 				Message: message,
+			}
+		}
+		// A permission denial (403) means the user can't publish to this
+		// existing asset directly. Surface it as an AssetEditPermissionError
+		// carrying the asset GID so `sx add` can offer to open a pull request.
+		// The server hands us everything we need (GID + slug) in the body, so
+		// no extra lookup is required.
+		if uploadResp.PermissionDenied || resp.StatusCode == http.StatusForbidden {
+			name := uploadResp.SkillSlug
+			if name == "" {
+				name = asset.Name
+			}
+			return AddAssetResult{}, &AssetEditPermissionError{
+				Asset:    name,
+				AssetGID: uploadResp.SkillID,
 			}
 		}
 		if uploadResp.Error != "" {

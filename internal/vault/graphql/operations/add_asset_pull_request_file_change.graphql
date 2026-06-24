@@ -1,0 +1,9 @@
+mutation AddAssetPullRequestFileChange($input: AddAssetPullRequestFileChangeInput!) {
+  addAssetPullRequestFileChange(input: $input) {
+    success
+    errors {
+      field
+      messages
+    }
+  }
+}

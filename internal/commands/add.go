@@ -631,6 +631,22 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 	out.println()
 	status.Start("Adding asset to vault")
 	if err := vault.AddAsset(ctx, lockAsset, zipData); err != nil {
+		// Sleuth vault enforces the edit gate server-side: a blocked publish
+		// comes back as an AssetEditPermissionError (a 403). When the vault can
+		// propose a PR, offer that instead of failing — the same fallback the
+		// git vault gives via its client-side gate above. See docs/rbac.md.
+		var denial *vaultpkg.AssetEditPermissionError
+		if proposer, ok := vault.(assetPRProposer); ok && errors.As(err, &denial) {
+			status.Clear()
+			open, askErr := promptOpenPR(out, opts.Yes, denial)
+			if askErr != nil {
+				return false, askErr
+			}
+			if !open {
+				return false, err
+			}
+			return true, addViaProposedPR(ctx, out, status, proposer, denial, lockAsset, zipData)
+		}
 		status.Fail("Failed to add asset")
 		return false, fmt.Errorf("failed to add asset: %w", err)
 	}
@@ -680,12 +696,42 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 // a pull request instead. With --yes it proceeds without prompting.
 func promptOpenPR(out *outputHelper, assumeYes bool, permErr *vaultpkg.AssetEditPermissionError) (bool, error) {
 	out.println()
-	out.printf("You don't have permission to publish %q directly — it's scoped to team %s.\n",
-		permErr.Asset, strings.Join(permErr.Teams, ", "))
+	// The git/path gate knows the gating teams; the Sleuth vault learns of the
+	// denial from the server without them, so word it generically in that case.
+	if len(permErr.Teams) > 0 {
+		out.printf("You don't have permission to publish %q directly — it's scoped to team %s.\n",
+			permErr.Asset, strings.Join(permErr.Teams, ", "))
+	} else {
+		out.printf("You don't have permission to publish %q directly.\n", permErr.Asset)
+	}
 	if assumeYes {
 		return true, nil
 	}
 	return out.prompter.Confirm("Open a pull request with your changes instead?")
+}
+
+// addViaProposedPR opens a pull request for an asset whose direct publish the
+// Sleuth server blocked, then reports the PR URL. The asset isn't published (or
+// installed locally) until the PR is merged, so we stop after creating it. This
+// is the Sleuth-vault counterpart to addViaPullRequest's git-branch flow.
+func addViaProposedPR(ctx context.Context, out *outputHelper, status *components.Status, proposer assetPRProposer, denial *vaultpkg.AssetEditPermissionError, lockAsset *lockfile.Asset, zipData []byte) error {
+	out.println()
+	status.Start("Opening pull request")
+	title := fmt.Sprintf("Add %s %s", lockAsset.Name, lockAsset.Version)
+	body := fmt.Sprintf("Adds %s@%s via `sx add`.", lockAsset.Name, lockAsset.Version)
+	res, err := proposer.OpenAssetPullRequest(ctx, denial.AssetGID, title, body, zipData)
+	if err != nil {
+		status.Fail("Failed to open pull request")
+		return fmt.Errorf("failed to open pull request: %w", err)
+	}
+	status.Done("")
+
+	out.printf("✓ Opened pull request for %s@%s\n", lockAsset.Name, lockAsset.Version)
+	if res.URL != "" {
+		out.printf("  %s\n", res.URL)
+	}
+	out.println("It will be published once the pull request is merged.")
+	return nil
 }
 
 // addViaPullRequest stages the asset add on a branch and opens a pull request for

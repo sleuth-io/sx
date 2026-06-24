@@ -33,9 +33,12 @@ Who can edit/publish a skill depends only on whether it is scoped to a team — 
 
 A skill scoped to several teams is editable by a member of any of them. Org-admins can always edit anything.
 
-### Blocked? Open a pull request (github vault)
+### Blocked? Open a pull request
 
-The edit gate is enforced client-side, so a non-member still has git push access to the vault repo even when they may not publish directly. When `sx add` is blocked by this gate on the github (git) vault, it offers to **open a pull request** instead of failing: the new asset content is committed to a uniquely-named branch (`sx/add-<name>-<version>-<random>`, where the random suffix keeps each attempt distinct so retries and concurrent adds never collide) and pushed, and a PR is opened so a team member or org-admin can review and merge it. The skill is not published (and nothing installs) until the PR is merged. The PR is created with the `gh` CLI when available; otherwise sx prints a GitHub compare URL to open it manually.
+When `sx add` is blocked by the edit gate, it offers to **open a pull request** instead of failing, so a team member or org-admin can review and merge it. The skill is not published (and nothing installs) until the PR is merged. The two vaults reach the PR differently, matching where each enforces the gate:
+
+- **github (git) vault** — sx commits the new asset to a uniquely-named branch (`sx/add-<name>-<version>-<random>`, the random suffix keeping retries and concurrent adds from colliding), pushes it, and opens the PR with the `gh` CLI; if `gh` is unavailable it prints a GitHub compare URL to open manually.
+- **skills.new (sleuth) vault** — the upload is attempted and the server answers a blocked one with a `403` carrying `permission_denied`, the asset's GID (`skill_id`), and slug. sx then opens the PR over GraphQL — `createAssetPullRequest` for that GID, then one `addAssetPullRequestFileChange` per file. Creating a PR needs only the `propose_pr` permission (any org developer), not the `edit`/`merge_pr` a direct publish or merge needs. Non-permission upload failures (version conflict, validation) still fail hard.
 
 Normally sx prompts before opening the PR. Under `--yes` (non-interactive) it skips the prompt and opens the PR automatically — so a `--yes` run that hits the edit gate succeeds by opening a PR rather than failing with a permission error. Automation that expects a hard failure on denial should not pass `--yes`.
 
