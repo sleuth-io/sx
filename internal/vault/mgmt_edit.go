@@ -9,19 +9,28 @@ import (
 	"github.com/sleuth-io/sx/internal/mgmt"
 )
 
-// AssetEditPermissionError is returned by the file-backed edit gate when the
-// actor may not publish a new version of a team-scoped asset. It carries the
-// asset name and the gating teams so callers (notably `sx add`) can recognize
-// the denial via errors.As and offer a pull-request fallback instead of just
-// failing. See docs/rbac.md.
+// AssetEditPermissionError is returned when the actor may not publish a new
+// version of an asset. It carries the asset name so callers (notably `sx add`)
+// can recognize the denial via errors.As and offer a pull-request fallback
+// instead of just failing. See docs/rbac.md.
+//
+// Teams is set only by the file-backed git/path gate, which reads the gating
+// team scopes from the manifest. The Sleuth vault learns of the denial from the
+// server (a 403 on upload) and doesn't get the teams, but it does get AssetGID —
+// the skill's server GID — which it passes to createAssetPullRequest to open the
+// PR. Either field may be empty depending on which vault produced the error.
 type AssetEditPermissionError struct {
-	Asset string
-	Teams []string
+	Asset    string
+	Teams    []string
+	AssetGID string
 }
 
 func (e *AssetEditPermissionError) Error() string {
-	return fmt.Sprintf("permission denied: %q is scoped to team %s — only a member of that team (or an org-admin) may edit it",
-		e.Asset, strings.Join(e.Teams, ", "))
+	if len(e.Teams) > 0 {
+		return fmt.Sprintf("permission denied: %q is scoped to team %s — only a member of that team (or an org-admin) may edit it",
+			e.Asset, strings.Join(e.Teams, ", "))
+	}
+	return fmt.Sprintf("permission denied: you may not publish %q directly", e.Asset)
 }
 
 // assetEditDenial returns nil if actor may edit/publish the named asset, or an

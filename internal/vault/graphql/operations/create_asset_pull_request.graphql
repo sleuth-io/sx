@@ -1,0 +1,12 @@
+mutation CreateAssetPullRequest($input: CreateAssetPullRequestInput!) {
+  createAssetPullRequest(input: $input) {
+    pullRequest {
+      id
+      sourceUrl
+    }
+    errors {
+      field
+      messages
+    }
+  }
+}
