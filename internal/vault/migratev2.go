@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/vault/layout"
@@ -153,6 +154,12 @@ func migrateStorageToV2(vaultRoot string, actorEmail string) (*MigrationResult, 
 		}
 	}
 	m.SchemaVersion = 2
+	// Stamp created_by if the manifest never had one (hand-authored
+	// vaults): lock resolution requires it, and this build is now the
+	// last writer either way.
+	if strings.TrimSpace(m.CreatedBy) == "" {
+		m.CreatedBy = buildinfo.GetCreatedBy()
+	}
 	if err := manifest.Save(vaultRoot, m); err != nil {
 		return nil, err
 	}

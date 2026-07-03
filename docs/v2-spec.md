@@ -72,7 +72,7 @@ Collections are curated, named lists of asset names. They carry no ACL semantics
 Three existing mechanisms make this safe:
 
 - **Old clients fail loudly, not weirdly.** v1 clients already reject manifests with a higher `schema_version` via `ErrUnsupportedSchema` (`internal/manifest/manifest.go:35-39`). After migration, an old client's manifest-touching command produces a clear "unsupported schema version — upgrade sx" error rather than silent corruption or confusing "asset not found".
-- **Old clients' installs mostly keep working.** `sx install` consumes `sx.lock`, which has no schema gate and whose source paths are plain relative paths. A regenerated v2 lock points at `.sx/versions/…` paths that exist; old clients fetch them fine. Only mutations and manifest reads require the upgrade.
+- **Old clients fail with the same clear message on installs too** (verified against v1.8.1): for git and path vaults the lock file is resolved client-side *from the manifest*, so `sx install` on a migrated vault reports the unsupported-schema error rather than silently misbehaving. Only Sleuth vaults (server-resolved lock) keep old-client installs working. The loud, actionable failure is the property that matters for the clean break.
 - **There is a single write choke point.** All git-vault mutations flow through `acquireFileLock` → `cloneOrUpdate` → mutate → `commitAndPush` (`internal/vault/gitrepo.go:125-152, 200-240`). Migration slots into that transaction: it is one commit, atomic from the remote's perspective.
 
 ### Migration algorithm
@@ -251,7 +251,7 @@ CI produces installable artifacts for all three OSes from a tag; update check wo
 
 - **Wails v2 maturity on Linux** (WebKitGTK variance): mitigate by testing on Ubuntu LTS + Fedora in CI early (M2).
 - **Root-view drift** (root ≠ latest archive after a partial failure): the invariant is checked and repaired on every vault open (cheap compare of `metadata.toml` version vs list head; repair = re-copy from archive; audit `vault.repaired`).
-- **Old-client breakage in mixed-version teams**: accepted (clean-break decision); mitigated by loud `ErrUnsupportedSchema` messaging and the fact that lock-file installs keep working on old clients.
+- **Old-client breakage in mixed-version teams**: accepted (clean-break decision); mitigated by loud `ErrUnsupportedSchema` messaging on every old-client operation that touches the manifest (including installs on git/path vaults — verified). Release notes must tell teams to upgrade together.
 - **Same-module app bloating CLI builds**: `app/` is excluded from the CLI build graph (no imports from `cmd/sx`); GoReleaser config untouched.
 
 ### Execution order
