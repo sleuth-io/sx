@@ -233,7 +233,11 @@ func (a *App) ListCollections() ([]Collection, error) {
 	}
 	out := make([]Collection, 0, len(all))
 	for _, c := range all {
-		out = append(out, Collection{Name: c.Name, Description: c.Description, Assets: c.Assets})
+		assets := c.Assets
+		if assets == nil {
+			assets = []string{} // nil marshals to JSON null and breaks the frontend
+		}
+		out = append(out, Collection{Name: c.Name, Description: c.Description, Assets: assets})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil

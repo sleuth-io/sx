@@ -7,6 +7,7 @@ import {
   SetCollectionMembership,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
+import FileRail from "./FileRail";
 import TypeBadge from "./TypeBadge";
 
 /**
@@ -105,7 +106,7 @@ export default function AssetDetail({
         className="absolute inset-0 bg-black/20"
         onClick={onClose}
       />
-      <aside className="relative flex h-full w-[560px] max-w-[85vw] flex-col border-l border-line bg-surface shadow-xl">
+      <aside className="relative flex h-full w-[760px] max-w-[90vw] flex-col border-l border-line bg-surface shadow-xl">
         <header className="flex items-start gap-3 border-b border-line px-6 pb-4 pt-6">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -183,7 +184,7 @@ export default function AssetDetail({
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-6 py-2.5">
             <span className="text-xs text-ink-soft">Collections</span>
             {collections.map((c) => {
-              const member = c.assets.includes(name);
+              const member = (c.assets ?? []).includes(name);
               return (
                 <button
                   key={c.name}
@@ -202,40 +203,31 @@ export default function AssetDetail({
           </div>
         )}
 
-        {files.length > 1 && (
-          <nav className="flex gap-1 overflow-x-auto border-b border-line px-6 py-2">
-            {files.map((f, i) => (
-              <button
-                key={f.path}
-                onClick={() => setActiveFile(i)}
-                className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition ${
-                  i === activeFile
-                    ? "bg-accent-soft text-accent"
-                    : "text-ink-faint hover:text-ink"
-                }`}
-              >
-                {f.path}
-              </button>
-            ))}
-          </nav>
-        )}
-
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          {error && (
-            <div className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
-              {error}
-            </div>
+        <div className="flex min-h-0 flex-1">
+          {files.length > 1 && (
+            <FileRail
+              files={files}
+              active={activeFile}
+              onSelect={setActiveFile}
+            />
           )}
-          {!detail && !error && (
-            <div className="space-y-3">
-              <div className="h-4 w-2/3 animate-pulse rounded bg-canvas" />
-              <div className="h-4 w-full animate-pulse rounded bg-canvas" />
-              <div className="h-4 w-5/6 animate-pulse rounded bg-canvas" />
-            </div>
-          )}
-          {detail && files[activeFile] && (
-            <FileView file={files[activeFile]} />
-          )}
+          <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
+            {error && (
+              <div className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
+                {error}
+              </div>
+            )}
+            {!detail && !error && (
+              <div className="space-y-3">
+                <div className="h-4 w-2/3 animate-pulse rounded bg-canvas" />
+                <div className="h-4 w-full animate-pulse rounded bg-canvas" />
+                <div className="h-4 w-5/6 animate-pulse rounded bg-canvas" />
+              </div>
+            )}
+            {detail && files[activeFile] && (
+              <FileView file={files[activeFile]} />
+            )}
+          </div>
         </div>
       </aside>
     </div>

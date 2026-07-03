@@ -6,6 +6,10 @@ export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
 }
 
+export function CreateBlankDraft(arg1) {
+  return window['go']['main']['App']['CreateBlankDraft'](arg1);
+}
+
 export function CreateCollection(arg1) {
   return window['go']['main']['App']['CreateCollection'](arg1);
 }
@@ -32,6 +36,10 @@ export function GetAsset(arg1, arg2) {
 
 export function GetDraft(arg1) {
   return window['go']['main']['App']['GetDraft'](arg1);
+}
+
+export function GetSettings() {
+  return window['go']['main']['App']['GetSettings']();
 }
 
 export function GetVaultInfo() {
@@ -66,6 +74,14 @@ export function ListDrafts() {
   return window['go']['main']['App']['ListDrafts']();
 }
 
+export function PickFilesForDraft() {
+  return window['go']['main']['App']['PickFilesForDraft']();
+}
+
+export function PickFolderForDraft() {
+  return window['go']['main']['App']['PickFolderForDraft']();
+}
+
 export function PublishDraft(arg1) {
   return window['go']['main']['App']['PublishDraft'](arg1);
 }
@@ -84,6 +100,10 @@ export function SetupGitVault(arg1, arg2) {
 
 export function SetupLocalVault(arg1) {
   return window['go']['main']['App']['SetupLocalVault'](arg1);
+}
+
+export function SwitchProfile(arg1) {
+  return window['go']['main']['App']['SwitchProfile'](arg1);
 }
 
 export function UninstallAsset(arg1) {

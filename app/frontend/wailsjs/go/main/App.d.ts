@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function CheckForUpdate():Promise<main.UpdateInfo>;
 
+export function CreateBlankDraft(arg1:string):Promise<main.Draft>;
+
 export function CreateCollection(arg1:string):Promise<main.Collection>;
 
 export function CreateDraftFromAsset(arg1:string):Promise<main.Draft>;
@@ -17,6 +19,8 @@ export function DiscardDraft(arg1:string):Promise<void>;
 export function GetAsset(arg1:string,arg2:string):Promise<main.AssetDetail>;
 
 export function GetDraft(arg1:string):Promise<main.Draft>;
+
+export function GetSettings():Promise<main.Settings>;
 
 export function GetVaultInfo():Promise<main.VaultInfo>;
 
@@ -34,6 +38,10 @@ export function ListCollections():Promise<Array<main.Collection>>;
 
 export function ListDrafts():Promise<Array<main.Draft>>;
 
+export function PickFilesForDraft():Promise<main.Draft>;
+
+export function PickFolderForDraft():Promise<main.Draft>;
+
 export function PublishDraft(arg1:string):Promise<main.AssetCard>;
 
 export function RestoreRevision(arg1:string,arg2:string):Promise<void>;
@@ -43,6 +51,8 @@ export function SetCollectionMembership(arg1:string,arg2:string,arg3:boolean):Pr
 export function SetupGitVault(arg1:string,arg2:string):Promise<main.VaultInfo>;
 
 export function SetupLocalVault(arg1:string):Promise<main.VaultInfo>;
+
+export function SwitchProfile(arg1:string):Promise<main.VaultInfo>;
 
 export function UninstallAsset(arg1:string):Promise<void>;
 

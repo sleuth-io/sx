@@ -5,6 +5,8 @@ import {
   UpdateDraft,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
+import FileRail from "./FileRail";
+import MarkdownEditor from "./MarkdownEditor";
 import TypeBadge from "./TypeBadge";
 
 const TYPE_OPTIONS = [
@@ -15,7 +17,7 @@ const TYPE_OPTIONS = [
 ];
 
 /**
- * The draft editor: confirm what a drop is, tweak its content, and publish.
+ * The draft editor: confirm what a drop is, edit its content, and publish.
  * Publishing is the only way anything reaches the library; "Save for later"
  * keeps the draft on this machine.
  */
@@ -103,7 +105,7 @@ export default function DraftSheet({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
       <div className="absolute inset-0 bg-black/30" />
-      <div className="relative flex max-h-full w-[720px] max-w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+      <div className="relative flex h-[85vh] w-[980px] max-w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
         <header className="flex items-center gap-3 border-b border-line px-6 py-4">
           <div className="flex-1">
             <div className="flex items-center gap-2">
@@ -127,38 +129,38 @@ export default function DraftSheet({
           </button>
         </header>
 
-        <div className="grid gap-3 border-b border-line px-6 py-4 sm:grid-cols-[1fr_auto]">
-          <div className="space-y-3">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-ink-soft">
-                Name
-              </span>
-              <input
-                value={draft.name}
-                onChange={(e) => update({ name: e.target.value })}
-                disabled={isUpdate || busy}
-                className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent disabled:text-ink-faint"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-ink-soft">
-                What is it for?
-              </span>
-              <input
-                value={draft.description}
-                onChange={(e) => update({ description: e.target.value })}
-                placeholder="One sentence your teammates (and their AI tools) will see"
-                disabled={busy}
-                className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
-              />
-            </label>
-          </div>
+        <div className="grid gap-3 border-b border-line px-6 py-4 sm:grid-cols-[1fr_1fr_auto]">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-ink-soft">
+              Name
+            </span>
+            <input
+              value={draft.name}
+              onChange={(e) => update({ name: e.target.value })}
+              disabled={isUpdate || busy}
+              className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent disabled:text-ink-faint"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-ink-soft">
+              What is it for?
+            </span>
+            <input
+              value={draft.description}
+              onChange={(e) => update({ description: e.target.value })}
+              placeholder="One sentence your teammates (and their AI tools) will see"
+              disabled={busy}
+              className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+          </label>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-ink-soft">
               Kind
             </span>
             {isUpdate ? (
-              <TypeBadge type={draft.type} label={draft.typeLabel} />
+              <div className="py-2">
+                <TypeBadge type={draft.type} label={draft.typeLabel} />
+              </div>
             ) : (
               <select
                 value={draft.type}
@@ -176,34 +178,23 @@ export default function DraftSheet({
           </label>
         </div>
 
-        {draft.files.length > 1 && (
-          <nav className="flex gap-1 overflow-x-auto border-b border-line px-6 py-2">
-            {draft.files.map((f, i) => (
-              <button
-                key={f.path}
-                onClick={() => setActiveFile(i)}
-                className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition ${
-                  i === activeFile
-                    ? "bg-accent-soft text-accent"
-                    : "text-ink-faint hover:text-ink"
-                }`}
-              >
-                {f.path}
-              </button>
-            ))}
-          </nav>
-        )}
-
-        <div className="min-h-0 flex-1 px-6 py-4">
-          {draft.files[activeFile] && (
-            <textarea
-              value={draft.files[activeFile].content}
-              onChange={(e) => updateFileContent(activeFile, e.target.value)}
-              disabled={busy}
-              spellCheck={false}
-              className="h-72 w-full resize-none rounded-lg border border-line bg-canvas p-4 font-mono text-xs leading-relaxed outline-none focus:border-accent"
+        <div className="flex min-h-0 flex-1">
+          {draft.files.length > 1 && (
+            <FileRail
+              files={draft.files}
+              active={activeFile}
+              onSelect={setActiveFile}
             />
           )}
+          <div className="min-h-0 min-w-0 flex-1 p-4">
+            {draft.files[activeFile] && (
+              <MarkdownEditor
+                value={draft.files[activeFile].content}
+                onChange={(content) => updateFileContent(activeFile, content)}
+                readOnly={busy}
+              />
+            )}
+          </div>
         </div>
 
         {error && (

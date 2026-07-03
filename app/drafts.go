@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/lockfile"
@@ -133,14 +134,79 @@ func promptFileNameFor(t asset.Type) string {
 	}
 }
 
-// CreateDraftFromPaths builds a draft from files dropped onto the window.
-// One markdown file becomes a single-file asset; a directory is taken whole.
+// errCancelled marks a user-cancelled picker; the frontend ignores it.
+var errCancelled = errors.New("cancelled")
+
+// junkFile reports paths that should never become asset files (macOS zip
+// artifacts, dotfiles).
+func junkFile(path string) bool {
+	if strings.HasPrefix(path, "__MACOSX/") || strings.Contains(path, "/__MACOSX/") {
+		return true
+	}
+	return strings.HasPrefix(filepath.Base(path), ".")
+}
+
+// filesFromZip expands a zipped asset into draft files, stripping a single
+// shared top-level folder (the common "skill-name/SKILL.md" shape) and
+// skipping junk and binary entries.
+func filesFromZip(zipData []byte) ([]AssetFile, error) {
+	entries, err := utils.ListZipFiles(zipData)
+	if err != nil {
+		return nil, errors.New("that zip file couldn't be read")
+	}
+	prefix := ""
+	for i, entry := range entries {
+		top := ""
+		if slash := strings.IndexByte(entry, '/'); slash >= 0 {
+			top = entry[:slash+1]
+		}
+		if i == 0 {
+			prefix = top
+		} else if top != prefix {
+			prefix = ""
+			break
+		}
+	}
+
+	var files []AssetFile
+	for _, entry := range entries {
+		if strings.HasSuffix(entry, "/") || junkFile(entry) {
+			continue
+		}
+		content, err := utils.ReadZipFile(zipData, entry)
+		if err != nil {
+			continue
+		}
+		if !utf8.Valid(content) {
+			continue // binary payloads (images etc.) can't be edited here
+		}
+		files = append(files, AssetFile{
+			Path:    strings.TrimPrefix(entry, prefix),
+			Content: string(content),
+		})
+	}
+	if len(files) == 0 {
+		return nil, errors.New("that zip has no text files a draft can use")
+	}
+	return files, nil
+}
+
+func isZip(path string, content []byte) bool {
+	if strings.EqualFold(filepath.Ext(path), ".zip") {
+		return true
+	}
+	return len(content) >= 4 && string(content[:4]) == "PK\x03\x04"
+}
+
+// CreateDraftFromPaths builds a draft from files dropped onto the window (or
+// chosen in the picker). One markdown file becomes a single-file asset, a
+// zip is unpacked, and a directory is taken whole.
 func (a *App) CreateDraftFromPaths(paths []string) (Draft, error) {
 	if len(paths) == 0 {
 		return Draft{}, errors.New("nothing was dropped")
 	}
 	// One directory: take its contents as the asset.
-	// Otherwise: collect the dropped files flat.
+	// Otherwise: collect the dropped files flat, unpacking zips.
 	var files []AssetFile
 	base := paths[0]
 	if info, err := os.Stat(base); err == nil && info.IsDir() && len(paths) == 1 {
@@ -159,6 +225,9 @@ func (a *App) CreateDraftFromPaths(paths []string) (Draft, error) {
 			if err != nil {
 				return err
 			}
+			if !utf8.Valid(content) {
+				return nil
+			}
 			files = append(files, AssetFile{Path: filepath.ToSlash(rel), Content: string(content)})
 			return nil
 		})
@@ -175,15 +244,44 @@ func (a *App) CreateDraftFromPaths(paths []string) (Draft, error) {
 			if err != nil {
 				return Draft{}, err
 			}
+			if isZip(p, content) {
+				zipFiles, err := filesFromZip(content)
+				if err != nil {
+					return Draft{}, err
+				}
+				files = append(files, zipFiles...)
+				continue
+			}
+			if !utf8.Valid(content) {
+				continue
+			}
 			files = append(files, AssetFile{Path: filepath.Base(p), Content: string(content)})
 		}
 	}
 	if len(files) == 0 {
-		return Draft{}, errors.New("no readable files were dropped")
+		return Draft{}, errors.New("nothing usable was dropped — markdown files, folders, and zips work")
 	}
 
 	name := slugify(filepath.Base(base))
 	return a.assembleDraft(name, files)
+}
+
+// CreateBlankDraft scaffolds an empty asset of the given kind, ready to
+// write in the editor.
+func (a *App) CreateBlankDraft(kind string) (Draft, error) {
+	t := asset.FromString(kind)
+	if !t.IsValid() {
+		t = asset.TypeSkill
+	}
+	content := "---\nname: my-" + t.Key + "\ndescription: \n---\n\n# My " + t.Label + "\n\nDescribe what your AI tools should know or do.\n"
+	draft := Draft{
+		ID:        "new-" + t.Key,
+		Name:      "new-" + t.Key,
+		Type:      t.Key,
+		TypeLabel: t.Label,
+		Files:     []AssetFile{{Path: promptFileNameFor(t), Content: content}},
+	}
+	return draft, a.saveDraft(draft)
 }
 
 // CreateDraftFromAsset starts an edit: a draft seeded with the latest

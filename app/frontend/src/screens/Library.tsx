@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CreateCollection,
+  CreateBlankDraft,
   CreateDraftFromAsset,
   CreateDraftFromPaths,
   DeleteCollection,
@@ -9,16 +9,21 @@ import {
   ListAssets,
   ListCollections,
   ListDrafts,
+  PickFilesForDraft,
+  PickFolderForDraft,
 } from "../../wailsjs/go/main/App";
 import { OnFileDrop, OnFileDropOff } from "../../wailsjs/runtime/runtime";
 import type { main } from "../../wailsjs/go/models";
 import AssetDetail from "../components/AssetDetail";
+import CollectionModal from "../components/CollectionModal";
 import DraftSheet from "../components/DraftSheet";
+import SettingsModal from "../components/SettingsModal";
 import TypeBadge from "../components/TypeBadge";
 
 /** Library: everything in the vault plus local drafts, one card each. */
 export default function Library({
   vault,
+  onVaultChanged,
 }: {
   vault: main.VaultInfo;
   onVaultChanged: () => void;
@@ -30,7 +35,10 @@ export default function Library({
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [collectionFilter, setCollectionFilter] = useState<string>("");
-  const [newCollection, setNewCollection] = useState<string | null>(null);
+  const [showCollectionModal, setShowCollectionModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const newMenuRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [openDraft, setOpenDraft] = useState<main.Draft | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -111,7 +119,7 @@ export default function Library({
     const q = query.trim().toLowerCase();
     return (assets ?? []).filter((a) => {
       if (typeFilter && a.type !== typeFilter) return false;
-      if (activeCollection && !activeCollection.assets.includes(a.name))
+      if (activeCollection && !(activeCollection.assets ?? []).includes(a.name))
         return false;
       if (!q) return true;
       return (
@@ -152,6 +160,17 @@ export default function Library({
     }
   }
 
+  // Close the New menu on outside clicks.
+  useEffect(() => {
+    if (!newMenuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (!newMenuRef.current?.contains(e.target as Node))
+        setNewMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onClick);
+    return () => window.removeEventListener("mousedown", onClick);
+  }, [newMenuOpen]);
+
   const nothingToShow =
     visible.length === 0 && visibleDrafts.length === 0 && !error;
 
@@ -182,13 +201,93 @@ export default function Library({
 
           <div className="flex-1" />
 
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search…"
-            className="w-64 rounded-lg border border-line bg-canvas px-3 py-1.5 text-sm outline-none focus:border-accent"
+          <div
+            className="flex items-center gap-2"
             style={{ ["--wails-draggable" as never]: "no-drag" }}
-          />
+          >
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
+              className="w-64 rounded-lg border border-line bg-canvas px-3 py-1.5 text-sm outline-none focus:border-accent"
+            />
+
+            <div className="relative" ref={newMenuRef}>
+              <button
+                onClick={() => setNewMenuOpen((v) => !v)}
+                className="flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-sm font-medium text-white transition hover:opacity-90"
+              >
+                <span className="text-base leading-none">+</span> New
+                <span className="text-[10px] opacity-70">▾</span>
+              </button>
+              {newMenuOpen && (
+                <div className="absolute right-0 z-40 mt-1.5 w-56 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                  <MenuItem
+                    label="Add files…"
+                    hint="Markdown or zip"
+                    onClick={() => {
+                      setNewMenuOpen(false);
+                      PickFilesForDraft()
+                        .then((d) => {
+                          setOpenDraft(d);
+                          load();
+                        })
+                        .catch((e) => {
+                          if (!String(e).includes("cancelled"))
+                            setToastMessage(String(e));
+                        });
+                    }}
+                  />
+                  <MenuItem
+                    label="Add a folder…"
+                    hint="Multi-file asset"
+                    onClick={() => {
+                      setNewMenuOpen(false);
+                      PickFolderForDraft()
+                        .then((d) => {
+                          setOpenDraft(d);
+                          load();
+                        })
+                        .catch((e) => {
+                          if (!String(e).includes("cancelled"))
+                            setToastMessage(String(e));
+                        });
+                    }}
+                  />
+                  <MenuItem
+                    label="Write from scratch"
+                    hint="Blank skill"
+                    onClick={() => {
+                      setNewMenuOpen(false);
+                      CreateBlankDraft("skill")
+                        .then((d) => {
+                          setOpenDraft(d);
+                          load();
+                        })
+                        .catch((e) => setToastMessage(String(e)));
+                    }}
+                  />
+                  <div className="my-1 border-t border-line" />
+                  <MenuItem
+                    label="New collection…"
+                    hint="Group related assets"
+                    onClick={() => {
+                      setNewMenuOpen(false);
+                      setShowCollectionModal(true);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowSettings(true)}
+              title="Settings"
+              className="rounded-lg border border-line px-2.5 py-1.5 text-sm text-ink-soft transition hover:border-accent hover:text-ink"
+            >
+              ⚙
+            </button>
+          </div>
         </div>
 
         <div
@@ -224,7 +323,7 @@ export default function Library({
           {collections.map((c) => (
             <FilterChip
               key={"c-" + c.name}
-              label={`${c.name} (${c.assets.length})`}
+              label={`${c.name} (${(c.assets ?? []).length})`}
               active={collectionFilter === c.name}
               onClick={() => {
                 setCollectionFilter(collectionFilter === c.name ? "" : c.name);
@@ -232,43 +331,6 @@ export default function Library({
               }}
             />
           ))}
-          {(assets ?? []).length > 0 &&
-            (newCollection === null ? (
-              <button
-                onClick={() => setNewCollection("")}
-                className="rounded-full border border-dashed border-line px-3 py-1 text-xs font-medium text-ink-faint transition hover:border-accent hover:text-accent"
-              >
-                + Collection
-              </button>
-            ) : (
-              <form
-                className="inline-flex"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const name = newCollection.trim();
-                  if (!name) {
-                    setNewCollection(null);
-                    return;
-                  }
-                  CreateCollection(name)
-                    .then((c) => {
-                      setNewCollection(null);
-                      setCollectionFilter(c.name);
-                      load();
-                    })
-                    .catch((e) => setToastMessage(String(e)));
-                }}
-              >
-                <input
-                  autoFocus
-                  value={newCollection}
-                  onChange={(e) => setNewCollection(e.target.value)}
-                  onBlur={() => setNewCollection(null)}
-                  placeholder="Collection name…"
-                  className="w-40 rounded-full border border-accent bg-canvas px-3 py-1 text-xs outline-none"
-                />
-              </form>
-            ))}
         </div>
 
         {activeCollection && (
@@ -279,11 +341,11 @@ export default function Library({
             <span className="font-medium">{activeCollection.name}</span>
             <span className="text-ink-soft">
               {activeCollection.description ||
-                `${activeCollection.assets.length} asset${activeCollection.assets.length === 1 ? "" : "s"}`}
+                `${(activeCollection.assets ?? []).length} asset${(activeCollection.assets ?? []).length === 1 ? "" : "s"}`}
             </span>
             <div className="flex-1" />
             <button
-              disabled={busyAction || activeCollection.assets.length === 0}
+              disabled={busyAction || (activeCollection.assets ?? []).length === 0}
               onClick={() => {
                 setBusyAction(true);
                 InstallCollection(activeCollection.name)
@@ -428,12 +490,53 @@ export default function Library({
         />
       )}
 
+      {showCollectionModal && (
+        <CollectionModal
+          onClose={() => setShowCollectionModal(false)}
+          onCreated={(name) => {
+            setShowCollectionModal(false);
+            setCollectionFilter(name);
+            load();
+          }}
+        />
+      )}
+
+      {showSettings && (
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          onProfileChanged={() => {
+            setShowSettings(false);
+            onVaultChanged();
+          }}
+        />
+      )}
+
       {toast && (
         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-canvas shadow-lg">
           {toast}
         </div>
       )}
     </div>
+  );
+}
+
+function MenuItem({
+  label,
+  hint,
+  onClick,
+}: {
+  label: string;
+  hint?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex w-full items-baseline gap-2 px-3.5 py-2 text-left text-sm transition hover:bg-accent-soft"
+    >
+      <span className="font-medium">{label}</span>
+      {hint && <span className="text-xs text-ink-faint">{hint}</span>}
+    </button>
   );
 }
 
@@ -478,8 +581,9 @@ function EmptyState({ hasAssets }: { hasAssets: boolean }) {
       <div className="mb-3 text-3xl">📚</div>
       <div className="text-sm font-medium">Your library is empty</div>
       <div className="mt-1 max-w-sm text-sm text-ink-faint">
-        Drop a markdown file anywhere in this window to add your first asset —
-        a skill, a rule, anything your AI tools should know.
+        Drop a markdown file, folder, or zip anywhere in this window — or use
+        the <span className="font-medium text-ink-soft">+ New</span> button —
+        to add your first asset.
       </div>
     </div>
   );
