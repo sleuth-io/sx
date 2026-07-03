@@ -131,7 +131,7 @@ func handleNewAssetFromVault(ctx context.Context, cmd *cobra.Command, out *outpu
 		Type:    asset.TypeSkill,
 		Version: latestVersion,
 		SourcePath: &lockfile.SourcePath{
-			Path: fmt.Sprintf("./assets/%s/%s", assetName, latestVersion),
+			Path: assetSourcePath(vault, assetName, latestVersion),
 		},
 		Scopes: result.Scopes,
 	}

@@ -844,7 +844,7 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 				"version":                recovered.Version,
 				"type":                   recovered.Type.Key,
 				"source":                 "path",
-				"path":                   filepath.ToSlash(filepath.Join("assets", recovered.Name, recovered.Version)),
+				"path":                   recovered.SourcePath.Path,
 			}
 			m.Assets = append(m.Assets, lockfileAssetToManifest(*recovered))
 			asset = m.FindAsset(assetName)
@@ -1048,7 +1048,7 @@ func commonSetAssetInstallations(ctx context.Context, vaultRoot string, actor mg
 				"version":                recovered.Version,
 				"type":                   recovered.Type.Key,
 				"source":                 "path",
-				"path":                   filepath.ToSlash(filepath.Join("assets", recovered.Name, recovered.Version)),
+				"path":                   recovered.SourcePath.Path,
 			}
 			m.Assets = append(m.Assets, lockfileAssetToManifest(*recovered))
 			asset = m.FindAsset(assetName)

@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"path"
+	"path/filepath"
 
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
+	"github.com/sleuth-io/sx/internal/vault/layout"
 )
 
 // resolveLockBytesForActor loads the vault's manifest and returns the
@@ -109,18 +112,35 @@ func removeAssetFromManifest(vaultRoot, name, version string) (int, error) {
 	return removed, manifest.Save(vaultRoot, m)
 }
 
-// renameAssetInManifest rewrites every entry with the old name.
-func renameAssetInManifest(vaultRoot, oldName, newName string) error {
+// renameAssetInManifest rewrites every entry with the old name. Source-path
+// rows that pointed at the asset's own storage location are rewritten to the
+// renamed location — the files moved on disk, so a stale path would break
+// resolution for every consumer of this asset.
+func renameAssetInManifest(vaultRoot string, l layout.Layout, oldName, newName string) error {
 	m, err := loadManifest(vaultRoot)
 	if err != nil {
 		return err
 	}
 	for i := range m.Assets {
-		if m.Assets[i].Name == oldName {
-			m.Assets[i].Name = newName
+		if m.Assets[i].Name != oldName {
+			continue
+		}
+		m.Assets[i].Name = newName
+		sp := m.Assets[i].SourcePath
+		if sp != nil && sourcePathsEqual(sp.Path, l.SourcePathRel(oldName, m.Assets[i].Version)) {
+			sp.Path = l.SourcePathRel(newName, m.Assets[i].Version)
 		}
 	}
 	return manifest.Save(vaultRoot, m)
+}
+
+// sourcePathsEqual compares two vault-relative source paths, tolerating the
+// "./" prefix and separator differences found in historically written rows.
+func sourcePathsEqual(a, b string) bool {
+	clean := func(p string) string {
+		return path.Clean(filepath.ToSlash(p))
+	}
+	return clean(a) == clean(b)
 }
 
 // manifestAssetScopes returns the complete authoring scopes (org/repo/path/
