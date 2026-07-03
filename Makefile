@@ -168,11 +168,19 @@ demo: build ## Generate demo GIF (requires vhs)
 logs: ## Follow sx logs with colors (-f FILTER to filter, -n NUM for lines)
 	@go run ./tools/logs $(LOGS_ARGS)
 
-app-dev: ## Run the desktop app in dev mode (hot reload)
-	@which wails > /dev/null || (echo "wails not found. Run: go install github.com/wailsapp/wails/v2/cmd/wails@latest" && exit 1)
-	cd app && wails dev
+# The wails CLI installs into GOPATH/bin, which isn't necessarily on PATH —
+# resolve it explicitly so the app targets work either way. Version pinned to
+# match .github/workflows/app-release.yml.
+WAILS_VERSION=v2.12.0
+WAILS=$(shell command -v wails 2> /dev/null || echo "$(shell go env GOPATH)/bin/wails")
 
-app-build: ## Build the desktop app for this platform
-	@which wails > /dev/null || (echo "wails not found. Run: go install github.com/wailsapp/wails/v2/cmd/wails@latest" && exit 1)
-	cd app && wails build
+app-deps: ## Install desktop app build tools (wails; checks npm)
+	@test -x "$(WAILS)" || (echo "Installing wails $(WAILS_VERSION)..." && go install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION))
+	@which npm > /dev/null || (echo "npm not found — the app frontend needs Node.js (e.g. 'brew install node')" && exit 1)
+
+app-dev: app-deps ## Run the desktop app in dev mode (hot reload)
+	cd app && "$(WAILS)" dev
+
+app-build: app-deps ## Build the desktop app for this platform
+	cd app && "$(WAILS)" build
 	@echo "Built: app/build/bin/"
