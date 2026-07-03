@@ -102,7 +102,7 @@ prompt-file = "SKILL.md"
 	}
 
 	// Verify assets directory was created
-	assetsDir := filepath.Join(repoDir, "assets", "test-skill", "1.0.0")
+	assetsDir := filepath.Join(repoDir, ".sx", "versions", "test-skill", "1.0.0")
 	if _, err := os.Stat(assetsDir); os.IsNotExist(err) {
 		t.Fatalf("Assets directory was not created: %s", assetsDir)
 	}

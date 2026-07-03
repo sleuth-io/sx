@@ -21,7 +21,6 @@ package layout
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/sleuth-io/sx/internal/manifest"
@@ -114,10 +113,8 @@ func (l Layout) SourcePathRel(name, version string) string {
 // Detect determines the storage format of the vault rooted at vaultRoot.
 //
 // The manifest's schema_version is authoritative when sx.toml exists. Vaults
-// without a manifest are classified by directory shape: an existing
-// .sx/versions tree means v2, an existing assets tree means v1 (legacy vaults
-// predate the schema field), and an empty root gets the current default for
-// newly created vaults.
+// without a manifest are classified by directory shape — see
+// manifest.DetectShapeVersion.
 func Detect(vaultRoot string) (Layout, error) {
 	m, ok, err := manifest.Load(vaultRoot)
 	if err != nil {
@@ -126,11 +123,5 @@ func Detect(vaultRoot string) (Layout, error) {
 	if ok {
 		return ForVersion(Version(m.SchemaVersion))
 	}
-	if _, err := os.Stat(filepath.Join(vaultRoot, archiveRoot)); err == nil {
-		return ForVersion(V2)
-	}
-	if _, err := os.Stat(filepath.Join(vaultRoot, "assets")); err == nil {
-		return ForVersion(V1)
-	}
-	return ForVersion(Version(manifest.CurrentSchemaVersion))
+	return ForVersion(Version(manifest.DetectShapeVersion(vaultRoot)))
 }

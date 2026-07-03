@@ -209,6 +209,9 @@ func (g *GitVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipData 
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
+	if err := g.ensureMigratedLocked(ctx); err != nil {
+		return err
+	}
 
 	// Store assets exploded (not as zip) so they are easy to browse and
 	// diff in Git. The layout decides where versions and list.txt live.
@@ -781,6 +784,9 @@ func (g *GitVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, 
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
+	if err := g.ensureMigratedLocked(ctx); err != nil {
+		return err
+	}
 
 	actor, err := g.CurrentActor(ctx)
 	if err != nil {
@@ -810,6 +816,9 @@ func (g *GitVault) InheritInstallations(ctx context.Context, asset *lockfile.Ass
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
+	if err := g.ensureMigratedLocked(ctx); err != nil {
+		return err
+	}
 
 	if err := inheritAssetScopesFromManifest(g.repoPath, asset); err != nil {
 		return fmt.Errorf("failed to inherit scopes: %w", err)
@@ -838,6 +847,9 @@ func (g *GitVault) RemoveAsset(ctx context.Context, assetName, version string, d
 	// Clone or update repository
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+	if err := g.ensureMigratedLocked(ctx); err != nil {
+		return err
 	}
 
 	removed, err := removeAssetFromManifest(g.repoPath, assetName, version)
@@ -912,6 +924,9 @@ func (g *GitVault) RenameAsset(ctx context.Context, oldName, newName string) err
 	// Clone or update repository
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+	if err := g.ensureMigratedLocked(ctx); err != nil {
+		return err
 	}
 
 	l, err := detectLayout(g.repoPath)

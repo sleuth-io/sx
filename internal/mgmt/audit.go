@@ -50,6 +50,11 @@ const (
 
 	EventOrgAdminAdded   = "org.admin_added"
 	EventOrgAdminRemoved = "org.admin_removed"
+
+	// EventVaultMigrated records a vault storage-format migration (e.g.
+	// v1 → v2 layout). Emitted once per migration with from/to versions
+	// and the number of migrated assets in Data.
+	EventVaultMigrated = "vault.migrated"
 )
 
 // Audit target type constants.
@@ -59,6 +64,7 @@ const (
 	TargetTypeAsset        = "asset"
 	TargetTypeInstallation = "installation"
 	TargetTypeOrg          = "org"
+	TargetTypeVault        = "vault"
 )
 
 // AuditEvent is a single row in .sx/audit/YYYY-MM.jsonl.

@@ -177,14 +177,17 @@ func TestParse_UnsupportedSchema(t *testing.T) {
 	}
 }
 
-func TestParse_MissingSchemaDefaultsToCurrent(t *testing.T) {
+func TestParse_MissingSchemaDefaultsToV1(t *testing.T) {
+	// Files that predate the schema_version field are v1 by definition —
+	// defaulting to the current version would misclassify a legacy vault's
+	// storage layout.
 	data := []byte("created_by = \"sx test\"\n")
 	m, err := Parse(data)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if m.SchemaVersion != CurrentSchemaVersion {
-		t.Errorf("default schema version: got %d want %d", m.SchemaVersion, CurrentSchemaVersion)
+	if m.SchemaVersion != 1 {
+		t.Errorf("default schema version: got %d want 1", m.SchemaVersion)
 	}
 }
 

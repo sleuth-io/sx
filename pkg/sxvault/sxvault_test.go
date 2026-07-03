@@ -38,10 +38,10 @@ func TestGitPutAgentWritesSXVaultFormat(t *testing.T) {
 	}
 
 	clone := cloneRemote(t, remote)
-	agentPath := filepath.Join(clone, "assets", "reviewer", "1.0.0", "AGENT.md")
+	agentPath := filepath.Join(clone, ".sx", "versions", "reviewer", "1.0.0", "AGENT.md")
 	assertFileContains(t, agentPath, "---\nname: reviewer\ndescription: \"Reviews pull requests.\"\n---")
 	assertFileContains(t, agentPath, "You are Reviewer.")
-	assertFileContains(t, filepath.Join(clone, "assets", "reviewer", "1.0.0", "metadata.toml"), `type = "agent"`)
+	assertFileContains(t, filepath.Join(clone, ".sx", "versions", "reviewer", "1.0.0", "metadata.toml"), `type = "agent"`)
 	manifest := readFile(t, filepath.Join(clone, "sx.toml"))
 	for _, want := range []string{`name = "reviewer"`, `kind = "bot"`, `bot = "reviewer"`} {
 		if !strings.Contains(manifest, want) {
@@ -274,7 +274,7 @@ func TestDeleteBotRemovesBotAndBotScopes(t *testing.T) {
 	if strings.Contains(manifest, `name = "lint-helper"`) {
 		t.Fatalf("bot-only skill asset stayed in sx.toml after DeleteBot; this would make it global:\n%s", manifest)
 	}
-	assertFileContains(t, filepath.Join(clone, "assets", "lint-helper", "1", "SKILL.md"), "Lint carefully.")
+	assertFileContains(t, filepath.Join(clone, ".sx", "versions", "lint-helper", "1", "SKILL.md"), "Lint carefully.")
 }
 
 func TestDeleteAssetRemovesGitVaultFilesAndManifest(t *testing.T) {
@@ -533,11 +533,11 @@ func TestPutAgentSameVersionIsIdempotent(t *testing.T) {
 	}
 
 	clone := cloneRemote(t, remote)
-	list := readFile(t, filepath.Join(clone, "assets", "reviewer", "list.txt"))
+	list := readFile(t, filepath.Join(clone, ".sx", "versions", "reviewer", "list.txt"))
 	if count := strings.Count(list, "1.0.0"); count != 1 {
 		t.Fatalf("version list contains 1.0.0 %d times:\n%s", count, list)
 	}
-	assertFileContains(t, filepath.Join(clone, "assets", "reviewer", "1.0.0", "AGENT.md"), "You are Reviewer.")
+	assertFileContains(t, filepath.Join(clone, ".sx", "versions", "reviewer", "1.0.0", "AGENT.md"), "You are Reviewer.")
 }
 
 func TestPutSkillZipSameVersionIsIdempotent(t *testing.T) {
@@ -557,11 +557,11 @@ func TestPutSkillZipSameVersionIsIdempotent(t *testing.T) {
 	}
 
 	clone := cloneRemote(t, remote)
-	list := readFile(t, filepath.Join(clone, "assets", "lint-helper", "list.txt"))
+	list := readFile(t, filepath.Join(clone, ".sx", "versions", "lint-helper", "list.txt"))
 	if count := strings.Count(list, "1.0.0"); count != 1 {
 		t.Fatalf("version list contains 1.0.0 %d times:\n%s", count, list)
 	}
-	assertFileContains(t, filepath.Join(clone, "assets", "lint-helper", "1.0.0", "SKILL.md"), "Lint carefully.")
+	assertFileContains(t, filepath.Join(clone, ".sx", "versions", "lint-helper", "1.0.0", "SKILL.md"), "Lint carefully.")
 }
 
 func TestPutSkillZipAcceptsSingleDirectoryUpload(t *testing.T) {
@@ -577,7 +577,7 @@ func TestPutSkillZipAcceptsSingleDirectoryUpload(t *testing.T) {
 	}
 
 	clone := cloneRemote(t, remote)
-	assetDir := filepath.Join(clone, "assets", "graphql-field-skill", "1")
+	assetDir := filepath.Join(clone, ".sx", "versions", "graphql-field-skill", "1")
 	assertFileContains(t, filepath.Join(assetDir, "SKILL.md"), "Use GraphQL fields carefully.")
 	assertFileContains(t, filepath.Join(assetDir, "references", "guide.md"), "Field guide")
 	if _, err := os.Stat(filepath.Join(assetDir, "graphql-field", "SKILL.md")); !errors.Is(err, os.ErrNotExist) {
@@ -1188,11 +1188,11 @@ func TestPutSkillZipDescriptionPrecedence(t *testing.T) {
 	}
 
 	clone := cloneRemote(t, remote)
-	preserved := readFile(t, filepath.Join(clone, "assets", "lint-helper", "1.0.0", "metadata.toml"))
+	preserved := readFile(t, filepath.Join(clone, ".sx", "versions", "lint-helper", "1.0.0", "metadata.toml"))
 	if !strings.Contains(preserved, `description = "Embedded description."`) {
 		t.Fatalf("empty spec description did not preserve embedded description:\n%s", preserved)
 	}
-	overridden := readFile(t, filepath.Join(clone, "assets", "test-helper", "1.0.0", "metadata.toml"))
+	overridden := readFile(t, filepath.Join(clone, ".sx", "versions", "test-helper", "1.0.0", "metadata.toml"))
 	if !strings.Contains(overridden, `description = "Spec description wins."`) {
 		t.Fatalf("non-empty spec description did not override embedded description:\n%s", overridden)
 	}
@@ -1234,8 +1234,8 @@ func TestPutSkillZipWithAndWithoutBotInstall(t *testing.T) {
 	}
 
 	clone := cloneRemote(t, remote)
-	assertFileContains(t, filepath.Join(clone, "assets", "lint-helper", "1.0.0", "SKILL.md"), "Lint carefully.")
-	assertFileContains(t, filepath.Join(clone, "assets", "test-helper", "1.0.0", "SKILL.md"), "Test carefully.")
+	assertFileContains(t, filepath.Join(clone, ".sx", "versions", "lint-helper", "1.0.0", "SKILL.md"), "Lint carefully.")
+	assertFileContains(t, filepath.Join(clone, ".sx", "versions", "test-helper", "1.0.0", "SKILL.md"), "Test carefully.")
 	manifest := readFile(t, filepath.Join(clone, "sx.toml"))
 	if strings.Contains(manifest, `bot = "lint-helper"`) {
 		t.Fatalf("skill without botName should not be installed to a bot:\n%s", manifest)
@@ -1434,7 +1434,7 @@ func TestGetAssetZipAndUninstallAssetFromBot(t *testing.T) {
 	if strings.Contains(manifest, `name = "lint-helper"`) {
 		t.Fatalf("bot-only skill asset stayed in sx.toml after uninstall; this would make it global:\n%s", manifest)
 	}
-	assertFileContains(t, filepath.Join(clone, "assets", "lint-helper", "1", "SKILL.md"), "Lint carefully.")
+	assertFileContains(t, filepath.Join(clone, ".sx", "versions", "lint-helper", "1", "SKILL.md"), "Lint carefully.")
 }
 
 func TestListAssetsWithOptionsHonorsLimitAndSearch(t *testing.T) {
@@ -1567,7 +1567,7 @@ func TestOpenPathRoundTrip(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	assertFileContains(t, filepath.Join(dir, "assets", "lint-helper", "1.0.0", "SKILL.md"), "Lint carefully.")
+	assertFileContains(t, filepath.Join(dir, ".sx", "versions", "lint-helper", "1.0.0", "SKILL.md"), "Lint carefully.")
 
 	if _, err := OpenPath("", PathOptions{}); err == nil {
 		t.Fatal("OpenPath with empty path succeeded, want error")

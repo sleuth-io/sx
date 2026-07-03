@@ -51,6 +51,9 @@ func (g *GitVault) runInVaultTx(ctx context.Context, commitMsg string, fn func(v
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
+	if err := g.ensureMigratedLocked(ctx); err != nil {
+		return err
+	}
 	if err := ensureSxDir(g.repoPath); err != nil {
 		return err
 	}

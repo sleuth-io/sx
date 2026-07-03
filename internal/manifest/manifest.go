@@ -26,11 +26,16 @@ import (
 // FileName is the path, relative to the vault root, where the manifest lives.
 const FileName = "sx.toml"
 
-// CurrentSchemaVersion is the schema version written by this build. A
-// future build that bumps the version will migrate v1 files forward on
-// first write; this build rejects files whose version exceeds the one it
-// understands.
-const CurrentSchemaVersion = 1
+// CurrentSchemaVersion is the schema version written by this build for
+// newly created vaults. This build rejects files whose version exceeds the
+// one it understands.
+//
+// Version 2 changes the vault's storage layout (latest asset version
+// materialized at assets/{name}, archive under .sx/versions — see
+// internal/vault/layout) and adds collections. Existing v1 vaults are
+// migrated by the vault layer on their first write; loading and saving a v1
+// manifest preserves its version until that migration runs.
+const CurrentSchemaVersion = 2
 
 // Errors returned by the parser and mutators.
 var (
@@ -581,10 +586,11 @@ func Parse(data []byte) (*Manifest, error) {
 		return nil, fmt.Errorf("failed to parse manifest: %w", err)
 	}
 	if m.SchemaVersion == 0 {
-		// Treat an unspecified version as v1 for forgiving reads. Newer
-		// files without a version will still produce warnings in
-		// validation, but parse succeeds.
-		m.SchemaVersion = CurrentSchemaVersion
+		// Treat an unspecified version as v1 for forgiving reads: every
+		// file that predates the schema_version field is v1, and defaulting
+		// to the current version would misclassify a legacy vault's storage
+		// layout.
+		m.SchemaVersion = 1
 	}
 	if m.SchemaVersion > CurrentSchemaVersion {
 		return nil, fmt.Errorf("%w: file uses schema %d, this build understands up to %d", ErrUnsupportedSchema, m.SchemaVersion, CurrentSchemaVersion)

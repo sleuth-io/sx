@@ -309,8 +309,10 @@ type = "global"
 		t.Errorf("Expected 'Removed my-skill@1.0.0' in output, got:\n%s", output)
 	}
 
-	// Verify asset files still exist in vault (not deleted)
-	env.AssertFileExists(filepath.Join(vaultDir, "assets", "my-skill", "1.0.0", "metadata.toml"))
+	// Verify asset files still exist in vault (not deleted). The write
+	// migrated this v1 fixture to storage format v2.
+	env.AssertFileExists(filepath.Join(vaultDir, ".sx", "versions", "my-skill", "1.0.0", "metadata.toml"))
+	env.AssertFileExists(filepath.Join(vaultDir, "assets", "my-skill", "metadata.toml"))
 
 	// Verify the manifest no longer has the asset.
 	lf, _ := env.ReadVaultAssets(vaultDir)
@@ -414,12 +416,15 @@ type = "global"
 		t.Fatalf("vault remove specific version failed: %v", err)
 	}
 
-	// Verify only v1.0.0 was deleted, v2.0.0 still exists
-	env.AssertFileNotExists(filepath.Join(vaultDir, "assets", "multi-ver", "1.0.0"))
-	env.AssertFileExists(filepath.Join(vaultDir, "assets", "multi-ver", "2.0.0", "metadata.toml"))
+	// The write migrated this v1 fixture to storage format v2, so the
+	// remaining version lives in the archive with a root view at
+	// assets/multi-ver.
+	env.AssertFileNotExists(filepath.Join(vaultDir, ".sx", "versions", "multi-ver", "1.0.0"))
+	env.AssertFileExists(filepath.Join(vaultDir, ".sx", "versions", "multi-ver", "2.0.0", "metadata.toml"))
+	env.AssertFileExists(filepath.Join(vaultDir, "assets", "multi-ver", "metadata.toml"))
 
 	// Verify list.txt was updated
-	listData, err := os.ReadFile(filepath.Join(vaultDir, "assets", "multi-ver", "list.txt"))
+	listData, err := os.ReadFile(filepath.Join(vaultDir, ".sx", "versions", "multi-ver", "list.txt"))
 	if err != nil {
 		t.Fatalf("Failed to read list.txt: %v", err)
 	}
@@ -544,13 +549,16 @@ type = "global"
 		t.Errorf("Expected 'Renamed old-name to new-name' in output, got:\n%s", output)
 	}
 
-	// Verify old directory is gone, new directory exists
+	// The write migrated this v1 fixture to storage format v2: old asset is
+	// gone, the renamed asset has an archive and a root view.
 	env.AssertFileNotExists(filepath.Join(vaultDir, "assets", "old-name"))
-	env.AssertFileExists(filepath.Join(vaultDir, "assets", "new-name", "1.0.0", "metadata.toml"))
-	env.AssertFileExists(filepath.Join(vaultDir, "assets", "new-name", "2.0.0", "metadata.toml"))
+	env.AssertFileNotExists(filepath.Join(vaultDir, ".sx", "versions", "old-name"))
+	env.AssertFileExists(filepath.Join(vaultDir, ".sx", "versions", "new-name", "1.0.0", "metadata.toml"))
+	env.AssertFileExists(filepath.Join(vaultDir, ".sx", "versions", "new-name", "2.0.0", "metadata.toml"))
+	env.AssertFileExists(filepath.Join(vaultDir, "assets", "new-name", "metadata.toml"))
 
 	// Verify metadata was updated with new name
-	metaData, err := os.ReadFile(filepath.Join(vaultDir, "assets", "new-name", "1.0.0", "metadata.toml"))
+	metaData, err := os.ReadFile(filepath.Join(vaultDir, ".sx", "versions", "new-name", "1.0.0", "metadata.toml"))
 	if err != nil {
 		t.Fatalf("Failed to read metadata: %v", err)
 	}

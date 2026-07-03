@@ -295,7 +295,7 @@ func (p *PathVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFilte
 }
 
 // withLock wraps a mutating op: acquire exclusive flock, resolve actor,
-// run fn.
+// migrate the storage format if pending, run fn.
 func (p *PathVault) withLock(ctx context.Context, fn func(actor mgmt.Actor) error) error {
 	fl, err := p.acquirePathLock(ctx)
 	if err != nil {
@@ -305,6 +305,9 @@ func (p *PathVault) withLock(ctx context.Context, fn func(actor mgmt.Actor) erro
 
 	actor, err := p.CurrentActor(ctx)
 	if err != nil {
+		return err
+	}
+	if _, err := migrateStorageToV2(p.repoPath, actor.Email); err != nil && !errors.Is(err, ErrStorageUpToDate) {
 		return err
 	}
 	return fn(actor)

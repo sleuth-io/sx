@@ -118,6 +118,9 @@ func (p *PathVault) GetAsset(ctx context.Context, asset *lockfile.Asset) ([]byte
 // AddAsset adds an asset to the local repository
 // Follows the same pattern as GitRepository: exploded storage + list.txt
 func (p *PathVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipData []byte) error {
+	if err := p.ensureMigrated(ctx); err != nil {
+		return err
+	}
 	l, err := detectLayout(p.repoPath)
 	if err != nil {
 		return err
@@ -218,6 +221,9 @@ func (p *PathVault) ManifestPath() string {
 // isn't allowed to remove (e.g. a team they don't admin), which are carried
 // through — see commonSetInstallations and docs/rbac.md.
 func (p *PathVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, scopeEntity string) error {
+	if err := p.ensureMigrated(ctx); err != nil {
+		return err
+	}
 	actor, err := p.CurrentActor(ctx)
 	if err != nil {
 		return err
@@ -229,6 +235,9 @@ func (p *PathVault) SetInstallations(ctx context.Context, asset *lockfile.Asset,
 // asset in the manifest, then upserts. Used when adding a new version of
 // an asset so its install scopes are preserved.
 func (p *PathVault) InheritInstallations(ctx context.Context, asset *lockfile.Asset) error {
+	if err := p.ensureMigrated(ctx); err != nil {
+		return err
+	}
 	if err := inheritAssetScopesFromManifest(p.repoPath, asset); err != nil {
 		return err
 	}
@@ -238,6 +247,9 @@ func (p *PathVault) InheritInstallations(ctx context.Context, asset *lockfile.As
 // RemoveAsset removes an asset from the manifest. If delete is true, the
 // asset's files are also removed from the vault's storage directory.
 func (p *PathVault) RemoveAsset(ctx context.Context, assetName, version string, delete bool) error {
+	if err := p.ensureMigrated(ctx); err != nil {
+		return err
+	}
 	removed, err := removeAssetFromManifest(p.repoPath, assetName, version)
 	if err != nil {
 		return err
@@ -266,6 +278,9 @@ func (p *PathVault) deleteAssetFiles(assetName, version string) error {
 
 // RenameAsset renames an asset in the vault.
 func (p *PathVault) RenameAsset(ctx context.Context, oldName, newName string) error {
+	if err := p.ensureMigrated(ctx); err != nil {
+		return err
+	}
 	l, err := detectLayout(p.repoPath)
 	if err != nil {
 		return err

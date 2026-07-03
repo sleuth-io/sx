@@ -168,8 +168,11 @@ func (e *TestEnv) WriteLockFile(vaultDir, content string) {
 	if err != nil {
 		e.t.Fatalf("parse seed lockfile: %v", err)
 	}
+	// The schema version must match the storage shape the test built:
+	// fixtures that hand-wrote assets/{name}/{version} dirs are v1 vaults,
+	// and stamping the current version onto them would misroute reads.
 	m := &manifest.Manifest{
-		SchemaVersion: manifest.CurrentSchemaVersion,
+		SchemaVersion: manifest.DetectShapeVersion(vaultDir),
 		CreatedBy:     "test",
 	}
 	if len(lf.Assets) > 0 {
