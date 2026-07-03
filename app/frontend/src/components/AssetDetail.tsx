@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { GetAsset } from "../../wailsjs/go/main/App";
+import { GetAsset, RestoreRevision } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import TypeBadge from "./TypeBadge";
 
@@ -12,9 +12,13 @@ import TypeBadge from "./TypeBadge";
 export default function AssetDetail({
   name,
   onClose,
+  onEdit,
+  onChanged,
 }: {
   name: string;
   onClose: () => void;
+  onEdit: () => void;
+  onChanged: () => void;
 }) {
   const [detail, setDetail] = useState<main.AssetDetail | null>(null);
   const [error, setError] = useState("");
@@ -40,9 +44,26 @@ export default function AssetDetail({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const [restoring, setRestoring] = useState(false);
+
   const files = detail?.files ?? [];
   const isLatest =
     !detail || detail.version === detail.versions[detail.versions.length - 1];
+
+  async function restore() {
+    if (!detail) return;
+    setRestoring(true);
+    setError("");
+    try {
+      await RestoreRevision(detail.name, detail.version);
+      setRevision("");
+      onChanged();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRestoring(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
@@ -66,6 +87,12 @@ export default function AssetDetail({
               </p>
             )}
           </div>
+          <button
+            onClick={onEdit}
+            className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:border-accent hover:text-ink"
+          >
+            Edit
+          </button>
           <button
             onClick={onClose}
             className="rounded-lg px-2 py-1 text-sm text-ink-faint transition hover:bg-canvas hover:text-ink"
@@ -94,9 +121,19 @@ export default function AssetDetail({
               ))}
             </select>
             {!isLatest && (
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                Viewing an older revision
-              </span>
+              <>
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                  Viewing an older revision
+                </span>
+                <div className="flex-1" />
+                <button
+                  onClick={() => void restore()}
+                  disabled={restoring}
+                  className="rounded-md bg-accent px-2.5 py-1 font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {restoring ? "Restoring…" : "Restore this revision"}
+                </button>
+              </>
             )}
           </div>
         )}
