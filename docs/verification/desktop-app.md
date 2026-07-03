@@ -66,3 +66,22 @@ inspected via tokens, not screenshotted.
 - Sleuth-vault collections (feature-detected; UI hides collections there).
 - Artifacts are unsigned pending Apple Developer ID / Windows cert.
 - Dedup detection and self-improving loops are v1.1/v2 per the spec.
+
+## Round 3: research-driven layout redesign (2026-07-03)
+
+Research: Apple HIG sidebars, NN/g (cards-vs-lists, sort order, empty
+states, drag-drop, onboarding), VS Code/App Store install patterns. Changes,
+each verified via Playwright against a 30-asset fixture vault:
+
+- Source-list sidebar: LIBRARY (All / per-type / In your AI tools / Drafts,
+  all with counts), COLLECTIONS with inline "+ new" and a create-your-first
+  empty prompt, footer showing detected AI tools + Settings.
+- Dense list view (default) with grid toggle, both persisted; default sort
+  "Recently updated" with Name option; Cmd+F or "/" focuses search.
+- Install UX: App Store-style state machine — "Use in my AI tools" →
+  Installing… → "✓ In your AI tools ▾" with Update/Remove menu; installed ✓
+  on rows; "In your AI tools" sidebar scope; one-time plain-language hint
+  ("nothing leaves your computer"); sidebar footer answers what "my AI
+  tools" means. App installs/uninstalls now update the shared CLI tracker
+  (verified count 0 → 1 → 0 through the full cycle), so the app and
+  `sx install --repair` agree.

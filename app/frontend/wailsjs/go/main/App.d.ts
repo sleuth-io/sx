@@ -30,6 +30,8 @@ export function InstallAsset(arg1:string):Promise<main.InstallResult>;
 
 export function InstallCollection(arg1:string):Promise<main.InstallResult>;
 
+export function InstalledAssetNames():Promise<Array<string>>;
+
 export function ListAIClients():Promise<Array<main.AIClient>>;
 
 export function ListAssets():Promise<Array<main.AssetCard>>;

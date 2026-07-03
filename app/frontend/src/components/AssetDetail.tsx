@@ -5,6 +5,7 @@ import {
   InstallAsset,
   RestoreRevision,
   SetCollectionMembership,
+  UninstallAsset,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import FileRail from "./FileRail";
@@ -18,6 +19,7 @@ import TypeBadge from "./TypeBadge";
 export default function AssetDetail({
   name,
   collections,
+  installed,
   onClose,
   onEdit,
   onChanged,
@@ -26,6 +28,7 @@ export default function AssetDetail({
 }: {
   name: string;
   collections: main.Collection[];
+  installed: boolean;
   onClose: () => void;
   onEdit: () => void;
   onChanged: () => void;
@@ -58,12 +61,30 @@ export default function AssetDetail({
 
   const [restoring, setRestoring] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [installMenu, setInstallMenu] = useState(false);
+  const showInstallHint =
+    !installed && !localStorage.getItem("sx-install-explained");
 
   async function install() {
     setInstalling(true);
+    setInstallMenu(false);
     try {
       const result = await InstallAsset(name);
+      localStorage.setItem("sx-install-explained", "1");
       onToast(`Ready to use in ${result.clients.join(", ")}`);
+    } catch (e) {
+      onToast(String(e));
+    } finally {
+      setInstalling(false);
+    }
+  }
+
+  async function uninstall() {
+    setInstalling(true);
+    setInstallMenu(false);
+    try {
+      await UninstallAsset(name);
+      onToast(`Removed ${name} from your AI tools`);
     } catch (e) {
       onToast(String(e));
     } finally {
@@ -120,15 +141,49 @@ export default function AssetDetail({
                 {detail.description}
               </p>
             )}
+            {showInstallHint && (
+              <p className="mt-1.5 text-xs text-ink-faint">
+                Installing copies this into the AI tools on this machine (see
+                the sidebar) so they can use it. Nothing leaves your computer.
+              </p>
+            )}
           </div>
-          <button
-            onClick={() => void install()}
-            disabled={installing}
-            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-            title="Install into Claude Code, Cursor, and other detected AI tools"
-          >
-            {installing ? "Setting up…" : "Use in my AI tools"}
-          </button>
+          {installed ? (
+            <div className="relative">
+              <button
+                onClick={() => setInstallMenu((v) => !v)}
+                disabled={installing}
+                className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 transition hover:border-emerald-400 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+              >
+                {installing ? "Working…" : "✓ In your AI tools ▾"}
+              </button>
+              {installMenu && (
+                <div className="absolute right-0 z-40 mt-1.5 w-52 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                  <button
+                    onClick={() => void install()}
+                    className="w-full px-3.5 py-2 text-left text-sm transition hover:bg-accent-soft"
+                  >
+                    Update to latest revision
+                  </button>
+                  <button
+                    onClick={() => void uninstall()}
+                    className="w-full px-3.5 py-2 text-left text-sm text-danger transition hover:bg-danger-soft"
+                  >
+                    Remove from my AI tools
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => void install()}
+              disabled={installing}
+              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+              title="Install into the AI tools listed in the sidebar"
+            >
+              {installing ? "Installing…" : "Use in my AI tools"}
+            </button>
+          )}
           <button
             onClick={onEdit}
             className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:border-accent hover:text-ink"

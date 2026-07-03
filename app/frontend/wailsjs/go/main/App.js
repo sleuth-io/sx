@@ -58,6 +58,10 @@ export function InstallCollection(arg1) {
   return window['go']['main']['App']['InstallCollection'](arg1);
 }
 
+export function InstalledAssetNames() {
+  return window['go']['main']['App']['InstalledAssetNames']();
+}
+
 export function ListAIClients() {
   return window['go']['main']['App']['ListAIClients']();
 }

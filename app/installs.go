@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	assetspkg "github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/manifest"
@@ -128,6 +129,7 @@ func (a *App) installBundles(bundles []*clients.AssetBundle) (InstallResult, err
 	results := orchestrator.InstallToAll(a.ctx, bundles, globalScope(), clients.InstallOptions{})
 
 	var succeeded []string
+	var succeededIDs []string
 	var failures []string
 	for id, resp := range results {
 		client, err := registry.Get(id)
@@ -148,6 +150,7 @@ func (a *App) installBundles(bundles []*clients.AssetBundle) (InstallResult, err
 		}
 		if ok {
 			succeeded = append(succeeded, displayName)
+			succeededIDs = append(succeededIDs, id)
 		}
 	}
 	sort.Strings(succeeded)
@@ -157,7 +160,38 @@ func (a *App) installBundles(bundles []*clients.AssetBundle) (InstallResult, err
 		}
 		return InstallResult{}, errors.New("no AI tools on this machine can use this asset")
 	}
+
+	// Record the installs in the shared tracker so the app, `sx install`,
+	// and `sx install --repair` agree about what's on this machine.
+	if tracker, err := assetspkg.LoadTracker(); err == nil {
+		for _, bundle := range bundles {
+			tracker.UpsertAsset(assetspkg.InstalledAsset{
+				Name:    bundle.Asset.Name,
+				Version: bundle.Asset.Version,
+				Type:    bundle.Asset.Type.Key,
+				Clients: succeededIDs,
+			})
+		}
+		_ = assetspkg.SaveTracker(tracker)
+	}
+
 	return InstallResult{Clients: succeeded}, nil
+}
+
+// InstalledAssetNames returns the names of assets installed on this machine
+// at user-global scope — the app's install target.
+func (a *App) InstalledAssetNames() ([]string, error) {
+	tracker, err := assetspkg.LoadTracker()
+	if err != nil {
+		return []string{}, nil // no tracker yet = nothing installed
+	}
+	installed := tracker.FindGlobal()
+	names := make([]string, 0, len(installed))
+	for _, item := range installed {
+		names = append(names, item.Name)
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 // UninstallAsset removes an asset from every detected AI client.
@@ -180,6 +214,13 @@ func (a *App) UninstallAsset(name string) error {
 		}
 		if _, err := client.UninstallAssets(a.ctx, req); err != nil {
 			return fmt.Errorf("couldn't remove from %s: %w", client.DisplayName(), err)
+		}
+	}
+
+	// Keep the shared tracker in sync (see installBundles).
+	if tracker, err := assetspkg.LoadTracker(); err == nil {
+		if tracker.RemoveAsset(assetspkg.AssetKey{Name: name}) {
+			_ = assetspkg.SaveTracker(tracker)
 		}
 	}
 	return nil
