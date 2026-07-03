@@ -342,6 +342,12 @@ func (g *GitVault) ensureMigratedLocked(ctx context.Context) error {
 // tip, discarding local commits. Used to recover from a lost migration race.
 // The caller must hold the vault flock.
 func (g *GitVault) discardLocalAndResync(ctx context.Context) error {
+	// The failed push retry may have left the clone mid-rebase (the rebase
+	// of our migration commit onto the winner's conflicts by construction —
+	// both moved the same files). Abort it first so the branch is restored;
+	// an error just means no rebase was in progress.
+	_ = g.gitClient.RebaseAbort(ctx, g.repoPath)
+
 	if err := g.gitClient.Fetch(ctx, g.repoPath); err != nil {
 		return err
 	}
