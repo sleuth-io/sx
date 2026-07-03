@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+/* Design tokens. Warm neutrals, one confident accent, generous whitespace.
+   Every screen reads from these so light/dark stay consistent. */
+@theme {
+  --color-canvas: #fafaf9;
+  --color-surface: #ffffff;
+  --color-ink: #1c1917;
+  --color-ink-soft: #57534e;
+  --color-ink-faint: #a8a29e;
+  --color-line: #e7e5e4;
+  --color-accent: #4f46e5;
+  --color-accent-soft: #eef2ff;
+  --color-danger: #b91c1c;
+  --color-danger-soft: #fef2f2;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+    monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #171412;
+    --color-surface: #211d1a;
+    --color-ink: #f5f5f4;
+    --color-ink-soft: #c7c1bc;
+    --color-ink-faint: #78716c;
+    --color-line: #35302c;
+    --color-accent: #818cf8;
+    --color-accent-soft: #29283f;
+    --color-danger: #f87171;
+    --color-danger-soft: #3c2222;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* The window chrome is hidden-inset on macOS; this strip stays draggable. */
+.titlebar-drag {
+  --wails-draggable: drag;
+}
+
+/* Markdown rendering inside the asset detail panel. */
+.prose-sx {
+  line-height: 1.65;
+  font-size: 0.9rem;
+  color: var(--color-ink);
+  overflow-wrap: break-word;
+}
+.prose-sx h1,
+.prose-sx h2,
+.prose-sx h3,
+.prose-sx h4 {
+  font-weight: 600;
+  margin: 1.4em 0 0.5em;
+  line-height: 1.25;
+}
+.prose-sx h1 { font-size: 1.25rem; }
+.prose-sx h2 { font-size: 1.1rem; }
+.prose-sx h3 { font-size: 1rem; }
+.prose-sx h1:first-child,
+.prose-sx h2:first-child { margin-top: 0; }
+.prose-sx p { margin: 0.6em 0; }
+.prose-sx ul,
+.prose-sx ol { margin: 0.6em 0; padding-left: 1.4em; }
+.prose-sx ul { list-style: disc; }
+.prose-sx ol { list-style: decimal; }
+.prose-sx li { margin: 0.25em 0; }
+.prose-sx code {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  background: var(--color-accent-soft);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.prose-sx pre {
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  margin: 0.8em 0;
+}
+.prose-sx pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.8rem;
+}
+.prose-sx blockquote {
+  border-left: 3px solid var(--color-line);
+  padding-left: 1em;
+  color: var(--color-ink-soft);
+  margin: 0.8em 0;
+}
+.prose-sx a { color: var(--color-accent); text-decoration: underline; }
+.prose-sx hr { border: 0; border-top: 1px solid var(--color-line); margin: 1.2em 0; }
+.prose-sx table { border-collapse: collapse; margin: 0.8em 0; }
+.prose-sx th,
+.prose-sx td {
+  border: 1px solid var(--color-line);
+  padding: 0.35em 0.7em;
+  font-size: 0.85em;
+}

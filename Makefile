@@ -167,3 +167,12 @@ demo: build ## Generate demo GIF (requires vhs)
 
 logs: ## Follow sx logs with colors (-f FILTER to filter, -n NUM for lines)
 	@go run ./tools/logs $(LOGS_ARGS)
+
+app-dev: ## Run the desktop app in dev mode (hot reload)
+	@which wails > /dev/null || (echo "wails not found. Run: go install github.com/wailsapp/wails/v2/cmd/wails@latest" && exit 1)
+	cd app && wails dev
+
+app-build: ## Build the desktop app for this platform
+	@which wails > /dev/null || (echo "wails not found. Run: go install github.com/wailsapp/wails/v2/cmd/wails@latest" && exit 1)
+	cd app && wails build
+	@echo "Built: app/build/bin/"

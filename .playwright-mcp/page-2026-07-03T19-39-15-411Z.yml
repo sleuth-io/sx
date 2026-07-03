@@ -1,0 +1,56 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: sx
+        - generic [ref=e8]:
+          - generic [ref=e9]: Library
+          - generic "/tmp/sx-app-vault" [ref=e10]
+      - textbox "Search…" [ref=e11]
+    - generic [ref=e12]:
+      - button "All" [ref=e13]
+      - button "Rules" [ref=e14]
+      - button "Skills" [ref=e15]
+  - main [ref=e16]:
+    - generic [ref=e17]:
+      - 'button "brand-voice Skill How we sound: tone, vocabulary, and phrases to avoid in customer-facing copy. 2 revisions · updated 4m ago" [active] [ref=e30]':
+        - generic [ref=e19]:
+          - generic [ref=e20]: brand-voice
+          - generic [ref=e21]: Skill
+        - generic [ref=e22]: "How we sound: tone, vocabulary, and phrases to avoid in customer-facing copy."
+        - generic [ref=e23]: 2 revisions · updated 4m ago
+      - button "pr-checklist Rule Checklist every pull request description must satisfy. 1 revision · updated 4m ago" [ref=e31]:
+        - generic [ref=e25]:
+          - generic [ref=e26]: pr-checklist
+          - generic [ref=e27]: Rule
+        - generic [ref=e28]: Checklist every pull request description must satisfy.
+        - generic [ref=e29]: 1 revision · updated 4m ago
+  - generic [ref=e32]:
+    - button "Close" [ref=e33]
+    - complementary [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - heading "brand-voice" [level=2] [ref=e38]
+            - generic [ref=e39]: Skill
+          - paragraph [ref=e40]: "How we sound: tone, vocabulary, and phrases to avoid in customer-facing copy."
+        - button "✕" [ref=e41]
+      - generic [ref=e42]:
+        - generic [ref=e43]: History
+        - combobox [ref=e44]:
+          - option "Current" [selected]
+          - option "Revision 1"
+      - navigation [ref=e45]:
+        - button "SKILL.md" [ref=e46]
+        - button "metadata.toml" [ref=e47]
+      - article [ref=e49]:
+        - heading "Brand voice" [level=1] [ref=e50]
+        - paragraph [ref=e51]: Use a warm, direct tone. Prefer short sentences.
+        - heading "Do" [level=2] [ref=e52]
+        - list [ref=e53]:
+          - listitem [ref=e54]: Talk to one reader ("you")
+          - listitem [ref=e55]: Lead with the benefit
+        - heading "Avoid" [level=2] [ref=e56]
+        - list [ref=e57]:
+          - listitem [ref=e58]: Corporate filler ("leverage", "utilize")
+          - listitem [ref=e59]: Exclamation marks in headlines
