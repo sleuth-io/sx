@@ -1,23 +1,40 @@
-import { useState } from "react";
-import { SetupGitVault, SetupLocalVault } from "../../wailsjs/go/main/App";
+import { useEffect, useState } from "react";
+import {
+  HasIdentity,
+  SetupGitVault,
+  SetupLocalVault,
+} from "../../wailsjs/go/main/App";
 
 type Choice = "solo" | "team";
 
+const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
 /**
  * First-launch screen. One decision, framed in plain language: where does
- * your library live? No vault/manifest/scope vocabulary.
+ * your library live? No vault/manifest/scope vocabulary. When the machine
+ * has no git identity, a single email field appears — changes to a shared
+ * library need a name on them.
  */
 export default function Onboarding({ onDone }: { onDone: () => void }) {
   const [choice, setChoice] = useState<Choice | null>(null);
   const [gitUrl, setGitUrl] = useState("");
+  const [email, setEmail] = useState("");
+  const [needsEmail, setNeedsEmail] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    HasIdentity().then((has) => setNeedsEmail(!has));
+  }, []);
+
+  const emailOK = !needsEmail || EMAIL_SHAPE.test(email.trim());
+
   async function pickSolo() {
+    if (!emailOK) return;
     setBusy(true);
     setError("");
     try {
-      await SetupLocalVault();
+      await SetupLocalVault(email.trim());
       onDone();
     } catch (e) {
       setError(String(e));
@@ -26,11 +43,11 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   }
 
   async function connectTeam() {
-    if (!gitUrl.trim()) return;
+    if (!gitUrl.trim() || !emailOK) return;
     setBusy(true);
     setError("");
     try {
-      await SetupGitVault(gitUrl.trim());
+      await SetupGitVault(gitUrl.trim(), email.trim());
       onDone();
     } catch (e) {
       setError(String(e));
@@ -43,7 +60,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       <div className="titlebar-drag h-10 shrink-0" />
       <div className="flex-1 flex items-center justify-center px-8">
         <div className="w-full max-w-md">
-          <div className="mb-10 text-center">
+          <div className="mb-8 text-center">
             <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-accent text-xl font-semibold text-white">
               sx
             </div>
@@ -56,13 +73,32 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             </p>
           </div>
 
+          {needsEmail && (
+            <label className="mb-4 block">
+              <span className="mb-1 block text-xs font-medium text-ink-soft">
+                Your email
+              </span>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                disabled={busy}
+                className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+              />
+              <span className="mt-1 block text-xs text-ink-faint">
+                Changes you publish are signed with it.
+              </span>
+            </label>
+          )}
+
           <div className="space-y-3">
             <button
               onClick={() => {
                 setChoice("solo");
                 void pickSolo();
               }}
-              disabled={busy}
+              disabled={busy || !emailOK}
               className="group w-full rounded-xl border border-line bg-surface p-4 text-left transition hover:border-accent disabled:opacity-60"
             >
               <div className="text-sm font-semibold">Just me</div>
@@ -106,7 +142,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                   />
                   <button
                     type="submit"
-                    disabled={busy || !gitUrl.trim()}
+                    disabled={busy || !gitUrl.trim() || !emailOK}
                     className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
                   >
                     {busy ? "Connecting…" : "Connect"}

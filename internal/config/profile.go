@@ -217,6 +217,7 @@ func migrateOldConfig(data []byte) (*MultiProfileConfig, error) {
 		AuthToken      string         `json:"authToken,omitempty"`
 		AuthUsername   string         `json:"authUsername,omitempty"`
 		RepositoryURL  string         `json:"repositoryUrl,omitempty"`
+		Identity       string         `json:"identity,omitempty"`
 		EnabledClients []string       `json:"enabledClients,omitempty"`
 	}
 	if err := json.Unmarshal(data, &oldCfg); err != nil {
@@ -234,6 +235,7 @@ func migrateOldConfig(data []byte) (*MultiProfileConfig, error) {
 				AuthToken:     oldCfg.AuthToken,
 				AuthUsername:  oldCfg.AuthUsername,
 				RepositoryURL: oldCfg.RepositoryURL,
+				Identity:      oldCfg.Identity,
 			},
 		},
 		EnabledClients: oldCfg.EnabledClients,

@@ -1,5 +1,19 @@
 export namespace main {
 	
+	export class AIClient {
+	    id: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AIClient(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	    }
+	}
 	export class AssetCard {
 	    name: string;
 	    description: string;
@@ -81,6 +95,22 @@ export namespace main {
 		}
 	}
 	
+	export class Collection {
+	    name: string;
+	    description: string;
+	    assets: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Collection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.assets = source["assets"];
+	    }
+	}
 	export class Draft {
 	    id: string;
 	    name: string;
@@ -122,6 +152,18 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class InstallResult {
+	    clients: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.clients = source["clients"];
+	    }
 	}
 	export class VaultInfo {
 	    configured: boolean;

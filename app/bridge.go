@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/sleuth-io/sx/internal/config"
+	"github.com/sleuth-io/sx/internal/manifest"
+	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/utils"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
@@ -48,12 +50,31 @@ func (a *App) currentVault() (vaultpkg.Vault, error) {
 	if err != nil {
 		return nil, errors.New("no vault configured")
 	}
+	// Mirror the CLI: a profile-configured identity becomes the actor for
+	// every vault mutation (mgmt ops require a real, non-synthetic one).
+	if cfg.Identity != "" {
+		mgmt.SetIdentityOverride(cfg.Identity)
+	}
 	v, err := vaultpkg.NewFromConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 	a.vault = v
 	return v, nil
+}
+
+// HasIdentity reports whether vault mutations can already be attributed to
+// a real person (git config user.email, or a configured profile identity).
+// When false, onboarding asks for an email.
+func (a *App) HasIdentity() bool {
+	if cfg, err := config.Load(); err == nil && cfg.Identity != "" {
+		return true
+	}
+	actor, err := mgmt.CurrentGitActor(a.ctx, "")
+	if err != nil {
+		return false
+	}
+	return actor.RequireRealIdentity() == nil
 }
 
 // resetVault drops the cached vault (after configuration changes).
@@ -90,7 +111,9 @@ func (a *App) GetVaultInfo() VaultInfo {
 
 // SetupLocalVault creates (or adopts) a local path vault at ~/SX Library
 // and points the shared sx config at it. Zero-setup "Just me" onboarding.
-func (a *App) SetupLocalVault() (VaultInfo, error) {
+// identity (an email) is required when the machine has no git identity —
+// vault changes are attributed to it.
+func (a *App) SetupLocalVault(identity string) (VaultInfo, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return VaultInfo{}, err
@@ -102,6 +125,7 @@ func (a *App) SetupLocalVault() (VaultInfo, error) {
 	cfg := &config.Config{
 		Type:          config.RepositoryTypePath,
 		RepositoryURL: "file://" + dir,
+		Identity:      manifest.NormalizeEmail(identity),
 	}
 	if err := config.Save(cfg); err != nil {
 		return VaultInfo{}, err
@@ -113,7 +137,7 @@ func (a *App) SetupLocalVault() (VaultInfo, error) {
 // SetupGitVault points the shared sx config at a team git vault. The
 // repository is validated BEFORE the config is saved so a typo'd URL leaves
 // the app in onboarding rather than persisting a broken configuration.
-func (a *App) SetupGitVault(url string) (VaultInfo, error) {
+func (a *App) SetupGitVault(url, identity string) (VaultInfo, error) {
 	url = strings.TrimSpace(url)
 	if url == "" {
 		return VaultInfo{}, errors.New("enter the git repository URL your team shares")
@@ -121,6 +145,7 @@ func (a *App) SetupGitVault(url string) (VaultInfo, error) {
 	cfg := &config.Config{
 		Type:          config.RepositoryTypeGit,
 		RepositoryURL: url,
+		Identity:      manifest.NormalizeEmail(identity),
 	}
 	v, err := vaultpkg.NewFromConfig(cfg)
 	if err != nil {

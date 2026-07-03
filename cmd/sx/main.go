@@ -225,6 +225,7 @@ Use "{{muted (printf "%s [command] --help" .CommandPath)}}" for more information
 	rootCmd.AddCommand(commands.NewConfigCommand())
 	rootCmd.AddCommand(commands.NewClientsCommand())
 	rootCmd.AddCommand(commands.NewVaultCommand())
+	rootCmd.AddCommand(commands.NewCollectionCommand())
 	rootCmd.AddCommand(commands.NewRoleCommand())
 	rootCmd.AddCommand(commands.NewTeamCommand())
 	rootCmd.AddCommand(commands.NewBotCommand())

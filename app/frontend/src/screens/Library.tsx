@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  CreateCollection,
   CreateDraftFromAsset,
   CreateDraftFromPaths,
+  DeleteCollection,
   GetDraft,
+  InstallCollection,
   ListAssets,
+  ListCollections,
   ListDrafts,
 } from "../../wailsjs/go/main/App";
 import { OnFileDrop, OnFileDropOff } from "../../wailsjs/runtime/runtime";
@@ -21,13 +25,17 @@ export default function Library({
 }) {
   const [assets, setAssets] = useState<main.AssetCard[] | null>(null);
   const [drafts, setDrafts] = useState<main.Draft[]>([]);
+  const [collections, setCollections] = useState<main.Collection[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("");
+  const [collectionFilter, setCollectionFilter] = useState<string>("");
+  const [newCollection, setNewCollection] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [openDraft, setOpenDraft] = useState<main.Draft | null>(null);
   const [dragging, setDragging] = useState(false);
   const [toast, setToast] = useState("");
+  const [busyAction, setBusyAction] = useState(false);
 
   const load = useCallback(() => {
     setError("");
@@ -40,6 +48,9 @@ export default function Library({
     ListDrafts()
       .then(setDrafts)
       .catch(() => setDrafts([]));
+    ListCollections()
+      .then(setCollections)
+      .catch(() => setCollections([]));
   }, []);
 
   useEffect(load, [load]);
@@ -91,17 +102,24 @@ export default function Library({
     return [...seen.entries()].sort();
   }, [assets]);
 
+  const activeCollection = useMemo(
+    () => collections.find((c) => c.name === collectionFilter) ?? null,
+    [collections, collectionFilter],
+  );
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (assets ?? []).filter((a) => {
       if (typeFilter && a.type !== typeFilter) return false;
+      if (activeCollection && !activeCollection.assets.includes(a.name))
+        return false;
       if (!q) return true;
       return (
         a.name.toLowerCase().includes(q) ||
         a.description.toLowerCase().includes(q)
       );
     });
-  }, [assets, query, typeFilter]);
+  }, [assets, query, typeFilter, activeCollection]);
 
   const visibleDrafts = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -173,24 +191,127 @@ export default function Library({
           />
         </div>
 
-        {types.length > 1 && (
+        <div
+          className="flex flex-wrap items-center gap-1.5 px-5 pb-3"
+          style={{ ["--wails-draggable" as never]: "no-drag" }}
+        >
+          {types.length > 1 && (
+            <>
+              <FilterChip
+                label="All"
+                active={typeFilter === "" && collectionFilter === ""}
+                onClick={() => {
+                  setTypeFilter("");
+                  setCollectionFilter("");
+                }}
+              />
+              {types.map(([key, label]) => (
+                <FilterChip
+                  key={key}
+                  label={label + "s"}
+                  active={typeFilter === key}
+                  onClick={() => {
+                    setTypeFilter(typeFilter === key ? "" : key);
+                    setCollectionFilter("");
+                  }}
+                />
+              ))}
+            </>
+          )}
+          {(collections.length > 0 || (assets ?? []).length > 0) && (
+            <span className="mx-1 h-4 w-px bg-line" />
+          )}
+          {collections.map((c) => (
+            <FilterChip
+              key={"c-" + c.name}
+              label={`${c.name} (${c.assets.length})`}
+              active={collectionFilter === c.name}
+              onClick={() => {
+                setCollectionFilter(collectionFilter === c.name ? "" : c.name);
+                setTypeFilter("");
+              }}
+            />
+          ))}
+          {(assets ?? []).length > 0 &&
+            (newCollection === null ? (
+              <button
+                onClick={() => setNewCollection("")}
+                className="rounded-full border border-dashed border-line px-3 py-1 text-xs font-medium text-ink-faint transition hover:border-accent hover:text-accent"
+              >
+                + Collection
+              </button>
+            ) : (
+              <form
+                className="inline-flex"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const name = newCollection.trim();
+                  if (!name) {
+                    setNewCollection(null);
+                    return;
+                  }
+                  CreateCollection(name)
+                    .then((c) => {
+                      setNewCollection(null);
+                      setCollectionFilter(c.name);
+                      load();
+                    })
+                    .catch((e) => setToastMessage(String(e)));
+                }}
+              >
+                <input
+                  autoFocus
+                  value={newCollection}
+                  onChange={(e) => setNewCollection(e.target.value)}
+                  onBlur={() => setNewCollection(null)}
+                  placeholder="Collection name…"
+                  className="w-40 rounded-full border border-accent bg-canvas px-3 py-1 text-xs outline-none"
+                />
+              </form>
+            ))}
+        </div>
+
+        {activeCollection && (
           <div
-            className="flex gap-1.5 px-5 pb-3"
+            className="flex items-center gap-3 border-t border-line bg-accent-soft/50 px-5 py-2 text-xs"
             style={{ ["--wails-draggable" as never]: "no-drag" }}
           >
-            <FilterChip
-              label="All"
-              active={typeFilter === ""}
-              onClick={() => setTypeFilter("")}
-            />
-            {types.map(([key, label]) => (
-              <FilterChip
-                key={key}
-                label={label + "s"}
-                active={typeFilter === key}
-                onClick={() => setTypeFilter(key)}
-              />
-            ))}
+            <span className="font-medium">{activeCollection.name}</span>
+            <span className="text-ink-soft">
+              {activeCollection.description ||
+                `${activeCollection.assets.length} asset${activeCollection.assets.length === 1 ? "" : "s"}`}
+            </span>
+            <div className="flex-1" />
+            <button
+              disabled={busyAction || activeCollection.assets.length === 0}
+              onClick={() => {
+                setBusyAction(true);
+                InstallCollection(activeCollection.name)
+                  .then((r) =>
+                    setToastMessage(`Ready to use in ${r.clients.join(", ")}`),
+                  )
+                  .catch((e) => setToastMessage(String(e)))
+                  .finally(() => setBusyAction(false));
+              }}
+              className="rounded-md bg-accent px-2.5 py-1 font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {busyAction ? "Setting up…" : "Use in my AI tools"}
+            </button>
+            <button
+              disabled={busyAction}
+              onClick={() => {
+                DeleteCollection(activeCollection.name)
+                  .then(() => {
+                    setCollectionFilter("");
+                    load();
+                    setToastMessage("Collection removed — its assets are still in the library");
+                  })
+                  .catch((e) => setToastMessage(String(e)));
+              }}
+              className="rounded-md px-2 py-1 font-medium text-ink-faint transition hover:text-danger"
+            >
+              Delete
+            </button>
           </div>
         )}
       </header>
@@ -280,12 +401,15 @@ export default function Library({
       {selected && (
         <AssetDetail
           name={selected}
+          collections={collections}
           onClose={() => setSelected(null)}
           onEdit={() => void editAsset(selected)}
           onChanged={() => {
             load();
             setToastMessage("Restored — it's now the current revision");
           }}
+          onToast={setToastMessage}
+          onCollectionsChanged={load}
         />
       )}
 

@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { GetAsset, RestoreRevision } from "../../wailsjs/go/main/App";
+import {
+  GetAsset,
+  InstallAsset,
+  RestoreRevision,
+  SetCollectionMembership,
+} from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import TypeBadge from "./TypeBadge";
 
@@ -11,14 +16,20 @@ import TypeBadge from "./TypeBadge";
  */
 export default function AssetDetail({
   name,
+  collections,
   onClose,
   onEdit,
   onChanged,
+  onToast,
+  onCollectionsChanged,
 }: {
   name: string;
+  collections: main.Collection[];
   onClose: () => void;
   onEdit: () => void;
   onChanged: () => void;
+  onToast: (message: string) => void;
+  onCollectionsChanged: () => void;
 }) {
   const [detail, setDetail] = useState<main.AssetDetail | null>(null);
   const [error, setError] = useState("");
@@ -45,6 +56,28 @@ export default function AssetDetail({
   }, [onClose]);
 
   const [restoring, setRestoring] = useState(false);
+  const [installing, setInstalling] = useState(false);
+
+  async function install() {
+    setInstalling(true);
+    try {
+      const result = await InstallAsset(name);
+      onToast(`Ready to use in ${result.clients.join(", ")}`);
+    } catch (e) {
+      onToast(String(e));
+    } finally {
+      setInstalling(false);
+    }
+  }
+
+  async function toggleCollection(collection: string, member: boolean) {
+    try {
+      await SetCollectionMembership(collection, name, member);
+      onCollectionsChanged();
+    } catch (e) {
+      onToast(String(e));
+    }
+  }
 
   const files = detail?.files ?? [];
   const isLatest =
@@ -87,6 +120,14 @@ export default function AssetDetail({
               </p>
             )}
           </div>
+          <button
+            onClick={() => void install()}
+            disabled={installing}
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            title="Install into Claude Code, Cursor, and other detected AI tools"
+          >
+            {installing ? "Setting up…" : "Use in my AI tools"}
+          </button>
           <button
             onClick={onEdit}
             className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:border-accent hover:text-ink"
@@ -135,6 +176,29 @@ export default function AssetDetail({
                 </button>
               </>
             )}
+          </div>
+        )}
+
+        {collections.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-6 py-2.5">
+            <span className="text-xs text-ink-soft">Collections</span>
+            {collections.map((c) => {
+              const member = c.assets.includes(name);
+              return (
+                <button
+                  key={c.name}
+                  onClick={() => void toggleCollection(c.name, !member)}
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition ${
+                    member
+                      ? "bg-accent text-white"
+                      : "border border-line text-ink-faint hover:text-ink"
+                  }`}
+                  title={member ? `Remove from ${c.name}` : `Add to ${c.name}`}
+                >
+                  {c.name}
+                </button>
+              );
+            })}
           </div>
         )}
 

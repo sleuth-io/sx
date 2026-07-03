@@ -55,6 +55,10 @@ const (
 	// v1 → v2 layout). Emitted once per migration with from/to versions
 	// and the number of migrated assets in Data.
 	EventVaultMigrated = "vault.migrated"
+
+	EventCollectionCreated = "collection.created"
+	EventCollectionUpdated = "collection.updated"
+	EventCollectionDeleted = "collection.deleted"
 )
 
 // Audit target type constants.
@@ -65,6 +69,7 @@ const (
 	TargetTypeInstallation = "installation"
 	TargetTypeOrg          = "org"
 	TargetTypeVault        = "vault"
+	TargetTypeCollection   = "collection"
 )
 
 // AuditEvent is a single row in .sx/audit/YYYY-MM.jsonl.
