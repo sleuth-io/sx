@@ -1,0 +1,96 @@
+name: Desktop App Release
+
+# Builds the desktop app for macOS, Windows, and Linux on the same tags that
+# release the CLI, and uploads the installers to that GitHub release.
+# Artifacts are unsigned until code-signing certificates are provisioned
+# (Apple Developer ID + notarization for macOS, an OV/EV cert for Windows).
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            os: macos-latest
+            platform: darwin/arm64
+            artifact: sx-app-macos-arm64.zip
+          - name: macos-amd64
+            os: macos-13
+            platform: darwin/amd64
+            artifact: sx-app-macos-amd64.zip
+          - name: windows-amd64
+            os: windows-latest
+            platform: windows/amd64
+            artifact: sx-app-windows-amd64.zip
+          - name: linux-amd64
+            os: ubuntu-latest
+            platform: linux/amd64
+            artifact: sx-app-linux-amd64.tar.gz
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Linux webview dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Build app
+        working-directory: app
+        run: wails build -platform ${{ matrix.platform }}
+        env:
+          CGO_ENABLED: 1
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        working-directory: app/build/bin
+        run: ditto -c -k --sequesterRsrc --keepParent sx.app ${{ matrix.artifact }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        working-directory: app/build/bin
+        run: Compress-Archive -Path * -DestinationPath ${{ matrix.artifact }}
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        working-directory: app/build/bin
+        run: tar -czf ${{ matrix.artifact }} *
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: app/build/bin/${{ matrix.artifact }}
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release upload "${GITHUB_REF_NAME}" "app/build/bin/${{ matrix.artifact }}" --clobber
