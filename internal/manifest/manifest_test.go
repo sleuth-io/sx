@@ -387,3 +387,56 @@ func TestTeamsForMember(t *testing.T) {
 		t.Error("unknown email should return nil")
 	}
 }
+
+func TestCollections_RoundTripAndNormalization(t *testing.T) {
+	m := &Manifest{SchemaVersion: 2}
+	if _, err := m.UpsertCollection(Collection{
+		Name:        "  onboarding  ",
+		Description: " New hire kit ",
+		Assets:      []string{" brand-voice ", "checklist", "brand-voice", ""},
+		CreatedBy:   "Alice@Acme.com",
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	data, err := Marshal(m)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	parsed, err := Parse(data)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	c, err := parsed.FindCollection("onboarding")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if c.Description != "New hire kit" || c.CreatedBy != "alice@acme.com" {
+		t.Errorf("collection = %+v", c)
+	}
+	if len(c.Assets) != 2 || c.Assets[0] != "brand-voice" || c.Assets[1] != "checklist" {
+		t.Errorf("assets = %v, want deduped sorted pair", c.Assets)
+	}
+
+	// Upsert replaces by name.
+	if _, err := parsed.UpsertCollection(Collection{Name: "onboarding", Assets: []string{"other"}}); err != nil {
+		t.Fatal(err)
+	}
+	c, _ = parsed.FindCollection("onboarding")
+	if len(c.Assets) != 1 || c.Assets[0] != "other" {
+		t.Errorf("after replace assets = %v", c.Assets)
+	}
+
+	// Delete removes; second delete reports not found.
+	if err := parsed.DeleteCollection("onboarding"); err != nil {
+		t.Fatal(err)
+	}
+	if err := parsed.DeleteCollection("onboarding"); !errors.Is(err, ErrCollectionNotFound) {
+		t.Errorf("second delete err = %v", err)
+	}
+
+	// Empty names are rejected.
+	if _, err := parsed.UpsertCollection(Collection{Name: "   "}); err == nil {
+		t.Error("empty collection name should be rejected")
+	}
+}

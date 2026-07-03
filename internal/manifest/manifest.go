@@ -94,10 +94,24 @@ type Manifest struct {
 	// ScopeKindBot.
 	Bots []Bot `toml:"bots,omitempty"`
 
+	// Collections are named, curated asset groupings (schema v2+) — an
+	// organizational and bulk-install unit with no ACL semantics.
+	Collections []Collection `toml:"collections,omitempty"`
+
 	// Org holds vault-level governance. When Org.Admins is non-empty the
 	// vault is "governed": only org-admins may set broad scopes and change
 	// the admin list. Nil/empty = ungoverned. See docs/rbac.md.
 	Org *Org `toml:"org,omitempty"`
+}
+
+// Collection is a named list of asset names. Collections organize assets
+// for browsing and bulk install; they grant no access by themselves (teams
+// remain the ACL mechanism).
+type Collection struct {
+	Name        string   `toml:"name"`
+	Description string   `toml:"description,omitempty"`
+	Assets      []string `toml:"assets,omitempty"`
+	CreatedBy   string   `toml:"created_by,omitempty"`
 }
 
 // Org is vault-level governance configuration.
@@ -362,6 +376,65 @@ func (m *Manifest) DeleteBot(name string) error {
 		}
 	}
 	return ErrBotNotFound
+}
+
+// ErrCollectionNotFound is returned when a collection lookup fails.
+var ErrCollectionNotFound = errors.New("collection not found")
+
+// FindCollection returns the collection with the given name, or
+// ErrCollectionNotFound.
+func (m *Manifest) FindCollection(name string) (*Collection, error) {
+	for i := range m.Collections {
+		if m.Collections[i].Name == name {
+			return &m.Collections[i], nil
+		}
+	}
+	return nil, ErrCollectionNotFound
+}
+
+// UpsertCollection inserts or replaces a collection keyed by name. Returns
+// the pointer into the manifest's own slice, or an error if the normalized
+// name is blank.
+func (m *Manifest) UpsertCollection(c Collection) (*Collection, error) {
+	normalizeCollectionInPlace(&c)
+	if c.Name == "" {
+		return nil, errors.New("collection name cannot be empty")
+	}
+	for i := range m.Collections {
+		if m.Collections[i].Name == c.Name {
+			m.Collections[i] = c
+			return &m.Collections[i], nil
+		}
+	}
+	m.Collections = append(m.Collections, c)
+	return &m.Collections[len(m.Collections)-1], nil
+}
+
+// DeleteCollection removes the collection by name, returning
+// ErrCollectionNotFound if missing.
+func (m *Manifest) DeleteCollection(name string) error {
+	for i := range m.Collections {
+		if m.Collections[i].Name == name {
+			m.Collections = append(m.Collections[:i], m.Collections[i+1:]...)
+			return nil
+		}
+	}
+	return ErrCollectionNotFound
+}
+
+// normalizeCollectionInPlace trims a collection's fields and normalizes its
+// asset list (trimmed, deduped, sorted) for deterministic serialization.
+func normalizeCollectionInPlace(c *Collection) {
+	c.Name = strings.TrimSpace(c.Name)
+	c.Description = strings.TrimSpace(c.Description)
+	c.CreatedBy = NormalizeEmail(c.CreatedBy)
+	assets := make([]string, 0, len(c.Assets))
+	for _, a := range c.Assets {
+		if a = strings.TrimSpace(a); a != "" {
+			assets = append(assets, a)
+		}
+	}
+	c.Assets = dedupeSorted(assets)
 }
 
 // FindAsset returns the first asset with the given name, or nil.
@@ -688,6 +761,14 @@ func normalized(m *Manifest) *Manifest {
 		copy(out.Bots, m.Bots)
 		for i := range out.Bots {
 			normalizeBotInPlace(&out.Bots[i])
+		}
+	}
+
+	if len(m.Collections) > 0 {
+		out.Collections = make([]Collection, len(m.Collections))
+		copy(out.Collections, m.Collections)
+		for i := range out.Collections {
+			normalizeCollectionInPlace(&out.Collections[i])
 		}
 	}
 
