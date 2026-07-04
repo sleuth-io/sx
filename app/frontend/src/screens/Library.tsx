@@ -488,6 +488,10 @@ export default function Library({
     }
   }
 
+  // The badge column fits the longest label in the current list —
+  // "Collection" rows only appear in team views.
+  const badgeWidth = teamCollections.length > 0 ? "w-[76px]" : "w-14";
+
   const nothingToShow =
     visible.length === 0 &&
     visibleDrafts.length === 0 &&
@@ -743,6 +747,7 @@ export default function Library({
                 <SharedCollectionRow
                   key={"col-" + c.name}
                   collection={c}
+                  badgeWidth={badgeWidth}
                   onClick={() => setScope({ kind: "collection", name: c.name })}
                 />
               ))}
@@ -757,6 +762,7 @@ export default function Library({
                 <AssetRow
                   key={a.name}
                   asset={a}
+                  badgeWidth={badgeWidth}
                   installed={installed.has(a.name)}
                   onClick={() => {
                     if (dragHappenedRef.current) {
@@ -1072,11 +1078,13 @@ export default function Library({
 function AssetRow({
   asset,
   installed,
+  badgeWidth,
   onClick,
   onDragHandle,
 }: {
   asset: main.AssetCard;
   installed: boolean;
+  badgeWidth: string;
   onClick: () => void;
   onDragHandle: (name: string, e: React.MouseEvent) => void;
 }) {
@@ -1087,7 +1095,7 @@ function AssetRow({
       title="Drag onto a collection in the sidebar to add it"
       className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-surface"
     >
-      <span className="flex w-14 shrink-0">
+      <span className={`flex shrink-0 ${badgeWidth}`}>
         <TypeBadge type={asset.type} label={asset.typeLabel} />
       </span>
       <span className="w-52 shrink-0 truncate text-sm font-medium">
@@ -1113,9 +1121,11 @@ function AssetRow({
 
 function SharedCollectionRow({
   collection,
+  badgeWidth,
   onClick,
 }: {
   collection: main.Collection;
+  badgeWidth: string;
   onClick: () => void;
 }) {
   const count = (collection.assets ?? []).length;
@@ -1124,8 +1134,10 @@ function SharedCollectionRow({
       onClick={onClick}
       className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-surface"
     >
-      <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
-        Collection
+      <span className={`flex shrink-0 ${badgeWidth}`}>
+        <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+          Collection
+        </span>
       </span>
       <span className="w-52 shrink-0 truncate text-sm font-medium">
         {collection.name}
