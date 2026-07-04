@@ -33,7 +33,6 @@ export default function Sidebar({
   installedCount,
   draftCount,
   collections,
-  aiClients,
   onNewCollection,
   onSettings,
 }: {
@@ -46,7 +45,6 @@ export default function Sidebar({
   installedCount: number;
   draftCount: number;
   collections: main.Collection[];
-  aiClients: main.AIClient[];
   onNewCollection: () => void;
   onSettings: () => void;
 }) {
@@ -54,20 +52,40 @@ export default function Sidebar({
 
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-surface">
-      {/* App mark — part of the draggable titlebar strip */}
-      <div className="titlebar-drag flex items-center gap-2.5 px-4 pb-3 pt-10">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-xs font-semibold text-white">
-          sx
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold leading-tight">Library</div>
-          <div
-            className="truncate text-xs text-ink-faint"
-            title={vault.location}
-          >
-            {vault.location}
+      {/* Library switcher — the workspace-switcher pattern (Notion, Slack,
+          Linear): the header names the current library and who you are,
+          and opens Settings to switch or add libraries. */}
+      <div className="titlebar-drag px-2 pb-2 pt-9">
+        <button
+          onClick={onSettings}
+          title="Switch or manage libraries (⌘,)"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-canvas"
+          style={{ ["--wails-draggable" as never]: "no-drag" }}
+        >
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent text-xs font-semibold text-white">
+            sx
           </div>
-        </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1 text-sm font-semibold leading-tight">
+              <span className="truncate">Library</span>
+              <span className="text-[10px] text-ink-faint">▾</span>
+            </div>
+            <div
+              className="truncate text-xs text-ink-faint"
+              title={vault.location}
+            >
+              {vault.location}
+            </div>
+            {vault.type === "sleuth" && vault.identity && (
+              <div
+                className="truncate text-xs text-ink-faint"
+                title={`Signed in as ${vault.identity}`}
+              >
+                {vault.identity}
+              </div>
+            )}
+          </div>
+        </button>
       </div>
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
@@ -132,36 +150,6 @@ export default function Sidebar({
           ))
         )}
       </nav>
-
-      {/* Footer: what "your AI tools" means, and settings */}
-      <footer className="border-t border-line px-4 py-3">
-        <div className="text-[11px] font-semibold tracking-wide text-ink-faint">
-          YOUR AI TOOLS
-        </div>
-        {aiClients.length === 0 ? (
-          <div className="mt-1 text-xs text-ink-faint">
-            None detected on this machine
-          </div>
-        ) : (
-          <ul className="mt-1 space-y-0.5">
-            {aiClients.map((c) => (
-              <li
-                key={c.id}
-                className="flex items-center gap-1.5 text-xs text-ink-soft"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                {c.name}
-              </li>
-            ))}
-          </ul>
-        )}
-        <button
-          onClick={onSettings}
-          className="mt-2.5 flex w-full items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-soft transition hover:border-accent hover:text-ink"
-        >
-          ⚙ Settings
-        </button>
-      </footer>
     </aside>
   );
 }

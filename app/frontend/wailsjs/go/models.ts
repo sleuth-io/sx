@@ -233,6 +233,22 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class SleuthLoginStart {
+	    verificationUri: string;
+	    userCode: string;
+	    deviceCode: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SleuthLoginStart(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.verificationUri = source["verificationUri"];
+	        this.userCode = source["userCode"];
+	        this.deviceCode = source["deviceCode"];
+	    }
+	}
 	export class UpdateInfo {
 	    available: boolean;
 	    version: string;
@@ -253,6 +269,7 @@ export namespace main {
 	    configured: boolean;
 	    type: string;
 	    location: string;
+	    identity: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new VaultInfo(source);
@@ -263,6 +280,7 @@ export namespace main {
 	        this.configured = source["configured"];
 	        this.type = source["type"];
 	        this.location = source["location"];
+	        this.identity = source["identity"];
 	    }
 	}
 

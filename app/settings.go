@@ -1,14 +1,18 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/sleuth-io/sx/internal/config"
+	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/utils"
+	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
 // Settings exposes the shared sx configuration (the same one the CLI uses)
@@ -88,6 +92,126 @@ func (a *App) SwitchProfile(name string) (VaultInfo, error) {
 	config.SetActiveProfile("")
 	a.resetVault()
 	return a.GetVaultInfo(), nil
+}
+
+// AddLibrary connects a new library (profile) of type "path" or "git" and
+// switches to it. skills.new libraries go through StartSleuthLogin instead.
+func (a *App) AddLibrary(name, kind, location, identity string) (VaultInfo, error) {
+	name = slugify(name)
+	if name == "" {
+		return VaultInfo{}, errors.New("give the library a name")
+	}
+	if mpc, err := config.LoadMultiProfile(); err == nil {
+		if _, exists := mpc.GetProfile(name); exists {
+			return VaultInfo{}, fmt.Errorf("a library named %q already exists", name)
+		}
+	}
+
+	cfg := &config.Config{Identity: manifest.NormalizeEmail(identity)}
+	switch kind {
+	case "path":
+		location = strings.TrimSpace(strings.TrimPrefix(location, "file://"))
+		if location == "" {
+			return VaultInfo{}, errors.New("choose a folder for the library")
+		}
+		if err := os.MkdirAll(location, 0755); err != nil {
+			return VaultInfo{}, err
+		}
+		cfg.Type = config.RepositoryTypePath
+		cfg.RepositoryURL = "file://" + location
+	case "git":
+		location = strings.TrimSpace(location)
+		if location == "" {
+			return VaultInfo{}, errors.New("enter the git repository URL")
+		}
+		cfg.Type = config.RepositoryTypeGit
+		cfg.RepositoryURL = location
+		v, err := vaultpkg.NewFromConfig(cfg)
+		if err != nil {
+			return VaultInfo{}, friendlyVaultError(err)
+		}
+		if _, err := v.ListAssets(a.ctx, vaultpkg.ListAssetsOptions{Limit: 1}); err != nil {
+			return VaultInfo{}, friendlyVaultError(err)
+		}
+	default:
+		return VaultInfo{}, fmt.Errorf("unsupported library type %q", kind)
+	}
+
+	if err := config.SaveToProfile(cfg, name); err != nil {
+		return VaultInfo{}, err
+	}
+	return a.SwitchProfile(name)
+}
+
+// SleuthLoginStart carries what the user needs to authorize a skills.new
+// sign-in: the code to confirm and the URL (opened automatically).
+type SleuthLoginStart struct {
+	VerificationURI string `json:"verificationUri"`
+	UserCode        string `json:"userCode"`
+	DeviceCode      string `json:"deviceCode"`
+}
+
+// StartSleuthLogin begins the skills.new device sign-in and opens the
+// browser. Follow with CompleteSleuthLogin to wait for authorization.
+func (a *App) StartSleuthLogin(serverURL string) (SleuthLoginStart, error) {
+	serverURL = strings.TrimSpace(serverURL)
+	if serverURL == "" {
+		serverURL = "https://app.skills.new"
+	}
+	oauthClient := config.NewOAuthClient(serverURL)
+	resp, err := oauthClient.StartDeviceFlow(a.ctx)
+	if err != nil {
+		return SleuthLoginStart{}, friendlyVaultError(err)
+	}
+	browserURL := resp.VerificationURIComplete
+	if browserURL == "" {
+		browserURL = fmt.Sprintf("%s?user_code=%s", resp.VerificationURI, resp.UserCode)
+	}
+	_ = config.OpenBrowser(browserURL)
+	return SleuthLoginStart{
+		VerificationURI: resp.VerificationURI,
+		UserCode:        resp.UserCode,
+		DeviceCode:      resp.DeviceCode,
+	}, nil
+}
+
+// CompleteSleuthLogin waits for the browser authorization, then saves the
+// library and switches to it.
+func (a *App) CompleteSleuthLogin(serverURL, deviceCode, name string) (VaultInfo, error) {
+	serverURL = strings.TrimSpace(serverURL)
+	if serverURL == "" {
+		serverURL = "https://app.skills.new"
+	}
+	name = slugify(name)
+	if name == "" {
+		name = "skills-new"
+	}
+	oauthClient := config.NewOAuthClient(serverURL)
+	token, err := oauthClient.PollForToken(a.ctx, deviceCode)
+	if err != nil {
+		return VaultInfo{}, fmt.Errorf("sign-in was not completed: %w", err)
+	}
+	cfg := &config.Config{
+		Type:          config.RepositoryTypeSleuth,
+		ServerURL:     serverURL,
+		RepositoryURL: serverURL,
+		AuthToken:     token.AccessToken,
+	}
+	if err := config.SaveToProfile(cfg, name); err != nil {
+		return VaultInfo{}, err
+	}
+	return a.SwitchProfile(name)
+}
+
+// PickDirectory opens the native folder picker (for new local libraries).
+func (a *App) PickDirectory() (string, error) {
+	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Choose a folder for the library",
+	})
+	if err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 // PickFilesForDraft opens the native file picker and turns the selection

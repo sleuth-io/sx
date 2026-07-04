@@ -150,10 +150,10 @@ export default function AssetDetail({
             )}
             {showInstallHint && (
               <p className="mt-1.5 text-xs text-ink-faint">
-                Installing copies this into the AI tools on this machine (see
-                the sidebar) so they can use it. Assets shared with you
-                through your team are installed automatically when sx syncs.
-                Nothing leaves your computer.
+                Installing copies this into the AI tools on this machine so
+                they can use it. Assets shared with you through your team are
+                installed automatically when sx syncs. Nothing leaves your
+                computer.
               </p>
             )}
           </div>
@@ -188,7 +188,7 @@ export default function AssetDetail({
               onClick={() => void install()}
               disabled={installing}
               className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-              title="Install into the AI tools listed in the sidebar"
+              title="Install into the AI tools on this machine"
             >
               {installing ? "Installing…" : "Use in my AI tools"}
             </button>

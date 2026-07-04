@@ -111,22 +111,42 @@ type VaultInfo struct {
 	Configured bool   `json:"configured"`
 	Type       string `json:"type"`     // "git" | "path" | "sleuth"
 	Location   string `json:"location"` // URL or path, display form
+	// Identity is who vault changes are attributed to — for skills.new,
+	// who you're signed in as.
+	Identity string `json:"identity"`
 }
 
-// GetVaultInfo reports whether a vault is configured and where it lives.
+// GetVaultInfo reports whether a vault is configured, where it lives, and
+// who you are in it.
 func (a *App) GetVaultInfo() VaultInfo {
 	cfg, err := config.Load()
 	if err != nil {
 		return VaultInfo{Configured: false}
 	}
-	info := VaultInfo{Configured: true, Type: string(cfg.Type)}
+	info := VaultInfo{Configured: true, Type: string(cfg.Type), Identity: cfg.Identity}
 	switch cfg.Type {
 	case config.RepositoryTypeSleuth:
 		info.Location = cfg.ServerURL
+		if info.Location == "" {
+			info.Location = cfg.RepositoryURL
+		}
 	case config.RepositoryTypeGit, config.RepositoryTypePath:
 		info.Location = strings.TrimPrefix(cfg.RepositoryURL, "file://")
 	default:
 		info.Location = strings.TrimPrefix(cfg.RepositoryURL, "file://")
+	}
+	// For a signed-in library, resolve the account when the profile does
+	// not pin an identity explicitly.
+	if info.Identity == "" {
+		if v, err := a.currentVault(); err == nil {
+			if resolver, ok := v.(interface {
+				CurrentActor(ctx context.Context) (mgmt.Actor, error)
+			}); ok {
+				if actor, err := resolver.CurrentActor(a.ctx); err == nil && actor.RequireRealIdentity() == nil {
+					info.Identity = actor.Email
+				}
+			}
+		}
 	}
 	return info
 }

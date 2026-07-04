@@ -154,7 +154,10 @@ export default function Library({
   useEffect(() => {
     if (!newMenuOpen) return;
     const onClick = (e: MouseEvent) => {
-      if (!newMenuRef.current?.contains(e.target as Node))
+      if (
+        !(e.target instanceof Node) ||
+        !newMenuRef.current?.contains(e.target)
+      )
         setNewMenuOpen(false);
     };
     window.addEventListener("mousedown", onClick);
@@ -300,7 +303,6 @@ export default function Library({
         installedCount={installedInfo.length}
         draftCount={drafts.length}
         collections={collections}
-        aiClients={aiClients}
         onNewCollection={() => setShowCollectionModal(true)}
         onSettings={() => setShowSettings(true)}
       />
@@ -313,32 +315,44 @@ export default function Library({
             <span className="text-xs text-ink-faint">
               {visible.length + visibleDrafts.length}
             </span>
+            {scope.kind === "installed" && aiClients.length > 0 && (
+              <span className="text-xs text-ink-faint">
+                · delivered to {aiClients.map((c) => c.name).join(", ")}
+              </span>
+            )}
 
             <div className="flex-1" />
 
             <div
-              className="flex items-center gap-2"
+              className="flex h-9 items-center gap-2"
               style={{ ["--wails-draggable" as never]: "no-drag" }}
             >
-              <input
-                ref={searchRef}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search…  ( / )"
-                className="w-56 rounded-lg border border-line bg-canvas px-3 py-1.5 text-sm outline-none focus:border-accent"
-              />
+              <div className="relative h-full">
+                <input
+                  ref={searchRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search…"
+                  className="peer h-full w-56 rounded-lg border border-line bg-canvas px-3 pr-8 text-sm outline-none focus:border-accent"
+                />
+                {!query && (
+                  <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-faint peer-focus:hidden">
+                    /
+                  </kbd>
+                )}
+              </div>
 
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortMode)}
                 title="Sort"
-                className="rounded-lg border border-line bg-canvas px-2 py-1.5 text-xs text-ink-soft outline-none"
+                className="h-full rounded-lg border border-line bg-canvas px-2 text-sm text-ink-soft outline-none"
               >
                 <option value="updated">Recently updated</option>
                 <option value="name">Name</option>
               </select>
 
-              <div className="flex overflow-hidden rounded-lg border border-line">
+              <div className="flex h-full overflow-hidden rounded-lg border border-line">
                 <ViewToggle
                   label="List"
                   active={view === "list"}
@@ -351,10 +365,10 @@ export default function Library({
                 />
               </div>
 
-              <div className="relative" ref={newMenuRef}>
+              <div className="relative h-full" ref={newMenuRef}>
                 <button
                   onClick={() => setNewMenuOpen((v) => !v)}
-                  className="flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-sm font-medium text-white transition hover:opacity-90"
+                  className="flex h-full items-center gap-1.5 rounded-lg bg-accent px-3.5 text-sm font-medium text-white transition hover:opacity-90"
                 >
                   <span className="text-base leading-none">+</span> New
                   <span className="text-[10px] opacity-70">▾</span>
@@ -713,8 +727,12 @@ function MenuItem({
       onClick={onClick}
       className="flex w-full items-baseline gap-2 px-3.5 py-2 text-left text-sm transition hover:bg-accent-soft"
     >
-      <span className="font-medium">{label}</span>
-      {hint && <span className="text-xs text-ink-faint">{hint}</span>}
+      <span className="whitespace-nowrap font-medium">{label}</span>
+      {hint && (
+        <span className="min-w-0 flex-1 truncate text-right text-xs text-ink-faint">
+          {hint}
+        </span>
+      )}
     </button>
   );
 }
@@ -735,7 +753,7 @@ function EmptyState({
           <span className="font-medium text-ink-soft">
             Use in my AI tools
           </span>{" "}
-          — it lands in Claude Code and the other tools listed in the sidebar.
+          — it lands in the AI tools shown above.
         </div>
       </Centered>
     );
