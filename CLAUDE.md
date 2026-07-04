@@ -40,6 +40,7 @@ make build && ./dist/sx <command>
 - [Scoping](docs/scoping.md) - Overview of every install scope (org/repo/path/team/user/bot), links to per-scope docs
 - [Permissions / RBAC](docs/rbac.md) - github vault: who can set scope (org-admins) and who can edit a skill (team-scope membership)
 - [Vault copy](docs/copy.md) - `sx vault copy` cross-vault migration (assets, teams, bots, scopes, audit, usage)
+- [Synced folders](docs/synced-folders.md) - Shared path vaults inside Dropbox/Drive/OneDrive/iCloud folders
 - [Plugins](docs/plugins-spec.md) - Exposing vaults as Claude Code / Codex plugin marketplaces
 - [Orgs](docs/orgs.md) - Org-scoped (global) installs
 - [Repos](docs/repos.md) - Repo and path-scoped installs (monorepo patterns)

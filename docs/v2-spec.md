@@ -171,11 +171,12 @@ Because the app shares the module, `bridge/` may import `internal/vault`, `inter
 
 ### Onboarding flow
 
-First launch offers three paths, mapped to existing backends:
+First launch offers four paths, mapped to existing backends:
 
 1. **"Just me"** → creates a local path vault at `~/SxLibrary` (name TBD). Zero setup. Upgrade path to shared later via `vault copy`.
-2. **"My team (git)"** → paste a git URL (the skills-repository pattern); auth via system git credentials or a token field. Uses `OpenGit`.
-3. **"skills.new"** → OAuth device flow (same as `sx init`). Uses `OpenSkillsNew`.
+2. **"My team (shared folder)"** → pick a detected cloud-sync root (Dropbox, Google Drive, OneDrive, iCloud — same detection as `sx init`) or any folder; plain path vault, join-if-exists. Same machinery as "Just me"; the sync client does the sharing. See docs/synced-folders.md.
+3. **"My team (git)"** → paste a git URL (the skills-repository pattern); auth via system git credentials or a token field. Uses `OpenGit`.
+4. **"skills.new"** → OAuth device flow (same as `sx init`). Uses `OpenSkillsNew`.
 
 Identity: reuse the CLI's config (`~/.sx/config.toml`) so app and CLI stay in sync — the app is a second client of the same config, not a parallel world.
 

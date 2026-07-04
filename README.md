@@ -156,12 +156,22 @@ Perfect for easily sharing personal tools across multiple personal projects
 sx init --type path --path my/vault/path
 ```
 
+### Shared folder (Small teams, zero infrastructure)
+
+Put the vault in a folder your team already syncs — Dropbox, Google Drive,
+OneDrive, or iCloud. No git, no GitHub account, no server. See
+[docs/synced-folders.md](docs/synced-folders.md).
+
+```bash
+sx init --type path --path ~/Dropbox/sx-vault
+```
+
 ### Git vault (Small teams)
 
 Share assets through a shared git vault
 
 ```bash
-sx init --type git --repo git@github.com:yourteam/skills.git
+sx init --type git --repo-url git@github.com:yourteam/skills.git
 ```
 
 ### Skills.new (Large teams and enterprise)
