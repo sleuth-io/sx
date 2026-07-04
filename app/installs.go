@@ -187,33 +187,52 @@ type InstalledAssetInfo struct {
 	Scopes  []string `json:"scopes"` // human-readable, e.g. "Everywhere on this machine", "github.com/acme/repo"
 }
 
-// InstalledAssets reads the shared install tracker (the same state
-// `sx install` maintains) so the app reflects everything already on this
-// machine, not just its own installs.
+// InstalledAssets reports what is installed on this machine, from two
+// sources: the shared install tracker (what `sx install` and the app
+// recorded, with scope detail) UNION what the detected AI tools actually
+// have on disk. The scan makes the answer survive a lost or stale tracker
+// and covers assets installed outside sx.
 func (a *App) InstalledAssets() ([]InstalledAssetInfo, error) {
-	tracker, err := assetspkg.LoadTracker()
-	if err != nil {
-		return []InstalledAssetInfo{}, nil // no tracker yet = nothing installed
-	}
 	byName := map[string]*InstalledAssetInfo{}
-	for _, item := range tracker.Assets {
-		scope := "Everywhere on this machine"
-		if item.Repository != "" {
-			scope = item.Repository
-			if item.Path != "" {
-				scope += " (" + item.Path + ")"
+
+	if tracker, err := assetspkg.LoadTracker(); err == nil {
+		for _, item := range tracker.Assets {
+			scope := "Everywhere on this machine"
+			if item.Repository != "" {
+				scope = item.Repository
+				if item.Path != "" {
+					scope += " (" + item.Path + ")"
+				}
+			}
+			if existing, ok := byName[item.Name]; ok {
+				existing.Scopes = append(existing.Scopes, scope)
+				continue
+			}
+			byName[item.Name] = &InstalledAssetInfo{
+				Name:    item.Name,
+				Version: item.Version,
+				Scopes:  []string{scope},
 			}
 		}
-		if existing, ok := byName[item.Name]; ok {
-			existing.Scopes = append(existing.Scopes, scope)
+	}
+
+	for _, client := range clients.Global().DetectInstalled() {
+		scanned, err := client.ListAssets(a.ctx, globalScope())
+		if err != nil {
 			continue
 		}
-		byName[item.Name] = &InstalledAssetInfo{
-			Name:    item.Name,
-			Version: item.Version,
-			Scopes:  []string{scope},
+		for _, item := range scanned {
+			if _, ok := byName[item.Name]; ok {
+				continue
+			}
+			byName[item.Name] = &InstalledAssetInfo{
+				Name:    item.Name,
+				Version: item.Version,
+				Scopes:  []string{"Everywhere on this machine"},
+			}
 		}
 	}
+
 	out := make([]InstalledAssetInfo, 0, len(byName))
 	for _, info := range byName {
 		sort.Strings(info.Scopes)

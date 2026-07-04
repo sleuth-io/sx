@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CreateBlankDraft,
   CreateDraftFromAsset,
   CreateDraftFromPaths,
   DeleteCollection,
@@ -11,8 +10,6 @@ import {
   ListAssets,
   ListCollections,
   ListDrafts,
-  PickFilesForDraft,
-  PickFolderForDraft,
 } from "../../wailsjs/go/main/App";
 import {
   EventsOff,
@@ -21,6 +18,7 @@ import {
   OnFileDropOff,
 } from "../../wailsjs/runtime/runtime";
 import type { main } from "../../wailsjs/go/models";
+import AddAssetModal from "../components/AddAssetModal";
 import AssetDetail from "../components/AssetDetail";
 import CollectionModal from "../components/CollectionModal";
 import DraftSheet from "../components/DraftSheet";
@@ -60,6 +58,7 @@ export default function Library({
     () => (localStorage.getItem("sx-sort") as SortMode) || "updated",
   );
   const [showCollectionModal, setShowCollectionModal] = useState(false);
+  const [showAddAsset, setShowAddAsset] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const newMenuRef = useRef<HTMLDivElement>(null);
@@ -363,51 +362,13 @@ export default function Library({
                 {newMenuOpen && (
                   <div className="absolute right-0 z-40 mt-1.5 w-56 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
                     <MenuItem
-                      label="Add files…"
-                      hint="Markdown or zip"
+                      label="New asset…"
+                      hint="Files, zip, or scratch"
                       onClick={() => {
                         setNewMenuOpen(false);
-                        PickFilesForDraft()
-                          .then((d) => {
-                            setOpenDraft(d);
-                            load();
-                          })
-                          .catch((e) => {
-                            if (!String(e).includes("cancelled"))
-                              setToastMessage(String(e));
-                          });
+                        setShowAddAsset(true);
                       }}
                     />
-                    <MenuItem
-                      label="Add a folder…"
-                      hint="Multi-file asset"
-                      onClick={() => {
-                        setNewMenuOpen(false);
-                        PickFolderForDraft()
-                          .then((d) => {
-                            setOpenDraft(d);
-                            load();
-                          })
-                          .catch((e) => {
-                            if (!String(e).includes("cancelled"))
-                              setToastMessage(String(e));
-                          });
-                      }}
-                    />
-                    <MenuItem
-                      label="Write from scratch"
-                      hint="Blank skill"
-                      onClick={() => {
-                        setNewMenuOpen(false);
-                        CreateBlankDraft("skill")
-                          .then((d) => {
-                            setOpenDraft(d);
-                            load();
-                          })
-                          .catch((e) => setToastMessage(String(e)));
-                      }}
-                    />
-                    <div className="my-1 border-t border-line" />
                     <MenuItem
                       label="New collection…"
                       hint="Group related assets"
@@ -608,6 +569,18 @@ export default function Library({
             load();
             setToastMessage(`${name} published to your library`);
           }}
+        />
+      )}
+
+      {showAddAsset && (
+        <AddAssetModal
+          onClose={() => setShowAddAsset(false)}
+          onDraft={(draft) => {
+            setShowAddAsset(false);
+            setOpenDraft(draft);
+            load();
+          }}
+          onError={setToastMessage}
         />
       )}
 

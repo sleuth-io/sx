@@ -37,6 +37,11 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.restoreWindowState(ctx)
+}
+
+func (a *App) shutdown(ctx context.Context) {
+	a.saveWindowState(ctx)
 }
 
 // OpenSettings asks the frontend to show the settings view. Wired to the
