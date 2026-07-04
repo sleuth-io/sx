@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  CancelSleuthLogin,
   CompleteSleuthLogin,
+  GitStatus,
   HasIdentity,
   ListSyncFolders,
   PickDirectory,
@@ -35,6 +37,11 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
 
   // skills.new sign-in.
   const [signIn, setSignIn] = useState<main.SleuthLoginStart | null>(null);
+  const signInCancelled = useRef(false);
+
+  // Whether this machine can run git at all (some won't — no developer
+  // tools installed). Optimistic default avoids a flash of the warning.
+  const [gitStatus, setGitStatus] = useState<main.GitStatusInfo | null>(null);
 
   useEffect(() => {
     HasIdentity()
@@ -44,7 +51,12 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     ListSyncFolders()
       .then((folders) => setSyncFolders(folders ?? []))
       .catch(() => setSyncFolders([]));
+    GitStatus()
+      .then(setGitStatus)
+      .catch(() => setGitStatus(null));
   }, []);
+
+  const gitUsable = gitStatus === null || gitStatus.available;
 
   const emailOK = !needsEmail || EMAIL_SHAPE.test(email.trim());
 
@@ -101,6 +113,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setError("");
     setSignIn(null);
+    signInCancelled.current = false;
     try {
       const start = await StartSleuthLogin("");
       setSignIn(start);
@@ -108,10 +121,20 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       await CompleteSleuthLogin("", start.deviceCode, "skills-new");
       onDone();
     } catch (e) {
-      setError(String(e));
+      // A user-initiated cancel is not an error worth showing.
+      if (!signInCancelled.current) setError(String(e));
       setSignIn(null);
       setBusy(false);
     }
+  }
+
+  function cancelSleuthSignIn() {
+    signInCancelled.current = true;
+    void CancelSleuthLogin();
+    setSignIn(null);
+    setChoice(null);
+    setBusy(false);
+    setError("");
   }
 
   return (
@@ -263,7 +286,13 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                   repository.
                 </div>
               </button>
-              {choice === "team" && (
+              {choice === "team" && !gitUsable && (
+                <div className="mt-3 rounded-lg bg-canvas px-4 py-3 text-sm text-ink-soft">
+                  {gitStatus?.reason} A shared folder or skills.new library
+                  works without git.
+                </div>
+              )}
+              {choice === "team" && gitUsable && (
                 <form
                   className="mt-3 flex gap-2"
                   onSubmit={(e) => {
@@ -316,9 +345,18 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                   <div className="mt-2 font-mono text-lg font-semibold tracking-widest">
                     {signIn.userCode}
                   </div>
-                  <div className="mt-2 flex items-center gap-2 text-xs text-ink-faint">
-                    <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" />
-                    Waiting for approval…
+                  <div className="mt-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs text-ink-faint">
+                      <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" />
+                      Waiting for approval…
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cancelSleuthSignIn}
+                      className="rounded-lg px-3 py-1 text-xs font-medium text-ink-faint transition hover:text-ink"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 </div>
               )}

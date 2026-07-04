@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AddLibrary,
+  CancelSleuthLogin,
   CompleteSleuthLogin,
   GetSettings,
+  GitStatus,
   PickDirectory,
   StartSleuthLogin,
   SwitchProfile,
@@ -40,13 +42,21 @@ export default function SettingsModal({
   const [loginCode, setLoginCode] = useState<main.SleuthLoginStart | null>(
     null,
   );
+  const signInCancelled = useRef(false);
+  const [gitStatus, setGitStatus] = useState<main.GitStatusInfo | null>(null);
+  const gitUsable = gitStatus === null || gitStatus.available;
 
   const load = () => {
     GetSettings()
       .then(setSettings)
       .catch((e) => setError(String(e)));
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    GitStatus()
+      .then(setGitStatus)
+      .catch(() => setGitStatus(null));
+  }, []);
 
   async function switchTo(name: string) {
     setBusy(name);
@@ -78,6 +88,7 @@ export default function SettingsModal({
   async function signIn() {
     setBusy("add");
     setError("");
+    signInCancelled.current = false;
     try {
       const start = await StartSleuthLogin(newLocation);
       setLoginCode(start);
@@ -85,11 +96,22 @@ export default function SettingsModal({
       await CompleteSleuthLogin(newLocation, start.deviceCode, newName);
       onProfileChanged();
     } catch (e) {
-      setError(String(e));
+      // A user-initiated cancel is not an error worth showing.
+      if (!signInCancelled.current) setError(String(e));
       setLoginCode(null);
     } finally {
       setBusy("");
     }
+  }
+
+  function cancelAdd() {
+    if (busy === "add" && loginCode) {
+      signInCancelled.current = true;
+      void CancelSleuthLogin();
+    }
+    setAddKind(null);
+    setLoginCode(null);
+    setError("");
   }
 
   function startAdd(kind: AddKind) {
@@ -231,7 +253,7 @@ export default function SettingsModal({
                       value={newLocation}
                       onChange={(e) => setNewLocation(e.target.value)}
                       placeholder="https://github.com/acme/skills.git"
-                      disabled={busy !== ""}
+                      disabled={busy !== "" || !gitUsable}
                       className="min-w-0 flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
                     />
                   )}
@@ -244,6 +266,12 @@ export default function SettingsModal({
                     />
                   )}
                 </div>
+                {addKind === "git" && !gitUsable && (
+                  <div className="rounded-lg bg-canvas px-3 py-2 text-xs text-ink-soft">
+                    {gitStatus?.reason} A local folder or skills.new library
+                    works without git.
+                  </div>
+                )}
                 {loginCode && (
                   <div className="rounded-lg bg-accent-soft px-3 py-2 text-xs">
                     Your browser opened — confirm the code{" "}
@@ -256,9 +284,9 @@ export default function SettingsModal({
                 <div className="flex justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => setAddKind(null)}
-                    disabled={busy !== ""}
-                    className="rounded-lg px-3 py-1.5 text-xs font-medium text-ink-faint transition hover:text-ink"
+                    onClick={cancelAdd}
+                    disabled={busy !== "" && !(busy === "add" && loginCode)}
+                    className="rounded-lg px-3 py-1.5 text-xs font-medium text-ink-faint transition hover:text-ink disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -267,6 +295,7 @@ export default function SettingsModal({
                     disabled={
                       busy !== "" ||
                       !newName.trim() ||
+                      (addKind === "git" && !gitUsable) ||
                       (addKind !== "sleuth" && !newLocation.trim())
                     }
                     className="rounded-lg bg-accent px-4 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"

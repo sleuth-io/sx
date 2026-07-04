@@ -29,6 +29,11 @@ type App struct {
 
 	mu    sync.Mutex
 	vault vaultpkg.Vault
+
+	// loginCancel aborts an in-flight skills.new device sign-in poll
+	// (CancelSleuthLogin). Guarded by loginMu.
+	loginMu     sync.Mutex
+	loginCancel context.CancelFunc
 }
 
 func NewApp() *App {

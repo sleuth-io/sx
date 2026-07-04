@@ -10,6 +10,10 @@ export function AddTeamMember(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddTeamMember'](arg1, arg2, arg3);
 }
 
+export function CancelSleuthLogin() {
+  return window['go']['main']['App']['CancelSleuthLogin']();
+}
+
 export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
 }
@@ -68,6 +72,10 @@ export function GetSettings() {
 
 export function GetVaultInfo() {
   return window['go']['main']['App']['GetVaultInfo']();
+}
+
+export function GitStatus() {
+  return window['go']['main']['App']['GitStatus']();
 }
 
 export function HasIdentity() {

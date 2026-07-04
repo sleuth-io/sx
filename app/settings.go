@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/sleuth-io/sx/internal/config"
+	gitpkg "github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/utils"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -182,7 +184,9 @@ func (a *App) StartSleuthLogin(serverURL string) (SleuthLoginStart, error) {
 }
 
 // CompleteSleuthLogin waits for the browser authorization, then saves the
-// library and switches to it.
+// library and switches to it. The wait is abortable via CancelSleuthLogin —
+// a user who changes their mind must not be stuck until the device code
+// expires.
 func (a *App) CompleteSleuthLogin(serverURL, deviceCode, name string) (VaultInfo, error) {
 	serverURL = strings.TrimSpace(serverURL)
 	if serverURL == "" {
@@ -192,9 +196,30 @@ func (a *App) CompleteSleuthLogin(serverURL, deviceCode, name string) (VaultInfo
 	if name == "" {
 		name = "skills-new"
 	}
+
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.loginMu.Lock()
+	if a.loginCancel != nil {
+		// A new attempt supersedes any previous still-polling one.
+		a.loginCancel()
+	}
+	a.loginCancel = cancel
+	a.loginMu.Unlock()
+	defer func() {
+		a.loginMu.Lock()
+		if a.loginCancel != nil {
+			a.loginCancel()
+			a.loginCancel = nil
+		}
+		a.loginMu.Unlock()
+	}()
+
 	oauthClient := config.NewOAuthClient(serverURL)
-	token, err := oauthClient.PollForToken(a.ctx, deviceCode)
+	token, err := oauthClient.PollForToken(ctx, deviceCode)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return VaultInfo{}, errors.New("sign-in cancelled")
+		}
 		return VaultInfo{}, fmt.Errorf("sign-in was not completed: %w", err)
 	}
 	cfg := &config.Config{
@@ -207,6 +232,33 @@ func (a *App) CompleteSleuthLogin(serverURL, deviceCode, name string) (VaultInfo
 		return VaultInfo{}, err
 	}
 	return a.SwitchProfile(name)
+}
+
+// CancelSleuthLogin aborts an in-flight skills.new sign-in wait, if any.
+// The pending CompleteSleuthLogin call returns a "sign-in cancelled" error.
+func (a *App) CancelSleuthLogin() {
+	a.loginMu.Lock()
+	defer a.loginMu.Unlock()
+	if a.loginCancel != nil {
+		a.loginCancel()
+		a.loginCancel = nil
+	}
+}
+
+// GitStatusInfo tells the frontend whether git operations can work on
+// this machine at all, so git-backed choices can explain themselves
+// instead of failing (or, on a Mac without developer tools, triggering
+// Apple's install dialog).
+type GitStatusInfo struct {
+	Available bool   `json:"available"`
+	Version   string `json:"version"`
+	Reason    string `json:"reason"`
+}
+
+// GitStatus probes for a usable git binary without side effects.
+func (a *App) GitStatus() GitStatusInfo {
+	av := gitpkg.CheckAvailability(a.ctx)
+	return GitStatusInfo{Available: av.Available, Version: av.Version, Reason: av.Reason}
 }
 
 // PickDirectory opens the native folder picker (for new local libraries).

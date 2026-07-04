@@ -6,6 +6,8 @@ export function AddLibrary(arg1:string,arg2:string,arg3:string,arg4:string):Prom
 
 export function AddTeamMember(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
+export function CancelSleuthLogin():Promise<void>;
+
 export function CheckForUpdate():Promise<main.UpdateInfo>;
 
 export function CompleteSleuthLogin(arg1:string,arg2:string,arg3:string):Promise<main.VaultInfo>;
@@ -35,6 +37,8 @@ export function GetDraft(arg1:string):Promise<main.Draft>;
 export function GetSettings():Promise<main.Settings>;
 
 export function GetVaultInfo():Promise<main.VaultInfo>;
+
+export function GitStatus():Promise<main.GitStatusInfo>;
 
 export function HasIdentity():Promise<boolean>;
 
