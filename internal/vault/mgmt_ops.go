@@ -23,8 +23,14 @@ func ensureSxDir(vaultRoot string) error {
 }
 
 // loadManifest reads sx.toml at vaultRoot. If only legacy files exist it
-// migrates them once, writes sx.toml, and returns the result.
+// migrates them once, writes sx.toml, and returns the result. Every
+// manifest read — and therefore every read-modify-write — funnels
+// through here, so this is also where an unresolved cloud-sync conflict
+// on the manifest halts the operation.
 func loadManifest(vaultRoot string) (*manifest.Manifest, error) {
+	if err := checkManifestConflicts(vaultRoot); err != nil {
+		return nil, err
+	}
 	m, _, err := manifest.LoadOrMigrate(vaultRoot)
 	return m, err
 }

@@ -104,7 +104,11 @@ func TestGetLockFileErrorsOnConflictedManifest(t *testing.T) {
 		t.Errorf("error should explain the sync conflict, got: %v", err)
 	}
 
-	// Writes are refused too: the check runs under the write lock.
+	// Writes are refused too: every manifest read-modify-write goes
+	// through loadManifest, and lock-holding writers check on acquire.
+	if _, err := loadManifest(dir); err == nil {
+		t.Error("loadManifest should fail with a conflicted manifest present")
+	}
 	if _, err := v.acquirePathLock(context.Background()); err == nil {
 		t.Error("acquirePathLock should fail with a conflicted manifest present")
 	}

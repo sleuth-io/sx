@@ -103,9 +103,6 @@ To fix: compare the files, merge any missing entries into %s, delete the conflic
 func (p *PathVault) GetLockFile(ctx context.Context, cachedETag string) (content []byte, etag string, notModified bool, err error) {
 	var data []byte
 	err = p.withReadLock(ctx, func() error {
-		if err := checkManifestConflicts(p.repoPath); err != nil {
-			return err
-		}
 		bytes, err := resolveLockBytesForActor(ctx, p.repoPath)
 		if err != nil {
 			return err
