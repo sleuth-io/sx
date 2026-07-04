@@ -303,6 +303,7 @@ export namespace main {
 	    configured: boolean;
 	    type: string;
 	    location: string;
+	    name: string;
 	    identity: string;
 	
 	    static createFrom(source: any = {}) {
@@ -314,6 +315,7 @@ export namespace main {
 	        this.configured = source["configured"];
 	        this.type = source["type"];
 	        this.location = source["location"];
+	        this.name = source["name"];
 	        this.identity = source["identity"];
 	    }
 	}

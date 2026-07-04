@@ -111,9 +111,34 @@ type VaultInfo struct {
 	Configured bool   `json:"configured"`
 	Type       string `json:"type"`     // "git" | "path" | "sleuth"
 	Location   string `json:"location"` // URL or path, display form
+	// Name is a short human label for the library: the repo or folder
+	// name, or the skills.new host.
+	Name string `json:"name"`
 	// Identity is who vault changes are attributed to — for skills.new,
 	// who you're signed in as.
 	Identity string `json:"identity"`
+}
+
+// libraryName derives a short display name from a vault's location.
+func libraryName(vaultType, location string) string {
+	switch vaultType {
+	case string(config.RepositoryTypeSleuth):
+		host := location
+		host = strings.TrimPrefix(host, "https://")
+		host = strings.TrimPrefix(host, "http://")
+		host = strings.TrimSuffix(host, "/")
+		return strings.TrimPrefix(host, "app.")
+	default:
+		base := strings.TrimSuffix(location, "/")
+		base = strings.TrimSuffix(base, ".git")
+		if i := strings.LastIndexAny(base, "/:"); i >= 0 {
+			base = base[i+1:]
+		}
+		if base == "" {
+			return location
+		}
+		return base
+	}
 }
 
 // GetVaultInfo reports whether a vault is configured, where it lives, and
@@ -135,6 +160,7 @@ func (a *App) GetVaultInfo() VaultInfo {
 	default:
 		info.Location = strings.TrimPrefix(cfg.RepositoryURL, "file://")
 	}
+	info.Name = libraryName(info.Type, info.Location)
 	// For a signed-in library, resolve the account when the profile does
 	// not pin an identity explicitly.
 	if info.Identity == "" {

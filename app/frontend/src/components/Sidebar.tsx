@@ -84,14 +84,27 @@ export default function Sidebar({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1 text-sm font-semibold leading-tight">
-              <span className="truncate">Library</span>
-              <span className="text-[10px] text-ink-faint">▾</span>
+              <span className="truncate" title={vault.location}>
+                {vault.name || "Library"}
+              </span>
+              <svg
+                className="h-3.5 w-3.5 shrink-0 text-ink-faint"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M5 6.5 8 3.5l3 3M5 9.5l3 3 3-3" />
+              </svg>
             </div>
-            <div
-              className="truncate text-xs text-ink-faint"
-              title={vault.location}
-            >
-              {vault.location}
+            <div className="truncate text-xs text-ink-faint">
+              {vault.type === "sleuth"
+                ? "Cloud library"
+                : vault.type === "git"
+                  ? "Git library"
+                  : "Local library"}
             </div>
           </div>
         </button>
