@@ -269,6 +269,22 @@ export namespace main {
 	        this.browserOpened = source["browserOpened"];
 	    }
 	}
+	export class SyncFolderOption {
+	    provider: string;
+	    path: string;
+	    suggested: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SyncFolderOption(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.path = source["path"];
+	        this.suggested = source["suggested"];
+	    }
+	}
 	export class TeamInfo {
 	    name: string;
 	    description: string;

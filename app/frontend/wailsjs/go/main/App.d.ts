@@ -52,6 +52,8 @@ export function ListCollections():Promise<Array<main.Collection>>;
 
 export function ListDrafts():Promise<Array<main.Draft>>;
 
+export function ListSyncFolders():Promise<Array<main.SyncFolderOption>>;
+
 export function ListTeams():Promise<Array<main.TeamInfo>>;
 
 export function OpenSettings():Promise<void>;
@@ -81,6 +83,8 @@ export function SetTeamAdmin(arg1:string,arg2:string,arg3:boolean):Promise<void>
 export function SetupGitVault(arg1:string,arg2:string):Promise<main.VaultInfo>;
 
 export function SetupLocalVault(arg1:string):Promise<main.VaultInfo>;
+
+export function SetupSharedFolderVault(arg1:string,arg2:string):Promise<main.VaultInfo>;
 
 export function ShareAssetWithEveryone(arg1:string):Promise<void>;
 

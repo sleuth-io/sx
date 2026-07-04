@@ -222,6 +222,53 @@ func (a *App) SetupLocalVault(identity string) (VaultInfo, error) {
 	return a.GetVaultInfo(), nil
 }
 
+// SyncFolderOption is a detected cloud-synced folder the user could put a
+// shared library in, plus a suggested vault location inside it.
+type SyncFolderOption struct {
+	Provider  string `json:"provider"`  // "Dropbox", "Google Drive", ...
+	Path      string `json:"path"`      // the sync root
+	Suggested string `json:"suggested"` // root + "/SX Library"
+}
+
+// ListSyncFolders returns the cloud-sync roots detected on this machine
+// (Dropbox, Google Drive, OneDrive, iCloud), for the shared-folder
+// onboarding path.
+func (a *App) ListSyncFolders() []SyncFolderOption {
+	var out []SyncFolderOption
+	for _, f := range utils.DetectSyncFolders() {
+		out = append(out, SyncFolderOption{
+			Provider:  f.Provider,
+			Path:      f.Path,
+			Suggested: filepath.Join(f.Path, "SX Library"),
+		})
+	}
+	return out
+}
+
+// SetupSharedFolderVault points the shared sx config at a path vault inside
+// a folder the user's cloud-sync app already shares (Dropbox, Google Drive,
+// OneDrive, iCloud). Same machinery as SetupLocalVault, arbitrary location;
+// if the folder already holds a teammate's vault we simply join it.
+func (a *App) SetupSharedFolderVault(path, identity string) (VaultInfo, error) {
+	path = strings.TrimSpace(strings.TrimPrefix(path, "file://"))
+	if path == "" {
+		return VaultInfo{}, errors.New("choose the shared folder for the library")
+	}
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return VaultInfo{}, friendlyVaultError(err)
+	}
+	cfg := &config.Config{
+		Type:          config.RepositoryTypePath,
+		RepositoryURL: "file://" + path,
+		Identity:      manifest.NormalizeEmail(identity),
+	}
+	if err := config.Save(cfg); err != nil {
+		return VaultInfo{}, err
+	}
+	a.resetVault()
+	return a.GetVaultInfo(), nil
+}
+
 // SetupGitVault points the shared sx config at a team git vault. The
 // repository is validated BEFORE the config is saved so a typo'd URL leaves
 // the app in onboarding rather than persisting a broken configuration.

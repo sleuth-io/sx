@@ -102,6 +102,10 @@ export function ListDrafts() {
   return window['go']['main']['App']['ListDrafts']();
 }
 
+export function ListSyncFolders() {
+  return window['go']['main']['App']['ListSyncFolders']();
+}
+
 export function ListTeams() {
   return window['go']['main']['App']['ListTeams']();
 }
@@ -160,6 +164,10 @@ export function SetupGitVault(arg1, arg2) {
 
 export function SetupLocalVault(arg1) {
   return window['go']['main']['App']['SetupLocalVault'](arg1);
+}
+
+export function SetupSharedFolderVault(arg1, arg2) {
+  return window['go']['main']['App']['SetupSharedFolderVault'](arg1, arg2);
 }
 
 export function ShareAssetWithEveryone(arg1) {

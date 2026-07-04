@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
 import {
+  CompleteSleuthLogin,
   HasIdentity,
+  ListSyncFolders,
+  PickDirectory,
   SetupGitVault,
   SetupLocalVault,
+  SetupSharedFolderVault,
+  StartSleuthLogin,
 } from "../../wailsjs/go/main/App";
+import type { main } from "../../wailsjs/go/models";
 
-type Choice = "solo" | "team";
+type Choice = "solo" | "folder" | "team" | "sleuth";
 
 const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -23,11 +29,21 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  // Shared-folder path.
+  const [syncFolders, setSyncFolders] = useState<main.SyncFolderOption[]>([]);
+  const [folderPath, setFolderPath] = useState("");
+
+  // skills.new sign-in.
+  const [signIn, setSignIn] = useState<main.SleuthLoginStart | null>(null);
+
   useEffect(() => {
     HasIdentity()
       .then((has) => setNeedsEmail(!has))
       // If the check itself fails, asking for an email is the safe default.
       .catch(() => setNeedsEmail(true));
+    ListSyncFolders()
+      .then((folders) => setSyncFolders(folders ?? []))
+      .catch(() => setSyncFolders([]));
   }, []);
 
   const emailOK = !needsEmail || EMAIL_SHAPE.test(email.trim());
@@ -54,6 +70,46 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       onDone();
     } catch (e) {
       setError(String(e));
+      setBusy(false);
+    }
+  }
+
+  async function connectSharedFolder() {
+    if (!folderPath.trim() || !emailOK) return;
+    setBusy(true);
+    setError("");
+    try {
+      await SetupSharedFolderVault(folderPath.trim(), email.trim());
+      onDone();
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  }
+
+  async function browseForFolder() {
+    try {
+      const dir = await PickDirectory();
+      if (dir) setFolderPath(dir);
+    } catch {
+      // Cancelled picker is not an error.
+    }
+  }
+
+  async function signInToSleuth() {
+    setChoice("sleuth");
+    setBusy(true);
+    setError("");
+    setSignIn(null);
+    try {
+      const start = await StartSleuthLogin("");
+      setSignIn(start);
+      // Waits for the user to approve in the browser.
+      await CompleteSleuthLogin("", start.deviceCode, "skills-new");
+      onDone();
+    } catch (e) {
+      setError(String(e));
+      setSignIn(null);
       setBusy(false);
     }
   }
@@ -113,6 +169,84 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
 
             <div
               className={`rounded-xl border bg-surface p-4 transition ${
+                choice === "folder" ? "border-accent" : "border-line"
+              }`}
+            >
+              <button
+                onClick={() => setChoice("folder")}
+                disabled={busy}
+                className="w-full text-left"
+              >
+                <div className="text-sm font-semibold">
+                  My team — shared folder
+                </div>
+                <div className="mt-0.5 text-sm text-ink-soft">
+                  Share through a folder you already sync — Dropbox, Google
+                  Drive, OneDrive, iCloud. No accounts, no setup.
+                </div>
+              </button>
+              {choice === "folder" && (
+                <div className="mt-3 space-y-2">
+                  {syncFolders.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {syncFolders.map((f) => (
+                        <button
+                          key={f.path}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setFolderPath(f.suggested)}
+                          className={`rounded-lg border px-3 py-1.5 text-xs transition hover:border-accent ${
+                            folderPath === f.suggested
+                              ? "border-accent text-ink"
+                              : "border-line text-ink-soft"
+                          }`}
+                        >
+                          {f.provider}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <form
+                    className="flex gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void connectSharedFolder();
+                    }}
+                  >
+                    <input
+                      autoFocus
+                      value={folderPath}
+                      onChange={(e) => setFolderPath(e.target.value)}
+                      placeholder="Pick a synced folder…"
+                      className="min-w-0 flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+                      disabled={busy}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void browseForFolder()}
+                      disabled={busy}
+                      className="rounded-lg border border-line px-3 py-2 text-sm text-ink-soft transition hover:border-accent"
+                    >
+                      Browse…
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={busy || !folderPath.trim() || !emailOK}
+                      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                    >
+                      {busy ? "Connecting…" : "Connect"}
+                    </button>
+                  </form>
+                  <p className="text-xs text-ink-faint">
+                    Teammates connect by pointing sx at the same folder once
+                    it syncs to their computer.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div
+              className={`rounded-xl border bg-surface p-4 transition ${
                 choice === "team" ? "border-accent" : "border-line"
               }`}
             >
@@ -121,7 +255,9 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                 disabled={busy}
                 className="w-full text-left"
               >
-                <div className="text-sm font-semibold">My team</div>
+                <div className="text-sm font-semibold">
+                  My team — git repository
+                </div>
                 <div className="mt-0.5 text-sm text-ink-soft">
                   Connect to the library your team already shares in a git
                   repository.
@@ -154,18 +290,38 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
               )}
             </div>
 
-            <div className="rounded-xl border border-dashed border-line p-4">
-              <div className="text-sm font-semibold text-ink-soft">
-                skills.new
-              </div>
-              <div className="mt-0.5 text-sm text-ink-faint">
-                Company-managed libraries with sign-in are coming to the app
-                soon. Until then, run{" "}
-                <code className="rounded bg-accent-soft px-1 py-0.5 font-mono text-xs">
-                  sx init
-                </code>{" "}
-                in a terminal and the app will pick it up.
-              </div>
+            <div
+              className={`rounded-xl border bg-surface p-4 transition ${
+                choice === "sleuth" ? "border-accent" : "border-line"
+              }`}
+            >
+              <button
+                onClick={() => void signInToSleuth()}
+                disabled={busy}
+                className="w-full text-left"
+              >
+                <div className="text-sm font-semibold">skills.new</div>
+                <div className="mt-0.5 text-sm text-ink-soft">
+                  Company-managed libraries with sign-in, teams, and usage
+                  insights.
+                </div>
+              </button>
+              {choice === "sleuth" && signIn && (
+                <div className="mt-3 rounded-lg bg-canvas px-4 py-3">
+                  <div className="text-sm text-ink-soft">
+                    {signIn.browserOpened
+                      ? "We opened your browser — approve the sign-in there."
+                      : `Open ${signIn.verificationUri} and enter this code:`}
+                  </div>
+                  <div className="mt-2 font-mono text-lg font-semibold tracking-widest">
+                    {signIn.userCode}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 text-xs text-ink-faint">
+                    <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" />
+                    Waiting for approval…
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
