@@ -161,7 +161,7 @@ export default function DraftSheet({
                 value={draft.type}
                 onChange={(e) => update({ type: e.target.value })}
                 disabled={busy}
-                className="rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+                className="h-[38px] w-full rounded-lg border border-line bg-canvas py-0 pl-3 pr-7 text-sm outline-none focus:border-accent"
               >
                 {TYPE_OPTIONS.map((t) => (
                   <option key={t.key} value={t.key}>
