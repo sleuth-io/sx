@@ -1,4 +1,4 @@
-.PHONY: help build build-darwin build-darwin-amd64 install test lint format clean release demo sx logs gql-generate gql-check
+.PHONY: help ensure-app-embed build build-darwin build-darwin-amd64 install test lint format clean release demo sx logs gql-generate gql-check
 
 # Default target
 help: ## Show this help message
@@ -15,7 +15,13 @@ DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GO_LDFLAGS=-X github.com/sleuth-io/sx/internal/buildinfo.Version=$(VERSION) -X github.com/sleuth-io/sx/internal/buildinfo.Commit=$(COMMIT) -X github.com/sleuth-io/sx/internal/buildinfo.Date=$(DATE)
 LDFLAGS=-ldflags "$(GO_LDFLAGS)"
 
-build: ## Build the binary
+# The app package embeds frontend/dist (go:embed), which frontend builds
+# recreate and fresh checkouts lack. Guarantee at least one file exists so
+# every go build/vet/lint over ./... compiles.
+ensure-app-embed:
+	@mkdir -p app/frontend/dist && touch app/frontend/dist/.gitkeep
+
+build: ensure-app-embed ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
 	@go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
 	@echo "Built: $(BUILD_DIR)/$(BINARY_NAME)"
@@ -43,7 +49,7 @@ install: gql-generate build ## Install binary to ~/.local/bin
 		   echo "  export PATH=\"\$$PATH:\$$HOME/.local/bin\"" ;; \
 	esac
 
-test: ## Run tests
+test: ensure-app-embed ## Run tests
 	@echo "Running tests..."
 	@OUTPUT=$$(go test -race -cover ./... 2>&1 | grep -v 'no such tool "covdata"'); \
 	RESULT=$$?; \
@@ -55,7 +61,7 @@ test: ## Run tests
 		echo "✓ All $$PASSED packages passed"; \
 	fi
 
-lint: ## Run linters
+lint: ensure-app-embed ## Run linters
 	@echo "Running linters..."
 	@go tool golangci-lint run
 
