@@ -453,7 +453,7 @@ export default function Library({
   const scopeTitle = (() => {
     switch (scope.kind) {
       case "all":
-        return "Assets";
+        return "Skills";
       case "installed":
         return "In your AI tools";
       case "drafts":
@@ -598,7 +598,7 @@ export default function Library({
                 {newMenuOpen && (
                   <div className="absolute right-0 z-40 mt-1.5 w-56 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
                     <MenuItem
-                      label="New asset…"
+                      label="New skill…"
                       hint="Files, zip, or scratch"
                       onClick={() => {
                         setNewMenuOpen(false);
@@ -1071,7 +1071,9 @@ function AssetRow({
       title="Drag onto a collection in the sidebar to add it"
       className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-surface"
     >
-      <TypeBadge type={asset.type} label={asset.typeLabel} />
+      <span className="flex w-14 shrink-0">
+        <TypeBadge type={asset.type} label={asset.typeLabel} />
+      </span>
       <span className="w-52 shrink-0 truncate text-sm font-medium">
         {asset.name}
       </span>
@@ -1135,8 +1137,10 @@ function DraftRow({
       onClick={onClick}
       className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-surface"
     >
-      <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-        Draft
+      <span className="flex w-14 shrink-0">
+        <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+          Draft
+        </span>
       </span>
       <span className="w-52 shrink-0 truncate text-sm font-medium">
         {draft.name}

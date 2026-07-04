@@ -42,7 +42,7 @@ export default function AddAssetModal({
   }
 
   return (
-    <Modal title="New asset" onClose={onClose} width="w-[480px]">
+    <Modal title="New skill" onClose={onClose} width="w-[480px]">
       <div className="rounded-xl border-2 border-dashed border-line px-6 py-7 text-center">
         <div className="text-2xl">📄</div>
         <div className="mt-2 text-sm font-medium">

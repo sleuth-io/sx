@@ -88,14 +88,6 @@ export default function Sidebar({
             >
               {vault.location}
             </div>
-            {vault.type === "sleuth" && vault.identity && (
-              <div
-                className="truncate text-xs text-ink-faint"
-                title={`Signed in as ${vault.identity}`}
-              >
-                {vault.identity}
-              </div>
-            )}
           </div>
         </button>
       </div>
@@ -103,7 +95,7 @@ export default function Sidebar({
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         <SectionLabel>LIBRARY</SectionLabel>
         <Row
-          label="Assets"
+          label="Skills"
           count={totalCount}
           active={active === "all"}
           onClick={() => onScope({ kind: "all" })}
@@ -209,6 +201,26 @@ export default function Sidebar({
           </>
         )}
       </nav>
+
+      {/* Who you are in this library: the skills.new account, or the git
+          identity vault changes are attributed to. */}
+      {vault.identity && (
+        <div
+          className="flex shrink-0 items-center gap-2 border-t border-line px-4 py-2.5"
+          title={
+            vault.type === "sleuth"
+              ? `Signed in as ${vault.identity}`
+              : `Vault changes are attributed to ${vault.identity} (from your git config)`
+          }
+        >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[10px] font-semibold uppercase text-accent">
+            {vault.identity[0]}
+          </span>
+          <span className="min-w-0 truncate text-xs text-ink-faint">
+            {vault.identity}
+          </span>
+        </div>
+      )}
     </aside>
   );
 }

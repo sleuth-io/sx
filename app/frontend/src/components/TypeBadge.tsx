@@ -7,6 +7,14 @@ const HUES: Record<string, string> = {
   hook: "bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
 };
 
+// Long type names get compact badge labels so the type column stays
+// narrow and rows align; full names still appear in tooltips/filters.
+const SHORT_LABELS: Record<string, string> = {
+  mcp: "MCP",
+  "claude-code-plugin": "CCP",
+  command: "Cmd",
+};
+
 export default function TypeBadge({
   type,
   label,
@@ -18,9 +26,10 @@ export default function TypeBadge({
     HUES[type] ?? "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300";
   return (
     <span
+      title={label}
       className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${hue}`}
     >
-      {label}
+      {SHORT_LABELS[type] ?? label}
     </span>
   );
 }
