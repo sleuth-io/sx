@@ -90,22 +90,21 @@ func TestCodexClient_DetermineTargetBase_GlobalScope(t *testing.T) {
 		Type: clients.ScopeGlobal,
 	}
 
-	// For skills
+	// Skills go to the vendor-neutral ~/.agents/ at global scope
 	target, err := client.determineTargetBase(scope, asset.TypeSkill)
 	if err != nil {
 		t.Fatalf("determineTargetBase error: %v", err)
 	}
-	expected := filepath.Join(tempDir, ".codex")
-	if target != expected {
+	if expected := filepath.Join(tempDir, ".agents"); target != expected {
 		t.Errorf("Global skill target = %q, want %q", target, expected)
 	}
 
-	// For commands (same as skills for global)
+	// Commands stay in ~/.codex/
 	target, err = client.determineTargetBase(scope, asset.TypeCommand)
 	if err != nil {
 		t.Fatalf("determineTargetBase error: %v", err)
 	}
-	if target != expected {
+	if expected := filepath.Join(tempDir, ".codex"); target != expected {
 		t.Errorf("Global command target = %q, want %q", target, expected)
 	}
 }
@@ -266,7 +265,7 @@ func TestCodexClient_GetAssetPath_Skill(t *testing.T) {
 		t.Fatalf("GetAssetPath error: %v", err)
 	}
 
-	expected := filepath.Join(tempDir, ".codex", "skills", "my-skill")
+	expected := filepath.Join(tempDir, ".agents", "skills", "my-skill")
 	if path != expected {
 		t.Errorf("GetAssetPath(skill) = %q, want %q", path, expected)
 	}
@@ -629,4 +628,34 @@ func createZip(t *testing.T, files map[string]string) []byte {
 		t.Fatalf("failed to close zip writer: %v", err)
 	}
 	return buf.Bytes()
+}
+
+func TestCodexClient_RemoveLegacyGlobalSkill(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	legacy := filepath.Join(tempDir, ".codex", "skills", "my-skill")
+	if err := os.MkdirAll(legacy, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "SKILL.md"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	client := NewClient()
+	client.removeLegacyGlobalSkill(context.Background(), &clients.InstallScope{Type: clients.ScopeGlobal}, "my-skill")
+
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Errorf("legacy skill copy still present at %s", legacy)
+	}
+
+	// Repo scope must not touch the global legacy path.
+	other := filepath.Join(tempDir, ".codex", "skills", "other")
+	if err := os.MkdirAll(other, 0755); err != nil {
+		t.Fatal(err)
+	}
+	client.removeLegacyGlobalSkill(context.Background(), &clients.InstallScope{Type: clients.ScopeRepository, RepoRoot: tempDir}, "other")
+	if _, err := os.Stat(other); err != nil {
+		t.Errorf("repo-scope cleanup should not remove global legacy path")
+	}
 }

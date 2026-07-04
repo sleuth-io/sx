@@ -172,6 +172,28 @@ Centralized management with a UI for discovery, creation, sharing, and usage ana
 sx init --type sleuth
 ```
 
+### Plugin marketplace (no sx required)
+
+Every git or path vault is also a **Claude Code / Codex plugin
+marketplace** — sx generates and maintains `.claude-plugin/marketplace.json`
+and `.codex-plugin/plugin.json` on every publish. Teammates who don't run
+sx can install the library's skills directly from their AI tool:
+
+```
+# Claude Code
+/plugin marketplace add yourteam/skills
+/plugin install skills@skills
+
+# Codex
+codex plugin marketplace add git@github.com:yourteam/skills.git
+```
+
+Each collection in the vault is also exposed as its own Claude Code
+plugin, so people can install just the slice they need. Private repos
+work through normal git credentials. Plugin installs deliver skills only
+(rules and per-team scoping still need `sx install`) — see
+[docs/plugins-spec.md](docs/plugins-spec.md).
+
 ## How it works
 
 sx follows the manifest-and-lock pattern used by npm, cargo, and uv:

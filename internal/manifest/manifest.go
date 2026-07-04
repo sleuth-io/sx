@@ -722,14 +722,18 @@ func Write(m *Manifest, path string) error {
 	return writeFileAtomic(path, data, 0644)
 }
 
-// Save writes the manifest to vaultRoot/sx.toml atomically. Creates the
-// vault root directory if needed.
+// Save writes the manifest to vaultRoot/sx.toml atomically, then
+// regenerates the derived plugin-marketplace manifests next to it.
+// Creates the vault root directory if needed.
 func Save(vaultRoot string, m *Manifest) error {
 	path := filepath.Join(vaultRoot, FileName)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("failed to create vault root: %w", err)
 	}
-	return Write(m, path)
+	if err := Write(m, path); err != nil {
+		return err
+	}
+	return writePluginManifests(vaultRoot, m)
 }
 
 // normalized returns a copy of m with every field normalized for stable

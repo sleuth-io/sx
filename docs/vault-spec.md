@@ -57,6 +57,22 @@ stores assets server-side behind an API and is not covered by this layout.)
 `sx.toml` holds the assets list, install scopes, teams, and collections.
 See [manifest-spec.md](manifest-spec.md) for the full schema.
 
+### Derived plugin-marketplace manifests
+
+On every manifest save, v2 vaults with at least one skill asset also get
+three **generated** files so the vault doubles as an AI-tool plugin
+marketplace (see [plugins-spec.md](plugins-spec.md)):
+
+```
+{vault-root}/
+  .claude-plugin/marketplace.json         # Claude Code marketplace (library + per-collection plugins)
+  .codex-plugin/plugin.json               # Codex plugin (whole library)
+  .agents/plugins/marketplace.json        # Codex marketplace listing
+```
+
+They are pure functions of `sx.toml` and are always overwritten — never
+edit them by hand. They're removed when the vault has no skill assets.
+
 ### Invariants
 
 1. **`assets/{name}/` is always a byte-identical copy of
