@@ -115,3 +115,18 @@ writing/docs collections, 30 assets):
   and the team view/sidebar counts follow. Note: assets added to a
   collection later do not inherit its sharing — the modal then shows the
   team as partial (mixed) so it can be re-applied in one click.
+
+## Round 5: drag fix, team-view collections (2026-07-03)
+
+- Drag-to-collection rebuilt as pointer-based drag (mousedown threshold,
+  ghost chip following the cursor, elementFromPoint hit-testing,
+  Escape cancels). The old HTML5 drag's drop event is swallowed by the
+  native webview's file-drop handling — it only ever worked in browser
+  dev mode. Verified via Playwright mouse events: ghost shows
+  "brand-voice → docs", drop adds the asset, sidebar count updates.
+  Pointer events bypass Wails' drop interception entirely, so the native
+  window behaves the same as the dev browser.
+- Team views now list collections whose assets are ALL shared with the
+  team (same rule as GetCollectionSharing) as "Collection" rows above the
+  assets; clicking opens the collection. Verified: marketing shows the
+  writing collection + its three assets.

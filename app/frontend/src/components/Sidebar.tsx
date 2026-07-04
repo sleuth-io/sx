@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { main } from "../../wailsjs/go/models";
 
 export type Scope =
@@ -14,13 +13,15 @@ function scopeKey(s: Scope): string {
   return s.kind;
 }
 
-/** The type used for in-app asset drags (rows → collections). */
-export const ASSET_DRAG_TYPE = "application/x-sx-asset";
-
 /**
  * Source-list sidebar (Apple HIG pattern): LIBRARY for structural views,
  * COLLECTIONS for the user's groupings (drop an asset row on one to add
  * it), TEAMS for who things are shared with.
+ *
+ * Asset-row drags are pointer-based (not HTML5 drag-and-drop, which the
+ * native webview's file-drop handling swallows): Library hit-tests
+ * [data-drop-collection] under the cursor and passes the hovered name in
+ * dropCollection.
  */
 export default function Sidebar({
   vault,
@@ -39,7 +40,7 @@ export default function Sidebar({
   onBrowseCollections,
   onBrowseTeams,
   onSettings,
-  onDropAsset,
+  dropCollection,
 }: {
   vault: main.VaultInfo;
   scope: Scope;
@@ -57,10 +58,9 @@ export default function Sidebar({
   onBrowseCollections: () => void;
   onBrowseTeams: () => void;
   onSettings: () => void;
-  onDropAsset: (collection: string, asset: string) => void;
+  dropCollection: string;
 }) {
   const active = scopeKey(scope);
-  const [dropTarget, setDropTarget] = useState("");
 
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-surface">
@@ -148,26 +148,9 @@ export default function Sidebar({
               .map((c) => (
                 <div
                   key={c.name}
-                  onDragOver={(e) => {
-                    if (e.dataTransfer.types.includes(ASSET_DRAG_TYPE)) {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "copy";
-                      setDropTarget(c.name);
-                    }
-                  }}
-                  onDragLeave={() =>
-                    setDropTarget((t) => (t === c.name ? "" : t))
-                  }
-                  onDrop={(e) => {
-                    const asset = e.dataTransfer.getData(ASSET_DRAG_TYPE);
-                    setDropTarget("");
-                    if (asset) {
-                      e.preventDefault();
-                      onDropAsset(c.name, asset);
-                    }
-                  }}
+                  data-drop-collection={c.name}
                   className={
-                    dropTarget === c.name
+                    dropCollection === c.name
                       ? "rounded-lg ring-2 ring-accent"
                       : undefined
                   }

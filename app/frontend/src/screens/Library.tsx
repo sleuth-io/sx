@@ -33,7 +33,7 @@ import DraftSheet from "../components/DraftSheet";
 import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
 import ShareModal from "../components/ShareModal";
-import Sidebar, { ASSET_DRAG_TYPE, Scope } from "../components/Sidebar";
+import Sidebar, { Scope } from "../components/Sidebar";
 import TeamModal from "../components/TeamModal";
 import TypeBadge from "../components/TypeBadge";
 
@@ -103,6 +103,22 @@ export default function Library({
   const [selected, setSelected] = useState<string | null>(null);
   const [openDraft, setOpenDraft] = useState<main.Draft | null>(null);
   const [dragging, setDragging] = useState(false);
+
+  // In-app asset→collection drag. Pointer-based, NOT HTML5 drag-and-drop:
+  // the native webview's file-drop handling swallows HTML5 drop events, so
+  // rows track the mouse and drops hit-test [data-drop-collection].
+  const [assetDrag, setAssetDrag] = useState<{
+    name: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [dropCollection, setDropCollection] = useState("");
+  const pendingDragRef = useRef<{ name: string; x: number; y: number } | null>(
+    null,
+  );
+  const assetDragRef = useRef<string | null>(null);
+  const dropCollectionRef = useRef("");
+  const dragHappenedRef = useRef(false);
   const [toast, setToast] = useState("");
   const [busyAction, setBusyAction] = useState(false);
 
@@ -198,6 +214,64 @@ export default function Library({
       window.removeEventListener("dragleave", leave);
       window.removeEventListener("drop", leave);
     };
+  }, [load]);
+
+  // Drive the in-app asset drag: activate past a small threshold, follow
+  // the cursor with a ghost chip, hit-test collections, commit on mouseup.
+  useEffect(() => {
+    const finish = () => {
+      pendingDragRef.current = null;
+      assetDragRef.current = null;
+      dropCollectionRef.current = "";
+      setAssetDrag(null);
+      setDropCollection("");
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+    const onMove = (e: MouseEvent) => {
+      const pending = pendingDragRef.current;
+      if (!assetDragRef.current) {
+        if (!pending) return;
+        if (Math.hypot(e.clientX - pending.x, e.clientY - pending.y) < 6)
+          return;
+        assetDragRef.current = pending.name;
+        dragHappenedRef.current = true;
+        document.body.style.userSelect = "none";
+        document.body.style.cursor = "grabbing";
+      }
+      setAssetDrag({ name: assetDragRef.current, x: e.clientX, y: e.clientY });
+      const hit = document
+        .elementFromPoint(e.clientX, e.clientY)
+        ?.closest("[data-drop-collection]");
+      const target = hit?.getAttribute("data-drop-collection") ?? "";
+      dropCollectionRef.current = target;
+      setDropCollection(target);
+    };
+    const onUp = () => {
+      const asset = assetDragRef.current;
+      const target = dropCollectionRef.current;
+      finish();
+      if (asset && target) {
+        SetCollectionMembership(target, asset, true)
+          .then(() => {
+            load();
+            setToastMessage(`Added ${asset} to ${target}`);
+          })
+          .catch((e) => setToastMessage(String(e)));
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && assetDragRef.current) finish();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("keydown", onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   // Close the New menu on outside clicks.
@@ -331,6 +405,21 @@ export default function Library({
     });
   }, [assets, query, scope, installed, activeCollection, teamAssets, sort, typeFilter]);
 
+  // Collections fully shared with the viewed team — every asset in the
+  // collection is installed for the team (same rule GetCollectionSharing
+  // uses), so the collection itself belongs in the team's list.
+  const teamCollections = useMemo(() => {
+    if (scope.kind !== "team") return [];
+    const shared = new Set(teamAssets[scope.name] ?? []);
+    const q = query.trim().toLowerCase();
+    return collections.filter(
+      (c) =>
+        (c.assets ?? []).length > 0 &&
+        (c.assets ?? []).every((a) => shared.has(a)) &&
+        (!q || c.name.toLowerCase().includes(q)),
+    );
+  }, [scope, collections, teamAssets, query]);
+
   const visibleDrafts = useMemo(() => {
     if (scope.kind !== "all" && scope.kind !== "drafts") return [];
     const q = query.trim().toLowerCase();
@@ -376,16 +465,6 @@ export default function Library({
     }
   })();
 
-  async function dropAssetOnCollection(collection: string, asset: string) {
-    try {
-      await SetCollectionMembership(collection, asset, true);
-      load();
-      setToastMessage(`Added ${asset} to ${collection}`);
-    } catch (e) {
-      setToastMessage(String(e));
-    }
-  }
-
   async function createTeam() {
     const name = newTeamName.trim();
     if (!name) return;
@@ -403,7 +482,10 @@ export default function Library({
   }
 
   const nothingToShow =
-    visible.length === 0 && visibleDrafts.length === 0 && !error;
+    visible.length === 0 &&
+    visibleDrafts.length === 0 &&
+    teamCollections.length === 0 &&
+    !error;
 
   return (
     <div
@@ -430,9 +512,7 @@ export default function Library({
         onBrowseCollections={() => setBrowse("collections")}
         onBrowseTeams={() => setBrowse("teams")}
         onSettings={() => setShowSettings(true)}
-        onDropAsset={(collection, asset) =>
-          void dropAssetOnCollection(collection, asset)
-        }
+        dropCollection={dropCollection}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -441,7 +521,7 @@ export default function Library({
           <div className="flex items-center gap-3 px-5 pb-3 pt-9">
             <h1 className="text-sm font-semibold">{scopeTitle}</h1>
             <span className="text-xs text-ink-faint">
-              {visible.length + visibleDrafts.length}
+              {visible.length + visibleDrafts.length + teamCollections.length}
             </span>
             {scope.kind === "installed" && aiClients.length > 0 && (
               <span className="text-xs text-ink-faint">
@@ -643,6 +723,13 @@ export default function Library({
             />
           ) : view === "list" ? (
             <div className="px-3 py-2">
+              {teamCollections.map((c) => (
+                <SharedCollectionRow
+                  key={"col-" + c.name}
+                  collection={c}
+                  onClick={() => setScope({ kind: "collection", name: c.name })}
+                />
+              ))}
               {visibleDrafts.map((d) => (
                 <DraftRow
                   key={"draft-" + d.id}
@@ -655,12 +742,47 @@ export default function Library({
                   key={a.name}
                   asset={a}
                   installed={installed.has(a.name)}
-                  onClick={() => setSelected(a.name)}
+                  onClick={() => {
+                    if (dragHappenedRef.current) {
+                      dragHappenedRef.current = false;
+                      return;
+                    }
+                    setSelected(a.name);
+                  }}
+                  onDragHandle={(name, e) => {
+                    if (e.button !== 0) return;
+                    dragHappenedRef.current = false;
+                    pendingDragRef.current = {
+                      name,
+                      x: e.clientX,
+                      y: e.clientY,
+                    };
+                  }}
                 />
               ))}
             </div>
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3 p-5">
+              {teamCollections.map((c) => (
+                <button
+                  key={"col-" + c.name}
+                  onClick={() => setScope({ kind: "collection", name: c.name })}
+                  className="rounded-xl border border-line bg-surface p-4 text-left transition hover:-translate-y-px hover:border-accent hover:shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="truncate text-sm font-semibold">
+                      {c.name}
+                    </div>
+                    <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+                      Collection
+                    </span>
+                  </div>
+                  <div className="mt-1.5 line-clamp-2 min-h-10 text-sm text-ink-soft">
+                    {c.description ||
+                      `${(c.assets ?? []).length} assets, all shared with this team.`}
+                  </div>
+                </button>
+              ))}
               {visibleDrafts.map((d) => (
                 <button
                   key={"draft-" + d.id}
@@ -711,6 +833,16 @@ export default function Library({
           )}
         </main>
       </div>
+
+      {assetDrag && (
+        <div
+          className="pointer-events-none fixed z-50 -translate-y-1/2 rounded-full bg-accent px-3 py-1 text-xs font-medium text-white shadow-lg"
+          style={{ left: assetDrag.x + 12, top: assetDrag.y }}
+        >
+          {assetDrag.name}
+          {dropCollection ? ` → ${dropCollection}` : ""}
+        </div>
+      )}
 
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center bg-accent-soft/80">
@@ -925,19 +1057,17 @@ function AssetRow({
   asset,
   installed,
   onClick,
+  onDragHandle,
 }: {
   asset: main.AssetCard;
   installed: boolean;
   onClick: () => void;
+  onDragHandle: (name: string, e: React.MouseEvent) => void;
 }) {
   return (
     <button
       onClick={onClick}
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData(ASSET_DRAG_TYPE, asset.name);
-        e.dataTransfer.effectAllowed = "copy";
-      }}
+      onMouseDown={(e) => onDragHandle(asset.name, e)}
       title="Drag onto a collection in the sidebar to add it"
       className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-surface"
     >
@@ -958,6 +1088,36 @@ function AssetRow({
       )}
       <span className="w-24 shrink-0 text-right text-xs text-ink-faint">
         {asset.updatedAt ? timeAgo(asset.updatedAt) : ""}
+      </span>
+    </button>
+  );
+}
+
+function SharedCollectionRow({
+  collection,
+  onClick,
+}: {
+  collection: main.Collection;
+  onClick: () => void;
+}) {
+  const count = (collection.assets ?? []).length;
+  return (
+    <button
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-surface"
+    >
+      <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+        Collection
+      </span>
+      <span className="w-52 shrink-0 truncate text-sm font-medium">
+        {collection.name}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">
+        {collection.description ||
+          `All ${count} assets are shared with this team.`}
+      </span>
+      <span className="w-24 shrink-0 text-right text-xs text-ink-faint">
+        {count} {count === 1 ? "asset" : "assets"}
       </span>
     </button>
   );
