@@ -1,60 +1,61 @@
+import { useState } from "react";
 import type { main } from "../../wailsjs/go/models";
 
 export type Scope =
   | { kind: "all" }
-  | { kind: "type"; type: string; label: string }
   | { kind: "installed" }
   | { kind: "drafts" }
   | { kind: "collection"; name: string };
 
 function scopeKey(s: Scope): string {
-  switch (s.kind) {
-    case "type":
-      return "type:" + s.type;
-    case "collection":
-      return "collection:" + s.name;
-    default:
-      return s.kind;
-  }
+  return s.kind === "collection" ? "collection:" + s.name : s.kind;
 }
 
+/** The type used for in-app asset drags (rows → collections). */
+export const ASSET_DRAG_TYPE = "application/x-sx-asset";
+
 /**
- * Source-list sidebar (Apple HIG pattern): LIBRARY gives structural views
- * (all, per type, installed, drafts); COLLECTIONS gives the user's own
- * groupings, with the create affordance living right in the section.
+ * Source-list sidebar (Apple HIG pattern): LIBRARY for structural views,
+ * COLLECTIONS for the user's groupings (drop an asset row on one to add
+ * it), TEAMS for who things are shared with.
  */
 export default function Sidebar({
   vault,
   scope,
   onScope,
-  types,
-  typeCounts,
   totalCount,
   installedCount,
   draftCount,
   collections,
+  teams,
   onNewCollection,
+  onNewTeam,
+  onTeam,
   onSettings,
+  onDropAsset,
 }: {
   vault: main.VaultInfo;
   scope: Scope;
   onScope: (scope: Scope) => void;
-  types: [string, string][];
-  typeCounts: Record<string, number>;
   totalCount: number;
   installedCount: number;
   draftCount: number;
   collections: main.Collection[];
+  teams: main.TeamInfo[];
   onNewCollection: () => void;
+  onNewTeam: () => void;
+  onTeam: (name: string) => void;
   onSettings: () => void;
+  onDropAsset: (collection: string, asset: string) => void;
 }) {
   const active = scopeKey(scope);
+  const [dropTarget, setDropTarget] = useState("");
 
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-surface">
       {/* Library switcher — the workspace-switcher pattern (Notion, Slack,
-          Linear): the header names the current library and who you are,
-          and opens Settings to switch or add libraries. */}
+          Linear): names the current library and who you are, opens
+          Settings to switch or add libraries. */}
       <div className="titlebar-drag px-2 pb-2 pt-9">
         <button
           onClick={onSettings}
@@ -91,20 +92,11 @@ export default function Sidebar({
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         <SectionLabel>LIBRARY</SectionLabel>
         <Row
-          label="All assets"
+          label="Assets"
           count={totalCount}
           active={active === "all"}
           onClick={() => onScope({ kind: "all" })}
         />
-        {types.map(([key, label]) => (
-          <Row
-            key={key}
-            label={label + "s"}
-            count={typeCounts[key] ?? 0}
-            active={active === "type:" + key}
-            onClick={() => onScope({ kind: "type", type: key, label })}
-          />
-        ))}
         <Row
           label="In your AI tools"
           count={installedCount}
@@ -140,12 +132,67 @@ export default function Sidebar({
           </button>
         ) : (
           collections.map((c) => (
-            <Row
+            <div
               key={c.name}
-              label={c.name}
-              count={(c.assets ?? []).length}
-              active={active === "collection:" + c.name}
-              onClick={() => onScope({ kind: "collection", name: c.name })}
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes(ASSET_DRAG_TYPE)) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "copy";
+                  setDropTarget(c.name);
+                }
+              }}
+              onDragLeave={() =>
+                setDropTarget((t) => (t === c.name ? "" : t))
+              }
+              onDrop={(e) => {
+                const asset = e.dataTransfer.getData(ASSET_DRAG_TYPE);
+                setDropTarget("");
+                if (asset) {
+                  e.preventDefault();
+                  onDropAsset(c.name, asset);
+                }
+              }}
+              className={
+                dropTarget === c.name
+                  ? "rounded-lg ring-2 ring-accent"
+                  : undefined
+              }
+            >
+              <Row
+                label={c.name}
+                count={(c.assets ?? []).length}
+                active={active === "collection:" + c.name}
+                onClick={() => onScope({ kind: "collection", name: c.name })}
+              />
+            </div>
+          ))
+        )}
+
+        <div className="mt-4 flex items-center justify-between pr-1">
+          <SectionLabel>TEAMS</SectionLabel>
+          <button
+            onClick={onNewTeam}
+            title="New team"
+            className="rounded px-1.5 text-sm leading-none text-ink-faint transition hover:text-accent"
+          >
+            +
+          </button>
+        </div>
+        {teams.length === 0 ? (
+          <button
+            onClick={onNewTeam}
+            className="mx-1 mt-1 w-[calc(100%-8px)] rounded-lg border border-dashed border-line px-3 py-2.5 text-left text-xs text-ink-faint transition hover:border-accent hover:text-accent"
+          >
+            Create a team to share assets with the right people
+          </button>
+        ) : (
+          teams.map((t) => (
+            <Row
+              key={t.name}
+              label={t.name}
+              count={(t.members ?? []).length}
+              active={false}
+              onClick={() => onTeam(t.name)}
             />
           ))
         )}

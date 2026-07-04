@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   GetAsset,
+  GetAssetSharing,
   InstallAsset,
   RestoreRevision,
+  SetAssetTeamSharing,
   SetCollectionMembership,
+  ShareAssetWithEveryone,
   UninstallAsset,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
@@ -19,6 +22,7 @@ import TypeBadge from "./TypeBadge";
 export default function AssetDetail({
   name,
   collections,
+  teams,
   installed,
   installedScopes,
   onClose,
@@ -29,6 +33,7 @@ export default function AssetDetail({
 }: {
   name: string;
   collections: main.Collection[];
+  teams: main.TeamInfo[];
   installed: boolean;
   installedScopes: string[];
   onClose: () => void;
@@ -98,6 +103,35 @@ export default function AssetDetail({
     try {
       await SetCollectionMembership(collection, name, member);
       onCollectionsChanged();
+    } catch (e) {
+      onToast(String(e));
+    }
+  }
+
+  const [sharing, setSharing] = useState<main.AssetSharing | null>(null);
+  useEffect(() => {
+    GetAssetSharing(name)
+      .then(setSharing)
+      .catch(() => setSharing(null));
+  }, [name]);
+
+  async function toggleTeamShare(team: string, shared: boolean) {
+    try {
+      await SetAssetTeamSharing(name, team, shared);
+      setSharing(await GetAssetSharing(name));
+      onToast(
+        shared ? `Shared ${name} with ${team}` : `Stopped sharing with ${team}`,
+      );
+    } catch (e) {
+      onToast(String(e));
+    }
+  }
+
+  async function shareWithEveryone() {
+    try {
+      await ShareAssetWithEveryone(name);
+      setSharing(await GetAssetSharing(name));
+      onToast(`${name} is now shared with everyone in this library`);
     } catch (e) {
       onToast(String(e));
     }
@@ -240,6 +274,58 @@ export default function AssetDetail({
                   {restoring ? "Restoring…" : "Restore this revision"}
                 </button>
               </>
+            )}
+          </div>
+        )}
+
+        {sharing && (teams.length > 0 || !sharing.everyone) && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-6 py-2.5">
+            <span className="text-xs text-ink-soft">Shared with</span>
+            <button
+              onClick={() => {
+                if (!sharing.everyone) void shareWithEveryone();
+              }}
+              disabled={sharing.everyone}
+              title={
+                sharing.everyone
+                  ? "Everyone in this library receives this asset"
+                  : "Share with everyone in this library instead"
+              }
+              className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition ${
+                sharing.everyone
+                  ? "bg-accent text-white"
+                  : "border border-line text-ink-faint hover:text-ink"
+              }`}
+            >
+              everyone
+            </button>
+            {teams.map((t) => {
+              const shared = (sharing.teams ?? []).includes(t.name);
+              return (
+                <button
+                  key={t.name}
+                  onClick={() => void toggleTeamShare(t.name, !shared)}
+                  title={
+                    shared
+                      ? `Stop sharing with ${t.name}`
+                      : `Share with ${t.name}`
+                  }
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition ${
+                    shared
+                      ? "bg-accent text-white"
+                      : "border border-line text-ink-faint hover:text-ink"
+                  }`}
+                >
+                  {t.name}
+                </button>
+              );
+            })}
+            {sharing.other > 0 && (
+              <span className="text-xs text-ink-faint">
+                +{sharing.other} more{" "}
+                {sharing.other === 1 ? "place" : "places"} (managed with the
+                sx CLI)
+              </span>
             )}
           </div>
         )}

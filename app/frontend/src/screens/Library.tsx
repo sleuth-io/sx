@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CreateDraftFromAsset,
   CreateDraftFromPaths,
+  CreateTeam,
   DeleteCollection,
   GetDraft,
   InstallCollection,
@@ -10,6 +11,8 @@ import {
   ListAssets,
   ListCollections,
   ListDrafts,
+  ListTeams,
+  SetCollectionMembership,
 } from "../../wailsjs/go/main/App";
 import {
   EventsOff,
@@ -22,8 +25,10 @@ import AddAssetModal from "../components/AddAssetModal";
 import AssetDetail from "../components/AssetDetail";
 import CollectionModal from "../components/CollectionModal";
 import DraftSheet from "../components/DraftSheet";
+import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
-import Sidebar, { Scope } from "../components/Sidebar";
+import Sidebar, { ASSET_DRAG_TYPE, Scope } from "../components/Sidebar";
+import TeamModal from "../components/TeamModal";
 import TypeBadge from "../components/TypeBadge";
 
 type ViewMode = "list" | "grid";
@@ -44,6 +49,11 @@ export default function Library({
   const [assets, setAssets] = useState<main.AssetCard[] | null>(null);
   const [drafts, setDrafts] = useState<main.Draft[]>([]);
   const [collections, setCollections] = useState<main.Collection[]>([]);
+  const [teams, setTeams] = useState<main.TeamInfo[]>([]);
+  const [openTeam, setOpenTeam] = useState<main.TeamInfo | null>(null);
+  const [showNewTeam, setShowNewTeam] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
   const [installedInfo, setInstalledInfo] = useState<
     main.InstalledAssetInfo[]
   >([]);
@@ -86,6 +96,9 @@ export default function Library({
     InstalledAssets()
       .then(setInstalledInfo)
       .catch(() => setInstalledInfo([]));
+    ListTeams()
+      .then(setTeams)
+      .catch(() => setTeams([]));
   }, []);
 
   useEffect(load, [load]);
@@ -135,6 +148,9 @@ export default function Library({
         .catch((e) => setToastMessage(String(e)));
     }, false);
     const over = (e: DragEvent) => {
+      // Only external file drags get the drop overlay — in-app asset
+      // drags (rows → collections) have their own affordance.
+      if (!e.dataTransfer?.types.includes("Files")) return;
       e.preventDefault();
       setDragging(true);
     };
@@ -193,12 +209,6 @@ export default function Library({
     return [...seen.entries()].sort();
   }, [assets]);
 
-  const typeCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const a of assets ?? []) counts[a.type] = (counts[a.type] ?? 0) + 1;
-    return counts;
-  }, [assets]);
-
   const activeCollection = useMemo(
     () =>
       scope.kind === "collection"
@@ -210,10 +220,8 @@ export default function Library({
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = (assets ?? []).filter((a) => {
+      if (typeFilter && a.type !== typeFilter) return false;
       switch (scope.kind) {
-        case "type":
-          if (a.type !== scope.type) return false;
-          break;
         case "installed":
           if (!installed.has(a.name)) return false;
           break;
@@ -235,7 +243,7 @@ export default function Library({
       if (sort === "name") return a.name.localeCompare(b.name);
       return (b.updatedAt || "").localeCompare(a.updatedAt || "");
     });
-  }, [assets, query, scope, installed, activeCollection, sort]);
+  }, [assets, query, scope, installed, activeCollection, sort, typeFilter]);
 
   const visibleDrafts = useMemo(() => {
     if (scope.kind !== "all" && scope.kind !== "drafts") return [];
@@ -270,9 +278,7 @@ export default function Library({
   const scopeTitle = (() => {
     switch (scope.kind) {
       case "all":
-        return "All assets";
-      case "type":
-        return scope.label + "s";
+        return "Assets";
       case "installed":
         return "In your AI tools";
       case "drafts":
@@ -281,6 +287,30 @@ export default function Library({
         return scope.name;
     }
   })();
+
+  async function dropAssetOnCollection(collection: string, asset: string) {
+    try {
+      await SetCollectionMembership(collection, asset, true);
+      load();
+      setToastMessage(`Added ${asset} to ${collection}`);
+    } catch (e) {
+      setToastMessage(String(e));
+    }
+  }
+
+  async function createTeam() {
+    const name = newTeamName.trim();
+    if (!name) return;
+    try {
+      const team = await CreateTeam(name);
+      setShowNewTeam(false);
+      setNewTeamName("");
+      load();
+      setOpenTeam(team);
+    } catch (e) {
+      setToastMessage(String(e));
+    }
+  }
 
   const nothingToShow =
     visible.length === 0 && visibleDrafts.length === 0 && !error;
@@ -297,14 +327,21 @@ export default function Library({
           setScope(s);
           setSelected(null);
         }}
-        types={types}
-        typeCounts={typeCounts}
         totalCount={(assets ?? []).length}
         installedCount={installedInfo.length}
         draftCount={drafts.length}
         collections={collections}
+        teams={teams}
         onNewCollection={() => setShowCollectionModal(true)}
+        onNewTeam={() => setShowNewTeam(true)}
+        onTeam={(name) => {
+          const team = teams.find((t) => t.name === name);
+          if (team) setOpenTeam(team);
+        }}
         onSettings={() => setShowSettings(true)}
+        onDropAsset={(collection, asset) =>
+          void dropAssetOnCollection(collection, asset)
+        }
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -341,6 +378,20 @@ export default function Library({
                   </kbd>
                 )}
               </div>
+
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                title="Filter by type"
+                className="h-full rounded-lg border border-line bg-canvas px-2 text-sm text-ink-soft outline-none"
+              >
+                <option value="">All types</option>
+                {types.map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}s
+                  </option>
+                ))}
+              </select>
 
               <select
                 value={sort}
@@ -555,6 +606,7 @@ export default function Library({
         <AssetDetail
           name={selected}
           collections={collections}
+          teams={teams}
           installed={installed.has(selected)}
           installedScopes={installedScopes.get(selected) ?? []}
           onClose={() => setSelected(null)}
@@ -609,6 +661,53 @@ export default function Library({
         />
       )}
 
+      {openTeam && (
+        <TeamModal
+          team={openTeam}
+          onClose={() => setOpenTeam(null)}
+          onChanged={load}
+        />
+      )}
+
+      {showNewTeam && (
+        <Modal title="New team" onClose={() => setShowNewTeam(false)}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void createTeam();
+            }}
+          >
+            <input
+              autoFocus
+              value={newTeamName}
+              onChange={(e) => setNewTeamName(e.target.value)}
+              placeholder="platform, marketing, data…"
+              className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+            <p className="mt-2 text-xs text-ink-faint">
+              You'll be its first member and admin. Share assets with the
+              team from any asset's panel.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowNewTeam(false)}
+                className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink-soft transition hover:text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!newTeamName.trim()}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                Create
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       {showSettings && (
         <SettingsModal
           onClose={() => setShowSettings(false)}
@@ -641,6 +740,12 @@ function AssetRow({
   return (
     <button
       onClick={onClick}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData(ASSET_DRAG_TYPE, asset.name);
+        e.dataTransfer.effectAllowed = "copy";
+      }}
+      title="Drag onto a collection in the sidebar to add it"
       className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-surface"
     >
       <TypeBadge type={asset.type} label={asset.typeLabel} />

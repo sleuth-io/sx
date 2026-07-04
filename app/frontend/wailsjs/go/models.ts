@@ -95,6 +95,22 @@ export namespace main {
 		}
 	}
 	
+	export class AssetSharing {
+	    everyone: boolean;
+	    teams: string[];
+	    other: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AssetSharing(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.everyone = source["everyone"];
+	        this.teams = source["teams"];
+	        this.other = source["other"];
+	    }
+	}
 	export class Collection {
 	    name: string;
 	    description: string;
@@ -247,6 +263,24 @@ export namespace main {
 	        this.verificationUri = source["verificationUri"];
 	        this.userCode = source["userCode"];
 	        this.deviceCode = source["deviceCode"];
+	    }
+	}
+	export class TeamInfo {
+	    name: string;
+	    description: string;
+	    members: string[];
+	    admins: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TeamInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.members = source["members"];
+	        this.admins = source["admins"];
 	    }
 	}
 	export class UpdateInfo {

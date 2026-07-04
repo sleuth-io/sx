@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function AddLibrary(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.VaultInfo>;
 
+export function AddTeamMember(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
 export function CheckForUpdate():Promise<main.UpdateInfo>;
 
 export function CompleteSleuthLogin(arg1:string,arg2:string,arg3:string):Promise<main.VaultInfo>;
@@ -16,11 +18,15 @@ export function CreateDraftFromAsset(arg1:string):Promise<main.Draft>;
 
 export function CreateDraftFromPaths(arg1:Array<string>):Promise<main.Draft>;
 
+export function CreateTeam(arg1:string):Promise<main.TeamInfo>;
+
 export function DeleteCollection(arg1:string):Promise<void>;
 
 export function DiscardDraft(arg1:string):Promise<void>;
 
 export function GetAsset(arg1:string,arg2:string):Promise<main.AssetDetail>;
+
+export function GetAssetSharing(arg1:string):Promise<main.AssetSharing>;
 
 export function GetDraft(arg1:string):Promise<main.Draft>;
 
@@ -44,6 +50,8 @@ export function ListCollections():Promise<Array<main.Collection>>;
 
 export function ListDrafts():Promise<Array<main.Draft>>;
 
+export function ListTeams():Promise<Array<main.TeamInfo>>;
+
 export function OpenSettings():Promise<void>;
 
 export function PickDirectory():Promise<string>;
@@ -56,13 +64,19 @@ export function PublishDraft(arg1:string):Promise<main.AssetCard>;
 
 export function Quit():Promise<void>;
 
+export function RemoveTeamMember(arg1:string,arg2:string):Promise<void>;
+
 export function RestoreRevision(arg1:string,arg2:string):Promise<void>;
+
+export function SetAssetTeamSharing(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function SetCollectionMembership(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function SetupGitVault(arg1:string,arg2:string):Promise<main.VaultInfo>;
 
 export function SetupLocalVault(arg1:string):Promise<main.VaultInfo>;
+
+export function ShareAssetWithEveryone(arg1:string):Promise<void>;
 
 export function StartSleuthLogin(arg1:string):Promise<main.SleuthLoginStart>;
 

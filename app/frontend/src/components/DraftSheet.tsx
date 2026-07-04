@@ -7,7 +7,6 @@ import {
 import type { main } from "../../wailsjs/go/models";
 import FileRail from "./FileRail";
 import MarkdownEditor from "./MarkdownEditor";
-import TypeBadge from "./TypeBadge";
 
 const TYPE_OPTIONS = [
   { key: "skill", label: "Skill" },
@@ -153,15 +152,11 @@ export default function DraftSheet({
               className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
             />
           </label>
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-ink-soft">
-              Kind
-            </span>
-            {isUpdate ? (
-              <div className="py-2">
-                <TypeBadge type={draft.type} label={draft.typeLabel} />
-              </div>
-            ) : (
+          {!isUpdate && (
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-ink-soft">
+                Kind
+              </span>
               <select
                 value={draft.type}
                 onChange={(e) => update({ type: e.target.value })}
@@ -174,8 +169,8 @@ export default function DraftSheet({
                   </option>
                 ))}
               </select>
-            )}
-          </label>
+            </label>
+          )}
         </div>
 
         <div className="flex min-h-0 flex-1">

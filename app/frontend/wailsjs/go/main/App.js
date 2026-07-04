@@ -6,6 +6,10 @@ export function AddLibrary(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddLibrary'](arg1, arg2, arg3, arg4);
 }
 
+export function AddTeamMember(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AddTeamMember'](arg1, arg2, arg3);
+}
+
 export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
 }
@@ -30,6 +34,10 @@ export function CreateDraftFromPaths(arg1) {
   return window['go']['main']['App']['CreateDraftFromPaths'](arg1);
 }
 
+export function CreateTeam(arg1) {
+  return window['go']['main']['App']['CreateTeam'](arg1);
+}
+
 export function DeleteCollection(arg1) {
   return window['go']['main']['App']['DeleteCollection'](arg1);
 }
@@ -40,6 +48,10 @@ export function DiscardDraft(arg1) {
 
 export function GetAsset(arg1, arg2) {
   return window['go']['main']['App']['GetAsset'](arg1, arg2);
+}
+
+export function GetAssetSharing(arg1) {
+  return window['go']['main']['App']['GetAssetSharing'](arg1);
 }
 
 export function GetDraft(arg1) {
@@ -86,6 +98,10 @@ export function ListDrafts() {
   return window['go']['main']['App']['ListDrafts']();
 }
 
+export function ListTeams() {
+  return window['go']['main']['App']['ListTeams']();
+}
+
 export function OpenSettings() {
   return window['go']['main']['App']['OpenSettings']();
 }
@@ -110,8 +126,16 @@ export function Quit() {
   return window['go']['main']['App']['Quit']();
 }
 
+export function RemoveTeamMember(arg1, arg2) {
+  return window['go']['main']['App']['RemoveTeamMember'](arg1, arg2);
+}
+
 export function RestoreRevision(arg1, arg2) {
   return window['go']['main']['App']['RestoreRevision'](arg1, arg2);
+}
+
+export function SetAssetTeamSharing(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetAssetTeamSharing'](arg1, arg2, arg3);
 }
 
 export function SetCollectionMembership(arg1, arg2, arg3) {
@@ -124,6 +148,10 @@ export function SetupGitVault(arg1, arg2) {
 
 export function SetupLocalVault(arg1) {
   return window['go']['main']['App']['SetupLocalVault'](arg1);
+}
+
+export function ShareAssetWithEveryone(arg1) {
+  return window['go']['main']['App']['ShareAssetWithEveryone'](arg1);
 }
 
 export function StartSleuthLogin(arg1) {
