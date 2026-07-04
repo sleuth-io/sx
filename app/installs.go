@@ -178,20 +178,49 @@ func (a *App) installBundles(bundles []*clients.AssetBundle) (InstallResult, err
 	return InstallResult{Clients: succeeded}, nil
 }
 
-// InstalledAssetNames returns the names of assets installed on this machine
-// at user-global scope — the app's install target.
-func (a *App) InstalledAssetNames() ([]string, error) {
+// InstalledAssetInfo describes one asset installed on this machine, in ANY
+// scope — whether the app installed it directly or `sx install` (or its
+// client hooks) delivered it via an org/team/repo scope.
+type InstalledAssetInfo struct {
+	Name    string   `json:"name"`
+	Version string   `json:"version"`
+	Scopes  []string `json:"scopes"` // human-readable, e.g. "Everywhere on this machine", "github.com/acme/repo"
+}
+
+// InstalledAssets reads the shared install tracker (the same state
+// `sx install` maintains) so the app reflects everything already on this
+// machine, not just its own installs.
+func (a *App) InstalledAssets() ([]InstalledAssetInfo, error) {
 	tracker, err := assetspkg.LoadTracker()
 	if err != nil {
-		return []string{}, nil // no tracker yet = nothing installed
+		return []InstalledAssetInfo{}, nil // no tracker yet = nothing installed
 	}
-	installed := tracker.FindGlobal()
-	names := make([]string, 0, len(installed))
-	for _, item := range installed {
-		names = append(names, item.Name)
+	byName := map[string]*InstalledAssetInfo{}
+	for _, item := range tracker.Assets {
+		scope := "Everywhere on this machine"
+		if item.Repository != "" {
+			scope = item.Repository
+			if item.Path != "" {
+				scope += " (" + item.Path + ")"
+			}
+		}
+		if existing, ok := byName[item.Name]; ok {
+			existing.Scopes = append(existing.Scopes, scope)
+			continue
+		}
+		byName[item.Name] = &InstalledAssetInfo{
+			Name:    item.Name,
+			Version: item.Version,
+			Scopes:  []string{scope},
+		}
 	}
-	sort.Strings(names)
-	return names, nil
+	out := make([]InstalledAssetInfo, 0, len(byName))
+	for _, info := range byName {
+		sort.Strings(info.Scopes)
+		out = append(out, *info)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
 }
 
 // UninstallAsset removes an asset from every detected AI client.

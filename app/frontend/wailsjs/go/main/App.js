@@ -58,8 +58,8 @@ export function InstallCollection(arg1) {
   return window['go']['main']['App']['InstallCollection'](arg1);
 }
 
-export function InstalledAssetNames() {
-  return window['go']['main']['App']['InstalledAssetNames']();
+export function InstalledAssets() {
+  return window['go']['main']['App']['InstalledAssets']();
 }
 
 export function ListAIClients() {
@@ -78,6 +78,10 @@ export function ListDrafts() {
   return window['go']['main']['App']['ListDrafts']();
 }
 
+export function OpenSettings() {
+  return window['go']['main']['App']['OpenSettings']();
+}
+
 export function PickFilesForDraft() {
   return window['go']['main']['App']['PickFilesForDraft']();
 }
@@ -88,6 +92,10 @@ export function PickFolderForDraft() {
 
 export function PublishDraft(arg1) {
   return window['go']['main']['App']['PublishDraft'](arg1);
+}
+
+export function Quit() {
+  return window['go']['main']['App']['Quit']();
 }
 
 export function RestoreRevision(arg1, arg2) {

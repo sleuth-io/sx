@@ -6,7 +6,7 @@ import {
   DeleteCollection,
   GetDraft,
   InstallCollection,
-  InstalledAssetNames,
+  InstalledAssets,
   ListAIClients,
   ListAssets,
   ListCollections,
@@ -14,7 +14,12 @@ import {
   PickFilesForDraft,
   PickFolderForDraft,
 } from "../../wailsjs/go/main/App";
-import { OnFileDrop, OnFileDropOff } from "../../wailsjs/runtime/runtime";
+import {
+  EventsOff,
+  EventsOn,
+  OnFileDrop,
+  OnFileDropOff,
+} from "../../wailsjs/runtime/runtime";
 import type { main } from "../../wailsjs/go/models";
 import AssetDetail from "../components/AssetDetail";
 import CollectionModal from "../components/CollectionModal";
@@ -41,7 +46,9 @@ export default function Library({
   const [assets, setAssets] = useState<main.AssetCard[] | null>(null);
   const [drafts, setDrafts] = useState<main.Draft[]>([]);
   const [collections, setCollections] = useState<main.Collection[]>([]);
-  const [installedNames, setInstalledNames] = useState<string[]>([]);
+  const [installedInfo, setInstalledInfo] = useState<
+    main.InstalledAssetInfo[]
+  >([]);
   const [aiClients, setAiClients] = useState<main.AIClient[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -77,9 +84,9 @@ export default function Library({
     ListCollections()
       .then(setCollections)
       .catch(() => setCollections([]));
-    InstalledAssetNames()
-      .then(setInstalledNames)
-      .catch(() => setInstalledNames([]));
+    InstalledAssets()
+      .then(setInstalledInfo)
+      .catch(() => setInstalledInfo([]));
   }, []);
 
   useEffect(load, [load]);
@@ -160,7 +167,21 @@ export default function Library({
     window.setTimeout(() => setToast(""), 4000);
   }
 
-  const installed = useMemo(() => new Set(installedNames), [installedNames]);
+  const installed = useMemo(
+    () => new Set(installedInfo.map((i) => i.name)),
+    [installedInfo],
+  );
+  const installedScopes = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const i of installedInfo) m.set(i.name, i.scopes ?? []);
+    return m;
+  }, [installedInfo]);
+
+  // Native menu → Settings (Cmd+, / Ctrl+,)
+  useEffect(() => {
+    EventsOn("open-settings", () => setShowSettings(true));
+    return () => EventsOff("open-settings");
+  }, []);
 
   const types = useMemo(() => {
     const seen = new Map<string, string>();
@@ -277,7 +298,7 @@ export default function Library({
         types={types}
         typeCounts={typeCounts}
         totalCount={(assets ?? []).length}
-        installedCount={installedNames.length}
+        installedCount={installedInfo.length}
         draftCount={drafts.length}
         collections={collections}
         aiClients={aiClients}
@@ -560,6 +581,7 @@ export default function Library({
           name={selected}
           collections={collections}
           installed={installed.has(selected)}
+          installedScopes={installedScopes.get(selected) ?? []}
           onClose={() => setSelected(null)}
           onEdit={() => void editAsset(selected)}
           onChanged={() => {

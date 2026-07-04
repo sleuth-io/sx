@@ -20,6 +20,7 @@ export default function AssetDetail({
   name,
   collections,
   installed,
+  installedScopes,
   onClose,
   onEdit,
   onChanged,
@@ -29,6 +30,7 @@ export default function AssetDetail({
   name: string;
   collections: main.Collection[];
   installed: boolean;
+  installedScopes: string[];
   onClose: () => void;
   onEdit: () => void;
   onChanged: () => void;
@@ -127,7 +129,7 @@ export default function AssetDetail({
         className="absolute inset-0 bg-black/20"
         onClick={onClose}
       />
-      <aside className="relative flex h-full w-[760px] max-w-[90vw] flex-col border-l border-line bg-surface shadow-xl">
+      <aside className="relative flex h-full w-[min(1100px,94vw)] flex-col border-l border-line bg-surface shadow-xl">
         <header className="flex items-start gap-3 border-b border-line px-6 pb-4 pt-6">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -141,10 +143,17 @@ export default function AssetDetail({
                 {detail.description}
               </p>
             )}
+            {installed && installedScopes.length > 0 && (
+              <p className="mt-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                ✓ Installed — {installedScopes.join(" · ")}
+              </p>
+            )}
             {showInstallHint && (
               <p className="mt-1.5 text-xs text-ink-faint">
                 Installing copies this into the AI tools on this machine (see
-                the sidebar) so they can use it. Nothing leaves your computer.
+                the sidebar) so they can use it. Assets shared with you
+                through your team are installed automatically when sx syncs.
+                Nothing leaves your computer.
               </p>
             )}
           </div>

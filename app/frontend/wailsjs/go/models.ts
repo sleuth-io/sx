@@ -165,6 +165,22 @@ export namespace main {
 	        this.clients = source["clients"];
 	    }
 	}
+	export class InstalledAssetInfo {
+	    name: string;
+	    version: string;
+	    scopes: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new InstalledAssetInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.version = source["version"];
+	        this.scopes = source["scopes"];
+	    }
+	}
 	export class ProfileInfo {
 	    name: string;
 	    type: string;

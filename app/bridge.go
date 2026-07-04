@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
@@ -37,6 +39,21 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 }
 
+// OpenSettings asks the frontend to show the settings view. Wired to the
+// native menu's Settings… item (Cmd+, / Ctrl+,).
+func (a *App) OpenSettings() {
+	if a.ctx != nil {
+		wailsruntime.EventsEmit(a.ctx, "open-settings")
+	}
+}
+
+// Quit exits the app; wired to the native menu.
+func (a *App) Quit() {
+	if a.ctx != nil {
+		wailsruntime.Quit(a.ctx)
+	}
+}
+
 // currentVault lazily opens the configured vault, caching it for the
 // process. Callers holding no lock may race on first open; the mutex makes
 // that safe.
@@ -52,9 +69,9 @@ func (a *App) currentVault() (vaultpkg.Vault, error) {
 	}
 	// Mirror the CLI: a profile-configured identity becomes the actor for
 	// every vault mutation (mgmt ops require a real, non-synthetic one).
-	if cfg.Identity != "" {
-		mgmt.SetIdentityOverride(cfg.Identity)
-	}
+	// Set unconditionally so switching to a profile WITHOUT an identity
+	// clears the previous profile's override instead of leaking it.
+	mgmt.SetIdentityOverride(cfg.Identity)
 	v, err := vaultpkg.NewFromConfig(cfg)
 	if err != nil {
 		return nil, err

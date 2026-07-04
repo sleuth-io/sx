@@ -40,7 +40,12 @@ export default function App() {
         {vault === null ? (
           <Onboarding onDone={refresh} />
         ) : (
-          <Library vault={vault} onVaultChanged={refresh} />
+          <Library
+            /* Remount on profile/vault change so every list reloads */
+            key={vault.type + ":" + vault.location}
+            vault={vault}
+            onVaultChanged={refresh}
+          />
         )}
       </div>
     </div>

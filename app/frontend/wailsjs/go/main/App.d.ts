@@ -30,7 +30,7 @@ export function InstallAsset(arg1:string):Promise<main.InstallResult>;
 
 export function InstallCollection(arg1:string):Promise<main.InstallResult>;
 
-export function InstalledAssetNames():Promise<Array<string>>;
+export function InstalledAssets():Promise<Array<main.InstalledAssetInfo>>;
 
 export function ListAIClients():Promise<Array<main.AIClient>>;
 
@@ -40,11 +40,15 @@ export function ListCollections():Promise<Array<main.Collection>>;
 
 export function ListDrafts():Promise<Array<main.Draft>>;
 
+export function OpenSettings():Promise<void>;
+
 export function PickFilesForDraft():Promise<main.Draft>;
 
 export function PickFolderForDraft():Promise<main.Draft>;
 
 export function PublishDraft(arg1:string):Promise<main.AssetCard>;
+
+export function Quit():Promise<void>;
 
 export function RestoreRevision(arg1:string,arg2:string):Promise<void>;
 
