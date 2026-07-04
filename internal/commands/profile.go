@@ -80,7 +80,7 @@ func runProfileAdd(cmd *cobra.Command, args []string) error {
 
 	// Set the active profile and run init
 	config.SetActiveProfile(profileName)
-	if err := runInit(cmd, nil, "", "", "", ""); err != nil {
+	if err := runInit(cmd, nil, "", "", "", "", ""); err != nil {
 		return err
 	}
 
