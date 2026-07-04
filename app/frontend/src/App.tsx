@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckForUpdate, GetVaultInfo } from "../wailsjs/go/main/App";
+import { CheckForUpdate, GetVaultInfo, Quit } from "../wailsjs/go/main/App";
 import { BrowserOpenURL } from "../wailsjs/runtime/runtime";
 import type { main } from "../wailsjs/go/models";
 import Onboarding from "./screens/Onboarding";
@@ -20,7 +20,7 @@ export default function App() {
   useEffect(refresh, [refresh]);
   useEffect(() => {
     CheckForUpdate()
-      .then((u) => u.available && setUpdate(u))
+      .then((u) => (u.available || u.installed) && setUpdate(u))
       .catch(() => {});
   }, []);
 
@@ -29,7 +29,15 @@ export default function App() {
   }
   return (
     <div className="flex h-full flex-col">
-      {update && (
+      {update?.installed && (
+        <button
+          onClick={() => void Quit()}
+          className="shrink-0 bg-accent px-4 py-1.5 text-center text-xs font-medium text-white hover:opacity-90"
+        >
+          sx {update.version} was installed — click to quit, then reopen sx
+        </button>
+      )}
+      {update?.available && (
         <button
           onClick={() => BrowserOpenURL(update.url)}
           className="shrink-0 bg-accent px-4 py-1.5 text-center text-xs font-medium text-white hover:opacity-90"

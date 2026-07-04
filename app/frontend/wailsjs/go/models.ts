@@ -291,6 +291,7 @@ export namespace main {
 	    available: boolean;
 	    version: string;
 	    url: string;
+	    installed: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new UpdateInfo(source);
@@ -301,6 +302,7 @@ export namespace main {
 	        this.available = source["available"];
 	        this.version = source["version"];
 	        this.url = source["url"];
+	        this.installed = source["installed"];
 	    }
 	}
 	export class VaultInfo {
