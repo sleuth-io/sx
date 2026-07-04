@@ -74,7 +74,7 @@ export default function Sidebar({
           className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-canvas"
           style={{ ["--wails-draggable" as never]: "no-drag" }}
         >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent text-xs font-semibold text-white">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-gradient-to-b from-[#2e3138] to-[#15171b] text-xs font-bold text-[#8fa6ff] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
             sx
           </div>
           <div className="min-w-0 flex-1">
