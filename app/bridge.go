@@ -141,6 +141,26 @@ func libraryName(vaultType, location string) string {
 	}
 }
 
+// safePathComponent rejects identifiers that could escape the vault's
+// directory layout when joined into filesystem paths (the webview renders
+// semi-untrusted shared content, so bridge arguments are not trusted).
+func safePathComponent(s string) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	return !strings.ContainsAny(s, "/\\")
+}
+
+func validateAssetRef(name, version string) error {
+	if !safePathComponent(name) {
+		return fmt.Errorf("invalid asset name %q", name)
+	}
+	if version != "" && !safePathComponent(version) {
+		return fmt.Errorf("invalid version %q", version)
+	}
+	return nil
+}
+
 // GetVaultInfo reports whether a vault is configured, where it lives, and
 // who you are in it.
 func (a *App) GetVaultInfo() VaultInfo {
@@ -245,8 +265,8 @@ func friendlyVaultError(err error) error {
 		msg = strings.TrimPrefix(msg, prefix)
 	}
 	msg = strings.TrimSpace(msg)
-	if len(msg) > 160 {
-		msg = msg[:157] + "…"
+	if r := []rune(msg); len(r) > 160 {
+		msg = string(r[:157]) + "…"
 	}
 	if msg == "" {
 		return errors.New("couldn't reach that repository — check the URL and your access")
@@ -313,6 +333,9 @@ type AssetDetail struct {
 
 // GetAsset loads an asset's files at the given version (empty = latest).
 func (a *App) GetAsset(name, version string) (AssetDetail, error) {
+	if err := validateAssetRef(name, version); err != nil {
+		return AssetDetail{}, err
+	}
 	v, err := a.currentVault()
 	if err != nil {
 		return AssetDetail{}, err

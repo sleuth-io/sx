@@ -36,8 +36,9 @@ What each tool's plugin/extension system can carry:
 
 Rules therefore stay on the copy-install path for Claude and Codex
 permanently (a deliberate platform trust boundary, not a gap we can
-engineer around). The generator keeps a per-type-per-tool routing table so
-a platform adding context support later is a one-entry change.
+engineer around). The generator currently exports skills only; the table
+above records where each other type could ride when the generator grows a
+per-type routing table.
 
 ## Layer 1 — vendor-neutral skills directory (implemented)
 

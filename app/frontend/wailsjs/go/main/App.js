@@ -150,6 +150,10 @@ export function SetCollectionTeamSharing(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetCollectionTeamSharing'](arg1, arg2, arg3);
 }
 
+export function SetTeamAdmin(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetTeamAdmin'](arg1, arg2, arg3);
+}
+
 export function SetupGitVault(arg1, arg2) {
   return window['go']['main']['App']['SetupGitVault'](arg1, arg2);
 }

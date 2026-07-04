@@ -24,16 +24,22 @@ func manifestTeamAssets(vaultRoot string) (map[string][]string, error) {
 	if m == nil {
 		return out, nil
 	}
+	// One row exists per published version and rows for the same asset are
+	// not necessarily adjacent — dedupe with a per-team seen set.
+	seen := map[string]map[string]bool{}
 	for _, a := range m.Assets {
 		for _, s := range a.Scopes {
 			if s.Kind != manifest.ScopeKindTeam || s.Team == "" {
 				continue
 			}
-			names := out[s.Team]
-			if len(names) > 0 && names[len(names)-1] == a.Name {
-				continue // consecutive version rows of the same asset
+			if seen[s.Team] == nil {
+				seen[s.Team] = map[string]bool{}
 			}
-			out[s.Team] = append(names, a.Name)
+			if seen[s.Team][a.Name] {
+				continue
+			}
+			seen[s.Team][a.Name] = true
+			out[s.Team] = append(out[s.Team], a.Name)
 		}
 	}
 	return out, nil

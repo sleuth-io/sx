@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -75,8 +76,7 @@ type codexMarketSource struct {
 func writePluginManifests(vaultRoot string, m *Manifest) error {
 	skills := latestSkillNames(m)
 	if m.SchemaVersion < 2 || len(skills) == 0 {
-		removePluginManifests(vaultRoot)
-		return nil
+		return removePluginManifests(vaultRoot)
 	}
 
 	slug := vaultSlug(vaultRoot)
@@ -94,11 +94,19 @@ func writePluginManifests(vaultRoot string, m *Manifest) error {
 			Skills:      []string{"./assets"},
 		}},
 	}
+	seenPlugins := map[string]bool{slug: true}
 	for _, c := range m.Collections {
 		entry, ok := collectionPluginEntry(c, skills, slug)
-		if ok {
-			claude.Plugins = append(claude.Plugins, entry)
+		if !ok {
+			continue
 		}
+		// Two collection names can slugify to the same plugin name; a
+		// duplicate would make the whole marketplace invalid.
+		if seenPlugins[entry.Name] {
+			continue
+		}
+		seenPlugins[entry.Name] = true
+		claude.Plugins = append(claude.Plugins, entry)
 	}
 
 	codexP := codexPlugin{
@@ -170,15 +178,22 @@ func latestSkillNames(m *Manifest) map[string]bool {
 	return out
 }
 
-func removePluginManifests(vaultRoot string) {
+func removePluginManifests(vaultRoot string) error {
+	var errs []error
 	for _, file := range []string{claudeMarketplaceFile, codexPluginFile, codexMarketplaceFile} {
 		path := filepath.Join(vaultRoot, filepath.FromSlash(file))
 		if err := os.Remove(path); err != nil {
+			if !os.IsNotExist(err) {
+				// A stale marketplace we failed to retract is a real
+				// error, not "already gone".
+				errs = append(errs, err)
+			}
 			continue
 		}
 		// Drop the containing directory too when we emptied it.
 		_ = os.Remove(filepath.Dir(path))
 	}
+	return errors.Join(errs...)
 }
 
 func writeJSON(path string, payload any) error {

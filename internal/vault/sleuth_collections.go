@@ -39,7 +39,10 @@ func firstGqlError[T any, P interface {
 	return errors.New("request failed")
 }
 
-func (s *SleuthVault) listServerCollections(ctx context.Context) ([]sleuthCollection, error) {
+// listServerCollectionsLean pages the collections without their (per-
+// collection, per-page) memberships; callers fetch assets only for the
+// collections they actually need.
+func (s *SleuthVault) listServerCollectionsLean(ctx context.Context) ([]sleuthCollection, error) {
 	out := []sleuthCollection{}
 	pageSize := 50
 	var after *string
@@ -51,15 +54,11 @@ func (s *SleuthVault) listServerCollections(ctx context.Context) ([]sleuthCollec
 		conn := resp.Collections
 		for i := range conn.Nodes {
 			node := conn.Nodes[i]
-			col := sleuthCollection{
+			out = append(out, sleuthCollection{
 				gid:         node.Id,
 				name:        node.Name,
 				description: node.Description,
-			}
-			if err := s.fillCollectionAssets(ctx, &col); err != nil {
-				return nil, err
-			}
-			out = append(out, col)
+			})
 		}
 		if !conn.PageInfo.HasNextPage || conn.PageInfo.EndCursor == nil {
 			return out, nil
@@ -96,13 +95,18 @@ func (s *SleuthVault) fillCollectionAssets(ctx context.Context, col *sleuthColle
 // their own not-found semantics (create-on-save, ErrCollectionNotFound).
 var errServerCollectionNotFound = errors.New("collection not found")
 
+// findServerCollection resolves a collection by exact name, fetching
+// membership for that one collection only.
 func (s *SleuthVault) findServerCollection(ctx context.Context, name string) (*sleuthCollection, error) {
-	all, err := s.listServerCollections(ctx)
+	all, err := s.listServerCollectionsLean(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for i := range all {
 		if all[i].name == name {
+			if err := s.fillCollectionAssets(ctx, &all[i]); err != nil {
+				return nil, err
+			}
 			return &all[i], nil
 		}
 	}
@@ -153,11 +157,16 @@ func (s *SleuthVault) assetGIDsBySlugs(ctx context.Context, slugs []string) ([]s
 	return out, nil
 }
 
-// ListCollections returns the vault's collections.
+// ListCollections returns the vault's collections with memberships.
 func (s *SleuthVault) ListCollections(ctx context.Context) ([]manifest.Collection, error) {
-	server, err := s.listServerCollections(ctx)
+	server, err := s.listServerCollectionsLean(ctx)
 	if err != nil {
 		return nil, err
+	}
+	for i := range server {
+		if err := s.fillCollectionAssets(ctx, &server[i]); err != nil {
+			return nil, err
+		}
 	}
 	out := make([]manifest.Collection, 0, len(server))
 	for _, col := range server {
@@ -177,6 +186,12 @@ func (s *SleuthVault) ListCollections(ctx context.Context) ([]manifest.Collectio
 // SaveCollection creates or replaces a collection: the server copy ends up
 // with exactly the given description and membership.
 func (s *SleuthVault) SaveCollection(ctx context.Context, c manifest.Collection) error {
+	// Same normalization the manifest-backed stores apply: trimmed name and
+	// description, deduped sorted assets, blank names rejected.
+	c, err := manifest.NormalizeCollection(c)
+	if err != nil {
+		return err
+	}
 	existing, err := s.findServerCollection(ctx, c.Name)
 	if err != nil && !errors.Is(err, errServerCollectionNotFound) {
 		return err
@@ -256,12 +271,19 @@ func (s *SleuthVault) SaveCollection(ctx context.Context, c manifest.Collection)
 
 // DeleteCollection removes a collection. Member assets are untouched.
 func (s *SleuthVault) DeleteCollection(ctx context.Context, name string) error {
-	existing, err := s.findServerCollection(ctx, name)
-	if errors.Is(err, errServerCollectionNotFound) {
-		return manifest.ErrCollectionNotFound
-	}
+	all, err := s.listServerCollectionsLean(ctx)
 	if err != nil {
 		return err
+	}
+	var existing *sleuthCollection
+	for i := range all {
+		if all[i].name == name {
+			existing = &all[i]
+			break
+		}
+	}
+	if existing == nil {
+		return manifest.ErrCollectionNotFound
 	}
 	resp, err := vaultgql.DeleteAssetCollection(ctx, s.gqlClient(), existing.gid)
 	if err != nil {

@@ -129,34 +129,44 @@ export default function Library({
   const [toast, setToast] = useState("");
   const [busyAction, setBusyAction] = useState(false);
 
+  // Guard against overlapping loads resolving out of order (focus events,
+  // post-mutation refreshes): only the newest generation's results apply.
+  const loadGen = useRef(0);
   const load = useCallback(() => {
+    const gen = ++loadGen.current;
+    const apply = <T,>(setter: (v: T) => void) => (v: T) => {
+      if (gen === loadGen.current) setter(v);
+    };
     setError("");
     ListAssets()
-      .then(setAssets)
+      .then(apply(setAssets))
       .catch((e) => {
+        if (gen !== loadGen.current) return;
         setError(String(e));
         setAssets([]);
       });
     ListDrafts()
-      .then(setDrafts)
-      .catch(() => setDrafts([]));
+      .then(apply(setDrafts))
+      .catch(() => apply(setDrafts)([]));
     ListCollections()
-      .then(setCollections)
-      .catch(() => setCollections([]));
+      .then(apply(setCollections))
+      .catch(() => apply(setCollections)([]));
     InstalledAssets()
-      .then(setInstalledInfo)
-      .catch(() => setInstalledInfo([]));
+      .then(apply(setInstalledInfo))
+      .catch(() => apply(setInstalledInfo)([]));
     ListTeams()
-      .then(setTeams)
-      .catch(() => setTeams([]));
+      .then(apply(setTeams))
+      .catch(() => apply(setTeams)([]));
     TeamAssets()
-      .then((m) => setTeamAssets(m ?? {}))
-      .catch(() => setTeamAssets({}));
+      .then((m) => apply(setTeamAssets)(m ?? {}))
+      .catch(() => apply(setTeamAssets)({}));
   }, []);
 
   useEffect(load, [load]);
   useEffect(() => {
-    ListAIClients().then(setAiClients);
+    ListAIClients()
+      .then(setAiClients)
+      .catch(() => setAiClients([]));
   }, []);
 
   useEffect(() => {
@@ -295,10 +305,13 @@ export default function Library({
     return () => window.removeEventListener("mousedown", onClick);
   }, [newMenuOpen]);
 
+  const toastTimer = useRef(0);
   function setToastMessage(message: string) {
     setToast(message);
-    window.setTimeout(() => setToast(""), 4000);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(""), 4000);
   }
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
   const installed = useMemo(
     () => new Set(installedInfo.map((i) => i.name)),
@@ -491,6 +504,15 @@ export default function Library({
   // The badge column fits the longest label in the current list —
   // "Collection" rows only appear in team views.
   const badgeWidth = teamCollections.length > 0 ? "w-[76px]" : "w-14";
+
+  // Large vaults: render rows incrementally instead of mounting thousands
+  // of DOM nodes at once.
+  const RENDER_CAP = 200;
+  const [renderCap, setRenderCap] = useState(RENDER_CAP);
+  useEffect(() => {
+    setRenderCap(RENDER_CAP);
+  }, [scope, query, typeFilter, sort]);
+  const shown = useMemo(() => visible.slice(0, renderCap), [visible, renderCap]);
 
   const nothingToShow =
     visible.length === 0 &&
@@ -758,7 +780,7 @@ export default function Library({
                   onClick={() => void openExistingDraft(d.id)}
                 />
               ))}
-              {visible.map((a) => (
+              {shown.map((a) => (
                 <AssetRow
                   key={a.name}
                   asset={a}
@@ -782,6 +804,15 @@ export default function Library({
                   }}
                 />
               ))}
+              {visible.length > shown.length && (
+                <button
+                  onClick={() => setRenderCap((c) => c + RENDER_CAP)}
+                  className="mx-3 my-2 rounded-lg border border-line px-3 py-2 text-sm text-ink-soft transition hover:border-accent hover:text-ink"
+                >
+                  Show {Math.min(RENDER_CAP, visible.length - shown.length)} more (
+                  {visible.length - shown.length} remaining)
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3 p-5">
@@ -824,7 +855,7 @@ export default function Library({
                   </div>
                 </button>
               ))}
-              {visible.map((a) => (
+              {shown.map((a) => (
                 <button
                   key={a.name}
                   onClick={() => setSelected(a.name)}
@@ -851,6 +882,14 @@ export default function Library({
                   </div>
                 </button>
               ))}
+              {visible.length > shown.length && (
+                <button
+                  onClick={() => setRenderCap((c) => c + RENDER_CAP)}
+                  className="rounded-xl border border-dashed border-line p-4 text-sm text-ink-soft transition hover:border-accent hover:text-ink"
+                >
+                  Show more ({visible.length - shown.length} remaining)
+                </button>
+              )}
             </div>
           )}
         </main>

@@ -88,15 +88,15 @@ Within the existing write transaction (file lock held, fresh clone/pull):
    c. Determine latest version (existing `version.Sort` on the list).
    d. Copy `.sx/versions/{name}/{latest}/` → `assets/{name}/` (the materialized root view).
 3. Set `schema_version = 2` in `sx.toml`.
-4. Regenerate `sx.lock` so all vault-internal source paths reference `.sx/versions/…`.
+4. Rewrite `sx.toml` source paths to reference `.sx/versions/…` (per-user lock files are regenerated on each client's next `sx install`, not by the migration).
 5. Append audit event `vault.migrated` (new event type in `internal/mgmt/audit.go`) with `{from: 1, to: 2, assets: N}`.
-6. Commit `"Migrate vault to format v2"` — **then** apply the user's requested mutation as its own commit, and push both.
+6. Commit `"Migrate vault storage to format v2"` and push it — **then** apply the user's requested mutation as its own commit.
 
 Concurrency and edge rules:
 
 - **Cross-machine race**: two v2 clients migrate simultaneously → second push is rejected → existing retry pulls, sees `schema_version = 2`, skips migration, applies only its mutation. Idempotent by construction.
-- **PR-branch flows** (`gitrepo_pr.go`): migration must never happen inside a PR branch (a v2 PR against a v1 main is unmergeable garbage). If `StartPRBranch` is requested on a v1 vault, migrate first as a direct commit to the default branch, then branch.
-- **Path vaults** (`pathrepo.go`): same steps minus git — perform into a `.sx/migrate-tmp/` staging dir, then rename into place; on any failure, leave the v1 vault untouched and report.
+- **PR-branch flows** (`gitrepo_pr.go`): migration must never happen inside a PR branch (a v2 PR against a v1 main is unmergeable garbage). *(As implemented — see docs/vault-spec.md, which is normative: PR-branch writes skip migration entirely and use the v1 layout; the vault migrates on the next direct write.)*
+- **Path vaults** (`pathrepo.go`): same steps minus git. *(As implemented: the migration runs in place under the vault's file lock and is resumable — an interrupted run is completed by the next write. The originally speced `.sx/migrate-tmp/` staging was dropped; per-asset moves are atomic renames.)*
 - **Sleuth vault**: unaffected. Storage is server-side behind the HTTP/GraphQL API (`internal/vault/sleuth.go`); no client-visible layout exists. skills.new migrates (or doesn't) on its own schedule.
 - **HTTP sources**: unaffected; they are fetch-only handlers, not a vault layout.
 
@@ -129,7 +129,7 @@ Concurrency and edge rules:
   - v2 client reads v1 vault without migrating (read fallback).
   - v1-format fixture + old-client simulation: manifest read fails with `ErrUnsupportedSchema`; install from regenerated lock succeeds.
   - PR-branch flow on v1 vault migrates on main first.
-  - Path vault staged migration, including failure-mid-migration leaving v1 intact.
+  - Path vault migration, including resuming an interrupted run (see migratev2 tests).
   - `vault copy` v1 source → v2 destination.
 - Migrate the real `sleuth-io/skills-repository` as the final acceptance test (after tagging a release).
 

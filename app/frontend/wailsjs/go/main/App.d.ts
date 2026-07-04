@@ -76,6 +76,8 @@ export function SetCollectionMembership(arg1:string,arg2:string,arg3:boolean):Pr
 
 export function SetCollectionTeamSharing(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
+export function SetTeamAdmin(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
 export function SetupGitVault(arg1:string,arg2:string):Promise<main.VaultInfo>;
 
 export function SetupLocalVault(arg1:string):Promise<main.VaultInfo>;

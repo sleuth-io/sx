@@ -1,3 +1,4 @@
 node_modules/
 dist/*
 !dist/.gitkeep
+package.json.md5

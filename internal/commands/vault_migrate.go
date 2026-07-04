@@ -34,9 +34,9 @@ Format v2 keeps the latest version of every asset directly at assets/{name}
 version history to .sx/versions. Migration normally happens automatically on
 the first write by an up-to-date sx; this command runs it explicitly.
 
-After migration, older sx versions can no longer modify the vault (they will
-report an unsupported schema version and must upgrade), but their installs
-from the resolved lock file keep working.
+After migration, older sx versions cannot use the vault at all — reads,
+installs, and writes fail with an unsupported schema version until every
+teammate upgrades. Coordinate the migration with your team.
 
 Use --dry-run to preview what would move without changing anything.`,
 		Args: cobra.NoArgs,

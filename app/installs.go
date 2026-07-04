@@ -10,6 +10,7 @@ import (
 	assetspkg "github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
@@ -40,6 +41,9 @@ func (a *App) ListAIClients() []AIClient {
 // InstallResult summarizes an install/uninstall for the frontend.
 type InstallResult struct {
 	Clients []string `json:"clients"` // display names that received it
+	// Failed lists clients that errored while others succeeded, so a
+	// partial install is never silently reported as a full one.
+	Failed []string `json:"failed"`
 }
 
 // bundleForLatest builds the client install bundle for an asset's latest
@@ -84,6 +88,9 @@ func globalScope() *clients.InstallScope {
 
 // InstallAsset delivers an asset to every detected AI client.
 func (a *App) InstallAsset(name string) (InstallResult, error) {
+	if err := validateAssetRef(name, ""); err != nil {
+		return InstallResult{}, err
+	}
 	bundle, err := a.bundleForLatest(name)
 	if err != nil {
 		return InstallResult{}, err
@@ -154,6 +161,7 @@ func (a *App) installBundles(bundles []*clients.AssetBundle) (InstallResult, err
 		}
 	}
 	sort.Strings(succeeded)
+	sort.Strings(failures)
 	if len(succeeded) == 0 {
 		if len(failures) > 0 {
 			return InstallResult{}, fmt.Errorf("installation failed for %s", strings.Join(failures, ", "))
@@ -242,34 +250,57 @@ func (a *App) InstalledAssets() ([]InstalledAssetInfo, error) {
 	return out, nil
 }
 
-// UninstallAsset removes an asset from every detected AI client.
+// UninstallAsset removes an asset from every detected AI client. The
+// asset's type/version are resolved locally (tracker, then the vault) so
+// files already on this machine can be removed even when the vault is
+// unreachable or the asset was deleted from it. Per-client failures don't
+// stop the remaining clients.
 func (a *App) UninstallAsset(name string) error {
-	bundle, err := a.bundleForLatest(name)
-	if err != nil {
+	if err := validateAssetRef(name, ""); err != nil {
 		return err
 	}
-	req := clients.UninstallRequest{
-		Assets: []asset.Asset{{
-			Name:    bundle.Asset.Name,
-			Version: bundle.Asset.Version,
-			Type:    bundle.Asset.Type,
-		}},
-		Scope: globalScope(),
+	target := asset.Asset{Name: name}
+	if tracker, err := assetspkg.LoadTracker(); err == nil {
+		if installed := tracker.FindAsset(assetspkg.AssetKey{Name: name}); installed != nil {
+			target.Version = installed.Version
+			target.Type = asset.FromString(installed.Type)
+		}
 	}
+	if !target.Type.IsValid() {
+		bundle, err := a.bundleForLatest(name)
+		if err != nil {
+			return err
+		}
+		target.Version = bundle.Asset.Version
+		target.Type = bundle.Asset.Type
+	}
+	req := clients.UninstallRequest{
+		Assets: []asset.Asset{target},
+		Scope:  globalScope(),
+	}
+	var failures []string
 	for _, client := range clients.Global().DetectInstalled() {
-		if !client.SupportsAssetType(bundle.Asset.Type) {
+		if !client.SupportsAssetType(target.Type) {
 			continue
 		}
 		if _, err := client.UninstallAssets(a.ctx, req); err != nil {
-			return fmt.Errorf("couldn't remove from %s: %w", client.DisplayName(), err)
+			failures = append(failures, client.DisplayName())
 		}
 	}
 
-	// Keep the shared tracker in sync (see installBundles).
+	// Keep the shared tracker in sync (see installBundles) even on partial
+	// failure — the successful removals are real.
 	if tracker, err := assetspkg.LoadTracker(); err == nil {
 		if tracker.RemoveAsset(assetspkg.AssetKey{Name: name}) {
-			_ = assetspkg.SaveTracker(tracker)
+			if err := assetspkg.SaveTracker(tracker); err != nil {
+				logger.Get().Warn("failed to save install tracker", "error", err)
+			}
 		}
+	} else {
+		logger.Get().Warn("failed to load install tracker", "error", err)
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("couldn't remove from %s", strings.Join(failures, ", "))
 	}
 	return nil
 }

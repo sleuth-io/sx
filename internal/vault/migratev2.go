@@ -92,10 +92,36 @@ func v1AssetDirNames(vaultRoot string) ([]string, error) {
 		if _, err := os.Stat(archived); err == nil {
 			continue
 		}
+		// Only directories shaped like v1 assets (version subdirectories)
+		// are migratable. Anything else — an empty folder, a hand-made
+		// directory of loose files — is left in place untouched rather
+		// than moved somewhere it can never be completed from.
+		hasVersions, err := dirHasSubdirectories(filepath.Join(vaultRoot, "assets", entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		if !hasVersions {
+			continue
+		}
 		names = append(names, entry.Name())
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+// dirHasSubdirectories reports whether dir contains at least one
+// subdirectory (a v1 asset's version directories).
+func dirHasSubdirectories(dir string) (bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // migrateStorageToV2 converts a v1 vault's storage layout to v2 in place and
@@ -244,10 +270,28 @@ func refreshAllRootViews(vaultRoot string, v2 layout.Layout) error {
 	return nil
 }
 
-// ensureMigrated runs the storage migration on a path vault before a write.
-// The caller must hold the vault's write lock (or be a legacy unlocked write
-// path, which had no concurrency guarantees to begin with).
+// ensureMigrated runs the storage migration on a path vault before a
+// write, taking the vault's file lock for the duration so two processes
+// sharing the path vault can't migrate concurrently. Callers already
+// holding the lock use ensureMigratedHeld.
 func (p *PathVault) ensureMigrated(ctx context.Context) error {
+	if _, err := planStorageMigration(p.repoPath); err != nil {
+		if errors.Is(err, ErrStorageUpToDate) {
+			return nil
+		}
+		return err
+	}
+	fl, err := p.acquirePathLock(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = fl.Unlock() }()
+	return p.ensureMigratedHeld(ctx)
+}
+
+// ensureMigratedHeld is ensureMigrated for callers that already hold the
+// vault's write lock.
+func (p *PathVault) ensureMigratedHeld(ctx context.Context) error {
 	if _, err := planStorageMigration(p.repoPath); err != nil {
 		if errors.Is(err, ErrStorageUpToDate) {
 			return nil
@@ -266,15 +310,23 @@ func (p *PathVault) ensureMigrated(ctx context.Context) error {
 
 // MigrateStorage runs the v1 → v2 storage migration explicitly
 // (`sx vault migrate`). Returns ErrStorageUpToDate when the vault is
-// already current.
+// already current. It takes the write lock directly rather than going
+// through withLock, which would auto-migrate first and make this call
+// always report "already migrated".
 func (p *PathVault) MigrateStorage(ctx context.Context) (*MigrationResult, error) {
-	var result *MigrationResult
-	err := p.withLock(ctx, func(actor mgmt.Actor) error {
-		res, err := migrateStorageToV2(p.repoPath, actor.Email)
-		result = res
-		return err
-	})
-	return result, err
+	fl, err := p.acquirePathLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = fl.Unlock() }()
+	actor, err := p.CurrentActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := actor.RequireRealIdentity(); err != nil {
+		return nil, err
+	}
+	return migrateStorageToV2(p.repoPath, actor.Email)
 }
 
 // PlanStorageMigration reports what MigrateStorage would do (dry run).

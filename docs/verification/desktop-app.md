@@ -146,3 +146,35 @@ writing/docs collections, 30 assets):
 - Unit tests cover list mapping, create/update diffing, missing assets,
   server-side mutation errors, and delete-by-name against a mocked
   GraphQL server.
+
+## Round 7: pre-PR review fixes (2026-07-04)
+
+A high-effort branch review before opening the PR surfaced 3 blockers,
+6 highs, and ~19 mediums; everything above LOW was fixed:
+
+- Blockers: v1→v2 migration no longer wedges on non-asset directories
+  under assets/ (they're left in place; missing list.txt tolerated;
+  regression test); draft saves are atomic (temp-dir swap) and all draft
+  operations serialize on a mutex so autosave can't race publish/discard;
+  team admin revocation now works (SetTeamAdmin bridge method — the UI
+  previously called AddTeamMember(false), a silent no-op).
+- Security: bridge validates asset name/version against path traversal
+  (the webview renders semi-untrusted content); markdown links open in
+  the system browser instead of navigating the webview; device-flow
+  browser opens are restricted to http(s).
+- Correctness: path-vault writes migrate under the file lock; renames
+  follow collections and roll back on partial failure; version lists are
+  semver-sorted everywhere; uninstall works offline and continues past
+  per-client failures; install reports partial failures; collection
+  sharing aggregates errors; ListTeamAssets dedupes non-adjacent version
+  rows; the Sleuth collection store normalizes like file vaults and
+  avoids N+1 lookups.
+- Release: app builds get real version ldflags (update check was
+  permanently disabled at "dev"); artifact upload waits for the
+  GoReleaser release; macOS zips are ad-hoc signed and named -unsigned;
+  bundle id is io.sleuth.sx; the committed sx binary and
+  package.json.md5 are untracked.
+- UX: failed draft saves keep the sheet open; Escape closes only the top
+  modal; stale responses can't clobber newer ones (detail + library
+  loads); lists render incrementally past 200 rows; overlapping toasts
+  don't cut each other short.

@@ -12,7 +12,9 @@ export default function App() {
   const [update, setUpdate] = useState<main.UpdateInfo | null>(null);
 
   const refresh = useCallback(() => {
-    GetVaultInfo().then((info) => setVault(info.configured ? info : null));
+    GetVaultInfo()
+      .then((info) => setVault(info.configured ? info : null))
+      .catch(() => setVault(null));
   }, []);
 
   useEffect(refresh, [refresh]);

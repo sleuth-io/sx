@@ -6,6 +6,7 @@ import (
 	"maps"
 	"path"
 	"path/filepath"
+	"slices"
 
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/manifest"
@@ -102,13 +103,22 @@ func inheritAssetScopesFromManifest(vaultRoot string, asset *lockfile.Asset) err
 }
 
 // removeAssetFromManifest deletes every entry for the named asset, or
-// only rows matching version when non-empty.
+// only rows matching version when non-empty. When the asset's last row is
+// removed, its name is pruned from every collection (the opportunistic
+// pruning manifest-spec.md describes).
 func removeAssetFromManifest(vaultRoot, name, version string) (int, error) {
 	m, err := loadManifest(vaultRoot)
 	if err != nil {
 		return 0, err
 	}
 	removed := m.RemoveAsset(name, version)
+	if removed > 0 && m.FindAsset(name) == nil {
+		for i := range m.Collections {
+			m.Collections[i].Assets = slices.DeleteFunc(m.Collections[i].Assets, func(a string) bool {
+				return a == name
+			})
+		}
+	}
 	return removed, manifest.Save(vaultRoot, m)
 }
 
@@ -129,6 +139,15 @@ func renameAssetInManifest(vaultRoot string, l layout.Layout, oldName, newName s
 		sp := m.Assets[i].SourcePath
 		if sp != nil && sourcePathsEqual(sp.Path, l.SourcePathRel(oldName, m.Assets[i].Version)) {
 			sp.Path = l.SourcePathRel(newName, m.Assets[i].Version)
+		}
+	}
+	// Collections reference assets by name; follow the rename so the asset
+	// doesn't silently vanish from its collections.
+	for i := range m.Collections {
+		for j, assetName := range m.Collections[i].Assets {
+			if assetName == oldName {
+				m.Collections[i].Assets[j] = newName
+			}
 		}
 	}
 	return manifest.Save(vaultRoot, m)

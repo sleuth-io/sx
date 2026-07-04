@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   AddTeamMember,
+  SetTeamAdmin,
   RemoveTeamMember,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
@@ -60,7 +61,7 @@ export default function TeamModal({
     setBusy(true);
     setError("");
     try {
-      await AddTeamMember(team.name, email, admin);
+      await SetTeamAdmin(team.name, email, admin);
       setAdmins((a) =>
         admin ? [...new Set([...a, email])].sort() : a.filter((x) => x !== email),
       );

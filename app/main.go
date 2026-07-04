@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"log"
 	goruntime "runtime"
 
 	"github.com/wailsapp/wails/v2"
@@ -35,7 +36,6 @@ func main() {
 	appMenu := menu.NewMenu()
 	if goruntime.GOOS == "darwin" {
 		sxMenu := appMenu.AddSubmenu("sx")
-		sxMenu.AddText("About sx", nil, func(*menu.CallbackData) {})
 		sxMenu.AddSeparator()
 		sxMenu.AddText("Settings…", keys.CmdOrCtrl(","), func(*menu.CallbackData) {
 			app.OpenSettings()
@@ -83,6 +83,6 @@ func main() {
 		},
 	})
 	if err != nil {
-		println("Error:", err.Error())
+		log.Fatal(err)
 	}
 }

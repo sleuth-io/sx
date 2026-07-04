@@ -12,7 +12,8 @@ BUILD_DIR=./dist
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS=-ldflags "-X github.com/sleuth-io/sx/internal/buildinfo.Version=$(VERSION) -X github.com/sleuth-io/sx/internal/buildinfo.Commit=$(COMMIT) -X github.com/sleuth-io/sx/internal/buildinfo.Date=$(DATE)"
+GO_LDFLAGS=-X github.com/sleuth-io/sx/internal/buildinfo.Version=$(VERSION) -X github.com/sleuth-io/sx/internal/buildinfo.Commit=$(COMMIT) -X github.com/sleuth-io/sx/internal/buildinfo.Date=$(DATE)
+LDFLAGS=-ldflags "$(GO_LDFLAGS)"
 
 build: ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
@@ -182,5 +183,5 @@ app-dev: app-deps ## Run the desktop app in dev mode (hot reload)
 	cd app && "$(WAILS)" dev
 
 app-build: app-deps ## Build the desktop app for this platform
-	cd app && "$(WAILS)" build
+	cd app && "$(WAILS)" build -ldflags "$(GO_LDFLAGS)"
 	@echo "Built: app/build/bin/"

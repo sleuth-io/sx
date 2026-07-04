@@ -424,6 +424,18 @@ func (m *Manifest) DeleteCollection(name string) error {
 
 // normalizeCollectionInPlace trims a collection's fields and normalizes its
 // asset list (trimmed, deduped, sorted) for deterministic serialization.
+// NormalizeCollection returns the collection with its fields trimmed and
+// its asset list deduped/sorted — the same normalization UpsertCollection
+// applies, exported so non-manifest collection stores (the Sleuth vault)
+// keep identical semantics. Blank names are an error.
+func NormalizeCollection(c Collection) (Collection, error) {
+	normalizeCollectionInPlace(&c)
+	if c.Name == "" {
+		return Collection{}, errors.New("collection name cannot be empty")
+	}
+	return c, nil
+}
+
 func normalizeCollectionInPlace(c *Collection) {
 	c.Name = strings.TrimSpace(c.Name)
 	c.Description = strings.TrimSpace(c.Description)

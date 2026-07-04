@@ -24,7 +24,10 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    HasIdentity().then((has) => setNeedsEmail(!has));
+    HasIdentity()
+      .then((has) => setNeedsEmail(!has))
+      // If the check itself fails, asking for an email is the safe default.
+      .catch(() => setNeedsEmail(true));
   }, []);
 
   const emailOK = !needsEmail || EMAIL_SHAPE.test(email.trim());

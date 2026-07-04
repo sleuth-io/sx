@@ -216,9 +216,9 @@ export default function SettingsModal({
                         type="button"
                         disabled={busy !== ""}
                         onClick={() =>
-                          PickDirectory().then(
-                            (dir) => dir && setNewLocation(dir),
-                          )
+                          PickDirectory()
+                            .then((dir) => dir && setNewLocation(dir))
+                            .catch(() => {})
                         }
                         className="shrink-0 rounded-lg border border-line px-3 py-2 text-sm text-ink-soft transition hover:border-accent hover:text-ink"
                       >

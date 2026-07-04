@@ -101,3 +101,4 @@ AGENTS.md
 .codex/*
 .playwright-mcp/
 app-*.png
+/sx

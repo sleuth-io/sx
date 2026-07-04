@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import {
   GetAsset,
   GetAssetSharing,
@@ -48,6 +49,8 @@ export default function AssetDetail({
   const [error, setError] = useState("");
   const [revision, setRevision] = useState("");
   const [activeFile, setActiveFile] = useState(0);
+  const [sharing, setSharing] = useState<main.AssetSharing | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   // Right-anchored panel: dragging its left edge outward grows it.
   const [panelWidth, startPanelResize] = usePanelSize(
     "sx-panel-detail",
@@ -58,23 +61,32 @@ export default function AssetDetail({
   );
 
   useEffect(() => {
+    let stale = false;
     setDetail(null);
     setError("");
     GetAsset(name, revision)
       .then((d) => {
+        if (stale) return;
         setDetail(d);
         setActiveFile(0);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => {
+        if (!stale) setError(String(e));
+      });
+    return () => {
+      stale = true;
+    };
   }, [name, revision]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // The ShareModal handles its own Escape; one press must not close
+      // both layers.
+      if (e.key === "Escape" && !shareOpen) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, shareOpen]);
 
   const [restoring, setRestoring] = useState(false);
   const [installing, setInstalling] = useState(false);
@@ -118,12 +130,18 @@ export default function AssetDetail({
     }
   }
 
-  const [sharing, setSharing] = useState<main.AssetSharing | null>(null);
-  const [shareOpen, setShareOpen] = useState(false);
   useEffect(() => {
+    let stale = false;
     GetAssetSharing(name)
-      .then(setSharing)
-      .catch(() => setSharing(null));
+      .then((s) => {
+        if (!stale) setSharing(s);
+      })
+      .catch(() => {
+        if (!stale) setSharing(null);
+      });
+    return () => {
+      stale = true;
+    };
   }, [name]);
 
   const sharingSummary = (() => {
@@ -400,6 +418,22 @@ function splitFrontmatter(content: string): {
   return { frontmatter: null, body: content };
 }
 
+// Links in shared markdown open in the system browser: letting them
+// navigate the app's webview would replace the UI with an arbitrary page.
+const markdownComponents = {
+  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        if (href && /^https?:\/\//.test(href)) BrowserOpenURL(href);
+      }}
+    >
+      {children}
+    </a>
+  ),
+};
+
 function FileView({ file }: { file: main.AssetFile }) {
   const isMarkdown = /\.(md|markdown)$/i.test(file.path);
   if (isMarkdown) {
@@ -417,7 +451,7 @@ function FileView({ file }: { file: main.AssetFile }) {
           </div>
         )}
         <article className="prose-sx">
-          <ReactMarkdown>{body}</ReactMarkdown>
+          <ReactMarkdown components={markdownComponents}>{body}</ReactMarkdown>
         </article>
       </div>
     );

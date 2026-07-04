@@ -25,11 +25,11 @@ jobs:
           - name: macos-arm64
             os: macos-latest
             platform: darwin/arm64
-            artifact: sx-app-macos-arm64.zip
+            artifact: sx-app-macos-arm64-unsigned.zip
           - name: macos-amd64
             os: macos-13
             platform: darwin/amd64
-            artifact: sx-app-macos-amd64.zip
+            artifact: sx-app-macos-amd64-unsigned.zip
           - name: windows-amd64
             os: windows-latest
             platform: windows/amd64
@@ -63,9 +63,19 @@ jobs:
 
       - name: Build app
         working-directory: app
-        run: wails build -platform ${{ matrix.platform }}
+        run: >
+          wails build -platform ${{ matrix.platform }}
+          -ldflags "-X github.com/sleuth-io/sx/internal/buildinfo.Version=${GITHUB_REF_NAME#v}"
         env:
           CGO_ENABLED: 1
+
+      # Ad-hoc signing keeps the bundle loadable after local quarantine
+      # removal; artifacts stay clearly marked unsigned until real signing
+      # and notarization land.
+      - name: Ad-hoc sign (macOS)
+        if: runner.os == 'macOS'
+        working-directory: app/build/bin
+        run: codesign --force --deep -s - sx.app
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
@@ -93,4 +103,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: gh release upload "${GITHUB_REF_NAME}" "app/build/bin/${{ matrix.artifact }}" --clobber
+        # The GoReleaser workflow creates the release after its test job;
+        # poll for it rather than racing (a missing release here would drop
+        # this platform's artifact).
+        run: |
+          for i in $(seq 1 60); do
+            if gh release view "${GITHUB_REF_NAME}" > /dev/null 2>&1; then
+              break
+            fi
+            echo "Waiting for release ${GITHUB_REF_NAME} to exist ($i)..."
+            sleep 30
+          done
+          gh release upload "${GITHUB_REF_NAME}" "app/build/bin/${{ matrix.artifact }}" --clobber

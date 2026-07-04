@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/utils"
 )
 
 func pluginTestManifest() *Manifest {
@@ -44,9 +45,9 @@ func TestWritePluginManifests(t *testing.T) {
 
 	var claude claudeMarketplace
 	readJSONFile(t, filepath.Join(root, claudeMarketplaceFile), &claude)
-	slug := filepath.Base(root)
-	if claude.Name == "" || claude.Owner.Name == "" {
-		t.Errorf("claude marketplace missing name/owner: %+v", claude)
+	slug := utils.Slugify(filepath.Base(root))
+	if claude.Name != slug || claude.Owner.Name != slug {
+		t.Errorf("claude marketplace name/owner = %q/%q, want %q", claude.Name, claude.Owner.Name, slug)
 	}
 	if len(claude.Plugins) != 2 {
 		t.Fatalf("want 2 claude plugins (library + writing), got %d: %+v", len(claude.Plugins), claude.Plugins)
@@ -63,7 +64,6 @@ func TestWritePluginManifests(t *testing.T) {
 			t.Errorf("rule asset leaked into skills list: %v", writing.Skills)
 		}
 	}
-	_ = slug
 
 	var codexP codexPlugin
 	readJSONFile(t, filepath.Join(root, codexPluginFile), &codexP)

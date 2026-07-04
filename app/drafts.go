@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/sleuth-io/sx/internal/asset"
@@ -54,6 +55,11 @@ func draftsRoot() (string, error) {
 }
 
 var draftIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+// draftsMu serializes every draft mutation. Wails invokes bound methods
+// concurrently, and autosave (UpdateDraft) can otherwise interleave with
+// publish/discard and destroy work.
+var draftsMu sync.Mutex
 
 func draftDir(id string) (string, error) {
 	if !draftIDPattern.MatchString(id) {
@@ -202,6 +208,8 @@ func isZip(path string, content []byte) bool {
 // chosen in the picker). One markdown file becomes a single-file asset, a
 // zip is unpacked, and a directory is taken whole.
 func (a *App) CreateDraftFromPaths(paths []string) (Draft, error) {
+	draftsMu.Lock()
+	defer draftsMu.Unlock()
 	if len(paths) == 0 {
 		return Draft{}, errors.New("nothing was dropped")
 	}
@@ -211,8 +219,16 @@ func (a *App) CreateDraftFromPaths(paths []string) (Draft, error) {
 	base := paths[0]
 	if info, err := os.Stat(base); err == nil && info.IsDir() && len(paths) == 1 {
 		err := filepath.WalkDir(base, func(path string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
+			if err != nil {
 				return err
+			}
+			if d.IsDir() {
+				// Never descend into dot-directories (.git, .venv, …) —
+				// their internals must not ship to the team vault.
+				if strings.HasPrefix(d.Name(), ".") && path != base {
+					return filepath.SkipDir
+				}
+				return nil
 			}
 			if strings.HasPrefix(d.Name(), ".") {
 				return nil
@@ -269,9 +285,16 @@ func (a *App) CreateDraftFromPaths(paths []string) (Draft, error) {
 // CreateBlankDraft scaffolds an empty asset of the given kind, ready to
 // write in the editor.
 func (a *App) CreateBlankDraft(kind string) (Draft, error) {
+	draftsMu.Lock()
+	defer draftsMu.Unlock()
 	t := asset.FromString(kind)
 	if !t.IsValid() {
 		t = asset.TypeSkill
+	}
+	// Re-open an in-progress blank draft of this kind instead of silently
+	// overwriting it.
+	if existing, err := a.loadDraft("new-" + t.Key); err == nil {
+		return existing, nil
 	}
 	content := "---\nname: my-" + t.Key + "\ndescription: \n---\n\n# My " + t.Label + "\n\nDescribe what your AI tools should know or do.\n"
 	draft := Draft{
@@ -287,6 +310,16 @@ func (a *App) CreateBlankDraft(kind string) (Draft, error) {
 // CreateDraftFromAsset starts an edit: a draft seeded with the latest
 // published files of an existing asset.
 func (a *App) CreateDraftFromAsset(name string) (Draft, error) {
+	if err := validateAssetRef(name, ""); err != nil {
+		return Draft{}, err
+	}
+	draftsMu.Lock()
+	defer draftsMu.Unlock()
+	// Resume unpublished edits instead of silently replacing them with a
+	// fresh copy of the published files.
+	if existing, err := a.loadDraft(name); err == nil {
+		return existing, nil
+	}
 	detail, err := a.GetAsset(name, "")
 	if err != nil {
 		return Draft{}, err
@@ -361,17 +394,22 @@ func (a *App) assembleDraft(name string, files []AssetFile) (Draft, error) {
 	return draft, a.saveDraft(draft)
 }
 
+// saveDraft persists a draft atomically: the new content is staged in a
+// sibling temp directory and swapped in, so a crash or write error never
+// destroys the previous copy. Callers must hold draftsMu.
 func (a *App) saveDraft(d Draft) error {
 	dir, err := draftDir(d.ID)
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(dir); err != nil {
+	tmp := dir + ".~tmp"
+	if err := os.RemoveAll(tmp); err != nil {
 		return err
 	}
+	defer func() { _ = os.RemoveAll(tmp) }()
 	for _, f := range d.Files {
-		target := filepath.Join(dir, filepath.FromSlash(f.Path))
-		rel, err := filepath.Rel(dir, target)
+		target := filepath.Join(tmp, filepath.FromSlash(f.Path))
+		rel, err := filepath.Rel(tmp, target)
 		if err != nil || strings.HasPrefix(rel, "..") {
 			return fmt.Errorf("invalid file path in draft: %s", f.Path)
 		}
@@ -387,7 +425,29 @@ func (a *App) saveDraft(d Draft) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "draft.json"), data, 0644)
+	if err := os.MkdirAll(tmp, 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "draft.json"), data, 0644); err != nil {
+		return err
+	}
+
+	// Swap: keep the old copy until the new one is fully in place.
+	old := dir + ".~old"
+	if err := os.RemoveAll(old); err != nil {
+		return err
+	}
+	if _, err := os.Stat(dir); err == nil {
+		if err := os.Rename(dir, old); err != nil {
+			return err
+		}
+	}
+	if err := os.Rename(tmp, dir); err != nil {
+		// Restore the previous copy rather than leaving nothing.
+		_ = os.Rename(old, dir)
+		return err
+	}
+	return os.RemoveAll(old)
 }
 
 // ListDrafts returns every saved draft.
@@ -461,10 +521,21 @@ func (a *App) loadDraft(id string) (Draft, error) {
 	return draft, nil
 }
 
-// UpdateDraft persists edited fields and file contents.
+// UpdateDraft persists edited fields and file contents. It refuses to
+// resurrect a draft that was published or discarded while the save was
+// queued.
 func (a *App) UpdateDraft(d Draft) (Draft, error) {
+	draftsMu.Lock()
+	defer draftsMu.Unlock()
 	if !draftIDPattern.MatchString(d.ID) {
 		return Draft{}, errors.New("invalid draft")
+	}
+	dir, err := draftDir(d.ID)
+	if err != nil {
+		return Draft{}, err
+	}
+	if _, err := os.Stat(filepath.Join(dir, "draft.json")); err != nil {
+		return Draft{}, errors.New("draft no longer exists")
 	}
 	if d.Name = slugify(d.Name); d.Name == "" {
 		return Draft{}, errors.New("give the asset a name")
@@ -474,6 +545,18 @@ func (a *App) UpdateDraft(d Draft) (Draft, error) {
 		return Draft{}, fmt.Errorf("unknown asset type %q", d.Type)
 	}
 	d.TypeLabel = t.Label
+	// A rename changes what the draft publishes onto: recompute whether the
+	// (new) name updates an existing asset, exactly as draft creation does.
+	// A stale TargetAsset would either reset an existing asset's sharing or
+	// inherit scopes that don't exist.
+	if d.TargetAsset != d.Name {
+		d.TargetAsset = ""
+		if v, err := a.currentVault(); err == nil {
+			if versions, err := v.GetVersionList(a.ctx, d.Name); err == nil && len(versions) > 0 {
+				d.TargetAsset = d.Name
+			}
+		}
+	}
 	if err := a.saveDraft(d); err != nil {
 		return Draft{}, err
 	}
@@ -482,6 +565,12 @@ func (a *App) UpdateDraft(d Draft) (Draft, error) {
 
 // DiscardDraft deletes a draft.
 func (a *App) DiscardDraft(id string) error {
+	draftsMu.Lock()
+	defer draftsMu.Unlock()
+	return discardDraftLocked(id)
+}
+
+func discardDraftLocked(id string) error {
 	dir, err := draftDir(id)
 	if err != nil {
 		return err
@@ -492,6 +581,8 @@ func (a *App) DiscardDraft(id string) error {
 // PublishDraft publishes a draft to the vault as the next revision of its
 // asset and removes the draft. Returns the published asset's card.
 func (a *App) PublishDraft(id string) (AssetCard, error) {
+	draftsMu.Lock()
+	defer draftsMu.Unlock()
 	draft, err := a.loadDraft(id)
 	if err != nil {
 		return AssetCard{}, err
@@ -516,7 +607,7 @@ func (a *App) PublishDraft(id string) (AssetCard, error) {
 	}
 	if identical {
 		// Nothing changed relative to the latest revision; just drop the draft.
-		_ = a.DiscardDraft(id)
+		_ = discardDraftLocked(id)
 		return AssetCard{}, fmt.Errorf("%s already matches the latest revision — nothing to publish", draft.Name)
 	}
 
@@ -560,7 +651,7 @@ func (a *App) PublishDraft(id string) (AssetCard, error) {
 		return AssetCard{}, friendlyVaultError(err)
 	}
 
-	_ = a.DiscardDraft(id)
+	_ = discardDraftLocked(id)
 	return AssetCard{
 		Name:        meta.Asset.Name,
 		Description: meta.Asset.Description,
@@ -573,6 +664,9 @@ func (a *App) PublishDraft(id string) (AssetCard, error) {
 // RestoreRevision republishes an older revision's contents as the newest
 // revision — the undo story for published edits.
 func (a *App) RestoreRevision(name, version string) error {
+	if err := validateAssetRef(name, version); err != nil {
+		return err
+	}
 	v, err := a.currentVault()
 	if err != nil {
 		return err

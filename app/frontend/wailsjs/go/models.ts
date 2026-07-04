@@ -171,6 +171,7 @@ export namespace main {
 	}
 	export class InstallResult {
 	    clients: string[];
+	    failed: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new InstallResult(source);
@@ -179,6 +180,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.clients = source["clients"];
+	        this.failed = source["failed"];
 	    }
 	}
 	export class InstalledAssetInfo {
@@ -253,6 +255,7 @@ export namespace main {
 	    verificationUri: string;
 	    userCode: string;
 	    deviceCode: string;
+	    browserOpened: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new SleuthLoginStart(source);
@@ -263,6 +266,7 @@ export namespace main {
 	        this.verificationUri = source["verificationUri"];
 	        this.userCode = source["userCode"];
 	        this.deviceCode = source["deviceCode"];
+	        this.browserOpened = source["browserOpened"];
 	    }
 	}
 	export class TeamInfo {

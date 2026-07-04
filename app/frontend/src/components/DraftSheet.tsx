@@ -67,7 +67,9 @@ export default function DraftSheet({
   }
 
   async function saveAndClose() {
-    if (dirty) await persist();
+    // A failed save keeps the sheet open with the error visible instead of
+    // silently discarding the edits.
+    if (dirty && !(await persist())) return;
     onClose();
   }
 

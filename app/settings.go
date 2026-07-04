@@ -149,6 +149,9 @@ type SleuthLoginStart struct {
 	VerificationURI string `json:"verificationUri"`
 	UserCode        string `json:"userCode"`
 	DeviceCode      string `json:"deviceCode"`
+	// BrowserOpened is false when the system browser could not be opened
+	// (the frontend should emphasize the manual URL + code).
+	BrowserOpened bool `json:"browserOpened"`
 }
 
 // StartSleuthLogin begins the skills.new device sign-in and opens the
@@ -167,11 +170,14 @@ func (a *App) StartSleuthLogin(serverURL string) (SleuthLoginStart, error) {
 	if browserURL == "" {
 		browserURL = fmt.Sprintf("%s?user_code=%s", resp.VerificationURI, resp.UserCode)
 	}
-	_ = config.OpenBrowser(browserURL)
+	// A failed (or refused, e.g. non-http scheme) open is fine: the
+	// returned URI + code let the frontend show manual instructions.
+	browserOpened := config.OpenBrowser(browserURL) == nil
 	return SleuthLoginStart{
 		VerificationURI: resp.VerificationURI,
 		UserCode:        resp.UserCode,
 		DeviceCode:      resp.DeviceCode,
+		BrowserOpened:   browserOpened,
 	}, nil
 }
 

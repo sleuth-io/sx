@@ -273,3 +273,41 @@ func TestMigrationPlan(t *testing.T) {
 		t.Errorf("plan after migration err = %v, want ErrStorageUpToDate", err)
 	}
 }
+
+func TestMigrateStorageToV2LeavesNonAssetDirsInPlace(t *testing.T) {
+	dir := t.TempDir()
+	seedV1Vault(t, dir)
+	// A stray empty directory and a hand-made folder of loose files:
+	// neither is a v1 asset (no version subdirectories).
+	if err := os.MkdirAll(filepath.Join(dir, "assets", "empty-dir"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "assets", "loose-files"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "assets", "loose-files", "notes.md"), []byte("hi"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := migrateStorageToV2(dir, "alice@example.com")
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if result == nil || result.Assets != 2 {
+		t.Fatalf("result = %+v, want 2 assets migrated", result)
+	}
+
+	// The stray directories stay where they were and never enter the archive.
+	for _, rel := range []string{"assets/empty-dir", "assets/loose-files/notes.md"} {
+		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
+			t.Errorf("stray dir was moved or lost: %s (%v)", rel, err)
+		}
+	}
+	mustNotExist(t, filepath.Join(dir, ".sx", "versions", "empty-dir"))
+	mustNotExist(t, filepath.Join(dir, ".sx", "versions", "loose-files"))
+
+	// The vault is fully migrated: a rerun reports up-to-date, not a wedge.
+	if _, err := migrateStorageToV2(dir, "alice@example.com"); !errors.Is(err, ErrStorageUpToDate) {
+		t.Fatalf("second migrate err = %v, want ErrStorageUpToDate", err)
+	}
+}

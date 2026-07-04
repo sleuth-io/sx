@@ -58,7 +58,10 @@ func refreshRootView(vaultRoot string, l layout.Layout, name string) error {
 	}
 	viewDir := filepath.Join(vaultRoot, l.AssetDir(name))
 	versions, err := readVersionListFile(filepath.Join(vaultRoot, l.VersionListPath(name)))
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
+		// A missing list.txt means no discoverable versions (e.g. an
+		// archive dir with no version subdirectories); treat it like an
+		// empty list instead of wedging every later migration retry.
 		return err
 	}
 	if len(versions) == 0 {
@@ -67,11 +70,14 @@ func refreshRootView(vaultRoot string, l layout.Layout, name string) error {
 	latest := versions[len(versions)-1]
 	srcDir := filepath.Join(vaultRoot, l.VersionDir(name, latest))
 
-	stagingDir := filepath.Join(vaultRoot, l.AssetsRoot(), "."+name+".staging")
+	// PID-suffixed so two processes sharing a path vault never fight over
+	// the same staging directory.
+	stagingDir := filepath.Join(vaultRoot, l.AssetsRoot(), fmt.Sprintf(".%s.staging-%d", name, os.Getpid()))
 	if err := os.RemoveAll(stagingDir); err != nil {
 		return err
 	}
 	if err := copyDir(srcDir, stagingDir); err != nil {
+		_ = os.RemoveAll(stagingDir)
 		return fmt.Errorf("failed to stage root view for %s: %w", name, err)
 	}
 	if err := os.RemoveAll(viewDir); err != nil {
@@ -125,16 +131,22 @@ func renameAssetStorage(vaultRoot string, l layout.Layout, oldName, newName stri
 	if _, err := os.Stat(newDir); err == nil {
 		return fmt.Errorf("target asset directory already exists: %s", newName)
 	}
+	// Validate every target before the first rename so a conflict can't
+	// leave the asset half-renamed.
+	oldVersions := filepath.Join(vaultRoot, l.VersionsDir(oldName))
+	newVersions := filepath.Join(vaultRoot, l.VersionsDir(newName))
+	if l.Version() == layout.V2 {
+		if _, err := os.Stat(newVersions); err == nil {
+			return fmt.Errorf("target asset archive already exists: %s", newName)
+		}
+	}
 	if err := os.Rename(oldDir, newDir); err != nil {
 		return fmt.Errorf("failed to rename asset directory: %w", err)
 	}
 	if l.Version() == layout.V2 {
-		oldVersions := filepath.Join(vaultRoot, l.VersionsDir(oldName))
-		newVersions := filepath.Join(vaultRoot, l.VersionsDir(newName))
-		if _, err := os.Stat(newVersions); err == nil {
-			return fmt.Errorf("target asset archive already exists: %s", newName)
-		}
 		if err := os.Rename(oldVersions, newVersions); err != nil {
+			// Roll the root view back so the vault stays consistent.
+			_ = os.Rename(newDir, oldDir)
 			return fmt.Errorf("failed to rename asset archive: %w", err)
 		}
 	}
@@ -153,7 +165,9 @@ func versionListForAsset(vaultRoot string, l layout.Layout, name string) ([]stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to read version list: %w", err)
 	}
-	return parseVersionList(data), nil
+	// Callers take the last element as "latest": keep every derivation
+	// semver-sorted regardless of the order versions were appended.
+	return version.Sort(parseVersionList(data)), nil
 }
 
 // readVersionListFile reads and semver-sorts a list.txt. Returns the
@@ -172,8 +186,14 @@ func readVersionListFile(listPath string) ([]string, error) {
 // atomic so a concurrent reader never observes a truncated list.
 func updateVersionListFile(listPath, newVersion string) error {
 	var versions []string
-	if data, err := os.ReadFile(listPath); err == nil {
+	data, err := os.ReadFile(listPath)
+	switch {
+	case err == nil:
 		versions = parseVersionList(data)
+	case !os.IsNotExist(err):
+		// A transient read failure must not silently truncate the list
+		// to just the new version.
+		return err
 	}
 	if slices.Contains(versions, newVersion) {
 		return nil

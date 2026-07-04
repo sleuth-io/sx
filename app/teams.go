@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -29,6 +30,7 @@ type teamManager interface {
 	CreateTeam(ctx context.Context, team mgmt.Team) error
 	AddTeamMember(ctx context.Context, team, email string, admin bool) error
 	RemoveTeamMember(ctx context.Context, team, email string) error
+	SetTeamAdmin(ctx context.Context, team, email string, admin bool) error
 }
 
 func (a *App) teamVault() (teamManager, error) {
@@ -103,6 +105,18 @@ func (a *App) AddTeamMember(team, email string, admin bool) error {
 		return err
 	}
 	if err := tm.AddTeamMember(a.ctx, team, email, admin); err != nil {
+		return friendlyVaultError(err)
+	}
+	return nil
+}
+
+// SetTeamAdmin grants or revokes a member's team-admin role.
+func (a *App) SetTeamAdmin(team, email string, admin bool) error {
+	tm, err := a.teamVault()
+	if err != nil {
+		return err
+	}
+	if err := tm.SetTeamAdmin(a.ctx, team, email, admin); err != nil {
 		return friendlyVaultError(err)
 	}
 	return nil
@@ -274,31 +288,40 @@ func (a *App) GetCollectionSharing(name string) (AssetSharing, error) {
 }
 
 // SetCollectionTeamSharing shares (or stops sharing) every asset in a
-// collection with a team.
+// collection with a team. Best-effort per asset: one failure doesn't stop
+// the rest, and the error names the assets that weren't updated.
 func (a *App) SetCollectionTeamSharing(name, team string, shared bool) error {
 	c, err := a.findCollection(name)
 	if err != nil {
 		return err
 	}
+	var failed []string
 	for _, assetName := range c.Assets {
 		if err := a.SetAssetTeamSharing(assetName, team, shared); err != nil {
-			return err
+			failed = append(failed, assetName)
 		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("sharing not updated for: %s", strings.Join(failed, ", "))
 	}
 	return nil
 }
 
 // ShareCollectionWithEveryone returns every asset in a collection to
-// library-wide sharing.
+// library-wide sharing. Best-effort per asset, like SetCollectionTeamSharing.
 func (a *App) ShareCollectionWithEveryone(name string) error {
 	c, err := a.findCollection(name)
 	if err != nil {
 		return err
 	}
+	var failed []string
 	for _, assetName := range c.Assets {
 		if err := a.ShareAssetWithEveryone(assetName); err != nil {
-			return err
+			failed = append(failed, assetName)
 		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("sharing not updated for: %s", strings.Join(failed, ", "))
 	}
 	return nil
 }
