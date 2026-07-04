@@ -13,6 +13,7 @@ import {
   ListCollections,
   ListDrafts,
   ListTeams,
+  SetAssetTeamSharing,
   SetCollectionMembership,
   SetCollectionTeamSharing,
   ShareCollectionWithEveryone,
@@ -111,20 +112,27 @@ export default function Library({
     420,
   );
 
-  // In-app asset→collection drag. Pointer-based, NOT HTML5 drag-and-drop:
-  // the native webview's file-drop handling swallows HTML5 drop events, so
-  // rows track the mouse and drops hit-test [data-drop-collection].
+  // In-app drags: asset rows → collections or teams, collection rows →
+  // teams. Pointer-based, NOT HTML5 drag-and-drop: the native webview's
+  // file-drop handling swallows HTML5 drop events, so rows track the
+  // mouse and drops hit-test [data-drop-collection] / [data-drop-team].
+  type DragKind = "asset" | "collection";
   const [assetDrag, setAssetDrag] = useState<{
     name: string;
     x: number;
     y: number;
   } | null>(null);
   const [dropCollection, setDropCollection] = useState("");
-  const pendingDragRef = useRef<{ name: string; x: number; y: number } | null>(
-    null,
-  );
-  const assetDragRef = useRef<string | null>(null);
+  const [dropTeam, setDropTeam] = useState("");
+  const pendingDragRef = useRef<{
+    kind: DragKind;
+    name: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const dragRef = useRef<{ kind: DragKind; name: string } | null>(null);
   const dropCollectionRef = useRef("");
+  const dropTeamRef = useRef("");
   const dragHappenedRef = useRef(false);
   const [toast, setToast] = useState("");
   const [busyAction, setBusyAction] = useState(false);
@@ -233,52 +241,86 @@ export default function Library({
     };
   }, [load]);
 
-  // Drive the in-app asset drag: activate past a small threshold, follow
-  // the cursor with a ghost chip, hit-test collections, commit on mouseup.
+  // Drive the in-app drag: activate past a small threshold, follow the
+  // cursor with a ghost chip, hit-test drop targets, commit on mouseup.
+  // Assets can drop on collections or teams; collections on teams only.
   useEffect(() => {
     const finish = () => {
       pendingDragRef.current = null;
-      assetDragRef.current = null;
+      dragRef.current = null;
       dropCollectionRef.current = "";
+      dropTeamRef.current = "";
       setAssetDrag(null);
       setDropCollection("");
+      setDropTeam("");
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
     };
     const onMove = (e: MouseEvent) => {
       const pending = pendingDragRef.current;
-      if (!assetDragRef.current) {
+      if (!dragRef.current) {
         if (!pending) return;
         if (Math.hypot(e.clientX - pending.x, e.clientY - pending.y) < 6)
           return;
-        assetDragRef.current = pending.name;
+        dragRef.current = { kind: pending.kind, name: pending.name };
         dragHappenedRef.current = true;
         document.body.style.userSelect = "none";
         document.body.style.cursor = "grabbing";
       }
-      setAssetDrag({ name: assetDragRef.current, x: e.clientX, y: e.clientY });
+      const drag = dragRef.current;
+      setAssetDrag({ name: drag.name, x: e.clientX, y: e.clientY });
+      const selector =
+        drag.kind === "asset"
+          ? "[data-drop-collection], [data-drop-team]"
+          : "[data-drop-team]";
       const hit = document
         .elementFromPoint(e.clientX, e.clientY)
-        ?.closest("[data-drop-collection]");
-      const target = hit?.getAttribute("data-drop-collection") ?? "";
-      dropCollectionRef.current = target;
-      setDropCollection(target);
+        ?.closest(selector);
+      // A collection must not highlight as a drop target for itself.
+      const collection = hit?.getAttribute("data-drop-collection") ?? "";
+      const team = hit?.getAttribute("data-drop-team") ?? "";
+      dropCollectionRef.current = collection;
+      dropTeamRef.current = team;
+      setDropCollection(collection);
+      setDropTeam(team);
     };
     const onUp = () => {
-      const asset = assetDragRef.current;
-      const target = dropCollectionRef.current;
+      const drag = dragRef.current;
+      const collection = dropCollectionRef.current;
+      const team = dropTeamRef.current;
       finish();
-      if (asset && target) {
-        SetCollectionMembership(target, asset, true)
+      // The click event (if any) fires synchronously after mouseup; clear
+      // the suppress flag right after so the NEXT click isn't swallowed
+      // when a drag ends off its origin row and no click fires at all.
+      setTimeout(() => {
+        dragHappenedRef.current = false;
+      }, 0);
+      if (!drag) return;
+      if (drag.kind === "asset" && collection) {
+        SetCollectionMembership(collection, drag.name, true)
           .then(() => {
             load();
-            setToastMessage(`Added ${asset} to ${target}`);
+            setToastMessage(`Added ${drag.name} to ${collection}`);
+          })
+          .catch((e) => setToastMessage(String(e)));
+      } else if (drag.kind === "asset" && team) {
+        SetAssetTeamSharing(drag.name, team, true)
+          .then(() => {
+            load();
+            setToastMessage(`Shared ${drag.name} with ${team}`);
+          })
+          .catch((e) => setToastMessage(String(e)));
+      } else if (drag.kind === "collection" && team) {
+        SetCollectionTeamSharing(drag.name, team, true)
+          .then(() => {
+            load();
+            setToastMessage(`Shared everything in ${drag.name} with ${team}`);
           })
           .catch((e) => setToastMessage(String(e)));
       }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && assetDragRef.current) finish();
+      if (e.key === "Escape" && dragRef.current) finish();
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -531,6 +573,12 @@ export default function Library({
         vault={vault}
         scope={scope}
         onScope={(s) => {
+          // A drag that started and ended on the same row still fires a
+          // click — don't treat it as navigation.
+          if (dragHappenedRef.current) {
+            dragHappenedRef.current = false;
+            return;
+          }
           setScope(s);
           setSelected(null);
         }}
@@ -548,6 +596,17 @@ export default function Library({
         onBrowseTeams={() => setBrowse("teams")}
         onSettings={() => setShowSettings(true)}
         dropCollection={dropCollection}
+        dropTeam={dropTeam}
+        onCollectionDragHandle={(name, e) => {
+          if (e.button !== 0) return;
+          dragHappenedRef.current = false;
+          pendingDragRef.current = {
+            kind: "collection",
+            name,
+            x: e.clientX,
+            y: e.clientY,
+          };
+        }}
         width={sidebarWidth}
       />
 
@@ -799,6 +858,7 @@ export default function Library({
                     if (e.button !== 0) return;
                     dragHappenedRef.current = false;
                     pendingDragRef.current = {
+                      kind: "asset",
                       name,
                       x: e.clientX,
                       y: e.clientY,
@@ -903,7 +963,9 @@ export default function Library({
           style={{ left: assetDrag.x + 12, top: assetDrag.y }}
         >
           {assetDrag.name}
-          {dropCollection ? ` → ${dropCollection}` : ""}
+          {dropCollection || dropTeam
+            ? ` → ${dropCollection || dropTeam}`
+            : ""}
         </div>
       )}
 

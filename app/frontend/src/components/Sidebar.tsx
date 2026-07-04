@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react";
 import type { main } from "../../wailsjs/go/models";
 
 export type Scope =
@@ -16,12 +17,14 @@ function scopeKey(s: Scope): string {
 /**
  * Source-list sidebar (Apple HIG pattern): LIBRARY for structural views,
  * COLLECTIONS for the user's groupings (drop an asset row on one to add
- * it), TEAMS for who things are shared with.
+ * it), TEAMS for who things are shared with (drop an asset or a whole
+ * collection on one to share).
  *
- * Asset-row drags are pointer-based (not HTML5 drag-and-drop, which the
+ * Row drags are pointer-based (not HTML5 drag-and-drop, which the
  * native webview's file-drop handling swallows): Library hit-tests
- * [data-drop-collection] under the cursor and passes the hovered name in
- * dropCollection.
+ * [data-drop-collection] / [data-drop-team] under the cursor and passes
+ * the hovered name in dropCollection / dropTeam. Collection rows start
+ * their own drags via onCollectionDragHandle.
  */
 export default function Sidebar({
   vault,
@@ -41,6 +44,8 @@ export default function Sidebar({
   onBrowseTeams,
   onSettings,
   dropCollection,
+  dropTeam,
+  onCollectionDragHandle,
   width,
 }: {
   vault: main.VaultInfo;
@@ -60,6 +65,8 @@ export default function Sidebar({
   onBrowseTeams: () => void;
   onSettings: () => void;
   dropCollection: string;
+  dropTeam: string;
+  onCollectionDragHandle: (name: string, e: MouseEvent) => void;
   width: number;
 }) {
   const active = scopeKey(scope);
@@ -159,6 +166,7 @@ export default function Sidebar({
                 <div
                   key={c.name}
                   data-drop-collection={c.name}
+                  onMouseDown={(e) => onCollectionDragHandle(c.name, e)}
                   className={
                     dropCollection === c.name
                       ? "rounded-lg ring-2 ring-accent"
@@ -204,13 +212,22 @@ export default function Sidebar({
             {teams
               .filter((t) => pinnedTeams.includes(t.name))
               .map((t) => (
-                <Row
+                <div
                   key={t.name}
-                  label={t.name}
-                  count={teamAssetCounts[t.name] ?? 0}
-                  active={active === "team:" + t.name}
-                  onClick={() => onScope({ kind: "team", name: t.name })}
-                />
+                  data-drop-team={t.name}
+                  className={
+                    dropTeam === t.name
+                      ? "rounded-lg ring-2 ring-accent"
+                      : undefined
+                  }
+                >
+                  <Row
+                    label={t.name}
+                    count={teamAssetCounts[t.name] ?? 0}
+                    active={active === "team:" + t.name}
+                    onClick={() => onScope({ kind: "team", name: t.name })}
+                  />
+                </div>
               ))}
             <BrowseRow
               label={`All teams (${teams.length})…`}

@@ -12,6 +12,7 @@ import {
   StartSleuthLogin,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
+import RepoPicker from "../components/RepoPicker";
 
 type Choice = "solo" | "folder" | "team" | "sleuth";
 
@@ -300,12 +301,10 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                     void connectTeam();
                   }}
                 >
-                  <input
+                  <RepoPicker
                     autoFocus
                     value={gitUrl}
-                    onChange={(e) => setGitUrl(e.target.value)}
-                    placeholder="https://github.com/acme/skills.git"
-                    className="min-w-0 flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+                    onChange={setGitUrl}
                     disabled={busy}
                   />
                   <button

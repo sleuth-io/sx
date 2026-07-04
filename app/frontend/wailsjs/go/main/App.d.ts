@@ -56,6 +56,8 @@ export function ListCollections():Promise<Array<main.Collection>>;
 
 export function ListDrafts():Promise<Array<main.Draft>>;
 
+export function ListGitRepos():Promise<Array<main.GitRepoOption>>;
+
 export function ListSyncFolders():Promise<Array<main.SyncFolderOption>>;
 
 export function ListTeams():Promise<Array<main.TeamInfo>>;

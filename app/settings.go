@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -259,6 +262,62 @@ type GitStatusInfo struct {
 func (a *App) GitStatus() GitStatusInfo {
 	av := gitpkg.CheckAvailability(a.ctx)
 	return GitStatusInfo{Available: av.Available, Version: av.Version, Reason: av.Reason}
+}
+
+// GitRepoOption is one repository the user can pick instead of typing a
+// URL.
+type GitRepoOption struct {
+	Name string `json:"name"` // "owner/repo"
+	URL  string `json:"url"`  // clone URL matching the user's git protocol
+}
+
+// ListGitRepos returns the repositories the signed-in GitHub CLI account
+// can access, most recently pushed first, so git-vault forms can offer a
+// searchable picker. Returns nil (not an error) when `gh` is missing or
+// unauthenticated — the form falls back to manual URL entry.
+func (a *App) ListGitRepos() []GitRepoOption {
+	ghPath, err := exec.LookPath("gh")
+	if err != nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, ghPath, "api",
+		"user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator,organization_member",
+		"--jq", `[.[] | {name: .full_name, https: .clone_url, ssh: .ssh_url}]`,
+	).Output()
+	if err != nil {
+		return nil
+	}
+	var repos []struct {
+		Name  string `json:"name"`
+		HTTPS string `json:"https"`
+		SSH   string `json:"ssh"`
+	}
+	if err := json.Unmarshal(out, &repos); err != nil {
+		return nil
+	}
+
+	// Honor the protocol gh is configured to clone with — that's the one
+	// the user's credentials are set up for. The setting is per-host
+	// (github.com) with a global fallback.
+	useSSH := false
+	if proto, err := exec.CommandContext(ctx, ghPath, "config", "get", "-h", "github.com", "git_protocol").Output(); err == nil && strings.TrimSpace(string(proto)) != "" {
+		useSSH = strings.TrimSpace(string(proto)) == "ssh"
+	} else if proto, err := exec.CommandContext(ctx, ghPath, "config", "get", "git_protocol").Output(); err == nil {
+		useSSH = strings.TrimSpace(string(proto)) == "ssh"
+	}
+
+	options := make([]GitRepoOption, 0, len(repos))
+	for _, r := range repos {
+		url := r.HTTPS
+		if useSSH {
+			url = r.SSH
+		}
+		options = append(options, GitRepoOption{Name: r.Name, URL: url})
+	}
+	return options
 }
 
 // PickDirectory opens the native folder picker (for new local libraries).

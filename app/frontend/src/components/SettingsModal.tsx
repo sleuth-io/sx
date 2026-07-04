@@ -12,6 +12,7 @@ import {
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import Modal from "./Modal";
+import RepoPicker from "./RepoPicker";
 
 const TYPE_LABELS: Record<string, string> = {
   git: "Team git repository",
@@ -284,12 +285,10 @@ export default function SettingsModal({
                     </>
                   )}
                   {addKind === "git" && (
-                    <input
+                    <RepoPicker
                       value={newLocation}
-                      onChange={(e) => setNewLocation(e.target.value)}
-                      placeholder="https://github.com/acme/skills.git"
+                      onChange={setNewLocation}
                       disabled={busy !== "" || !gitUsable}
-                      className="min-w-0 flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
                     />
                   )}
                   {addKind === "sleuth" && (

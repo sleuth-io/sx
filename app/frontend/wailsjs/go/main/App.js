@@ -110,6 +110,10 @@ export function ListDrafts() {
   return window['go']['main']['App']['ListDrafts']();
 }
 
+export function ListGitRepos() {
+  return window['go']['main']['App']['ListGitRepos']();
+}
+
 export function ListSyncFolders() {
   return window['go']['main']['App']['ListSyncFolders']();
 }

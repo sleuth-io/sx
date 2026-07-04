@@ -169,6 +169,20 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class GitRepoOption {
+	    name: string;
+	    url: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitRepoOption(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.url = source["url"];
+	    }
+	}
 	export class GitStatusInfo {
 	    available: boolean;
 	    version: string;
