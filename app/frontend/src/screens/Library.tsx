@@ -441,7 +441,9 @@ export default function Library({
   }, [scope, collections, teamAssets, query]);
 
   const visibleDrafts = useMemo(() => {
-    if (scope.kind !== "all" && scope.kind !== "drafts") return [];
+    // Drafts are local, unpublished work — they live in the Drafts view
+    // only, not mixed into the library's published skills.
+    if (scope.kind !== "drafts") return [];
     const q = query.trim().toLowerCase();
     return drafts.filter(
       (d) =>

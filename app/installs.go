@@ -136,8 +136,11 @@ func (a *App) installBundles(bundles []*clients.AssetBundle) (InstallResult, err
 	results := orchestrator.InstallToAll(a.ctx, bundles, globalScope(), clients.InstallOptions{})
 
 	var succeeded []string
-	var succeededIDs []string
 	var failures []string
+	// The orchestrator filters assets per client, so success is tracked
+	// per asset: recording the union would claim every asset reached every
+	// client, misleading uninstall and `sx install --repair`.
+	clientsByAsset := map[string][]string{}
 	for id, resp := range results {
 		client, err := registry.Get(id)
 		displayName := id
@@ -149,6 +152,7 @@ func (a *App) installBundles(bundles []*clients.AssetBundle) (InstallResult, err
 			switch r.Status {
 			case clients.StatusSuccess:
 				ok = true
+				clientsByAsset[r.AssetName] = append(clientsByAsset[r.AssetName], id)
 			case clients.StatusFailed:
 				failures = append(failures, displayName)
 			case clients.StatusSkipped:
@@ -157,7 +161,6 @@ func (a *App) installBundles(bundles []*clients.AssetBundle) (InstallResult, err
 		}
 		if ok {
 			succeeded = append(succeeded, displayName)
-			succeededIDs = append(succeededIDs, id)
 		}
 	}
 	sort.Strings(succeeded)
@@ -173,11 +176,16 @@ func (a *App) installBundles(bundles []*clients.AssetBundle) (InstallResult, err
 	// and `sx install --repair` agree about what's on this machine.
 	if tracker, err := assetspkg.LoadTracker(); err == nil {
 		for _, bundle := range bundles {
+			assetClients := clientsByAsset[bundle.Asset.Name]
+			if len(assetClients) == 0 {
+				continue
+			}
+			sort.Strings(assetClients)
 			tracker.UpsertAsset(assetspkg.InstalledAsset{
 				Name:    bundle.Asset.Name,
 				Version: bundle.Asset.Version,
 				Type:    bundle.Asset.Type.Key,
-				Clients: succeededIDs,
+				Clients: assetClients,
 			})
 		}
 		_ = assetspkg.SaveTracker(tracker)

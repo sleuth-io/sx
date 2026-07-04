@@ -70,6 +70,13 @@ func refreshRootView(vaultRoot string, l layout.Layout, name string) error {
 	latest := versions[len(versions)-1]
 	srcDir := filepath.Join(vaultRoot, l.VersionDir(name, latest))
 
+	// Sweep stale staging dirs from crashed runs first — on git vaults a
+	// later write's `git add .` would otherwise commit the orphan.
+	if stale, err := filepath.Glob(filepath.Join(vaultRoot, l.AssetsRoot(), ".*.staging-*")); err == nil {
+		for _, dir := range stale {
+			_ = os.RemoveAll(dir)
+		}
+	}
 	// PID-suffixed so two processes sharing a path vault never fight over
 	// the same staging directory.
 	stagingDir := filepath.Join(vaultRoot, l.AssetsRoot(), fmt.Sprintf(".%s.staging-%d", name, os.Getpid()))

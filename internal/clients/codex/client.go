@@ -238,10 +238,13 @@ func (c *Client) removeLegacyGlobalSkill(ctx context.Context, scope *clients.Ins
 // Skills use .agents/ at every scope (the vendor-neutral Agent Skills
 // convention Codex, Gemini, and Copilot discover); other assets use .codex/.
 func (c *Client) determineTargetBase(scope *clients.InstallScope, assetType asset.Type) (string, error) {
-	home, _ := os.UserHomeDir()
+	home, homeErr := os.UserHomeDir()
 
 	switch scope.Type {
 	case clients.ScopeGlobal:
+		if homeErr != nil {
+			return "", fmt.Errorf("cannot resolve home directory: %w", homeErr)
+		}
 		// Skills: ~/.agents/ — current Codex no longer lists
 		// ~/.codex/skills in user-scope discovery.
 		if assetType == asset.TypeSkill {
@@ -271,6 +274,9 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope, assetType asse
 		return filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir), nil
 
 	default:
+		if homeErr != nil {
+			return "", fmt.Errorf("cannot resolve home directory: %w", homeErr)
+		}
 		return filepath.Join(home, handlers.ConfigDir), nil
 	}
 }

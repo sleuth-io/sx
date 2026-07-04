@@ -452,6 +452,8 @@ func (a *App) saveDraft(d Draft) error {
 
 // ListDrafts returns every saved draft.
 func (a *App) ListDrafts() ([]Draft, error) {
+	draftsMu.Lock()
+	defer draftsMu.Unlock()
 	root, err := draftsRoot()
 	if err != nil {
 		return nil, err
@@ -478,13 +480,26 @@ func (a *App) ListDrafts() ([]Draft, error) {
 
 // GetDraft loads one draft with file contents.
 func (a *App) GetDraft(id string) (Draft, error) {
+	draftsMu.Lock()
+	defer draftsMu.Unlock()
 	return a.loadDraft(id)
 }
 
+// loadDraft reads a draft, recovering the previous copy if a crash during
+// saveDraft's rename swap left it at dir.~old. Callers must hold draftsMu.
 func (a *App) loadDraft(id string) (Draft, error) {
 	dir, err := draftDir(id)
 	if err != nil {
 		return Draft{}, err
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "draft.json")); statErr != nil {
+		old := dir + ".~old"
+		if _, oldErr := os.Stat(filepath.Join(old, "draft.json")); oldErr == nil {
+			_ = os.RemoveAll(dir)
+			if renameErr := os.Rename(old, dir); renameErr != nil {
+				return Draft{}, renameErr
+			}
+		}
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "draft.json"))
 	if err != nil {

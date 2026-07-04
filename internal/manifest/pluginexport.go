@@ -228,7 +228,9 @@ func vaultSlug(vaultRoot string) string {
 	return "sx-library"
 }
 
-var gitOriginURLPattern = regexp.MustCompile(`(?s)\[remote "origin"\].*?url\s*=\s*(\S+)`)
+// Bounded to the origin section ([^[]* cannot cross into the next
+// [section] header), so another remote's url is never captured.
+var gitOriginURLPattern = regexp.MustCompile(`\[remote "origin"\][^\[]*url\s*=\s*(\S+)`)
 
 // gitOriginURL reads the origin remote from .git/config without invoking
 // git. Returns "" for non-clones.
