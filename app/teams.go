@@ -120,6 +120,31 @@ func (a *App) RemoveTeamMember(team, email string) error {
 	return nil
 }
 
+// TeamAssets maps team name → asset names shared with that team, for the
+// sidebar counts and the team detail view. Vaults that can't report this
+// return an empty map rather than an error.
+func (a *App) TeamAssets() (map[string][]string, error) {
+	v, err := a.currentVault()
+	if err != nil {
+		return nil, err
+	}
+	lister, ok := v.(vaultpkg.TeamAssetLister)
+	if !ok {
+		return map[string][]string{}, nil
+	}
+	out, err := lister.ListTeamAssets(a.ctx)
+	if err != nil {
+		return nil, friendlyVaultError(err)
+	}
+	if out == nil {
+		out = map[string][]string{}
+	}
+	for team := range out {
+		sort.Strings(out[team])
+	}
+	return out, nil
+}
+
 // AssetSharing reports who an asset is currently shared with.
 type AssetSharing struct {
 	// Everyone is true when the asset has no scopes — the whole library
@@ -201,6 +226,79 @@ func (a *App) ShareAssetWithEveryone(name string) error {
 	}
 	if err := r.SetAssetInstallation(a.ctx, name, vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindOrg}); err != nil {
 		return friendlyVaultError(err)
+	}
+	return nil
+}
+
+// GetCollectionSharing reports who receives the whole collection: Everyone
+// when every asset is library-wide, Teams that receive ALL of its assets.
+// A collection has no scope of its own — sharing is applied per asset.
+func (a *App) GetCollectionSharing(name string) (AssetSharing, error) {
+	c, err := a.findCollection(name)
+	if err != nil {
+		return AssetSharing{}, err
+	}
+	if len(c.Assets) == 0 {
+		return AssetSharing{Everyone: true, Teams: []string{}}, nil
+	}
+	everyone := true
+	var common map[string]bool
+	for _, assetName := range c.Assets {
+		sharing, err := a.GetAssetSharing(assetName)
+		if err != nil {
+			return AssetSharing{}, err
+		}
+		if !sharing.Everyone {
+			everyone = false
+		}
+		teams := make(map[string]bool, len(sharing.Teams))
+		for _, t := range sharing.Teams {
+			teams[t] = true
+		}
+		if common == nil {
+			common = teams
+			continue
+		}
+		for t := range common {
+			if !teams[t] {
+				delete(common, t)
+			}
+		}
+	}
+	out := AssetSharing{Everyone: everyone, Teams: []string{}}
+	for t := range common {
+		out.Teams = append(out.Teams, t)
+	}
+	sort.Strings(out.Teams)
+	return out, nil
+}
+
+// SetCollectionTeamSharing shares (or stops sharing) every asset in a
+// collection with a team.
+func (a *App) SetCollectionTeamSharing(name, team string, shared bool) error {
+	c, err := a.findCollection(name)
+	if err != nil {
+		return err
+	}
+	for _, assetName := range c.Assets {
+		if err := a.SetAssetTeamSharing(assetName, team, shared); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ShareCollectionWithEveryone returns every asset in a collection to
+// library-wide sharing.
+func (a *App) ShareCollectionWithEveryone(name string) error {
+	c, err := a.findCollection(name)
+	if err != nil {
+		return err
+	}
+	for _, assetName := range c.Assets {
+		if err := a.ShareAssetWithEveryone(assetName); err != nil {
+			return err
+		}
 	}
 	return nil
 }

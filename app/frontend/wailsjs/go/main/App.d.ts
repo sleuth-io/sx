@@ -28,6 +28,8 @@ export function GetAsset(arg1:string,arg2:string):Promise<main.AssetDetail>;
 
 export function GetAssetSharing(arg1:string):Promise<main.AssetSharing>;
 
+export function GetCollectionSharing(arg1:string):Promise<main.AssetSharing>;
+
 export function GetDraft(arg1:string):Promise<main.Draft>;
 
 export function GetSettings():Promise<main.Settings>;
@@ -72,15 +74,21 @@ export function SetAssetTeamSharing(arg1:string,arg2:string,arg3:boolean):Promis
 
 export function SetCollectionMembership(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
+export function SetCollectionTeamSharing(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
 export function SetupGitVault(arg1:string,arg2:string):Promise<main.VaultInfo>;
 
 export function SetupLocalVault(arg1:string):Promise<main.VaultInfo>;
 
 export function ShareAssetWithEveryone(arg1:string):Promise<void>;
 
+export function ShareCollectionWithEveryone(arg1:string):Promise<void>;
+
 export function StartSleuthLogin(arg1:string):Promise<main.SleuthLoginStart>;
 
 export function SwitchProfile(arg1:string):Promise<main.VaultInfo>;
+
+export function TeamAssets():Promise<Record<string, Array<string>>>;
 
 export function UninstallAsset(arg1:string):Promise<void>;
 

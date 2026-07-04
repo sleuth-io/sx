@@ -54,6 +54,10 @@ export function GetAssetSharing(arg1) {
   return window['go']['main']['App']['GetAssetSharing'](arg1);
 }
 
+export function GetCollectionSharing(arg1) {
+  return window['go']['main']['App']['GetCollectionSharing'](arg1);
+}
+
 export function GetDraft(arg1) {
   return window['go']['main']['App']['GetDraft'](arg1);
 }
@@ -142,6 +146,10 @@ export function SetCollectionMembership(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetCollectionMembership'](arg1, arg2, arg3);
 }
 
+export function SetCollectionTeamSharing(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetCollectionTeamSharing'](arg1, arg2, arg3);
+}
+
 export function SetupGitVault(arg1, arg2) {
   return window['go']['main']['App']['SetupGitVault'](arg1, arg2);
 }
@@ -154,12 +162,20 @@ export function ShareAssetWithEveryone(arg1) {
   return window['go']['main']['App']['ShareAssetWithEveryone'](arg1);
 }
 
+export function ShareCollectionWithEveryone(arg1) {
+  return window['go']['main']['App']['ShareCollectionWithEveryone'](arg1);
+}
+
 export function StartSleuthLogin(arg1) {
   return window['go']['main']['App']['StartSleuthLogin'](arg1);
 }
 
 export function SwitchProfile(arg1) {
   return window['go']['main']['App']['SwitchProfile'](arg1);
+}
+
+export function TeamAssets() {
+  return window['go']['main']['App']['TeamAssets']();
 }
 
 export function UninstallAsset(arg1) {

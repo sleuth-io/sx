@@ -5,10 +5,13 @@ export type Scope =
   | { kind: "all" }
   | { kind: "installed" }
   | { kind: "drafts" }
-  | { kind: "collection"; name: string };
+  | { kind: "collection"; name: string }
+  | { kind: "team"; name: string };
 
 function scopeKey(s: Scope): string {
-  return s.kind === "collection" ? "collection:" + s.name : s.kind;
+  if (s.kind === "collection") return "collection:" + s.name;
+  if (s.kind === "team") return "team:" + s.name;
+  return s.kind;
 }
 
 /** The type used for in-app asset drags (rows → collections). */
@@ -28,9 +31,13 @@ export default function Sidebar({
   draftCount,
   collections,
   teams,
+  teamAssetCounts,
+  pinnedCollections,
+  pinnedTeams,
   onNewCollection,
   onNewTeam,
-  onTeam,
+  onBrowseCollections,
+  onBrowseTeams,
   onSettings,
   onDropAsset,
 }: {
@@ -42,9 +49,13 @@ export default function Sidebar({
   draftCount: number;
   collections: main.Collection[];
   teams: main.TeamInfo[];
+  teamAssetCounts: Record<string, number>;
+  pinnedCollections: string[];
+  pinnedTeams: string[];
   onNewCollection: () => void;
   onNewTeam: () => void;
-  onTeam: (name: string) => void;
+  onBrowseCollections: () => void;
+  onBrowseTeams: () => void;
   onSettings: () => void;
   onDropAsset: (collection: string, asset: string) => void;
 }) {
@@ -131,41 +142,51 @@ export default function Sidebar({
             Group related assets into your first collection
           </button>
         ) : (
-          collections.map((c) => (
-            <div
-              key={c.name}
-              onDragOver={(e) => {
-                if (e.dataTransfer.types.includes(ASSET_DRAG_TYPE)) {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "copy";
-                  setDropTarget(c.name);
-                }
-              }}
-              onDragLeave={() =>
-                setDropTarget((t) => (t === c.name ? "" : t))
-              }
-              onDrop={(e) => {
-                const asset = e.dataTransfer.getData(ASSET_DRAG_TYPE);
-                setDropTarget("");
-                if (asset) {
-                  e.preventDefault();
-                  onDropAsset(c.name, asset);
-                }
-              }}
-              className={
-                dropTarget === c.name
-                  ? "rounded-lg ring-2 ring-accent"
-                  : undefined
-              }
-            >
-              <Row
-                label={c.name}
-                count={(c.assets ?? []).length}
-                active={active === "collection:" + c.name}
-                onClick={() => onScope({ kind: "collection", name: c.name })}
-              />
-            </div>
-          ))
+          <>
+            {collections
+              .filter((c) => pinnedCollections.includes(c.name))
+              .map((c) => (
+                <div
+                  key={c.name}
+                  onDragOver={(e) => {
+                    if (e.dataTransfer.types.includes(ASSET_DRAG_TYPE)) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "copy";
+                      setDropTarget(c.name);
+                    }
+                  }}
+                  onDragLeave={() =>
+                    setDropTarget((t) => (t === c.name ? "" : t))
+                  }
+                  onDrop={(e) => {
+                    const asset = e.dataTransfer.getData(ASSET_DRAG_TYPE);
+                    setDropTarget("");
+                    if (asset) {
+                      e.preventDefault();
+                      onDropAsset(c.name, asset);
+                    }
+                  }}
+                  className={
+                    dropTarget === c.name
+                      ? "rounded-lg ring-2 ring-accent"
+                      : undefined
+                  }
+                >
+                  <Row
+                    label={c.name}
+                    count={(c.assets ?? []).length}
+                    active={active === "collection:" + c.name}
+                    onClick={() =>
+                      onScope({ kind: "collection", name: c.name })
+                    }
+                  />
+                </div>
+              ))}
+            <BrowseRow
+              label={`All collections (${collections.length})…`}
+              onClick={onBrowseCollections}
+            />
+          </>
         )}
 
         <div className="mt-4 flex items-center justify-between pr-1">
@@ -186,18 +207,43 @@ export default function Sidebar({
             Create a team to share assets with the right people
           </button>
         ) : (
-          teams.map((t) => (
-            <Row
-              key={t.name}
-              label={t.name}
-              count={(t.members ?? []).length}
-              active={false}
-              onClick={() => onTeam(t.name)}
+          <>
+            {teams
+              .filter((t) => pinnedTeams.includes(t.name))
+              .map((t) => (
+                <Row
+                  key={t.name}
+                  label={t.name}
+                  count={teamAssetCounts[t.name] ?? 0}
+                  active={active === "team:" + t.name}
+                  onClick={() => onScope({ kind: "team", name: t.name })}
+                />
+              ))}
+            <BrowseRow
+              label={`All teams (${teams.length})…`}
+              onClick={onBrowseTeams}
             />
-          ))
+          </>
         )}
       </nav>
     </aside>
+  );
+}
+
+function BrowseRow({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full rounded-lg px-2 py-1.5 text-left text-xs text-ink-faint transition hover:bg-canvas hover:text-ink"
+    >
+      {label}
+    </button>
   );
 }
 

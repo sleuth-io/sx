@@ -12,6 +12,7 @@ import {
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import FileRail from "./FileRail";
+import ShareModal from "./ShareModal";
 import TypeBadge from "./TypeBadge";
 
 /**
@@ -109,33 +110,26 @@ export default function AssetDetail({
   }
 
   const [sharing, setSharing] = useState<main.AssetSharing | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   useEffect(() => {
     GetAssetSharing(name)
       .then(setSharing)
       .catch(() => setSharing(null));
   }, [name]);
 
-  async function toggleTeamShare(team: string, shared: boolean) {
-    try {
-      await SetAssetTeamSharing(name, team, shared);
-      setSharing(await GetAssetSharing(name));
-      onToast(
-        shared ? `Shared ${name} with ${team}` : `Stopped sharing with ${team}`,
+  const sharingSummary = (() => {
+    if (!sharing) return "";
+    if (sharing.everyone) return "everyone in this library";
+    const parts: string[] = [];
+    const teamCount = (sharing.teams ?? []).length;
+    if (teamCount > 0)
+      parts.push(`${teamCount} ${teamCount === 1 ? "team" : "teams"}`);
+    if (sharing.other > 0)
+      parts.push(
+        `${sharing.other} other ${sharing.other === 1 ? "place" : "places"}`,
       );
-    } catch (e) {
-      onToast(String(e));
-    }
-  }
-
-  async function shareWithEveryone() {
-    try {
-      await ShareAssetWithEveryone(name);
-      setSharing(await GetAssetSharing(name));
-      onToast(`${name} is now shared with everyone in this library`);
-    } catch (e) {
-      onToast(String(e));
-    }
-  }
+    return parts.join(" and ") || "no one yet";
+  })();
 
   const files = detail?.files ?? [];
   const isLatest =
@@ -278,55 +272,18 @@ export default function AssetDetail({
           </div>
         )}
 
-        {sharing && (teams.length > 0 || !sharing.everyone) && (
-          <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-6 py-2.5">
-            <span className="text-xs text-ink-soft">Shared with</span>
+        {sharing && (
+          <div className="flex items-center gap-2 border-b border-line px-6 py-2 text-xs text-ink-soft">
+            <span>
+              Shared with{" "}
+              <span className="font-medium text-ink">{sharingSummary}</span>
+            </span>
             <button
-              onClick={() => {
-                if (!sharing.everyone) void shareWithEveryone();
-              }}
-              disabled={sharing.everyone}
-              title={
-                sharing.everyone
-                  ? "Everyone in this library receives this asset"
-                  : "Share with everyone in this library instead"
-              }
-              className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition ${
-                sharing.everyone
-                  ? "bg-accent text-white"
-                  : "border border-line text-ink-faint hover:text-ink"
-              }`}
+              onClick={() => setShareOpen(true)}
+              className="rounded-md border border-line px-2 py-0.5 font-medium text-ink-soft transition hover:border-accent hover:text-ink"
             >
-              everyone
+              Share…
             </button>
-            {teams.map((t) => {
-              const shared = (sharing.teams ?? []).includes(t.name);
-              return (
-                <button
-                  key={t.name}
-                  onClick={() => void toggleTeamShare(t.name, !shared)}
-                  title={
-                    shared
-                      ? `Stop sharing with ${t.name}`
-                      : `Share with ${t.name}`
-                  }
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition ${
-                    shared
-                      ? "bg-accent text-white"
-                      : "border border-line text-ink-faint hover:text-ink"
-                  }`}
-                >
-                  {t.name}
-                </button>
-              );
-            })}
-            {sharing.other > 0 && (
-              <span className="text-xs text-ink-faint">
-                +{sharing.other} more{" "}
-                {sharing.other === 1 ? "place" : "places"} (managed with the
-                sx CLI)
-              </span>
-            )}
           </div>
         )}
 
@@ -379,6 +336,25 @@ export default function AssetDetail({
             )}
           </div>
         </div>
+
+        {shareOpen && (
+          <ShareModal
+            title={`Share ${name}`}
+            teams={teams}
+            getSharing={() => GetAssetSharing(name)}
+            setTeamShared={(team, shared) =>
+              SetAssetTeamSharing(name, team, shared)
+            }
+            shareEveryone={() => ShareAssetWithEveryone(name)}
+            onClose={() => setShareOpen(false)}
+            onChanged={() => {
+              GetAssetSharing(name)
+                .then(setSharing)
+                .catch(() => {});
+              onCollectionsChanged();
+            }}
+          />
+        )}
       </aside>
     </div>
   );

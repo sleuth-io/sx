@@ -85,3 +85,33 @@ each verified via Playwright against a 30-asset fixture vault:
   tools" means. App installs/uninstalls now update the shared CLI tracker
   (verified count 0 → 1 → 0 through the full cycle), so the app and
   `sx install --repair` agree.
+
+## Round 4: team views, share modal, pinning, collection sharing (2026-07-03)
+
+All verified via Playwright against the fixture vault (marketing team,
+writing/docs collections, 30 assets):
+
+- In-app asset drags no longer trigger the Wails file-drop handler
+  ("nothing usable was dropped" is gone); "In your AI tools" counts only
+  this library's installed assets, not the machine-wide tracker.
+- Sharing moved off the chip row into a "Share…" button + modal (skills.new
+  Manage Asset Installations pattern): CURRENTLY SHARED WITH (everyone
+  row / team rows with Remove, +N CLI-managed places) and SHARE WITH
+  (everyone option + searchable team list), changes apply immediately.
+  Verified brand-voice → marketing writes a `kind = "team"` scope to the
+  manifest and every surface updates live.
+- Teams are now a view, not a modal: sidebar team rows count assets shared
+  with the team (new `ListTeamAssets` on all three vaults; Sleuth pages the
+  AssetInstallations query), clicking opens the team's asset list, and team
+  management ("Manage team…") lives in that view's header bar.
+- Sidebar scales: only pinned collections/teams show, with "All … (N)…"
+  rows opening a browse modal (search, open, ★ pin/unpin, create new).
+  Pins persist per library; never-pinned libraries default to the first
+  five. New collections/teams auto-pin.
+- Collections are sharable with teams: "Share…" in the collection header
+  applies team sharing to every asset in the collection (same modal;
+  summary shows teams that receive ALL assets, mixed states called out).
+  Verified share → 3 manifest scopes, everyone-restore → 0, re-share → 3,
+  and the team view/sidebar counts follow. Note: assets added to a
+  collection later do not inherit its sharing — the modal then shows the
+  team as partial (mixed) so it can be re-applied in one click.

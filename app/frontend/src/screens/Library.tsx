@@ -4,6 +4,7 @@ import {
   CreateDraftFromPaths,
   CreateTeam,
   DeleteCollection,
+  GetCollectionSharing,
   GetDraft,
   InstallCollection,
   InstalledAssets,
@@ -13,6 +14,9 @@ import {
   ListDrafts,
   ListTeams,
   SetCollectionMembership,
+  SetCollectionTeamSharing,
+  ShareCollectionWithEveryone,
+  TeamAssets,
 } from "../../wailsjs/go/main/App";
 import {
   EventsOff,
@@ -23,16 +27,28 @@ import {
 import type { main } from "../../wailsjs/go/models";
 import AddAssetModal from "../components/AddAssetModal";
 import AssetDetail from "../components/AssetDetail";
+import BrowseModal from "../components/BrowseModal";
 import CollectionModal from "../components/CollectionModal";
 import DraftSheet from "../components/DraftSheet";
 import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
+import ShareModal from "../components/ShareModal";
 import Sidebar, { ASSET_DRAG_TYPE, Scope } from "../components/Sidebar";
 import TeamModal from "../components/TeamModal";
 import TypeBadge from "../components/TypeBadge";
 
 type ViewMode = "list" | "grid";
 type SortMode = "updated" | "name";
+type PinKind = "collections" | "teams";
+
+function readPins(kind: PinKind, location: string): string[] | null {
+  try {
+    const raw = localStorage.getItem(`sx-pins-${kind}:${location}`);
+    return raw ? (JSON.parse(raw) as string[]) : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Library: a source-list sidebar (scopes + collections) and one scrollable
@@ -50,9 +66,20 @@ export default function Library({
   const [drafts, setDrafts] = useState<main.Draft[]>([]);
   const [collections, setCollections] = useState<main.Collection[]>([]);
   const [teams, setTeams] = useState<main.TeamInfo[]>([]);
+  const [teamAssets, setTeamAssets] = useState<Record<string, string[]>>({});
   const [openTeam, setOpenTeam] = useState<main.TeamInfo | null>(null);
   const [showNewTeam, setShowNewTeam] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
+  const [browse, setBrowse] = useState<"" | "collections" | "teams">("");
+  const [shareCollection, setShareCollection] = useState("");
+  // Pins are per-library. null = the user never pinned anything, so the
+  // sidebar defaults to the first few; once they pin/unpin we persist.
+  const [pinnedCollections, setPinnedCollections] = useState<string[] | null>(
+    () => readPins("collections", vault.location),
+  );
+  const [pinnedTeams, setPinnedTeams] = useState<string[] | null>(() =>
+    readPins("teams", vault.location),
+  );
   const [typeFilter, setTypeFilter] = useState("");
   const [installedInfo, setInstalledInfo] = useState<
     main.InstalledAssetInfo[]
@@ -99,6 +126,9 @@ export default function Library({
     ListTeams()
       .then(setTeams)
       .catch(() => setTeams([]));
+    TeamAssets()
+      .then((m) => setTeamAssets(m ?? {}))
+      .catch(() => setTeamAssets({}));
   }, []);
 
   useEffect(load, [load]);
@@ -140,7 +170,11 @@ export default function Library({
   useEffect(() => {
     OnFileDrop((_x, _y, paths) => {
       setDragging(false);
-      CreateDraftFromPaths(paths)
+      // Wails fires this for ANY drag ending in the window, including
+      // in-app row drags that carry no files — ignore those.
+      const real = (paths ?? []).filter((p) => p);
+      if (real.length === 0) return;
+      CreateDraftFromPaths(real)
         .then((draft) => {
           setOpenDraft(draft);
           load();
@@ -189,6 +223,12 @@ export default function Library({
     () => new Set(installedInfo.map((i) => i.name)),
     [installedInfo],
   );
+  // The tracker is machine-wide; the sidebar count is THIS library's
+  // installed assets, so count the intersection.
+  const installedHereCount = useMemo(
+    () => (assets ?? []).filter((a) => installed.has(a.name)).length,
+    [assets, installed],
+  );
   const installedScopes = useMemo(() => {
     const m = new Map<string, string[]>();
     for (const i of installedInfo) m.set(i.name, i.scopes ?? []);
@@ -217,6 +257,49 @@ export default function Library({
     [collections, scope],
   );
 
+  const activeTeam = useMemo(
+    () =>
+      scope.kind === "team"
+        ? (teams.find((t) => t.name === scope.name) ?? null)
+        : null,
+    [teams, scope],
+  );
+
+  // Never-pinned libraries default to the first few so the sidebar isn't
+  // empty; an explicit pin/unpin takes over from there.
+  const shownCollectionPins =
+    pinnedCollections ?? collections.slice(0, 5).map((c) => c.name);
+  const shownTeamPins = pinnedTeams ?? teams.slice(0, 5).map((t) => t.name);
+
+  const teamAssetCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const t of teams) counts[t.name] = (teamAssets[t.name] ?? []).length;
+    return counts;
+  }, [teams, teamAssets]);
+
+  function setPins(kind: PinKind, next: string[]) {
+    localStorage.setItem(
+      `sx-pins-${kind}:${vault.location}`,
+      JSON.stringify(next),
+    );
+    (kind === "collections" ? setPinnedCollections : setPinnedTeams)(next);
+  }
+
+  function togglePin(kind: PinKind, name: string) {
+    const current = kind === "collections" ? shownCollectionPins : shownTeamPins;
+    setPins(
+      kind,
+      current.includes(name)
+        ? current.filter((n) => n !== name)
+        : [...current, name],
+    );
+  }
+
+  function ensurePinned(kind: PinKind, name: string) {
+    const current = kind === "collections" ? shownCollectionPins : shownTeamPins;
+    if (!current.includes(name)) setPins(kind, [...current, name]);
+  }
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = (assets ?? []).filter((a) => {
@@ -229,6 +312,9 @@ export default function Library({
           return false;
         case "collection":
           if (!(activeCollection?.assets ?? []).includes(a.name)) return false;
+          break;
+        case "team":
+          if (!(teamAssets[scope.name] ?? []).includes(a.name)) return false;
           break;
         case "all":
           break;
@@ -243,7 +329,7 @@ export default function Library({
       if (sort === "name") return a.name.localeCompare(b.name);
       return (b.updatedAt || "").localeCompare(a.updatedAt || "");
     });
-  }, [assets, query, scope, installed, activeCollection, sort, typeFilter]);
+  }, [assets, query, scope, installed, activeCollection, teamAssets, sort, typeFilter]);
 
   const visibleDrafts = useMemo(() => {
     if (scope.kind !== "all" && scope.kind !== "drafts") return [];
@@ -285,6 +371,8 @@ export default function Library({
         return "Drafts";
       case "collection":
         return scope.name;
+      case "team":
+        return scope.name;
     }
   })();
 
@@ -306,7 +394,9 @@ export default function Library({
       setShowNewTeam(false);
       setNewTeamName("");
       load();
-      setOpenTeam(team);
+      ensurePinned("teams", team.name);
+      setScope({ kind: "team", name: team.name });
+      setSelected(null);
     } catch (e) {
       setToastMessage(String(e));
     }
@@ -328,16 +418,17 @@ export default function Library({
           setSelected(null);
         }}
         totalCount={(assets ?? []).length}
-        installedCount={installedInfo.length}
+        installedCount={installedHereCount}
         draftCount={drafts.length}
         collections={collections}
         teams={teams}
+        teamAssetCounts={teamAssetCounts}
+        pinnedCollections={shownCollectionPins}
+        pinnedTeams={shownTeamPins}
         onNewCollection={() => setShowCollectionModal(true)}
         onNewTeam={() => setShowNewTeam(true)}
-        onTeam={(name) => {
-          const team = teams.find((t) => t.name === name);
-          if (team) setOpenTeam(team);
-        }}
+        onBrowseCollections={() => setBrowse("collections")}
+        onBrowseTeams={() => setBrowse("teams")}
         onSettings={() => setShowSettings(true)}
         onDropAsset={(collection, asset) =>
           void dropAssetOnCollection(collection, asset)
@@ -383,7 +474,7 @@ export default function Library({
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
                 title="Filter by type"
-                className="h-full rounded-lg border border-line bg-canvas px-2 text-sm text-ink-soft outline-none"
+                className="h-full rounded-lg border border-line bg-canvas py-0 pl-3 pr-7 text-sm text-ink-soft outline-none"
               >
                 <option value="">All types</option>
                 {types.map(([key, label]) => (
@@ -397,7 +488,7 @@ export default function Library({
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortMode)}
                 title="Sort"
-                className="h-full rounded-lg border border-line bg-canvas px-2 text-sm text-ink-soft outline-none"
+                className="h-full rounded-lg border border-line bg-canvas py-0 pl-3 pr-7 text-sm text-ink-soft outline-none"
               >
                 <option value="updated">Recently updated</option>
                 <option value="name">Name</option>
@@ -479,6 +570,16 @@ export default function Library({
                 {busyAction ? "Setting up…" : "Use all in my AI tools"}
               </button>
               <button
+                disabled={
+                  busyAction || (activeCollection.assets ?? []).length === 0
+                }
+                onClick={() => setShareCollection(activeCollection.name)}
+                title="Share every asset in this collection with a team"
+                className="rounded-md border border-line bg-surface px-2.5 py-1 font-medium text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-50"
+              >
+                Share…
+              </button>
+              <button
                 disabled={busyAction}
                 onClick={() => {
                   DeleteCollection(activeCollection.name)
@@ -494,6 +595,29 @@ export default function Library({
                 className="rounded-md px-2 py-1 font-medium text-ink-faint transition hover:text-danger"
               >
                 Delete
+              </button>
+            </div>
+          )}
+
+          {activeTeam && (
+            <div
+              className="flex items-center gap-3 border-t border-line bg-accent-soft/50 px-5 py-2 text-xs"
+              style={{ ["--wails-draggable" as never]: "no-drag" }}
+            >
+              <span className="text-ink-soft">
+                {(activeTeam.members ?? []).length}{" "}
+                {(activeTeam.members ?? []).length === 1
+                  ? "member"
+                  : "members"}{" "}
+                · assets shared with this team install automatically for its
+                members
+              </span>
+              <div className="flex-1" />
+              <button
+                onClick={() => setOpenTeam(activeTeam)}
+                className="rounded-md border border-line bg-surface px-2.5 py-1 font-medium text-ink-soft transition hover:border-accent hover:text-ink"
+              >
+                Manage team…
               </button>
             </div>
           )}
@@ -655,9 +779,78 @@ export default function Library({
           onClose={() => setShowCollectionModal(false)}
           onCreated={(name) => {
             setShowCollectionModal(false);
+            ensurePinned("collections", name);
             setScope({ kind: "collection", name });
             load();
           }}
+        />
+      )}
+
+      {shareCollection && (
+        <ShareModal
+          title={`Share ${shareCollection}`}
+          teams={teams}
+          getSharing={() => GetCollectionSharing(shareCollection)}
+          setTeamShared={(team, shared) =>
+            SetCollectionTeamSharing(shareCollection, team, shared)
+          }
+          shareEveryone={() => ShareCollectionWithEveryone(shareCollection)}
+          onClose={() => setShareCollection("")}
+          onChanged={load}
+        />
+      )}
+
+      {browse === "collections" && (
+        <BrowseModal
+          title="All collections"
+          items={collections.map((c) => {
+            const count = (c.assets ?? []).length;
+            return {
+              name: c.name,
+              count,
+              countLabel: count === 1 ? "asset" : "assets",
+            };
+          })}
+          pinned={shownCollectionPins}
+          onTogglePin={(name) => togglePin("collections", name)}
+          onSelect={(name) => {
+            setBrowse("");
+            setScope({ kind: "collection", name });
+            setSelected(null);
+          }}
+          onCreate={() => {
+            setBrowse("");
+            setShowCollectionModal(true);
+          }}
+          createLabel="New collection"
+          onClose={() => setBrowse("")}
+        />
+      )}
+
+      {browse === "teams" && (
+        <BrowseModal
+          title="All teams"
+          items={teams.map((t) => {
+            const count = teamAssetCounts[t.name] ?? 0;
+            return {
+              name: t.name,
+              count,
+              countLabel: count === 1 ? "asset" : "assets",
+            };
+          })}
+          pinned={shownTeamPins}
+          onTogglePin={(name) => togglePin("teams", name)}
+          onSelect={(name) => {
+            setBrowse("");
+            setScope({ kind: "team", name });
+            setSelected(null);
+          }}
+          onCreate={() => {
+            setBrowse("");
+            setShowNewTeam(true);
+          }}
+          createLabel="New team"
+          onClose={() => setBrowse("")}
         />
       )}
 
@@ -869,6 +1062,20 @@ function EmptyState({
         <div className="text-sm font-medium">This collection is empty</div>
         <div className="mt-1 max-w-sm text-sm text-ink-faint">
           Open an asset and tap this collection's name to add it.
+        </div>
+      </Centered>
+    );
+  }
+  if (scope.kind === "team") {
+    return (
+      <Centered>
+        <div className="text-sm font-medium">
+          Nothing shared with this team yet
+        </div>
+        <div className="mt-1 max-w-sm text-sm text-ink-faint">
+          Open an asset and use{" "}
+          <span className="font-medium text-ink-soft">Share…</span> to send
+          it to {scope.name} — it installs automatically for every member.
         </div>
       </Centered>
     );
