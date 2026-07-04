@@ -20,18 +20,20 @@
     monospace;
 }
 
+/* Dark mode: Linear-style neutral near-black — cool grays, hairline
+   borders, soft (not pure-white) text. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #171412;
-    --color-surface: #211d1a;
-    --color-ink: #f5f5f4;
-    --color-ink-soft: #c7c1bc;
-    --color-ink-faint: #78716c;
-    --color-line: #35302c;
-    --color-accent: #818cf8;
-    --color-accent-soft: #29283f;
-    --color-danger: #f87171;
-    --color-danger-soft: #3c2222;
+    --color-canvas: #0b0c0e;
+    --color-surface: #141518;
+    --color-ink: #e6e7e9;
+    --color-ink-soft: #9da2aa;
+    --color-ink-faint: #62666d;
+    --color-line: #232529;
+    --color-accent: #828bf0;
+    --color-accent-soft: #1d1f33;
+    --color-danger: #f47c7c;
+    --color-danger-soft: #2d1a1a;
   }
 }
 
