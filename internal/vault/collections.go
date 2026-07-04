@@ -7,10 +7,10 @@ import (
 	"github.com/sleuth-io/sx/internal/mgmt"
 )
 
-// Collections are named asset groupings stored in the manifest (schema v2).
-// File-backed vaults implement CRUD here; the Sleuth vault does not expose
-// collections yet, so callers feature-detect via the CollectionStore
-// interface.
+// Collections are named asset groupings. File-backed vaults store them in
+// the manifest (schema v2) and implement CRUD here; the Sleuth vault stores
+// them server-side (see sleuth_collections.go). Callers feature-detect via
+// the CollectionStore interface.
 
 // CollectionStore is implemented by vaults that support collections.
 type CollectionStore interface {

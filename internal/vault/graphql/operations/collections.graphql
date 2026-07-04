@@ -1,0 +1,86 @@
+query ListCollections($first: Int!, $after: String) {
+  collections(first: $first, after: $after) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      id
+      name
+      description
+    }
+  }
+}
+
+query CollectionAssets($id: ID!, $first: Int!, $after: String) {
+  collection(id: $id) {
+    assets(first: $first, after: $after) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        id
+        slug
+      }
+    }
+  }
+}
+
+mutation CreateAssetCollection($input: CreateAssetCollectionInput!) {
+  createAssetCollection(input: $input) {
+    collection {
+      id
+    }
+    errors {
+      field
+      messages
+    }
+  }
+}
+
+mutation UpdateAssetCollection($input: UpdateAssetCollectionInput!) {
+  updateAssetCollection(input: $input) {
+    collection {
+      id
+    }
+    errors {
+      field
+      messages
+    }
+  }
+}
+
+mutation DeleteAssetCollection($gid: ID!) {
+  deleteAssetCollection(gid: $gid) {
+    success
+    errors {
+      field
+      messages
+    }
+  }
+}
+
+mutation AddAssetsToCollection($input: ModifyAssetCollectionAssetsInput!) {
+  addAssetsToCollection(input: $input) {
+    collection {
+      id
+    }
+    errors {
+      field
+      messages
+    }
+  }
+}
+
+mutation RemoveAssetsFromCollection($input: ModifyAssetCollectionAssetsInput!) {
+  removeAssetsFromCollection(input: $input) {
+    collection {
+      id
+    }
+    errors {
+      field
+      messages
+    }
+  }
+}

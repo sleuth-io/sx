@@ -7,6 +7,8 @@ type ManagedBot {
   id: ID!
   teams: [Team!]!
   teamMemberships: [BotTeamMembership!]!
+  repositories: [RepositoryType!]!
+  repositoryMemberships: [BotRepositoryMembership!]!
   installedSkills: [BotInstalledSkill!]!
   apiKeys: [BotApiKey!]!
 }
@@ -176,6 +178,11 @@ type User {
   """150 characters or fewer. Letters, digits and @/./+/-/_ only."""
   username: String!
   userOnboardingCompletedAt: DateTime
+
+  """
+  User's description of their role and AI usage, used when analyzing AI chat threads.
+  """
+  roleDescription: String!
   seen: [SeenEventType!]!
   permissions: UserPermissionsType!
   setup: UserSetupType!
@@ -2736,6 +2743,14 @@ type BotTeamMembership {
   assetCount: Int!
 }
 
+"""
+A repository a bot is directly linked to, with the count of assets installed to it.
+"""
+type BotRepositoryMembership {
+  repository: RepositoryType!
+  assetCount: Int!
+}
+
 """Lightweight skill info for display on bot detail page."""
 type BotInstalledSkill {
   id: ID!
@@ -3320,6 +3335,7 @@ enum WSEventType {
   managed_import_item_completed
   managed_import_run_completed
   asset_loading_status
+  aiscan_report_updated
 }
 
 enum NamedWorkCategoryType {
@@ -3340,6 +3356,69 @@ enum NamedWorkCategoryType {
 
   """DevEx and Internal Improvements"""
   DEVEX
+}
+
+type AiScanReport {
+  title: String!
+  startedOn: DateTime
+  finishedOn: DateTime
+  error: String!
+  id: ID!
+  status: String!
+  pipelineVersion: String!
+  createdAt: DateTime!
+  periodStart: DateTime!
+  periodEnd: DateTime!
+  role: [AiScanSubjectRole!]!
+  subjects: [String!]!
+  clientMix: [AiScanClientMix!]!
+  doc: JSONString
+  coverage: JSONString
+}
+
+"""
+One subject's role on a report, from the stored snapshot. Survives subject-user deletion.
+"""
+type AiScanSubjectRole {
+  email: String!
+  name: String!
+  role: String!
+}
+
+"""
+One AI client's share of a report, for the list-row mix bar. Derived from the Doc's sources.
+"""
+type AiScanClientMix {
+  source: String!
+  toolCalls: Int!
+  episodes: Int!
+}
+
+"""
+The exact spans a client should capture and upload, computed server-side.
+"""
+type AiScanSyncPlan {
+  neededSpans: [AiScanSpan!]!
+}
+
+type AiScanSpan {
+  start: DateTime!
+  end: DateTime!
+}
+
+"""
+Merged coverage for one (person, source) - the builder's gap-display source.
+"""
+type AiScanSourceCoverage {
+  person: ID!
+  source: String!
+  intervals: [AiScanCoverageInterval!]!
+}
+
+type AiScanCoverageInterval {
+  capturedStart: DateTime!
+  capturedEnd: DateTime!
+  schemaVersion: Int!
 }
 
 """Vault containing assets."""
@@ -3443,6 +3522,7 @@ enum AssetSortField {
   POPULARITY_90D
   POPULARITY_ALL
   CREATED
+  NAME
 }
 
 """Sort direction for ordered listings."""
@@ -4674,6 +4754,60 @@ enum ChangeRequestStatusEnum {
   REJECTED
 }
 
+"""
+GraphQL type for an asset collection.
+
+``installations`` and ``permissions`` walk every member asset — request
+them only for a single collection (the install dialog), not in lists.
+"""
+type VaultAssetCollection {
+  name: String!
+  description: String!
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  assets(
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): VaultAssetsConnection!
+  assetsCount: Int!
+
+  """GIDs of every member asset (unpaginated)"""
+  assetIds: [ID!]!
+
+  """Installation targets shared by every asset in the collection"""
+  installations: [VaultAssetInstallation!]!
+
+  """
+  Current user's permissions, combined across every asset in the collection
+  """
+  permissions: VaultAssetPermissions
+}
+
+"""Paginated list of asset collections."""
+type VaultAssetCollectionConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [VaultAssetCollectionEdge!]!
+  nodes: [VaultAssetCollection!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type VaultAssetCollectionEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: VaultAssetCollection!
+}
+
 type Query {
   bots: [ManagedBot!]!
   bot(slug: String, id: ID): ManagedBot!
@@ -4934,6 +5068,19 @@ type Query {
     before: String
     after: String
   ): ChangeRequestConnection!
+  collection(id: ID!): VaultAssetCollection!
+  collections(
+    """Filter by name (case-insensitive contains)"""
+    name: String
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): VaultAssetCollectionConnection!
   installationRequests(
     """Filter: pending, approved, rejected"""
     status: String
@@ -5032,6 +5179,10 @@ type Query {
     after: String
   ): DashboardConnection!
   deviceGrant(clientId: String!, userCode: String!): DeviceGrant
+  aiscanReports: [AiScanReport!]!
+  aiscanReport(id: ID!): AiScanReport
+  aiscanCoverage(personIds: [ID!]): [AiScanSourceCoverage!]!
+  aiscanSyncPlan(source: String!, schemaVersion: Int!, available: [AiScanSpanInput!]!): AiScanSyncPlan
   search(
     term: String = null
     resultType: SearchResultType
@@ -5297,6 +5448,27 @@ enum AssetEventType {
   """Profile Assets Removed"""
   PROFILE_ASSETS_REMOVED
 
+  """Collection Created"""
+  COLLECTION_CREATED
+
+  """Collection Updated"""
+  COLLECTION_UPDATED
+
+  """Collection Deleted"""
+  COLLECTION_DELETED
+
+  """Collection Assets Added"""
+  COLLECTION_ASSETS_ADDED
+
+  """Collection Assets Removed"""
+  COLLECTION_ASSETS_REMOVED
+
+  """Collection Installed"""
+  COLLECTION_INSTALLED
+
+  """Collection Uninstalled"""
+  COLLECTION_UNINSTALLED
+
   """Lock File Accessed"""
   LOCK_FILE_ACCESSED
 
@@ -5418,6 +5590,12 @@ type ReviewTemplateGqlType {
   duration: Int!
 }
 
+"""A half-open time span the client can read from a source."""
+input AiScanSpanInput {
+  start: DateTime!
+  end: DateTime!
+}
+
 type SearchResultConnection {
   """Pagination data for this connection."""
   pageInfo: PageInfo!
@@ -5472,33 +5650,6 @@ type Mutation {
   installSkillToBot(botId: ID!, skillId: ID!): InstallSkillToBotMutation
   uninstallSkillFromBot(botId: ID!, skillId: ID!): UninstallSkillFromBotMutation
   toggleLLMFeatures(enabled: Boolean!): ToggleLLMFeaturesMutation
-  runEvalBenchmark(input: RunEvalBenchmarkInput!): RunEvalBenchmarkMutation
-  triggerDescriptionOptimization(input: TriggerDescriptionOptimizationInput!): TriggerDescriptionOptimizationMutation
-  applyOptimizedDescription(input: ApplyOptimizedDescriptionInput!): ApplyOptimizedDescriptionMutation
-  improveEvals(input: ImproveEvalsInput!): ImproveEvalsMutation
-  createAssetEval(input: CreateAssetEvalInput!): CreateAssetEvalMutation
-  updateAssetEval(input: UpdateAssetEvalInput!): UpdateAssetEvalMutation
-  deleteAssetEval(input: DeleteAssetEvalInput!): DeleteAssetEvalMutation
-  importAssetEvals(input: ImportAssetEvalsInput!): ImportAssetEvalsMutation
-  exportAssetEvals(input: ExportAssetEvalsInput!): ExportAssetEvalsMutation
-  regenerateEvals(input: RegenerateEvalsInput!): RegenerateEvalsMutation
-
-  """Delete a file from an asset, creating a new asset version without it."""
-  deleteSkillFile(assetId: ID!, fileId: ID!): DeleteSkillFileMutation
-
-  """
-  Save a new version of a file, creating a new asset version with the updated content.
-  """
-  saveSkillFileVersion(input: SaveSkillFileVersionInput!): SaveSkillFileVersionMutation
-
-  """
-  Create a new file on an asset and seed it with an initial content version.
-  """
-  createSkillFile(input: CreateSkillFileInput!): CreateSkillFileMutation
-  createInstallationRequest(input: CreateInstallationRequestInput!): CreateInstallationRequestMutation
-  approveInstallationRequest(input: ReviewInstallationRequestInput!): ApproveInstallationRequestMutation
-  rejectInstallationRequest(input: ReviewInstallationRequestInput!): RejectInstallationRequestMutation
-  retractInstallationRequest(requestId: ID!): RetractInstallationRequestMutation
   setAssetInstallations(input: SetAssetInstallationsInput!): SetAssetInstallationsMutation
   removeAssetInstallations(input: RemoveAssetInstallationsInput!): RemoveAssetInstallationsMutation
 
@@ -5633,6 +5784,77 @@ type Mutation {
   ): SetAssetStatusMutation
 
   """
+  Remove a single installation from an asset (does not delete the asset).
+  """
+  uninstallAsset(input: UninstallAssetInput!): UninstallAssetMutation
+
+  """
+  Remove multiple installations from an asset in one best-effort call.
+  
+  Each target is attempted independently; one that can't be removed (no
+  permission, not installed, a git-source removal) is recorded in ``errors``
+  while the rest proceed. ``removedCount`` is how many were actually removed.
+  """
+  uninstallAssetTargets(input: UninstallAssetTargetsInput!): UninstallAssetTargetsMutation
+
+  """Create a new asset collection."""
+  createAssetCollection(input: CreateAssetCollectionInput!): CreateAssetCollectionMutation
+
+  """Update an asset collection's name or description."""
+  updateAssetCollection(input: UpdateAssetCollectionInput!): UpdateAssetCollectionMutation
+
+  """Delete an asset collection. Member assets are untouched."""
+  deleteAssetCollection(gid: ID!): DeleteAssetCollectionMutation
+
+  """Add assets to a collection."""
+  addAssetsToCollection(input: ModifyAssetCollectionAssetsInput!): AddAssetsToCollectionMutation
+
+  """Remove assets from a collection. The assets themselves are untouched."""
+  removeAssetsFromCollection(input: ModifyAssetCollectionAssetsInput!): RemoveAssetsFromCollectionMutation
+
+  """
+  Add installation targets to every asset in a collection.
+  
+  Best-effort per asset: assets the caller can't modify are reported in
+  ``errors`` while the rest proceed.
+  """
+  installCollection(input: InstallCollectionInput!): InstallCollectionMutation
+
+  """
+  Remove one installation target from every asset in a collection.
+  
+  Best-effort per asset, mirroring InstallCollectionMutation.
+  """
+  uninstallCollection(input: UninstallCollectionInput!): UninstallCollectionMutation
+  runEvalBenchmark(input: RunEvalBenchmarkInput!): RunEvalBenchmarkMutation
+  triggerDescriptionOptimization(input: TriggerDescriptionOptimizationInput!): TriggerDescriptionOptimizationMutation
+  applyOptimizedDescription(input: ApplyOptimizedDescriptionInput!): ApplyOptimizedDescriptionMutation
+  improveEvals(input: ImproveEvalsInput!): ImproveEvalsMutation
+  createAssetEval(input: CreateAssetEvalInput!): CreateAssetEvalMutation
+  updateAssetEval(input: UpdateAssetEvalInput!): UpdateAssetEvalMutation
+  deleteAssetEval(input: DeleteAssetEvalInput!): DeleteAssetEvalMutation
+  importAssetEvals(input: ImportAssetEvalsInput!): ImportAssetEvalsMutation
+  exportAssetEvals(input: ExportAssetEvalsInput!): ExportAssetEvalsMutation
+  regenerateEvals(input: RegenerateEvalsInput!): RegenerateEvalsMutation
+
+  """Delete a file from an asset, creating a new asset version without it."""
+  deleteSkillFile(assetId: ID!, fileId: ID!): DeleteSkillFileMutation
+
+  """
+  Save a new version of a file, creating a new asset version with the updated content.
+  """
+  saveSkillFileVersion(input: SaveSkillFileVersionInput!): SaveSkillFileVersionMutation
+
+  """
+  Create a new file on an asset and seed it with an initial content version.
+  """
+  createSkillFile(input: CreateSkillFileInput!): CreateSkillFileMutation
+  createInstallationRequest(input: CreateInstallationRequestInput!): CreateInstallationRequestMutation
+  approveInstallationRequest(input: ReviewInstallationRequestInput!): ApproveInstallationRequestMutation
+  rejectInstallationRequest(input: ReviewInstallationRequestInput!): RejectInstallationRequestMutation
+  retractInstallationRequest(requestId: ID!): RetractInstallationRequestMutation
+
+  """
   Re-initialize skill discovery for a repository, deleting existing suggestions.
   """
   reinitializeRepositoryDiscovery(
@@ -5686,20 +5908,6 @@ type Mutation {
   keeping this mutation synchronous would unavoidably stall the wizard.
   """
   triggerSmartMerge(assetName: String!, assetType: AssetType!, variants: [SmartMergeVariantInput!]!): TriggerSmartMergeMutation
-
-  """
-  Remove a single installation from an asset (does not delete the asset).
-  """
-  uninstallAsset(input: UninstallAssetInput!): UninstallAssetMutation
-
-  """
-  Remove multiple installations from an asset in one best-effort call.
-  
-  Each target is attempted independently; one that can't be removed (no
-  permission, not installed, a git-source removal) is recorded in ``errors``
-  while the rest proceed. ``removedCount`` is how many were actually removed.
-  """
-  uninstallAssetTargets(input: UninstallAssetTargetsInput!): UninstallAssetTargetsMutation
   createMonoRepoConfig(input: CreateMonoRepoConfigInput!): CreateMonoRepoConfigMutation
   updateMonoRepoConfig(input: UpdateMonoRepoConfigInput!): UpdateMonoRepoConfigMutation
   deleteMonoRepoConfig(id: ID!): DeleteMonoRepoConfigMutation
@@ -5718,7 +5926,7 @@ type Mutation {
   setNamedWorkPlanning(input: NamedWorkPlanningInputType!): SetNamedWorkPlanningMutation
   markSeen(name: String!, orgSlug: ID): SeenEventType
   resendEmailConfirmation: ResendEmailConfirmationMutation
-  updateUser(email: String, firstName: String, lastName: String, timezone: String): UpdateUserMutation
+  updateUser(email: String, firstName: String, lastName: String, roleDescription: String, timezone: String): UpdateUserMutation
   createPersonalToken(label: String!): CreatePersonalTokenMutation
   deletePersonalToken(tokenId: ID!): DeletePersonalTokenMutation
   setCurrentUserWorkingHours(input: WorkingHoursInputType!): SetCurrentUserWorkingHoursMutation
@@ -5805,6 +6013,26 @@ type Mutation {
   createLegacyIntegration(input: CreateLegacyIntegrationMutationInput!): CreateLegacyIntegrationMutationPayload
   validateDeviceCode(userCode: String!): ValidateDeviceCodeMutation
   approveDevice(approve: Boolean!, botGid: String, clientId: String!, userCode: String!): ApproveDeviceMutation
+
+  """
+  Create a report over a set of subjects + period and enqueue generation.
+  
+  An empty (or omitted) ``subject_ids`` is a deliberate "everybody" selection: the report covers
+  every org member we hold AI threads for, not just the creator.
+  """
+  createAiscanReport(
+    periodEnd: DateTime!
+    periodStart: DateTime!
+
+    """
+    Org members to report on. Leave empty to cover everybody we have AI activity for.
+    """
+    subjectIds: [ID!]
+    title: String
+  ): CreateAiScanReportMutation
+
+  """Delete a report by GID, scoped to the requesting org."""
+  deleteAiscanReport(id: ID!): DeleteAiScanReportMutation
 }
 
 type CreateBotMutation {
@@ -5816,6 +6044,7 @@ input CreateBotInput {
   name: String!
   description: String
   teamIds: [ID!]
+  repositoryIds: [ID!]
 }
 
 type UpdateBotMutation {
@@ -5833,6 +6062,7 @@ input UpdateBotInput {
   name: String
   description: String
   teamIds: [ID!]
+  repositoryIds: [ID!]
 }
 
 type DeleteBotMutation {
@@ -5870,196 +6100,6 @@ type UninstallSkillFromBotMutation {
 
 type ToggleLLMFeaturesMutation {
   success: Boolean!
-}
-
-type RunEvalBenchmarkMutation {
-  benchmark: EvalBenchmark
-  errors: [ErrorType!]!
-}
-
-input RunEvalBenchmarkInput {
-  skillGid: ID!
-  runsPerConfig: Int
-
-  """Subset of eval GIDs to run"""
-  evalGids: [ID!]
-}
-
-type TriggerDescriptionOptimizationMutation {
-  optimization: DescriptionOptimization
-  errors: [ErrorType!]!
-}
-
-input TriggerDescriptionOptimizationInput {
-  skillGid: ID!
-  maxIterations: Int
-}
-
-type ApplyOptimizedDescriptionMutation {
-  success: Boolean!
-  errors: [ErrorType!]!
-}
-
-input ApplyOptimizedDescriptionInput {
-  optimizationGid: ID!
-}
-
-type ImproveEvalsMutation {
-  ok: Boolean!
-  errors: [ErrorType!]!
-}
-
-input ImproveEvalsInput {
-  skillGid: ID!
-}
-
-type CreateAssetEvalMutation {
-  eval: AssetEval
-  errors: [ErrorType!]!
-}
-
-input CreateAssetEvalInput {
-  skillGid: ID!
-  evalKey: String!
-  prompt: String!
-  expectedOutput: String
-  expectations: [String!]
-  category: String
-}
-
-type UpdateAssetEvalMutation {
-  eval: AssetEval
-  errors: [ErrorType!]!
-}
-
-input UpdateAssetEvalInput {
-  evalGid: ID!
-  prompt: String
-  expectedOutput: String
-  expectations: [String!]
-  category: String
-  isActive: Boolean
-}
-
-type DeleteAssetEvalMutation {
-  ok: Boolean!
-  errors: [ErrorType!]!
-}
-
-input DeleteAssetEvalInput {
-  evalGid: ID!
-}
-
-type ImportAssetEvalsMutation {
-  evals: [AssetEval!]
-  importedCount: Int
-  errors: [ErrorType!]!
-}
-
-input ImportAssetEvalsInput {
-  skillGid: ID!
-
-  """JSON string in Anthropic evals.json format"""
-  evalsJson: String!
-}
-
-type ExportAssetEvalsMutation {
-  evalsJson: String
-  errors: [ErrorType!]!
-}
-
-input ExportAssetEvalsInput {
-  skillGid: ID!
-}
-
-type RegenerateEvalsMutation {
-  ok: Boolean
-  errors: [ErrorType!]!
-}
-
-input RegenerateEvalsInput {
-  skillGid: ID!
-
-  """Number of evals to generate (default 3)"""
-  count: Int
-}
-
-"""Delete a file from an asset, creating a new asset version without it."""
-type DeleteSkillFileMutation {
-  success: Boolean!
-  errors: [ErrorType!]!
-}
-
-"""
-Save a new version of a file, creating a new asset version with the updated content.
-"""
-type SaveSkillFileVersionMutation {
-  file: SkillFile
-  errors: [ErrorType!]!
-}
-
-input SaveSkillFileVersionInput {
-  assetId: ID!
-  fileId: ID!
-  content: String!
-  changeSummary: String
-}
-
-"""
-Create a new file on an asset and seed it with an initial content version.
-"""
-type CreateSkillFileMutation {
-  file: SkillFile
-  errors: [ErrorType!]!
-}
-
-input CreateSkillFileInput {
-  assetId: ID!
-  name: String!
-  path: String
-  content: String!
-  changeSummary: String
-}
-
-type CreateInstallationRequestMutation {
-  installationRequest: AssetInstallationRequest
-  errors: [ErrorType!]!
-}
-
-input CreateInstallationRequestInput {
-  """GID of the asset"""
-  assetId: ID!
-
-  """'team', 'organization', or 'repository'"""
-  targetType: String!
-
-  """GID of the target team (required if target_type is 'team')"""
-  targetTeamId: ID
-
-  """GID of the target repository"""
-  targetEntityId: String
-}
-
-type ApproveInstallationRequestMutation {
-  installationRequest: AssetInstallationRequest
-  errors: [ErrorType!]!
-}
-
-input ReviewInstallationRequestInput {
-  requestId: ID!
-
-  """Optional note (used for rejections)"""
-  note: String
-}
-
-type RejectInstallationRequestMutation {
-  installationRequest: AssetInstallationRequest
-  errors: [ErrorType!]!
-}
-
-type RetractInstallationRequestMutation {
-  success: Boolean!
-  errors: [ErrorType!]!
 }
 
 type SetAssetInstallationsMutation {
@@ -6496,6 +6536,362 @@ type SetAssetStatusMutation {
 }
 
 """
+Remove a single installation from an asset (does not delete the asset).
+"""
+type UninstallAssetMutation {
+  asset: VaultAsset
+  errors: [ErrorType!]!
+}
+
+input UninstallAssetInput {
+  entityType: VaultAssetInstallationEntityType!
+
+  """GID of the entity (null for organization-wide installs)"""
+  entityId: ID
+
+  """GID of the mono-repo config (only for repository targets)"""
+  monoRepoConfigId: ID
+
+  """GID of the asset; takes precedence over assetName when both are given"""
+  id: ID
+
+  """Slug of the asset; used when id is not given"""
+  assetName: String
+}
+
+"""
+Remove multiple installations from an asset in one best-effort call.
+
+Each target is attempted independently; one that can't be removed (no
+permission, not installed, a git-source removal) is recorded in ``errors``
+while the rest proceed. ``removedCount`` is how many were actually removed.
+"""
+type UninstallAssetTargetsMutation {
+  asset: VaultAsset
+  removedCount: Int!
+  errors: [ErrorType!]!
+}
+
+input UninstallAssetTargetsInput {
+  """GID of the asset; takes precedence over assetName when both are given"""
+  id: ID
+
+  """Slug of the asset; used when id is not given"""
+  assetName: String
+
+  """Installation targets to remove from the asset."""
+  targets: [UninstallScopeInput!]!
+}
+
+input UninstallScopeInput {
+  entityType: VaultAssetInstallationEntityType!
+
+  """GID of the entity (null for organization-wide installs)"""
+  entityId: ID
+
+  """GID of the mono-repo config (only for repository targets)"""
+  monoRepoConfigId: ID
+}
+
+"""Create a new asset collection."""
+type CreateAssetCollectionMutation {
+  collection: VaultAssetCollection
+  errors: [ErrorType!]!
+}
+
+input CreateAssetCollectionInput {
+  """Collection name (must be unique within org)"""
+  name: String!
+
+  """Collection description"""
+  description: String
+
+  """Initial member assets"""
+  assetGids: [ID!]
+}
+
+"""Update an asset collection's name or description."""
+type UpdateAssetCollectionMutation {
+  collection: VaultAssetCollection
+  errors: [ErrorType!]!
+}
+
+input UpdateAssetCollectionInput {
+  """Collection GID"""
+  gid: ID!
+
+  """New collection name"""
+  name: String
+
+  """New collection description"""
+  description: String
+}
+
+"""Delete an asset collection. Member assets are untouched."""
+type DeleteAssetCollectionMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+"""Add assets to a collection."""
+type AddAssetsToCollectionMutation {
+  collection: VaultAssetCollection
+  errors: [ErrorType!]!
+}
+
+input ModifyAssetCollectionAssetsInput {
+  """Collection GID"""
+  collectionGid: ID!
+
+  """List of asset GIDs to add/remove"""
+  assetGids: [ID!]!
+}
+
+"""Remove assets from a collection. The assets themselves are untouched."""
+type RemoveAssetsFromCollectionMutation {
+  collection: VaultAssetCollection
+  errors: [ErrorType!]!
+}
+
+"""
+Add installation targets to every asset in a collection.
+
+Best-effort per asset: assets the caller can't modify are reported in
+``errors`` while the rest proceed.
+"""
+type InstallCollectionMutation {
+  collection: VaultAssetCollection
+
+  """Assets whose installations changed"""
+  affectedCount: Int!
+  errors: [ErrorType!]!
+}
+
+input InstallCollectionInput {
+  """Collection GID"""
+  gid: ID!
+
+  """Installation targets to add to every asset in the collection"""
+  installations: [AssetInstallationInput!]!
+}
+
+"""
+Remove one installation target from every asset in a collection.
+
+Best-effort per asset, mirroring InstallCollectionMutation.
+"""
+type UninstallCollectionMutation {
+  collection: VaultAssetCollection
+
+  """Assets whose installations changed"""
+  affectedCount: Int!
+  errors: [ErrorType!]!
+}
+
+input UninstallCollectionInput {
+  entityType: VaultAssetInstallationEntityType!
+
+  """GID of the entity (null for organization-wide installs)"""
+  entityId: ID
+
+  """GID of the mono-repo config (only for repository targets)"""
+  monoRepoConfigId: ID
+
+  """Collection GID"""
+  gid: ID!
+}
+
+type RunEvalBenchmarkMutation {
+  benchmark: EvalBenchmark
+  errors: [ErrorType!]!
+}
+
+input RunEvalBenchmarkInput {
+  skillGid: ID!
+  runsPerConfig: Int
+
+  """Subset of eval GIDs to run"""
+  evalGids: [ID!]
+}
+
+type TriggerDescriptionOptimizationMutation {
+  optimization: DescriptionOptimization
+  errors: [ErrorType!]!
+}
+
+input TriggerDescriptionOptimizationInput {
+  skillGid: ID!
+  maxIterations: Int
+}
+
+type ApplyOptimizedDescriptionMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+input ApplyOptimizedDescriptionInput {
+  optimizationGid: ID!
+}
+
+type ImproveEvalsMutation {
+  ok: Boolean!
+  errors: [ErrorType!]!
+}
+
+input ImproveEvalsInput {
+  skillGid: ID!
+}
+
+type CreateAssetEvalMutation {
+  eval: AssetEval
+  errors: [ErrorType!]!
+}
+
+input CreateAssetEvalInput {
+  skillGid: ID!
+  evalKey: String!
+  prompt: String!
+  expectedOutput: String
+  expectations: [String!]
+  category: String
+}
+
+type UpdateAssetEvalMutation {
+  eval: AssetEval
+  errors: [ErrorType!]!
+}
+
+input UpdateAssetEvalInput {
+  evalGid: ID!
+  prompt: String
+  expectedOutput: String
+  expectations: [String!]
+  category: String
+  isActive: Boolean
+}
+
+type DeleteAssetEvalMutation {
+  ok: Boolean!
+  errors: [ErrorType!]!
+}
+
+input DeleteAssetEvalInput {
+  evalGid: ID!
+}
+
+type ImportAssetEvalsMutation {
+  evals: [AssetEval!]
+  importedCount: Int
+  errors: [ErrorType!]!
+}
+
+input ImportAssetEvalsInput {
+  skillGid: ID!
+
+  """JSON string in Anthropic evals.json format"""
+  evalsJson: String!
+}
+
+type ExportAssetEvalsMutation {
+  evalsJson: String
+  errors: [ErrorType!]!
+}
+
+input ExportAssetEvalsInput {
+  skillGid: ID!
+}
+
+type RegenerateEvalsMutation {
+  ok: Boolean
+  errors: [ErrorType!]!
+}
+
+input RegenerateEvalsInput {
+  skillGid: ID!
+
+  """Number of evals to generate (default 3)"""
+  count: Int
+}
+
+"""Delete a file from an asset, creating a new asset version without it."""
+type DeleteSkillFileMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+"""
+Save a new version of a file, creating a new asset version with the updated content.
+"""
+type SaveSkillFileVersionMutation {
+  file: SkillFile
+  errors: [ErrorType!]!
+}
+
+input SaveSkillFileVersionInput {
+  assetId: ID!
+  fileId: ID!
+  content: String!
+  changeSummary: String
+}
+
+"""
+Create a new file on an asset and seed it with an initial content version.
+"""
+type CreateSkillFileMutation {
+  file: SkillFile
+  errors: [ErrorType!]!
+}
+
+input CreateSkillFileInput {
+  assetId: ID!
+  name: String!
+  path: String
+  content: String!
+  changeSummary: String
+}
+
+type CreateInstallationRequestMutation {
+  installationRequest: AssetInstallationRequest
+  errors: [ErrorType!]!
+}
+
+input CreateInstallationRequestInput {
+  """GID of the asset"""
+  assetId: ID!
+
+  """'team', 'organization', or 'repository'"""
+  targetType: String!
+
+  """GID of the target team (required if target_type is 'team')"""
+  targetTeamId: ID
+
+  """GID of the target repository"""
+  targetEntityId: String
+}
+
+type ApproveInstallationRequestMutation {
+  installationRequest: AssetInstallationRequest
+  errors: [ErrorType!]!
+}
+
+input ReviewInstallationRequestInput {
+  requestId: ID!
+
+  """Optional note (used for rejections)"""
+  note: String
+}
+
+type RejectInstallationRequestMutation {
+  installationRequest: AssetInstallationRequest
+  errors: [ErrorType!]!
+}
+
+type RetractInstallationRequestMutation {
+  success: Boolean!
+  errors: [ErrorType!]!
+}
+
+"""
 Re-initialize skill discovery for a repository, deleting existing suggestions.
 """
 type ReinitializeRepositoryDiscoveryMutation {
@@ -6571,64 +6967,6 @@ type TriggerSmartMergeMutation {
 
 input SmartMergeVariantInput {
   files: [ManagedImportFileInput!]!
-}
-
-"""
-Remove a single installation from an asset (does not delete the asset).
-"""
-type UninstallAssetMutation {
-  asset: VaultAsset
-  errors: [ErrorType!]!
-}
-
-input UninstallAssetInput {
-  entityType: VaultAssetInstallationEntityType!
-
-  """GID of the entity (null for organization-wide installs)"""
-  entityId: ID
-
-  """GID of the mono-repo config (only for repository targets)"""
-  monoRepoConfigId: ID
-
-  """GID of the asset; takes precedence over assetName when both are given"""
-  id: ID
-
-  """Slug of the asset; used when id is not given"""
-  assetName: String
-}
-
-"""
-Remove multiple installations from an asset in one best-effort call.
-
-Each target is attempted independently; one that can't be removed (no
-permission, not installed, a git-source removal) is recorded in ``errors``
-while the rest proceed. ``removedCount`` is how many were actually removed.
-"""
-type UninstallAssetTargetsMutation {
-  asset: VaultAsset
-  removedCount: Int!
-  errors: [ErrorType!]!
-}
-
-input UninstallAssetTargetsInput {
-  """GID of the asset; takes precedence over assetName when both are given"""
-  id: ID
-
-  """Slug of the asset; used when id is not given"""
-  assetName: String
-
-  """Installation targets to remove from the asset."""
-  targets: [UninstallScopeInput!]!
-}
-
-input UninstallScopeInput {
-  entityType: VaultAssetInstallationEntityType!
-
-  """GID of the entity (null for organization-wide installs)"""
-  entityId: ID
-
-  """GID of the mono-repo config (only for repository targets)"""
-  monoRepoConfigId: ID
 }
 
 type CreateMonoRepoConfigMutation {
@@ -7727,4 +8065,19 @@ type ApproveDeviceMutation {
 type ApproveDeviceResult {
   success: Boolean!
   error: String
+}
+
+"""
+Create a report over a set of subjects + period and enqueue generation.
+
+An empty (or omitted) ``subject_ids`` is a deliberate "everybody" selection: the report covers
+every org member we hold AI threads for, not just the creator.
+"""
+type CreateAiScanReportMutation {
+  report: AiScanReport
+}
+
+"""Delete a report by GID, scoped to the requesting org."""
+type DeleteAiScanReportMutation {
+  success: Boolean!
 }

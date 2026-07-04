@@ -92,6 +92,68 @@ func (v *AddAssetPullRequestFileChangeResponse) GetAddAssetPullRequestFileChange
 	return v.AddAssetPullRequestFileChange
 }
 
+// AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutation includes the requested fields of the GraphQL type AddAssetsToCollectionMutation.
+// The GraphQL type's documentation follows.
+//
+// Add assets to a collection.
+type AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutation struct {
+	Collection *AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationCollectionVaultAssetCollection `json:"collection"`
+	Errors     []AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationErrorsErrorType               `json:"errors"`
+}
+
+// GetCollection returns AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutation.Collection, and is useful for accessing the field via an interface.
+func (v *AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutation) GetCollection() *AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationCollectionVaultAssetCollection {
+	return v.Collection
+}
+
+// GetErrors returns AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutation.Errors, and is useful for accessing the field via an interface.
+func (v *AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutation) GetErrors() []AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationErrorsErrorType {
+	return v.Errors
+}
+
+// AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationCollectionVaultAssetCollection includes the requested fields of the GraphQL type VaultAssetCollection.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for an asset collection.
+//
+// “installations“ and “permissions“ walk every member asset — request
+// them only for a single collection (the install dialog), not in lists.
+type AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationCollectionVaultAssetCollection struct {
+	Id string `json:"id"`
+}
+
+// GetId returns AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationCollectionVaultAssetCollection.Id, and is useful for accessing the field via an interface.
+func (v *AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationCollectionVaultAssetCollection) GetId() string {
+	return v.Id
+}
+
+// AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+// AddAssetsToCollectionResponse is returned by AddAssetsToCollection on success.
+type AddAssetsToCollectionResponse struct {
+	// Add assets to a collection.
+	AddAssetsToCollection *AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutation `json:"addAssetsToCollection"`
+}
+
+// GetAddAssetsToCollection returns AddAssetsToCollectionResponse.AddAssetsToCollection, and is useful for accessing the field via an interface.
+func (v *AddAssetsToCollectionResponse) GetAddAssetsToCollection() *AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutation {
+	return v.AddAssetsToCollection
+}
+
 // AssetAuditLogAssetAuditLogAssetAuditEventConnection includes the requested fields of the GraphQL type AssetAuditEventConnection.
 type AssetAuditLogAssetAuditLogAssetAuditEventConnection struct {
 	// Pagination data for this connection.
@@ -1417,6 +1479,458 @@ type BotInstalledResponse struct {
 // GetBot returns BotInstalledResponse.Bot, and is useful for accessing the field via an interface.
 func (v *BotInstalledResponse) GetBot() BotInstalledBotManagedBot { return v.Bot }
 
+// CollectionAssetsCollectionVaultAssetCollection includes the requested fields of the GraphQL type VaultAssetCollection.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for an asset collection.
+//
+// “installations“ and “permissions“ walk every member asset — request
+// them only for a single collection (the install dialog), not in lists.
+type CollectionAssetsCollectionVaultAssetCollection struct {
+	Assets CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection `json:"assets"`
+}
+
+// GetAssets returns CollectionAssetsCollectionVaultAssetCollection.Assets, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollection) GetAssets() CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection {
+	return v.Assets
+}
+
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection includes the requested fields of the GraphQL type VaultAssetsConnection.
+// The GraphQL type's documentation follows.
+//
+// Paginated list of vault assets.
+type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection struct {
+	// Pagination data for this connection.
+	PageInfo CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionPageInfo          `json:"pageInfo"`
+	Nodes    []CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset `json:"-"`
+}
+
+// GetPageInfo returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection.PageInfo, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection) GetPageInfo() CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionPageInfo {
+	return v.PageInfo
+}
+
+// GetNodes returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection.Nodes, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection) GetNodes() []CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset {
+	return v.Nodes
+}
+
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection) UnmarshalJSON(b []byte) error {
+
+	if string(b) == "null" {
+		return nil
+	}
+
+	var firstPass struct {
+		*CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection
+		Nodes []json.RawMessage `json:"nodes"`
+		graphql.NoUnmarshalJSON
+	}
+	firstPass.CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection = v
+
+	err := json.Unmarshal(b, &firstPass)
+	if err != nil {
+		return err
+	}
+
+	{
+		dst := &v.Nodes
+		src := firstPass.Nodes
+		*dst = make(
+			[]CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset,
+			len(src))
+		for i, src := range src {
+			dst := &(*dst)[i]
+			if len(src) != 0 && string(src) != "null" {
+				err = __unmarshalCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset(
+					src, dst)
+				if err != nil {
+					return fmt.Errorf(
+						"unable to unmarshal CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection.Nodes: %w", err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+type __premarshalCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection struct {
+	PageInfo CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionPageInfo `json:"pageInfo"`
+
+	Nodes []json.RawMessage `json:"nodes"`
+}
+
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection) MarshalJSON() ([]byte, error) {
+	premarshaled, err := v.__premarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(premarshaled)
+}
+
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection) __premarshalJSON() (*__premarshalCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection, error) {
+	var retval __premarshalCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection
+
+	retval.PageInfo = v.PageInfo
+	{
+
+		dst := &retval.Nodes
+		src := v.Nodes
+		*dst = make(
+			[]json.RawMessage,
+			len(src))
+		for i, src := range src {
+			dst := &(*dst)[i]
+			var err error
+			*dst, err = __marshalCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset(
+				&src)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"unable to marshal CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection.Nodes: %w", err)
+			}
+		}
+	}
+	return &retval, nil
+}
+
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent includes the requested fields of the GraphQL type Agent.
+type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent struct {
+	Typename *string `json:"__typename"`
+	Id       string  `json:"id"`
+	Slug     string  `json:"slug"`
+}
+
+// GetTypename returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent.Typename, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent.Id, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent) GetId() string {
+	return v.Id
+}
+
+// GetSlug returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent.Slug, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent) GetSlug() string {
+	return v.Slug
+}
+
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
+type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin struct {
+	Typename *string `json:"__typename"`
+	Id       string  `json:"id"`
+	Slug     string  `json:"slug"`
+}
+
+// GetTypename returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Typename, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Id, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetId() string {
+	return v.Id
+}
+
+// GetSlug returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Slug, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetSlug() string {
+	return v.Slug
+}
+
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand includes the requested fields of the GraphQL type Command.
+type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand struct {
+	Typename *string `json:"__typename"`
+	Id       string  `json:"id"`
+	Slug     string  `json:"slug"`
+}
+
+// GetTypename returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand.Typename, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand.Id, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand) GetId() string {
+	return v.Id
+}
+
+// GetSlug returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand.Slug, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand) GetSlug() string {
+	return v.Slug
+}
+
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook includes the requested fields of the GraphQL type Hook.
+type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook struct {
+	Typename *string `json:"__typename"`
+	Id       string  `json:"id"`
+	Slug     string  `json:"slug"`
+}
+
+// GetTypename returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook.Typename, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook.Id, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook) GetId() string {
+	return v.Id
+}
+
+// GetSlug returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook.Slug, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook) GetSlug() string {
+	return v.Slug
+}
+
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer includes the requested fields of the GraphQL type McpServer.
+type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer struct {
+	Typename *string `json:"__typename"`
+	Id       string  `json:"id"`
+	Slug     string  `json:"slug"`
+}
+
+// GetTypename returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer.Typename, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer.Id, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer) GetId() string {
+	return v.Id
+}
+
+// GetSlug returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer.Slug, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer) GetSlug() string {
+	return v.Slug
+}
+
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule includes the requested fields of the GraphQL type Rule.
+type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule struct {
+	Typename *string `json:"__typename"`
+	Id       string  `json:"id"`
+	Slug     string  `json:"slug"`
+}
+
+// GetTypename returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule.Typename, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule.Id, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule) GetId() string {
+	return v.Id
+}
+
+// GetSlug returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule.Slug, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule) GetSlug() string {
+	return v.Slug
+}
+
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill includes the requested fields of the GraphQL type Skill.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for skill.
+type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill struct {
+	Typename *string `json:"__typename"`
+	Id       string  `json:"id"`
+	Slug     string  `json:"slug"`
+}
+
+// GetTypename returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill.Typename, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill.Id, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill) GetId() string {
+	return v.Id
+}
+
+// GetSlug returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill.Slug, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill) GetSlug() string {
+	return v.Slug
+}
+
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset includes the requested fields of the GraphQL interface VaultAsset.
+//
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset is implemented by the following types:
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill
+// The GraphQL type's documentation follows.
+//
+// Asset in the vault (Skill, MCP, Agent, etc.).
+type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset interface {
+	implementsGraphQLInterfaceCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset()
+	// GetTypename returns the receiver's concrete GraphQL type-name (see interface doc for possible values).
+	GetTypename() *string
+	// GetId returns the interface-field "id" from its implementation.
+	GetId() string
+	// GetSlug returns the interface-field "slug" from its implementation.
+	GetSlug() string
+}
+
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent) implementsGraphQLInterfaceCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin) implementsGraphQLInterfaceCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand) implementsGraphQLInterfaceCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook) implementsGraphQLInterfaceCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer) implementsGraphQLInterfaceCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule) implementsGraphQLInterfaceCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill) implementsGraphQLInterfaceCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+
+func __unmarshalCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset(b []byte, v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset) error {
+	if string(b) == "null" {
+		return nil
+	}
+
+	var tn struct {
+		TypeName string `json:"__typename"`
+	}
+	err := json.Unmarshal(b, &tn)
+	if err != nil {
+		return err
+	}
+
+	switch tn.TypeName {
+	case "Agent":
+		*v = new(CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent)
+		return json.Unmarshal(b, *v)
+	case "ClaudeCodePlugin":
+		*v = new(CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin)
+		return json.Unmarshal(b, *v)
+	case "Command":
+		*v = new(CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand)
+		return json.Unmarshal(b, *v)
+	case "Hook":
+		*v = new(CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook)
+		return json.Unmarshal(b, *v)
+	case "McpServer":
+		*v = new(CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer)
+		return json.Unmarshal(b, *v)
+	case "Rule":
+		*v = new(CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule)
+		return json.Unmarshal(b, *v)
+	case "Skill":
+		*v = new(CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill)
+		return json.Unmarshal(b, *v)
+	case "":
+		return fmt.Errorf(
+			"response was missing VaultAsset.__typename")
+	default:
+		return fmt.Errorf(
+			`unexpected concrete type for CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset: "%v"`, tn.TypeName)
+	}
+}
+
+func __marshalCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset(v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset) ([]byte, error) {
+
+	var typename string
+	switch v := (*v).(type) {
+	case *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent:
+		typename = "Agent"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent
+		}{typename, v}
+		return json.Marshal(result)
+	case *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin:
+		typename = "ClaudeCodePlugin"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin
+		}{typename, v}
+		return json.Marshal(result)
+	case *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand:
+		typename = "Command"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand
+		}{typename, v}
+		return json.Marshal(result)
+	case *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook:
+		typename = "Hook"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook
+		}{typename, v}
+		return json.Marshal(result)
+	case *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer:
+		typename = "McpServer"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesMcpServer
+		}{typename, v}
+		return json.Marshal(result)
+	case *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule:
+		typename = "Rule"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesRule
+		}{typename, v}
+		return json.Marshal(result)
+	case *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill:
+		typename = "Skill"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesSkill
+		}{typename, v}
+		return json.Marshal(result)
+	case nil:
+		return []byte("null"), nil
+	default:
+		return nil, fmt.Errorf(
+			`unexpected concrete type for CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset: "%T"`, v)
+	}
+}
+
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionPageInfo includes the requested fields of the GraphQL type PageInfo.
+// The GraphQL type's documentation follows.
+//
+// The Relay compliant `PageInfo` type, containing data necessary to paginate this connection.
+type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionPageInfo struct {
+	// When paginating forwards, are there more items?
+	HasNextPage bool `json:"hasNextPage"`
+	// When paginating forwards, the cursor to continue.
+	EndCursor *string `json:"endCursor"`
+}
+
+// GetHasNextPage returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionPageInfo.HasNextPage, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionPageInfo) GetHasNextPage() bool {
+	return v.HasNextPage
+}
+
+// GetEndCursor returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionPageInfo.EndCursor, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionPageInfo) GetEndCursor() *string {
+	return v.EndCursor
+}
+
+// CollectionAssetsResponse is returned by CollectionAssets on success.
+type CollectionAssetsResponse struct {
+	Collection CollectionAssetsCollectionVaultAssetCollection `json:"collection"`
+}
+
+// GetCollection returns CollectionAssetsResponse.Collection, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsResponse) GetCollection() CollectionAssetsCollectionVaultAssetCollection {
+	return v.Collection
+}
+
 // CreateAgentAssetCreateAssetCreateAssetMutation includes the requested fields of the GraphQL type CreateAssetMutation.
 type CreateAgentAssetCreateAssetCreateAssetMutation struct {
 	Asset  *CreateAgentAssetCreateAssetCreateAssetMutationAssetVaultAsset  `json:"-"`
@@ -1927,6 +2441,86 @@ func (v *CreateAgentAssetResponse) GetCreateAsset() *CreateAgentAssetCreateAsset
 	return v.CreateAsset
 }
 
+// CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutation includes the requested fields of the GraphQL type CreateAssetCollectionMutation.
+// The GraphQL type's documentation follows.
+//
+// Create a new asset collection.
+type CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutation struct {
+	Collection *CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationCollectionVaultAssetCollection `json:"collection"`
+	Errors     []CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationErrorsErrorType               `json:"errors"`
+}
+
+// GetCollection returns CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutation.Collection, and is useful for accessing the field via an interface.
+func (v *CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutation) GetCollection() *CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationCollectionVaultAssetCollection {
+	return v.Collection
+}
+
+// GetErrors returns CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutation.Errors, and is useful for accessing the field via an interface.
+func (v *CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutation) GetErrors() []CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationErrorsErrorType {
+	return v.Errors
+}
+
+// CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationCollectionVaultAssetCollection includes the requested fields of the GraphQL type VaultAssetCollection.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for an asset collection.
+//
+// “installations“ and “permissions“ walk every member asset — request
+// them only for a single collection (the install dialog), not in lists.
+type CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationCollectionVaultAssetCollection struct {
+	Id string `json:"id"`
+}
+
+// GetId returns CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationCollectionVaultAssetCollection.Id, and is useful for accessing the field via an interface.
+func (v *CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationCollectionVaultAssetCollection) GetId() string {
+	return v.Id
+}
+
+// CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+type CreateAssetCollectionInput struct {
+	// Collection name (must be unique within org)
+	Name string `json:"name"`
+	// Collection description
+	Description *string `json:"description"`
+	// Initial member assets
+	AssetGids []string `json:"assetGids"`
+}
+
+// GetName returns CreateAssetCollectionInput.Name, and is useful for accessing the field via an interface.
+func (v *CreateAssetCollectionInput) GetName() string { return v.Name }
+
+// GetDescription returns CreateAssetCollectionInput.Description, and is useful for accessing the field via an interface.
+func (v *CreateAssetCollectionInput) GetDescription() *string { return v.Description }
+
+// GetAssetGids returns CreateAssetCollectionInput.AssetGids, and is useful for accessing the field via an interface.
+func (v *CreateAssetCollectionInput) GetAssetGids() []string { return v.AssetGids }
+
+// CreateAssetCollectionResponse is returned by CreateAssetCollection on success.
+type CreateAssetCollectionResponse struct {
+	// Create a new asset collection.
+	CreateAssetCollection *CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutation `json:"createAssetCollection"`
+}
+
+// GetCreateAssetCollection returns CreateAssetCollectionResponse.CreateAssetCollection, and is useful for accessing the field via an interface.
+func (v *CreateAssetCollectionResponse) GetCreateAssetCollection() *CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutation {
+	return v.CreateAssetCollection
+}
+
 type CreateAssetInput struct {
 	Name string `json:"name"`
 	// Type: skill, rule, agent, command, mcp, hook, plugin
@@ -2158,9 +2752,10 @@ func (v *CreateBotCreateBotCreateBotMutationBotManagedBot) GetName() string { re
 func (v *CreateBotCreateBotCreateBotMutationBotManagedBot) GetSlug() string { return v.Slug }
 
 type CreateBotInput struct {
-	Name        string   `json:"name"`
-	Description *string  `json:"description"`
-	TeamIds     []string `json:"teamIds"`
+	Name          string   `json:"name"`
+	Description   *string  `json:"description"`
+	TeamIds       []string `json:"teamIds"`
+	RepositoryIds []string `json:"repositoryIds"`
 }
 
 // GetName returns CreateBotInput.Name, and is useful for accessing the field via an interface.
@@ -2171,6 +2766,9 @@ func (v *CreateBotInput) GetDescription() *string { return v.Description }
 
 // GetTeamIds returns CreateBotInput.TeamIds, and is useful for accessing the field via an interface.
 func (v *CreateBotInput) GetTeamIds() []string { return v.TeamIds }
+
+// GetRepositoryIds returns CreateBotInput.RepositoryIds, and is useful for accessing the field via an interface.
+func (v *CreateBotInput) GetRepositoryIds() []string { return v.RepositoryIds }
 
 // CreateBotResponse is returned by CreateBot on success.
 type CreateBotResponse struct {
@@ -2277,6 +2875,52 @@ type CreateTeamResponse struct {
 // GetCreateTeam returns CreateTeamResponse.CreateTeam, and is useful for accessing the field via an interface.
 func (v *CreateTeamResponse) GetCreateTeam() *CreateTeamCreateTeamCreateTeamMutation {
 	return v.CreateTeam
+}
+
+// DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutation includes the requested fields of the GraphQL type DeleteAssetCollectionMutation.
+// The GraphQL type's documentation follows.
+//
+// Delete an asset collection. Member assets are untouched.
+type DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutation struct {
+	Success bool                                                                                     `json:"success"`
+	Errors  []DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutationErrorsErrorType `json:"errors"`
+}
+
+// GetSuccess returns DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutation.Success, and is useful for accessing the field via an interface.
+func (v *DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutation) GetSuccess() bool {
+	return v.Success
+}
+
+// GetErrors returns DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutation.Errors, and is useful for accessing the field via an interface.
+func (v *DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutation) GetErrors() []DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutationErrorsErrorType {
+	return v.Errors
+}
+
+// DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+// DeleteAssetCollectionResponse is returned by DeleteAssetCollection on success.
+type DeleteAssetCollectionResponse struct {
+	// Delete an asset collection. Member assets are untouched.
+	DeleteAssetCollection *DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutation `json:"deleteAssetCollection"`
+}
+
+// GetDeleteAssetCollection returns DeleteAssetCollectionResponse.DeleteAssetCollection, and is useful for accessing the field via an interface.
+func (v *DeleteAssetCollectionResponse) GetDeleteAssetCollection() *DeleteAssetCollectionDeleteAssetCollectionDeleteAssetCollectionMutation {
+	return v.DeleteAssetCollection
 }
 
 // DeleteBotApiKeyDeleteBotApiKeyDeleteBotApiKeyMutation includes the requested fields of the GraphQL type DeleteBotApiKeyMutation.
@@ -2668,6 +3312,85 @@ type ListBotsResponse struct {
 // GetBots returns ListBotsResponse.Bots, and is useful for accessing the field via an interface.
 func (v *ListBotsResponse) GetBots() []ListBotsBotsManagedBot { return v.Bots }
 
+// ListCollectionsCollectionsVaultAssetCollectionConnection includes the requested fields of the GraphQL type VaultAssetCollectionConnection.
+// The GraphQL type's documentation follows.
+//
+// Paginated list of asset collections.
+type ListCollectionsCollectionsVaultAssetCollectionConnection struct {
+	// Pagination data for this connection.
+	PageInfo ListCollectionsCollectionsVaultAssetCollectionConnectionPageInfo                    `json:"pageInfo"`
+	Nodes    []ListCollectionsCollectionsVaultAssetCollectionConnectionNodesVaultAssetCollection `json:"nodes"`
+}
+
+// GetPageInfo returns ListCollectionsCollectionsVaultAssetCollectionConnection.PageInfo, and is useful for accessing the field via an interface.
+func (v *ListCollectionsCollectionsVaultAssetCollectionConnection) GetPageInfo() ListCollectionsCollectionsVaultAssetCollectionConnectionPageInfo {
+	return v.PageInfo
+}
+
+// GetNodes returns ListCollectionsCollectionsVaultAssetCollectionConnection.Nodes, and is useful for accessing the field via an interface.
+func (v *ListCollectionsCollectionsVaultAssetCollectionConnection) GetNodes() []ListCollectionsCollectionsVaultAssetCollectionConnectionNodesVaultAssetCollection {
+	return v.Nodes
+}
+
+// ListCollectionsCollectionsVaultAssetCollectionConnectionNodesVaultAssetCollection includes the requested fields of the GraphQL type VaultAssetCollection.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for an asset collection.
+//
+// “installations“ and “permissions“ walk every member asset — request
+// them only for a single collection (the install dialog), not in lists.
+type ListCollectionsCollectionsVaultAssetCollectionConnectionNodesVaultAssetCollection struct {
+	Id          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// GetId returns ListCollectionsCollectionsVaultAssetCollectionConnectionNodesVaultAssetCollection.Id, and is useful for accessing the field via an interface.
+func (v *ListCollectionsCollectionsVaultAssetCollectionConnectionNodesVaultAssetCollection) GetId() string {
+	return v.Id
+}
+
+// GetName returns ListCollectionsCollectionsVaultAssetCollectionConnectionNodesVaultAssetCollection.Name, and is useful for accessing the field via an interface.
+func (v *ListCollectionsCollectionsVaultAssetCollectionConnectionNodesVaultAssetCollection) GetName() string {
+	return v.Name
+}
+
+// GetDescription returns ListCollectionsCollectionsVaultAssetCollectionConnectionNodesVaultAssetCollection.Description, and is useful for accessing the field via an interface.
+func (v *ListCollectionsCollectionsVaultAssetCollectionConnectionNodesVaultAssetCollection) GetDescription() string {
+	return v.Description
+}
+
+// ListCollectionsCollectionsVaultAssetCollectionConnectionPageInfo includes the requested fields of the GraphQL type PageInfo.
+// The GraphQL type's documentation follows.
+//
+// The Relay compliant `PageInfo` type, containing data necessary to paginate this connection.
+type ListCollectionsCollectionsVaultAssetCollectionConnectionPageInfo struct {
+	// When paginating forwards, are there more items?
+	HasNextPage bool `json:"hasNextPage"`
+	// When paginating forwards, the cursor to continue.
+	EndCursor *string `json:"endCursor"`
+}
+
+// GetHasNextPage returns ListCollectionsCollectionsVaultAssetCollectionConnectionPageInfo.HasNextPage, and is useful for accessing the field via an interface.
+func (v *ListCollectionsCollectionsVaultAssetCollectionConnectionPageInfo) GetHasNextPage() bool {
+	return v.HasNextPage
+}
+
+// GetEndCursor returns ListCollectionsCollectionsVaultAssetCollectionConnectionPageInfo.EndCursor, and is useful for accessing the field via an interface.
+func (v *ListCollectionsCollectionsVaultAssetCollectionConnectionPageInfo) GetEndCursor() *string {
+	return v.EndCursor
+}
+
+// ListCollectionsResponse is returned by ListCollections on success.
+type ListCollectionsResponse struct {
+	Collections ListCollectionsCollectionsVaultAssetCollectionConnection `json:"collections"`
+}
+
+// GetCollections returns ListCollectionsResponse.Collections, and is useful for accessing the field via an interface.
+func (v *ListCollectionsResponse) GetCollections() ListCollectionsCollectionsVaultAssetCollectionConnection {
+	return v.Collections
+}
+
 // ListTeamsOrganizationOrganizationType includes the requested fields of the GraphQL type OrganizationType.
 type ListTeamsOrganizationOrganizationType struct {
 	Teams ListTeamsOrganizationOrganizationTypeTeamsTeamsConnection `json:"teams"`
@@ -2856,6 +3579,19 @@ func (v *McpToolInput) GetDescription() *string { return v.Description }
 // GetEstimatedTokens returns McpToolInput.EstimatedTokens, and is useful for accessing the field via an interface.
 func (v *McpToolInput) GetEstimatedTokens() *int { return v.EstimatedTokens }
 
+type ModifyAssetCollectionAssetsInput struct {
+	// Collection GID
+	CollectionGid string `json:"collectionGid"`
+	// List of asset GIDs to add/remove
+	AssetGids []string `json:"assetGids"`
+}
+
+// GetCollectionGid returns ModifyAssetCollectionAssetsInput.CollectionGid, and is useful for accessing the field via an interface.
+func (v *ModifyAssetCollectionAssetsInput) GetCollectionGid() string { return v.CollectionGid }
+
+// GetAssetGids returns ModifyAssetCollectionAssetsInput.AssetGids, and is useful for accessing the field via an interface.
+func (v *ModifyAssetCollectionAssetsInput) GetAssetGids() []string { return v.AssetGids }
+
 // OrgRepositoriesOrganizationOrganizationType includes the requested fields of the GraphQL type OrganizationType.
 type OrgRepositoriesOrganizationOrganizationType struct {
 	Repositories OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnection `json:"repositories"`
@@ -2987,6 +3723,68 @@ type RemoveAssetInstallationsResponse struct {
 // GetRemoveAssetInstallations returns RemoveAssetInstallationsResponse.RemoveAssetInstallations, and is useful for accessing the field via an interface.
 func (v *RemoveAssetInstallationsResponse) GetRemoveAssetInstallations() *RemoveAssetInstallationsRemoveAssetInstallationsRemoveAssetInstallationsMutation {
 	return v.RemoveAssetInstallations
+}
+
+// RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutation includes the requested fields of the GraphQL type RemoveAssetsFromCollectionMutation.
+// The GraphQL type's documentation follows.
+//
+// Remove assets from a collection. The assets themselves are untouched.
+type RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutation struct {
+	Collection *RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationCollectionVaultAssetCollection `json:"collection"`
+	Errors     []RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationErrorsErrorType               `json:"errors"`
+}
+
+// GetCollection returns RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutation.Collection, and is useful for accessing the field via an interface.
+func (v *RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutation) GetCollection() *RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationCollectionVaultAssetCollection {
+	return v.Collection
+}
+
+// GetErrors returns RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutation.Errors, and is useful for accessing the field via an interface.
+func (v *RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutation) GetErrors() []RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationErrorsErrorType {
+	return v.Errors
+}
+
+// RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationCollectionVaultAssetCollection includes the requested fields of the GraphQL type VaultAssetCollection.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for an asset collection.
+//
+// “installations“ and “permissions“ walk every member asset — request
+// them only for a single collection (the install dialog), not in lists.
+type RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationCollectionVaultAssetCollection struct {
+	Id string `json:"id"`
+}
+
+// GetId returns RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationCollectionVaultAssetCollection.Id, and is useful for accessing the field via an interface.
+func (v *RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationCollectionVaultAssetCollection) GetId() string {
+	return v.Id
+}
+
+// RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+// RemoveAssetsFromCollectionResponse is returned by RemoveAssetsFromCollection on success.
+type RemoveAssetsFromCollectionResponse struct {
+	// Remove assets from a collection. The assets themselves are untouched.
+	RemoveAssetsFromCollection *RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutation `json:"removeAssetsFromCollection"`
+}
+
+// GetRemoveAssetsFromCollection returns RemoveAssetsFromCollectionResponse.RemoveAssetsFromCollection, and is useful for accessing the field via an interface.
+func (v *RemoveAssetsFromCollectionResponse) GetRemoveAssetsFromCollection() *RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutation {
+	return v.RemoveAssetsFromCollection
 }
 
 type RemoveTeamMemberInput struct {
@@ -4111,11 +4909,92 @@ func (v *UninstallSkillFromBotUninstallSkillFromBotUninstallSkillFromBotMutation
 	return v.Messages
 }
 
+type UpdateAssetCollectionInput struct {
+	// Collection GID
+	Gid string `json:"gid"`
+	// New collection name
+	Name *string `json:"name"`
+	// New collection description
+	Description *string `json:"description"`
+}
+
+// GetGid returns UpdateAssetCollectionInput.Gid, and is useful for accessing the field via an interface.
+func (v *UpdateAssetCollectionInput) GetGid() string { return v.Gid }
+
+// GetName returns UpdateAssetCollectionInput.Name, and is useful for accessing the field via an interface.
+func (v *UpdateAssetCollectionInput) GetName() *string { return v.Name }
+
+// GetDescription returns UpdateAssetCollectionInput.Description, and is useful for accessing the field via an interface.
+func (v *UpdateAssetCollectionInput) GetDescription() *string { return v.Description }
+
+// UpdateAssetCollectionResponse is returned by UpdateAssetCollection on success.
+type UpdateAssetCollectionResponse struct {
+	// Update an asset collection's name or description.
+	UpdateAssetCollection *UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutation `json:"updateAssetCollection"`
+}
+
+// GetUpdateAssetCollection returns UpdateAssetCollectionResponse.UpdateAssetCollection, and is useful for accessing the field via an interface.
+func (v *UpdateAssetCollectionResponse) GetUpdateAssetCollection() *UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutation {
+	return v.UpdateAssetCollection
+}
+
+// UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutation includes the requested fields of the GraphQL type UpdateAssetCollectionMutation.
+// The GraphQL type's documentation follows.
+//
+// Update an asset collection's name or description.
+type UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutation struct {
+	Collection *UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationCollectionVaultAssetCollection `json:"collection"`
+	Errors     []UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationErrorsErrorType               `json:"errors"`
+}
+
+// GetCollection returns UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutation.Collection, and is useful for accessing the field via an interface.
+func (v *UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutation) GetCollection() *UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationCollectionVaultAssetCollection {
+	return v.Collection
+}
+
+// GetErrors returns UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutation.Errors, and is useful for accessing the field via an interface.
+func (v *UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutation) GetErrors() []UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationErrorsErrorType {
+	return v.Errors
+}
+
+// UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationCollectionVaultAssetCollection includes the requested fields of the GraphQL type VaultAssetCollection.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for an asset collection.
+//
+// “installations“ and “permissions“ walk every member asset — request
+// them only for a single collection (the install dialog), not in lists.
+type UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationCollectionVaultAssetCollection struct {
+	Id string `json:"id"`
+}
+
+// GetId returns UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationCollectionVaultAssetCollection.Id, and is useful for accessing the field via an interface.
+func (v *UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationCollectionVaultAssetCollection) GetId() string {
+	return v.Id
+}
+
+// UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
 type UpdateBotInput struct {
-	Id          string   `json:"id"`
-	Name        *string  `json:"name"`
-	Description *string  `json:"description"`
-	TeamIds     []string `json:"teamIds"`
+	Id            string   `json:"id"`
+	Name          *string  `json:"name"`
+	Description   *string  `json:"description"`
+	TeamIds       []string `json:"teamIds"`
+	RepositoryIds []string `json:"repositoryIds"`
 }
 
 // GetId returns UpdateBotInput.Id, and is useful for accessing the field via an interface.
@@ -4129,6 +5008,9 @@ func (v *UpdateBotInput) GetDescription() *string { return v.Description }
 
 // GetTeamIds returns UpdateBotInput.TeamIds, and is useful for accessing the field via an interface.
 func (v *UpdateBotInput) GetTeamIds() []string { return v.TeamIds }
+
+// GetRepositoryIds returns UpdateBotInput.RepositoryIds, and is useful for accessing the field via an interface.
+func (v *UpdateBotInput) GetRepositoryIds() []string { return v.RepositoryIds }
 
 // UpdateBotResponse is returned by UpdateBot on success.
 type UpdateBotResponse struct {
@@ -5574,6 +6456,14 @@ func (v *__AddAssetPullRequestFileChangeInput) GetInput() AddAssetPullRequestFil
 	return v.Input
 }
 
+// __AddAssetsToCollectionInput is used internally by genqlient
+type __AddAssetsToCollectionInput struct {
+	Input ModifyAssetCollectionAssetsInput `json:"input"`
+}
+
+// GetInput returns __AddAssetsToCollectionInput.Input, and is useful for accessing the field via an interface.
+func (v *__AddAssetsToCollectionInput) GetInput() ModifyAssetCollectionAssetsInput { return v.Input }
+
 // __AssetAuditLogInput is used internally by genqlient
 type __AssetAuditLogInput struct {
 	First *int    `json:"first"`
@@ -5658,6 +6548,22 @@ type __BotInstalledInput struct {
 // GetSlug returns __BotInstalledInput.Slug, and is useful for accessing the field via an interface.
 func (v *__BotInstalledInput) GetSlug() string { return v.Slug }
 
+// __CollectionAssetsInput is used internally by genqlient
+type __CollectionAssetsInput struct {
+	Id    string  `json:"id"`
+	First int     `json:"first"`
+	After *string `json:"after"`
+}
+
+// GetId returns __CollectionAssetsInput.Id, and is useful for accessing the field via an interface.
+func (v *__CollectionAssetsInput) GetId() string { return v.Id }
+
+// GetFirst returns __CollectionAssetsInput.First, and is useful for accessing the field via an interface.
+func (v *__CollectionAssetsInput) GetFirst() int { return v.First }
+
+// GetAfter returns __CollectionAssetsInput.After, and is useful for accessing the field via an interface.
+func (v *__CollectionAssetsInput) GetAfter() *string { return v.After }
+
 // __CreateAgentAssetInput is used internally by genqlient
 type __CreateAgentAssetInput struct {
 	Input CreateAssetInput `json:"input"`
@@ -5665,6 +6571,14 @@ type __CreateAgentAssetInput struct {
 
 // GetInput returns __CreateAgentAssetInput.Input, and is useful for accessing the field via an interface.
 func (v *__CreateAgentAssetInput) GetInput() CreateAssetInput { return v.Input }
+
+// __CreateAssetCollectionInput is used internally by genqlient
+type __CreateAssetCollectionInput struct {
+	Input CreateAssetCollectionInput `json:"input"`
+}
+
+// GetInput returns __CreateAssetCollectionInput.Input, and is useful for accessing the field via an interface.
+func (v *__CreateAssetCollectionInput) GetInput() CreateAssetCollectionInput { return v.Input }
 
 // __CreateAssetPullRequestInput is used internally by genqlient
 type __CreateAssetPullRequestInput struct {
@@ -5718,6 +6632,14 @@ type __CreateTeamInput struct {
 // GetInput returns __CreateTeamInput.Input, and is useful for accessing the field via an interface.
 func (v *__CreateTeamInput) GetInput() CreateTeamInput { return v.Input }
 
+// __DeleteAssetCollectionInput is used internally by genqlient
+type __DeleteAssetCollectionInput struct {
+	Gid string `json:"gid"`
+}
+
+// GetGid returns __DeleteAssetCollectionInput.Gid, and is useful for accessing the field via an interface.
+func (v *__DeleteAssetCollectionInput) GetGid() string { return v.Gid }
+
 // __DeleteBotApiKeyInput is used internally by genqlient
 type __DeleteBotApiKeyInput struct {
 	KeyId string `json:"keyId"`
@@ -5770,6 +6692,18 @@ func (v *__InstallSkillToBotInput) GetBotId() string { return v.BotId }
 // GetSkillId returns __InstallSkillToBotInput.SkillId, and is useful for accessing the field via an interface.
 func (v *__InstallSkillToBotInput) GetSkillId() string { return v.SkillId }
 
+// __ListCollectionsInput is used internally by genqlient
+type __ListCollectionsInput struct {
+	First int     `json:"first"`
+	After *string `json:"after"`
+}
+
+// GetFirst returns __ListCollectionsInput.First, and is useful for accessing the field via an interface.
+func (v *__ListCollectionsInput) GetFirst() int { return v.First }
+
+// GetAfter returns __ListCollectionsInput.After, and is useful for accessing the field via an interface.
+func (v *__ListCollectionsInput) GetAfter() *string { return v.After }
+
 // __ListTeamsInput is used internally by genqlient
 type __ListTeamsInput struct {
 	First       int     `json:"first"`
@@ -5805,6 +6739,16 @@ type __RemoveAssetInstallationsInput struct {
 
 // GetInput returns __RemoveAssetInstallationsInput.Input, and is useful for accessing the field via an interface.
 func (v *__RemoveAssetInstallationsInput) GetInput() RemoveAssetInstallationsInput { return v.Input }
+
+// __RemoveAssetsFromCollectionInput is used internally by genqlient
+type __RemoveAssetsFromCollectionInput struct {
+	Input ModifyAssetCollectionAssetsInput `json:"input"`
+}
+
+// GetInput returns __RemoveAssetsFromCollectionInput.Input, and is useful for accessing the field via an interface.
+func (v *__RemoveAssetsFromCollectionInput) GetInput() ModifyAssetCollectionAssetsInput {
+	return v.Input
+}
 
 // __RemoveTeamMemberInput is used internally by genqlient
 type __RemoveTeamMemberInput struct {
@@ -5873,6 +6817,14 @@ func (v *__UninstallSkillFromBotInput) GetBotId() string { return v.BotId }
 
 // GetSkillId returns __UninstallSkillFromBotInput.SkillId, and is useful for accessing the field via an interface.
 func (v *__UninstallSkillFromBotInput) GetSkillId() string { return v.SkillId }
+
+// __UpdateAssetCollectionInput is used internally by genqlient
+type __UpdateAssetCollectionInput struct {
+	Input UpdateAssetCollectionInput `json:"input"`
+}
+
+// GetInput returns __UpdateAssetCollectionInput.Input, and is useful for accessing the field via an interface.
+func (v *__UpdateAssetCollectionInput) GetInput() UpdateAssetCollectionInput { return v.Input }
 
 // __UpdateBotInput is used internally by genqlient
 type __UpdateBotInput struct {
@@ -5953,6 +6905,46 @@ func AddAssetPullRequestFileChange(
 	}
 
 	data_ = &AddAssetPullRequestFileChangeResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by AddAssetsToCollection.
+const AddAssetsToCollection_Operation = `
+mutation AddAssetsToCollection ($input: ModifyAssetCollectionAssetsInput!) {
+	addAssetsToCollection(input: $input) {
+		collection {
+			id
+		}
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func AddAssetsToCollection(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input ModifyAssetCollectionAssetsInput,
+) (data_ *AddAssetsToCollectionResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "AddAssetsToCollection",
+		Query:  AddAssetsToCollection_Operation,
+		Variables: &__AddAssetsToCollectionInput{
+			Input: input,
+		},
+	}
+
+	data_ = &AddAssetsToCollectionResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(
@@ -6247,6 +7239,54 @@ func BotInstalled(
 	return data_, err_
 }
 
+// The query executed by CollectionAssets.
+const CollectionAssets_Operation = `
+query CollectionAssets ($id: ID!, $first: Int!, $after: String) {
+	collection(id: $id) {
+		assets(first: $first, after: $after) {
+			pageInfo {
+				hasNextPage
+				endCursor
+			}
+			nodes {
+				__typename
+				id
+				slug
+			}
+		}
+	}
+}
+`
+
+func CollectionAssets(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	id string,
+	first int,
+	after *string,
+) (data_ *CollectionAssetsResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "CollectionAssets",
+		Query:  CollectionAssets_Operation,
+		Variables: &__CollectionAssetsInput{
+			Id:    id,
+			First: first,
+			After: after,
+		},
+	}
+
+	data_ = &CollectionAssetsResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
 // The mutation executed by CreateAgentAsset.
 const CreateAgentAsset_Operation = `
 mutation CreateAgentAsset ($input: CreateAssetInput!) {
@@ -6281,6 +7321,46 @@ func CreateAgentAsset(
 	}
 
 	data_ = &CreateAgentAssetResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by CreateAssetCollection.
+const CreateAssetCollection_Operation = `
+mutation CreateAssetCollection ($input: CreateAssetCollectionInput!) {
+	createAssetCollection(input: $input) {
+		collection {
+			id
+		}
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func CreateAssetCollection(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input CreateAssetCollectionInput,
+) (data_ *CreateAssetCollectionResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "CreateAssetCollection",
+		Query:  CreateAssetCollection_Operation,
+		Variables: &__CreateAssetCollectionInput{
+			Input: input,
+		},
+	}
+
+	data_ = &CreateAssetCollectionResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(
@@ -6477,6 +7557,44 @@ func CreateTeam(
 	}
 
 	data_ = &CreateTeamResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by DeleteAssetCollection.
+const DeleteAssetCollection_Operation = `
+mutation DeleteAssetCollection ($gid: ID!) {
+	deleteAssetCollection(gid: $gid) {
+		success
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func DeleteAssetCollection(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	gid string,
+) (data_ *DeleteAssetCollectionResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "DeleteAssetCollection",
+		Query:  DeleteAssetCollection_Operation,
+		Variables: &__DeleteAssetCollectionInput{
+			Gid: gid,
+		},
+	}
+
+	data_ = &DeleteAssetCollectionResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(
@@ -6793,6 +7911,50 @@ func ListBots(
 	return data_, err_
 }
 
+// The query executed by ListCollections.
+const ListCollections_Operation = `
+query ListCollections ($first: Int!, $after: String) {
+	collections(first: $first, after: $after) {
+		pageInfo {
+			hasNextPage
+			endCursor
+		}
+		nodes {
+			id
+			name
+			description
+		}
+	}
+}
+`
+
+func ListCollections(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	first int,
+	after *string,
+) (data_ *ListCollectionsResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "ListCollections",
+		Query:  ListCollections_Operation,
+		Variables: &__ListCollectionsInput{
+			First: first,
+			After: after,
+		},
+	}
+
+	data_ = &ListCollectionsResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
 // The query executed by ListTeams.
 const ListTeams_Operation = `
 query ListTeams ($first: Int!, $term: String, $memberFirst: Int!) {
@@ -6930,6 +8092,46 @@ func RemoveAssetInstallations(
 	}
 
 	data_ = &RemoveAssetInstallationsResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by RemoveAssetsFromCollection.
+const RemoveAssetsFromCollection_Operation = `
+mutation RemoveAssetsFromCollection ($input: ModifyAssetCollectionAssetsInput!) {
+	removeAssetsFromCollection(input: $input) {
+		collection {
+			id
+		}
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func RemoveAssetsFromCollection(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input ModifyAssetCollectionAssetsInput,
+) (data_ *RemoveAssetsFromCollectionResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "RemoveAssetsFromCollection",
+		Query:  RemoveAssetsFromCollection_Operation,
+		Variables: &__RemoveAssetsFromCollectionInput{
+			Input: input,
+		},
+	}
+
+	data_ = &RemoveAssetsFromCollectionResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(
@@ -7236,6 +8438,46 @@ func UninstallSkillFromBot(
 	}
 
 	data_ = &UninstallSkillFromBotResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by UpdateAssetCollection.
+const UpdateAssetCollection_Operation = `
+mutation UpdateAssetCollection ($input: UpdateAssetCollectionInput!) {
+	updateAssetCollection(input: $input) {
+		collection {
+			id
+		}
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func UpdateAssetCollection(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input UpdateAssetCollectionInput,
+) (data_ *UpdateAssetCollectionResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "UpdateAssetCollection",
+		Query:  UpdateAssetCollection_Operation,
+		Variables: &__UpdateAssetCollectionInput{
+			Input: input,
+		},
+	}
+
+	data_ = &UpdateAssetCollectionResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(

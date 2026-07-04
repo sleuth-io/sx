@@ -63,7 +63,6 @@ inspected via tokens, not screenshotted.
 
 - skills.new sign-in from the app (onboarding points to `sx init`; the app
   picks up the resulting config).
-- Sleuth-vault collections (feature-detected; UI hides collections there).
 - Artifacts are unsigned pending Apple Developer ID / Windows cert.
 - Dedup detection and self-improving loops are v1.1/v2 per the spec.
 
@@ -130,3 +129,20 @@ writing/docs collections, 30 assets):
   team (same rule as GetCollectionSharing) as "Collection" rows above the
   assets; clicking opens the collection. Verified: marketing shows the
   writing collection + its three assets.
+
+## Round 6: skills.new collections (2026-07-04)
+
+- SleuthVault now implements CollectionStore against the pulse collections
+  API (SK-613): list maps server collections to manifest form (member
+  slugs, paged past the server's 50-item relay cap), save upserts by name
+  (create with resolved asset GIDs, or description update + membership
+  diff via add/remove), delete resolves the GID by name.
+- Verified live against dev.skills.local end-to-end: device-flow auth,
+  `sx collection list` reads a UI-created collection, and a
+  create → update (description + membership swap) → list → delete round
+  trip through the CollectionStore interface the desktop app uses.
+  Live testing caught the nested `assets(first: 250)` exceeding the
+  server's relay cap — membership reads are paginated per collection now.
+- Unit tests cover list mapping, create/update diffing, missing assets,
+  server-side mutation errors, and delete-by-name against a mocked
+  GraphQL server.
