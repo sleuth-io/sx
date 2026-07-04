@@ -76,6 +76,23 @@ func (p *PathVault) Authenticate(ctx context.Context) (string, error) {
 	return "", nil
 }
 
+// checkManifestConflicts fails when a cloud-sync client (Dropbox,
+// Google Drive, OneDrive, iCloud) has saved a conflicted copy of the
+// manifest next to sx.toml. Proceeding would silently ignore whichever
+// side of the conflict lost, so this is an error until a human merges.
+func checkManifestConflicts(vaultRoot string) error {
+	copies, err := utils.FindConflictCopies(filepath.Join(vaultRoot, manifest.FileName))
+	if err != nil || len(copies) == 0 {
+		// A scan failure here must not mask the real operation; the
+		// manifest read that follows will surface any genuine IO error.
+		return nil
+	}
+	return fmt.Errorf(`vault manifest has a sync conflict: found %q next to %s
+Your cloud-sync client saved a conflicting copy of the vault manifest.
+To fix: compare the files, merge any missing entries into %s, delete the conflicted copy, and wait for the folder to finish syncing. See docs/synced-folders.md`,
+		copies[0], manifest.FileName, manifest.FileName)
+}
+
 // GetLockFile loads the vault's manifest and returns a lock file resolved
 // for the caller's identity. Team/user scopes in the manifest are
 // flattened to repo-scoped entries based on team membership and the
@@ -86,6 +103,9 @@ func (p *PathVault) Authenticate(ctx context.Context) (string, error) {
 func (p *PathVault) GetLockFile(ctx context.Context, cachedETag string) (content []byte, etag string, notModified bool, err error) {
 	var data []byte
 	err = p.withReadLock(ctx, func() error {
+		if err := checkManifestConflicts(p.repoPath); err != nil {
+			return err
+		}
 		bytes, err := resolveLockBytesForActor(ctx, p.repoPath)
 		if err != nil {
 			return err
@@ -312,9 +332,8 @@ func (p *PathVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Li
 	}
 
 	var assets []AssetSummary
-	for _, entry := range entries {
-		// Dot-prefixed entries are root-view staging directories, not assets
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+	for _, entry := range filterScanEntries(entries) {
+		if !entry.IsDir() {
 			continue
 		}
 
@@ -406,7 +425,7 @@ func (p *PathVault) GetAssetDetails(ctx context.Context, name string) (*AssetDet
 			if entries, err := os.ReadDir(versionDir); err == nil {
 				fileCount := 0
 				for _, e := range entries {
-					if !e.IsDir() {
+					if !e.IsDir() && !utils.IsSyncArtifact(e.Name()) {
 						fileCount++
 					}
 				}

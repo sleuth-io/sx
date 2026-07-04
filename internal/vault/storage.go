@@ -178,6 +178,9 @@ func versionListForAsset(vaultRoot string, l layout.Layout, name string) ([]stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to read version list: %w", err)
 	}
+	if copies, err := utils.FindConflictCopies(listPath); err == nil && len(copies) > 0 {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring sync-conflicted copy %q for asset %s; using list.txt. Delete it once the folder has synced.\n", copies[0], name)
+	}
 	// Callers take the last element as "latest": keep every derivation
 	// semver-sorted regardless of the order versions were appended.
 	return version.Sort(parseVersionList(data)), nil

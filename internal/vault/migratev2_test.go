@@ -311,3 +311,32 @@ func TestMigrateStorageToV2LeavesNonAssetDirsInPlace(t *testing.T) {
 		t.Fatalf("second migrate err = %v, want ErrStorageUpToDate", err)
 	}
 }
+
+func TestMigrateStorageToV2SkipsSyncConflictDirs(t *testing.T) {
+	dir := t.TempDir()
+	seedV1Vault(t, dir)
+	// A conflicted-copy directory dropped by a sync client, shaped like a
+	// v1 asset (has a version subdirectory) so only artifact filtering —
+	// not the version-shape check — can exclude it.
+	conflictDir := "chat (conflicted copy 2026-07-04)"
+	if err := os.MkdirAll(filepath.Join(dir, "assets", conflictDir, "1.0"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "assets", conflictDir, "1.0", "SKILL.md"), []byte("junk"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := migrateStorageToV2(dir, "alice@example.com")
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if result == nil || result.Assets != 2 {
+		t.Fatalf("result = %+v, want 2 assets migrated", result)
+	}
+
+	// The conflicted dir stays in place and never enters the archive.
+	if _, err := os.Stat(filepath.Join(dir, "assets", conflictDir, "1.0", "SKILL.md")); err != nil {
+		t.Errorf("conflicted dir was moved or lost: %v", err)
+	}
+	mustNotExist(t, filepath.Join(dir, ".sx", "versions", conflictDir))
+}

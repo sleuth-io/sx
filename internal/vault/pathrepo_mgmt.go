@@ -27,6 +27,13 @@ func (p *PathVault) acquirePathLock(ctx context.Context) (*flock.Flock, error) {
 	if !locked {
 		return nil, errors.New("could not acquire path vault lock (timeout)")
 	}
+	// Refuse to write over an unresolved sync conflict: every mgmt write
+	// and migration funnels through this lock, so this one check covers
+	// them all.
+	if err := checkManifestConflicts(p.repoPath); err != nil {
+		_ = fl.Unlock()
+		return nil, err
+	}
 	return fl, nil
 }
 

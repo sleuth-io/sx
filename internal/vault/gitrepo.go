@@ -994,9 +994,8 @@ func (g *GitVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Lis
 	}
 
 	var assets []AssetSummary
-	for _, entry := range entries {
-		// Dot-prefixed entries are root-view staging directories, not assets
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+	for _, entry := range filterScanEntries(entries) {
+		if !entry.IsDir() {
 			continue
 		}
 

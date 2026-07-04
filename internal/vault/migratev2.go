@@ -12,6 +12,7 @@ import (
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
+	"github.com/sleuth-io/sx/internal/utils"
 	"github.com/sleuth-io/sx/internal/vault/layout"
 	"github.com/sleuth-io/sx/internal/version"
 )
@@ -82,8 +83,8 @@ func v1AssetDirNames(vaultRoot string) ([]string, error) {
 		return nil, fmt.Errorf("failed to read assets directory: %w", err)
 	}
 	var names []string
-	for _, entry := range entries {
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+	for _, entry := range filterScanEntries(entries) {
+		if !entry.IsDir() {
 			continue
 		}
 		// An existing archive for this asset means a prior (interrupted)
@@ -238,7 +239,9 @@ func ensureVersionList(vaultRoot string, v2 layout.Layout, name string) error {
 	}
 	var versions []string
 	for _, entry := range entries {
-		if entry.IsDir() {
+		// A conflicted-copy directory dropped by a sync client must not
+		// become a phantom version.
+		if entry.IsDir() && !utils.IsSyncArtifact(entry.Name()) {
 			versions = append(versions, entry.Name())
 		}
 	}
@@ -260,7 +263,7 @@ func refreshAllRootViews(vaultRoot string, v2 layout.Layout) error {
 		return err
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || utils.IsSyncArtifact(entry.Name()) {
 			continue
 		}
 		if err := refreshRootView(vaultRoot, v2, entry.Name()); err != nil {
