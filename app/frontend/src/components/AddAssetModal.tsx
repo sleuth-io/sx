@@ -76,23 +76,23 @@ export default function AddAssetModal({
         <span className="h-px flex-1 bg-line" />
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex h-9 items-center gap-2">
         <select
           value={kind}
           onChange={(e) => setKind(e.target.value)}
           disabled={busy}
-          className="rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+          className="h-full rounded-lg border border-line bg-canvas px-3 text-sm outline-none focus:border-accent"
         >
           {KINDS.map((k) => (
             <option key={k.key} value={k.key}>
-              Blank {k.label.toLowerCase()}
+              {k.label}
             </option>
           ))}
         </select>
         <button
           onClick={() => run(() => CreateBlankDraft(kind))}
           disabled={busy}
-          className="flex-1 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+          className="h-full flex-1 rounded-lg bg-accent px-4 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
         >
           {busy ? "Working…" : "Start writing"}
         </button>
