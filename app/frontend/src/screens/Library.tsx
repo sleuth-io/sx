@@ -34,6 +34,7 @@ import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
 import ShareModal from "../components/ShareModal";
 import Sidebar, { Scope } from "../components/Sidebar";
+import usePanelSize from "../lib/usePanelSize";
 import TeamModal from "../components/TeamModal";
 import TypeBadge from "../components/TypeBadge";
 
@@ -103,6 +104,12 @@ export default function Library({
   const [selected, setSelected] = useState<string | null>(null);
   const [openDraft, setOpenDraft] = useState<main.Draft | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [sidebarWidth, startSidebarResize] = usePanelSize(
+    "sx-panel-sidebar",
+    224,
+    180,
+    420,
+  );
 
   // In-app asset→collection drag. Pointer-based, NOT HTML5 drag-and-drop:
   // the native webview's file-drop handling swallows HTML5 drop events, so
@@ -513,6 +520,15 @@ export default function Library({
         onBrowseTeams={() => setBrowse("teams")}
         onSettings={() => setShowSettings(true)}
         dropCollection={dropCollection}
+        width={sidebarWidth}
+      />
+
+      {/* Sidebar resize handle */}
+      <div
+        onMouseDown={startSidebarResize}
+        title="Drag to resize"
+        className="-ml-1 w-1.5 shrink-0 cursor-col-resize transition hover:bg-accent/40"
+        style={{ ["--wails-draggable" as never]: "no-drag" }}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">

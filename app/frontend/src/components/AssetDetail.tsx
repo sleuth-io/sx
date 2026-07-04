@@ -11,6 +11,7 @@ import {
   UninstallAsset,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
+import usePanelSize from "../lib/usePanelSize";
 import FileRail from "./FileRail";
 import ShareModal from "./ShareModal";
 import TypeBadge from "./TypeBadge";
@@ -47,6 +48,14 @@ export default function AssetDetail({
   const [error, setError] = useState("");
   const [revision, setRevision] = useState("");
   const [activeFile, setActiveFile] = useState(0);
+  // Right-anchored panel: dragging its left edge outward grows it.
+  const [panelWidth, startPanelResize] = usePanelSize(
+    "sx-panel-detail",
+    1100,
+    480,
+    1800,
+    true,
+  );
 
   useEffect(() => {
     setDetail(null);
@@ -157,7 +166,16 @@ export default function AssetDetail({
         className="absolute inset-0 bg-black/20"
         onClick={onClose}
       />
-      <aside className="relative flex h-full w-[min(1100px,94vw)] flex-col border-l border-line bg-surface shadow-xl">
+      <aside
+        className="relative flex h-full flex-col border-l border-line bg-surface shadow-xl"
+        style={{ width: panelWidth, maxWidth: "94vw" }}
+      >
+        {/* Left-edge resize handle */}
+        <div
+          onMouseDown={startPanelResize}
+          title="Drag to resize"
+          className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize transition hover:bg-accent/40"
+        />
         <header className="flex items-start gap-3 border-b border-line px-6 pb-4 pt-6">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">

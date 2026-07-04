@@ -41,6 +41,7 @@ export default function Sidebar({
   onBrowseTeams,
   onSettings,
   dropCollection,
+  width,
 }: {
   vault: main.VaultInfo;
   scope: Scope;
@@ -59,11 +60,15 @@ export default function Sidebar({
   onBrowseTeams: () => void;
   onSettings: () => void;
   dropCollection: string;
+  width: number;
 }) {
   const active = scopeKey(scope);
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-surface">
+    <aside
+      className="flex shrink-0 flex-col border-r border-line bg-surface"
+      style={{ width }}
+    >
       {/* Library switcher — the workspace-switcher pattern (Notion, Slack,
           Linear): names the current library and who you are, opens
           Settings to switch or add libraries. */}
