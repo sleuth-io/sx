@@ -5,6 +5,7 @@ import {
   CompleteSleuthLogin,
   GetSettings,
   GitStatus,
+  ListSyncFolders,
   PickDirectory,
   StartSleuthLogin,
   SwitchProfile,
@@ -18,7 +19,7 @@ const TYPE_LABELS: Record<string, string> = {
   sleuth: "skills.new",
 };
 
-type AddKind = "path" | "git" | "sleuth" | null;
+type AddKind = "path" | "folder" | "git" | "sleuth" | null;
 
 /**
  * Settings: which libraries exist, which one is active, and adding new
@@ -45,6 +46,7 @@ export default function SettingsModal({
   const signInCancelled = useRef(false);
   const [gitStatus, setGitStatus] = useState<main.GitStatusInfo | null>(null);
   const gitUsable = gitStatus === null || gitStatus.available;
+  const [syncFolders, setSyncFolders] = useState<main.SyncFolderOption[]>([]);
 
   const load = () => {
     GetSettings()
@@ -56,6 +58,9 @@ export default function SettingsModal({
     GitStatus()
       .then(setGitStatus)
       .catch(() => setGitStatus(null));
+    ListSyncFolders()
+      .then((folders) => setSyncFolders(folders ?? []))
+      .catch(() => setSyncFolders([]));
   }, []);
 
   async function switchTo(name: string) {
@@ -76,7 +81,9 @@ export default function SettingsModal({
     setBusy("add");
     setError("");
     try {
-      await AddLibrary(newName, addKind ?? "", newLocation, "");
+      // A shared folder is a plain path library; the sync app shares it.
+      const kind = addKind === "folder" ? "path" : (addKind ?? "");
+      await AddLibrary(newName, kind, newLocation, "");
       onProfileChanged();
     } catch (e) {
       setError(String(e));
@@ -198,6 +205,11 @@ export default function SettingsModal({
                   onClick={() => startAdd("path")}
                 />
                 <AddChoice
+                  label="Shared folder"
+                  hint="Dropbox, Drive, OneDrive"
+                  onClick={() => startAdd("folder")}
+                />
+                <AddChoice
                   label="Git repository"
                   hint="Shared with a team"
                   onClick={() => startAdd("git")}
@@ -248,6 +260,29 @@ export default function SettingsModal({
                       </button>
                     </>
                   )}
+                  {addKind === "folder" && (
+                    <>
+                      <input
+                        value={newLocation}
+                        onChange={(e) => setNewLocation(e.target.value)}
+                        placeholder="Pick a synced folder…"
+                        disabled={busy !== ""}
+                        className="min-w-0 flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+                      />
+                      <button
+                        type="button"
+                        disabled={busy !== ""}
+                        onClick={() =>
+                          PickDirectory()
+                            .then((dir) => dir && setNewLocation(dir))
+                            .catch(() => {})
+                        }
+                        className="shrink-0 rounded-lg border border-line px-3 py-2 text-sm text-ink-soft transition hover:border-accent hover:text-ink"
+                      >
+                        Browse…
+                      </button>
+                    </>
+                  )}
                   {addKind === "git" && (
                     <input
                       value={newLocation}
@@ -266,6 +301,25 @@ export default function SettingsModal({
                     />
                   )}
                 </div>
+                {addKind === "folder" && syncFolders.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {syncFolders.map((f) => (
+                      <button
+                        key={f.path}
+                        type="button"
+                        disabled={busy !== ""}
+                        onClick={() => setNewLocation(f.suggested)}
+                        className={`rounded-lg border px-3 py-1.5 text-xs transition hover:border-accent ${
+                          newLocation === f.suggested
+                            ? "border-accent text-ink"
+                            : "border-line text-ink-soft"
+                        }`}
+                      >
+                        {f.provider}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {addKind === "git" && !gitUsable && (
                   <div className="rounded-lg bg-canvas px-3 py-2 text-xs text-ink-soft">
                     {gitStatus?.reason} A local folder or skills.new library
