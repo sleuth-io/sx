@@ -33,6 +33,12 @@ func commonListCollections(vaultRoot string) ([]manifest.Collection, error) {
 }
 
 func saveCollectionInManifest(vaultRoot string, actor mgmt.Actor, c manifest.Collection) error {
+	// Normalize first so the create-vs-update decision (audit event,
+	// CreatedBy stamping) matches what UpsertCollection actually does.
+	c, err := manifest.NormalizeCollection(c)
+	if err != nil {
+		return err
+	}
 	return withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
 		event := mgmt.EventCollectionUpdated
 		if _, err := m.FindCollection(c.Name); err != nil {

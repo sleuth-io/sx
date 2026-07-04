@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
@@ -70,11 +71,16 @@ func refreshRootView(vaultRoot string, l layout.Layout, name string) error {
 	latest := versions[len(versions)-1]
 	srcDir := filepath.Join(vaultRoot, l.VersionDir(name, latest))
 
-	// Sweep stale staging dirs from crashed runs first — on git vaults a
-	// later write's `git add .` would otherwise commit the orphan.
-	if stale, err := filepath.Glob(filepath.Join(vaultRoot, l.AssetsRoot(), ".*.staging-*")); err == nil {
-		for _, dir := range stale {
-			_ = os.RemoveAll(dir)
+	// Sweep stale staging dirs from crashed runs — on git vaults a later
+	// write's `git add .` would otherwise commit the orphan. Only dirs old
+	// enough that no live copy can still be using them are removed: another
+	// OS process (the app and the CLI share path vaults) may have one
+	// in-flight right now.
+	if candidates, err := filepath.Glob(filepath.Join(vaultRoot, l.AssetsRoot(), ".*.staging-*")); err == nil {
+		for _, dir := range candidates {
+			if info, err := os.Stat(dir); err == nil && time.Since(info.ModTime()) > 15*time.Minute {
+				_ = os.RemoveAll(dir)
+			}
 		}
 	}
 	// PID-suffixed so two processes sharing a path vault never fight over
