@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/publish"
@@ -46,12 +49,46 @@ type draftMeta struct {
 	TargetAsset string `json:"targetAsset"`
 }
 
+// draftsRoot is the draft directory for the CURRENT library. Drafts are
+// unpublished work destined for a specific vault — switching libraries
+// must not carry another library's drafts along, so each library gets its
+// own subdirectory keyed by its location.
 func draftsRoot() (string, error) {
 	dir, err := utils.GetConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "app-drafts"), nil
+	base := filepath.Join(dir, "app-drafts")
+	cfg, err := config.Load()
+	if err != nil {
+		// No configured library: a bare root keeps onboarding flows working.
+		return base, nil
+	}
+	location := cfg.RepositoryURL
+	if cfg.Type == config.RepositoryTypeSleuth && cfg.ServerURL != "" {
+		location = cfg.ServerURL
+	}
+	sum := sha256.Sum256([]byte(string(cfg.Type) + "|" + location))
+	root := filepath.Join(base, "lib-"+hex.EncodeToString(sum[:8]))
+
+	// One-time adoption of pre-namespacing drafts: loose draft dirs at the
+	// top level belong to whichever library the user had open — move them
+	// into the current library's space the first time it's used.
+	if entries, err := os.ReadDir(base); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() || strings.HasPrefix(entry.Name(), "lib-") {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(base, entry.Name(), "draft.json")); err != nil {
+				continue
+			}
+			if err := os.MkdirAll(root, 0755); err != nil {
+				break
+			}
+			_ = os.Rename(filepath.Join(base, entry.Name()), filepath.Join(root, entry.Name()))
+		}
+	}
+	return root, nil
 }
 
 var draftIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
