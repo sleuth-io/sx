@@ -298,13 +298,48 @@ export default function AssetDetail({
   );
 }
 
+/**
+ * Splits YAML frontmatter (--- fenced block at the very top) from the
+ * markdown body so it can get its own treatment instead of being mangled by
+ * the markdown renderer.
+ */
+function splitFrontmatter(content: string): {
+  frontmatter: string | null;
+  body: string;
+} {
+  const lines = content.split("\n");
+  if (lines[0]?.trim() !== "---") return { frontmatter: null, body: content };
+  for (let i = 1; i < Math.min(lines.length, 60); i++) {
+    if (lines[i].trim() === "---") {
+      return {
+        frontmatter: lines.slice(1, i).join("\n"),
+        body: lines.slice(i + 1).join("\n"),
+      };
+    }
+  }
+  return { frontmatter: null, body: content };
+}
+
 function FileView({ file }: { file: main.AssetFile }) {
   const isMarkdown = /\.(md|markdown)$/i.test(file.path);
   if (isMarkdown) {
+    const { frontmatter, body } = splitFrontmatter(file.content);
     return (
-      <article className="prose-sx">
-        <ReactMarkdown>{file.content}</ReactMarkdown>
-      </article>
+      <div>
+        {frontmatter !== null && (
+          <div className="relative mb-6 mt-2 rounded-xl border border-line bg-canvas">
+            <span className="absolute -top-2.5 left-3 rounded bg-accent-soft px-2 py-0.5 text-[10px] font-semibold tracking-wider text-accent">
+              FRONTMATTER
+            </span>
+            <pre className="overflow-x-auto whitespace-pre-wrap px-4 pb-3.5 pt-4 font-mono text-xs leading-relaxed text-ink-soft">
+              {frontmatter}
+            </pre>
+          </div>
+        )}
+        <article className="prose-sx">
+          <ReactMarkdown>{body}</ReactMarkdown>
+        </article>
+      </div>
     );
   }
   return (
