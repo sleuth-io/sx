@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  AvailableRepoName,
   CancelSleuthLogin,
   CompleteSleuthLogin,
   CreateGitRepo,
@@ -50,6 +51,10 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   const [gitStatus, setGitStatus] = useState<main.GitStatusInfo | null>(null);
   // GitHub login for the create-a-repo offer: null = not looked up yet.
   const [ghLogin, setGhLogin] = useState<string | null>(null);
+  // Repo name the create offer will actually use — pre-checked against the
+  // account so the one-click flow can't promise a name that collides
+  // (e.g. re-running onboarding on a second machine).
+  const [repoName, setRepoName] = useState("");
 
   useEffect(() => {
     HasIdentity()
@@ -98,7 +103,13 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     setChoice("team");
     if (ghLogin === null) {
       GitHubAccount()
-        .then(setGhLogin)
+        .then((login) => {
+          setGhLogin(login);
+          if (!login) return;
+          AvailableRepoName(suggestRepoName(""))
+            .then(setRepoName)
+            .catch(() => setRepoName(suggestRepoName("")));
+        })
         .catch(() => setGhLogin(""));
     }
   }
@@ -106,11 +117,11 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   // Create a fresh private repo under the user's GitHub account and
   // connect it as the team library in one step.
   async function createRepoAndConnect() {
-    if (!emailOK) return;
+    if (!emailOK || !repoName) return;
     setBusy(true);
     setError("");
     try {
-      const repo = await CreateGitRepo(suggestRepoName(""));
+      const repo = await CreateGitRepo(repoName);
       await SetupGitVault(repo.url, email.trim());
       onDone();
     } catch (e) {
@@ -326,13 +337,13 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
               )}
               {choice === "team" && gitUsable && (
                 <div className="mt-3 space-y-2.5">
-                  {ghLogin && (
+                  {ghLogin && repoName && (
                     <>
                       <CreateRepoCard
                         title={
                           busy
                             ? "Creating repository…"
-                            : `Create ${ghLogin}/${suggestRepoName("")}`
+                            : `Create ${ghLogin}/${repoName}`
                         }
                         subtitle="New private GitHub repository for your team's library"
                         disabled={busy || !emailOK}

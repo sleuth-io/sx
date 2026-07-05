@@ -538,6 +538,8 @@ export default function SettingsModal({
                         {removal.sourceLabel}
                       </span>{" "}
                       and everything in it
+                      {removal.sharedSource &&
+                        ` — it syncs through ${removal.sourceProvider}, so this deletes it for everyone it's shared with`}
                     </>
                   )}
                 </span>

@@ -237,6 +237,8 @@ export namespace main {
 	    active: boolean;
 	    canDeleteSource: boolean;
 	    sourceLabel: string;
+	    sharedSource: boolean;
+	    sourceProvider: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new LibraryRemoval(source);
@@ -251,6 +253,8 @@ export namespace main {
 	        this.active = source["active"];
 	        this.canDeleteSource = source["canDeleteSource"];
 	        this.sourceLabel = source["sourceLabel"];
+	        this.sharedSource = source["sharedSource"];
+	        this.sourceProvider = source["sourceProvider"];
 	    }
 	}
 	export class ProfileInfo {

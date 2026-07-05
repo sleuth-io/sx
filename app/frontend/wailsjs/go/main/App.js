@@ -10,12 +10,20 @@ export function AddTeamMember(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddTeamMember'](arg1, arg2, arg3);
 }
 
+export function AvailableRepoName(arg1) {
+  return window['go']['main']['App']['AvailableRepoName'](arg1);
+}
+
 export function CancelSleuthLogin() {
   return window['go']['main']['App']['CancelSleuthLogin']();
 }
 
 export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
+}
+
+export function CheckForUpdatesInteractively() {
+  return window['go']['main']['App']['CheckForUpdatesInteractively']();
 }
 
 export function CompleteSleuthLogin(arg1, arg2, arg3) {
@@ -92,6 +100,10 @@ export function GitStatus() {
 
 export function HasIdentity() {
   return window['go']['main']['App']['HasIdentity']();
+}
+
+export function HideApp() {
+  return window['go']['main']['App']['HideApp']();
 }
 
 export function InstallAsset(arg1) {
@@ -204,6 +216,10 @@ export function ShareAssetWithEveryone(arg1) {
 
 export function ShareCollectionWithEveryone(arg1) {
   return window['go']['main']['App']['ShareCollectionWithEveryone'](arg1);
+}
+
+export function ShowAbout() {
+  return window['go']['main']['App']['ShowAbout']();
 }
 
 export function StartSleuthLogin(arg1) {

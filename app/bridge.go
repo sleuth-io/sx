@@ -31,9 +31,12 @@ type App struct {
 	vault vaultpkg.Vault
 
 	// loginCancel aborts an in-flight skills.new device sign-in poll
-	// (CancelSleuthLogin). Guarded by loginMu.
+	// (CancelSleuthLogin). loginGen identifies the sign-in attempt that
+	// owns loginCancel, so a superseded attempt's cleanup can't cancel its
+	// successor. Both guarded by loginMu.
 	loginMu     sync.Mutex
 	loginCancel context.CancelFunc
+	loginGen    uint64
 }
 
 func NewApp() *App {
@@ -67,6 +70,13 @@ func (a *App) emitMenuEvent(event string) {
 func (a *App) Quit() {
 	if a.ctx != nil {
 		wailsruntime.Quit(a.ctx)
+	}
+}
+
+// HideApp hides the application (macOS Cmd+H); wired to the native menu.
+func (a *App) HideApp() {
+	if a.ctx != nil {
+		wailsruntime.Hide(a.ctx)
 	}
 }
 

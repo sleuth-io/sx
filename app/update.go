@@ -12,7 +12,10 @@ import (
 	"strings"
 	"time"
 
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+
 	"github.com/sleuth-io/sx/internal/buildinfo"
+	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/version"
 )
@@ -52,29 +55,96 @@ func isDevBuild(v string) bool {
 	return strings.Contains(v, "-g")
 }
 
+// updateOutcome is the full result of an update check; the startup banner
+// only cares about two of its states, the menu-driven check reports all.
+type updateOutcome struct {
+	status  string // "installed" | "available" | "uptodate" | "devbuild" | "error"
+	version string
+	url     string
+}
+
+func (a *App) checkForUpdate() updateOutcome {
+	current := strings.TrimPrefix(buildinfo.Version, "v")
+	if isDevBuild(current) {
+		return updateOutcome{status: "devbuild", version: current}
+	}
+
+	release, ok := a.fetchLatestRelease()
+	if !ok {
+		return updateOutcome{status: "error"}
+	}
+	latest := strings.TrimPrefix(release.TagName, "v")
+	if latest == "" || !baseVersionNewer(latest, current) {
+		return updateOutcome{status: "uptodate", version: current}
+	}
+
+	if a.tryAutoUpdate(release) {
+		return updateOutcome{status: "installed", version: latest}
+	}
+	return updateOutcome{status: "available", version: latest, url: release.HTMLURL}
+}
+
 // CheckForUpdate compares this build against the latest GitHub release and,
 // like `sx` itself, applies the update automatically when it can (macOS,
 // running from an installed .app bundle). When automatic install isn't
 // possible it falls back to a notify-only banner.
 func (a *App) CheckForUpdate() UpdateInfo {
-	current := strings.TrimPrefix(buildinfo.Version, "v")
-	if isDevBuild(current) {
+	switch out := a.checkForUpdate(); out.status {
+	case "installed":
+		return UpdateInfo{Installed: true, Version: out.version}
+	case "available":
+		return UpdateInfo{Available: true, Version: out.version, URL: out.url}
+	default:
+		// Up to date, dev build, or inconclusive — never nag on startup.
 		return UpdateInfo{}
 	}
+}
 
-	release, ok := a.fetchLatestRelease()
-	if !ok {
-		return UpdateInfo{}
-	}
-	latest := strings.TrimPrefix(release.TagName, "v")
-	if latest == "" || !baseVersionNewer(latest, current) {
-		return UpdateInfo{}
-	}
+// CheckForUpdatesInteractively runs an update check from the native menu
+// and reports the outcome in a dialog — a user-initiated check must always
+// answer, including "you're up to date".
+func (a *App) CheckForUpdatesInteractively() {
+	go func() {
+		out := a.checkForUpdate()
+		switch out.status {
+		case "installed":
+			a.updateDialog("Update installed",
+				fmt.Sprintf("sx was updated to version %s. It takes effect the next time you open the app.", out.version))
+		case "available":
+			choice, err := wailsruntime.MessageDialog(a.ctx, wailsruntime.MessageDialogOptions{
+				Type:          wailsruntime.QuestionDialog,
+				Title:         "Update available",
+				Message:       fmt.Sprintf("Version %s is available, but couldn't be installed automatically.", out.version),
+				Buttons:       []string{"Open Download Page", "Later"},
+				DefaultButton: "Open Download Page",
+			})
+			if err == nil && choice == "Open Download Page" {
+				_ = config.OpenBrowser(out.url)
+			}
+		case "devbuild":
+			a.updateDialog("Development build",
+				fmt.Sprintf("This is a development build (%s) — automatic updates are disabled.", out.version))
+		case "error":
+			a.updateDialog("Couldn't check for updates",
+				"The update service couldn't be reached. Check your connection and try again.")
+		default:
+			a.updateDialog("You're up to date",
+				fmt.Sprintf("sx %s is the latest version.", out.version))
+		}
+	}()
+}
 
-	if a.tryAutoUpdate(release) {
-		return UpdateInfo{Installed: true, Version: latest}
-	}
-	return UpdateInfo{Available: true, Version: latest, URL: release.HTMLURL}
+func (a *App) updateDialog(title, message string) {
+	_, _ = wailsruntime.MessageDialog(a.ctx, wailsruntime.MessageDialogOptions{
+		Type:    wailsruntime.InfoDialog,
+		Title:   title,
+		Message: message,
+	})
+}
+
+// ShowAbout is the native menu's About item.
+func (a *App) ShowAbout() {
+	a.updateDialog("sx", "Your team's library for AI assets\n\nVersion "+buildinfo.Version)
 }
 
 func (a *App) fetchLatestRelease() (githubRelease, bool) {

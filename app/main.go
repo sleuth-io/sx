@@ -42,9 +42,25 @@ func main() {
 	appMenu := menu.NewMenu()
 	if goruntime.GOOS == "darwin" {
 		sxMenu := appMenu.AddSubmenu("sx")
+		sxMenu.AddText("About sx", nil, func(*menu.CallbackData) {
+			app.ShowAbout()
+		})
+		sxMenu.AddText("Check for Updates…", nil, func(*menu.CallbackData) {
+			app.CheckForUpdatesInteractively()
+		})
 		sxMenu.AddSeparator()
 		sxMenu.AddText("Settings…", keys.CmdOrCtrl(","), func(*menu.CallbackData) {
 			app.OpenSettings()
+		})
+		sxMenu.AddSeparator()
+		sxMenu.AddText("Hide sx", keys.CmdOrCtrl("h"), func(*menu.CallbackData) {
+			app.HideApp()
+		})
+		sxMenu.AddText("Hide Others", keys.Combo("h", keys.CmdOrCtrlKey, keys.OptionOrAltKey), func(*menu.CallbackData) {
+			hideOtherApplications()
+		})
+		sxMenu.AddText("Show All", nil, func(*menu.CallbackData) {
+			unhideAllApplications()
 		})
 		sxMenu.AddSeparator()
 		sxMenu.AddText("Quit sx", keys.CmdOrCtrl("q"), func(*menu.CallbackData) {
@@ -76,6 +92,17 @@ func main() {
 	helpMenu.AddText("sx Documentation", nil, func(*menu.CallbackData) {
 		_ = config.OpenBrowser("https://github.com/sleuth-io/sx#readme")
 	})
+	// On macOS these live in the app menu per platform convention; the
+	// Windows/Linux home for both is Help.
+	if goruntime.GOOS != "darwin" {
+		helpMenu.AddSeparator()
+		helpMenu.AddText("Check for Updates…", nil, func(*menu.CallbackData) {
+			app.CheckForUpdatesInteractively()
+		})
+		helpMenu.AddText("About sx", nil, func(*menu.CallbackData) {
+			app.ShowAbout()
+		})
+	}
 
 	err := wails.Run(&options.App{
 		Title:     "sx",

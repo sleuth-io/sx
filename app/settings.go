@@ -19,6 +19,7 @@ import (
 	"github.com/sleuth-io/sx/internal/config"
 	gitpkg "github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/manifest"
+	"github.com/sleuth-io/sx/internal/utils"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
@@ -203,15 +204,20 @@ func (a *App) CompleteSleuthLogin(serverURL, deviceCode, name string) (VaultInfo
 		// A new attempt supersedes any previous still-polling one.
 		a.loginCancel()
 	}
+	a.loginGen++
+	gen := a.loginGen
 	a.loginCancel = cancel
 	a.loginMu.Unlock()
 	defer func() {
 		a.loginMu.Lock()
-		if a.loginCancel != nil {
+		// Only clean up our own registration — if a newer attempt has
+		// taken over loginCancel, cancelling it would abort a live sign-in.
+		if a.loginGen == gen && a.loginCancel != nil {
 			a.loginCancel()
 			a.loginCancel = nil
 		}
 		a.loginMu.Unlock()
+		cancel()
 	}()
 
 	oauthClient := config.NewOAuthClient(serverURL)
@@ -277,23 +283,38 @@ func (a *App) ListGitRepos() []GitRepoOption {
 	if err != nil {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(a.ctx, 20*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, ghPath, "api",
-		"user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator,organization_member",
-		"--jq", `[.[] | {name: .full_name, https: .clone_url, ssh: .ssh_url}]`,
-	).Output()
-	if err != nil {
-		return nil
-	}
-	var repos []struct {
+	// Page through recently-pushed-first results, bounded so an account
+	// with thousands of repos can't stall the form; the field still
+	// accepts a pasted URL for anything beyond the cap.
+	type repoRow struct {
 		Name  string `json:"name"`
 		HTTPS string `json:"https"`
 		SSH   string `json:"ssh"`
 	}
-	if err := json.Unmarshal(out, &repos); err != nil {
-		return nil
+	var repos []repoRow
+	const perPage, maxPages = 100, 5
+	for page := 1; page <= maxPages; page++ {
+		out, err := exec.CommandContext(ctx, ghPath, "api",
+			fmt.Sprintf("user/repos?per_page=%d&page=%d&sort=pushed&affiliation=owner,collaborator,organization_member", perPage, page),
+			"--jq", `[.[] | {name: .full_name, https: .clone_url, ssh: .ssh_url}]`,
+		).Output()
+		if err != nil {
+			if page == 1 {
+				return nil
+			}
+			break // keep what we have
+		}
+		var batch []repoRow
+		if err := json.Unmarshal(out, &batch); err != nil {
+			return nil
+		}
+		repos = append(repos, batch...)
+		if len(batch) < perPage {
+			break
+		}
 	}
 
 	useSSH := ghPrefersSSH(ctx, ghPath)
@@ -377,6 +398,38 @@ func (a *App) CreateGitRepo(repoName string) (GitRepoOption, error) {
 	return GitRepoOption{Name: created.FullName, URL: url}, nil
 }
 
+// AvailableRepoName returns the first of base, base-2 … base-9 not already
+// taken on the signed-in GitHub account, so create-a-repo offers never
+// promise a name that is guaranteed to collide (e.g. a second machine
+// re-running onboarding). Falls back to base when gh can't answer.
+func (a *App) AvailableRepoName(base string) string {
+	if !gitRepoNamePattern.MatchString(base) {
+		return base
+	}
+	ghPath, err := exec.LookPath("gh")
+	if err != nil {
+		return base
+	}
+	login := a.GitHubAccount()
+	if login == "" {
+		return base
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
+	defer cancel()
+	for i := 1; i <= 9; i++ {
+		name := base
+		if i > 1 {
+			name = fmt.Sprintf("%s-%d", base, i)
+		}
+		// A failing lookup means "not found" (free) — or a network error,
+		// in which case creating will surface the real problem anyway.
+		if exec.CommandContext(ctx, ghPath, "api", "repos/"+login+"/"+name, "--silent").Run() != nil {
+			return name
+		}
+	}
+	return base
+}
+
 var gitRepoNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
 
 // githubRepoPattern extracts owner/repo from the two URL shapes gh hands
@@ -427,6 +480,11 @@ type LibraryRemoval struct {
 	// (a local folder, or a GitHub repository the user administers).
 	CanDeleteSource bool   `json:"canDeleteSource"`
 	SourceLabel     string `json:"sourceLabel"`
+	// SharedSource: deleting the source affects other people too — a GitHub
+	// repository, or a folder inside a sync service (SourceProvider says
+	// which) where the deletion propagates to every teammate.
+	SharedSource   bool   `json:"sharedSource"`
+	SourceProvider string `json:"sourceProvider"`
 }
 
 // DescribeLibraryRemoval reports what RemoveLibrary(name) would be able to
@@ -456,6 +514,13 @@ func (a *App) DescribeLibraryRemoval(name string) (LibraryRemoval, error) {
 		if info, err := os.Stat(out.Location); err == nil && info.IsDir() {
 			out.CanDeleteSource = true
 			out.SourceLabel = out.Location
+			// A folder inside Dropbox/Drive/OneDrive/iCloud is a shared
+			// library: deleting it here deletes it for every teammate the
+			// sync service shares it with.
+			if provider := utils.ProviderForPath(out.Location, utils.DetectSyncFolders()); provider != "" {
+				out.SharedSource = true
+				out.SourceProvider = provider
+			}
 		}
 	case config.RepositoryTypeGit:
 		out.Location = cfg.RepositoryURL
@@ -471,6 +536,8 @@ func (a *App) DescribeLibraryRemoval(name string) (LibraryRemoval, error) {
 				if err == nil && strings.TrimSpace(string(admin)) == "true" {
 					out.CanDeleteSource = true
 					out.SourceLabel = m[1] + "/" + m[2] + " on GitHub"
+					out.SharedSource = true
+					out.SourceProvider = "GitHub"
 				}
 			}
 		}

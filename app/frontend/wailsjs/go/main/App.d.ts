@@ -6,9 +6,13 @@ export function AddLibrary(arg1:string,arg2:string,arg3:string,arg4:string):Prom
 
 export function AddTeamMember(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
+export function AvailableRepoName(arg1:string):Promise<string>;
+
 export function CancelSleuthLogin():Promise<void>;
 
 export function CheckForUpdate():Promise<main.UpdateInfo>;
+
+export function CheckForUpdatesInteractively():Promise<void>;
 
 export function CompleteSleuthLogin(arg1:string,arg2:string,arg3:string):Promise<main.VaultInfo>;
 
@@ -47,6 +51,8 @@ export function GitHubAccount():Promise<string>;
 export function GitStatus():Promise<main.GitStatusInfo>;
 
 export function HasIdentity():Promise<boolean>;
+
+export function HideApp():Promise<void>;
 
 export function InstallAsset(arg1:string):Promise<main.InstallResult>;
 
@@ -103,6 +109,8 @@ export function SetupSharedFolderVault(arg1:string,arg2:string):Promise<main.Vau
 export function ShareAssetWithEveryone(arg1:string):Promise<void>;
 
 export function ShareCollectionWithEveryone(arg1:string):Promise<void>;
+
+export function ShowAbout():Promise<void>;
 
 export function StartSleuthLogin(arg1:string):Promise<main.SleuthLoginStart>;
 
