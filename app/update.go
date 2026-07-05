@@ -58,12 +58,20 @@ func isDevBuild(v string) bool {
 // updateOutcome is the full result of an update check; the startup banner
 // only cares about two of its states, the menu-driven check reports all.
 type updateOutcome struct {
-	status  string // "installed" | "available" | "uptodate" | "devbuild" | "error"
+	status  string // "installed" | "available" | "uptodate" | "devbuild" | "error" | "busy"
 	version string
 	url     string
 }
 
 func (a *App) checkForUpdate() updateOutcome {
+	// One update at a time: the startup check and the menu item share this
+	// path, and two concurrent tryAutoUpdate runs could interleave the
+	// bundle backup/swap dance — one deleting the other's rollback copy.
+	if !a.updateMu.TryLock() {
+		return updateOutcome{status: "busy"}
+	}
+	defer a.updateMu.Unlock()
+
 	current := strings.TrimPrefix(buildinfo.Version, "v")
 	if isDevBuild(current) {
 		return updateOutcome{status: "devbuild", version: current}
@@ -124,6 +132,9 @@ func (a *App) CheckForUpdatesInteractively() {
 		case "devbuild":
 			a.updateDialog("Development build",
 				fmt.Sprintf("This is a development build (%s) — automatic updates are disabled.", out.version))
+		case "busy":
+			a.updateDialog("Update check in progress",
+				"An update check is already running — hang on a moment.")
 		case "error":
 			a.updateDialog("Couldn't check for updates",
 				"The update service couldn't be reached. Check your connection and try again.")

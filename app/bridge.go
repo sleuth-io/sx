@@ -37,6 +37,10 @@ type App struct {
 	loginMu     sync.Mutex
 	loginCancel context.CancelFunc
 	loginGen    uint64
+
+	// updateMu serializes update checks (startup + menu) so two
+	// tryAutoUpdate runs can never interleave the bundle swap.
+	updateMu sync.Mutex
 }
 
 func NewApp() *App {
