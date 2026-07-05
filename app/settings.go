@@ -7,16 +7,18 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/sleuth-io/sx/internal/cache"
 	"github.com/sleuth-io/sx/internal/config"
 	gitpkg "github.com/sleuth-io/sx/internal/git"
 	"github.com/sleuth-io/sx/internal/manifest"
-	"github.com/sleuth-io/sx/internal/utils"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
@@ -34,21 +36,16 @@ type ProfileInfo struct {
 
 // Settings is the app's view of the sx configuration.
 type Settings struct {
-	ConfigPath string        `json:"configPath"`
-	Profiles   []ProfileInfo `json:"profiles"`
+	Profiles []ProfileInfo `json:"profiles"`
 }
 
-// GetSettings returns every configured profile and where the config lives.
+// GetSettings returns every configured profile.
 func (a *App) GetSettings() (Settings, error) {
-	configFile, err := utils.GetConfigFile()
-	if err != nil {
-		return Settings{}, err
-	}
-	out := Settings{ConfigPath: configFile}
+	out := Settings{}
 
 	mpc, err := config.LoadMultiProfile()
 	if err != nil {
-		// Not configured yet — settings still show where config will live.
+		// Not configured yet — nothing to list.
 		return out, nil
 	}
 	active := config.GetActiveProfileName(mpc)
@@ -299,15 +296,7 @@ func (a *App) ListGitRepos() []GitRepoOption {
 		return nil
 	}
 
-	// Honor the protocol gh is configured to clone with — that's the one
-	// the user's credentials are set up for. The setting is per-host
-	// (github.com) with a global fallback.
-	useSSH := false
-	if proto, err := exec.CommandContext(ctx, ghPath, "config", "get", "-h", "github.com", "git_protocol").Output(); err == nil && strings.TrimSpace(string(proto)) != "" {
-		useSSH = strings.TrimSpace(string(proto)) == "ssh"
-	} else if proto, err := exec.CommandContext(ctx, ghPath, "config", "get", "git_protocol").Output(); err == nil {
-		useSSH = strings.TrimSpace(string(proto)) == "ssh"
-	}
+	useSSH := ghPrefersSSH(ctx, ghPath)
 
 	options := make([]GitRepoOption, 0, len(repos))
 	for _, r := range repos {
@@ -318,6 +307,280 @@ func (a *App) ListGitRepos() []GitRepoOption {
 		options = append(options, GitRepoOption{Name: r.Name, URL: url})
 	}
 	return options
+}
+
+// ghPrefersSSH reports the protocol gh is configured to clone with — that's
+// the one the user's credentials are set up for. The setting is per-host
+// (github.com) with a global fallback.
+func ghPrefersSSH(ctx context.Context, ghPath string) bool {
+	if proto, err := exec.CommandContext(ctx, ghPath, "config", "get", "-h", "github.com", "git_protocol").Output(); err == nil && strings.TrimSpace(string(proto)) != "" {
+		return strings.TrimSpace(string(proto)) == "ssh"
+	}
+	if proto, err := exec.CommandContext(ctx, ghPath, "config", "get", "git_protocol").Output(); err == nil {
+		return strings.TrimSpace(string(proto)) == "ssh"
+	}
+	return false
+}
+
+// GitHubAccount returns the signed-in GitHub CLI login, or "" when gh is
+// missing or unauthenticated. Lets git-vault forms offer to create a
+// repository under the user's account.
+func (a *App) GitHubAccount() string {
+	ghPath, err := exec.LookPath("gh")
+	if err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, ghPath, "api", "user", "--jq", ".login").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// CreateGitRepo creates a new private GitHub repository under the signed-in
+// account and returns it as a pickable option. auto_init gives the repo an
+// initial commit, which a git vault needs before it can push.
+func (a *App) CreateGitRepo(repoName string) (GitRepoOption, error) {
+	repoName = strings.TrimSpace(repoName)
+	if !gitRepoNamePattern.MatchString(repoName) {
+		return GitRepoOption{}, errors.New("repository names can only contain letters, numbers, dots, dashes and underscores")
+	}
+	ghPath, err := exec.LookPath("gh")
+	if err != nil {
+		return GitRepoOption{}, errors.New("the GitHub CLI (gh) is required to create repositories")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, ghPath, "api", "user/repos",
+		"-f", "name="+repoName,
+		"-F", "private=true",
+		"-F", "auto_init=true",
+	).Output()
+	if err != nil {
+		return GitRepoOption{}, fmt.Errorf("couldn't create the repository: %s", ghErrorMessage(out, err))
+	}
+	var created struct {
+		FullName string `json:"full_name"`
+		HTTPS    string `json:"clone_url"`
+		SSH      string `json:"ssh_url"`
+	}
+	if err := json.Unmarshal(out, &created); err != nil {
+		return GitRepoOption{}, fmt.Errorf("unexpected GitHub response: %w", err)
+	}
+	url := created.HTTPS
+	if ghPrefersSSH(ctx, ghPath) {
+		url = created.SSH
+	}
+	return GitRepoOption{Name: created.FullName, URL: url}, nil
+}
+
+var gitRepoNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
+
+// githubRepoPattern extracts owner/repo from the two URL shapes gh hands
+// out (and users paste): https://github.com/o/r(.git) and git@github.com:o/r(.git).
+var githubRepoPattern = regexp.MustCompile(`^(?:https://github\.com/|git@github\.com:)([\w.-]+)/([\w.-]+?)(?:\.git)?/?$`)
+
+// ghErrorMessage digs the API error message out of a failed `gh api` call.
+// gh writes "gh: <summary> (HTTP nnn)" to stderr and the raw JSON error
+// body to STDOUT; the body's errors[].message carries the specific reason
+// ("name already exists on this account") — prefer that.
+func ghErrorMessage(stdout []byte, err error) string {
+	var body struct {
+		Message string `json:"message"`
+		Errors  []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if json.Unmarshal(stdout, &body) == nil {
+		for _, e := range body.Errors {
+			if e.Message != "" {
+				return e.Message
+			}
+		}
+		if body.Message != "" {
+			return body.Message
+		}
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+		summary, _, _ := strings.Cut(strings.TrimSpace(string(exitErr.Stderr)), "\n")
+		return strings.TrimPrefix(summary, "gh: ")
+	}
+	return err.Error()
+}
+
+// LibraryRemoval describes what removing a library would do, so the
+// confirmation dialog offers exactly what's possible — and nothing that
+// isn't.
+type LibraryRemoval struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Location string `json:"location"`
+	// LastLibrary blocks removal entirely (same rule as `sx profile remove`).
+	LastLibrary bool `json:"lastLibrary"`
+	// Active: removing this library switches the app to another one.
+	Active bool `json:"active"`
+	// CanDeleteSource: the underlying storage can also be deleted from here
+	// (a local folder, or a GitHub repository the user administers).
+	CanDeleteSource bool   `json:"canDeleteSource"`
+	SourceLabel     string `json:"sourceLabel"`
+}
+
+// DescribeLibraryRemoval reports what RemoveLibrary(name) would be able to
+// do, including whether the underlying source is deletable from this app.
+func (a *App) DescribeLibraryRemoval(name string) (LibraryRemoval, error) {
+	mpc, err := config.LoadMultiProfile()
+	if err != nil {
+		return LibraryRemoval{}, err
+	}
+	profile, ok := mpc.GetProfile(name)
+	if !ok {
+		return LibraryRemoval{}, fmt.Errorf("library %q not found", name)
+	}
+	cfg := profile.ToConfig(nil, nil)
+
+	out := LibraryRemoval{
+		Name:        name,
+		Type:        string(cfg.Type),
+		LastLibrary: len(mpc.Profiles) <= 1,
+		Active:      name == config.GetActiveProfileName(mpc),
+	}
+	switch cfg.Type {
+	case config.RepositoryTypeSleuth:
+		out.Location = cfg.ServerURL
+	case config.RepositoryTypePath:
+		out.Location = strings.TrimPrefix(cfg.RepositoryURL, "file://")
+		if info, err := os.Stat(out.Location); err == nil && info.IsDir() {
+			out.CanDeleteSource = true
+			out.SourceLabel = out.Location
+		}
+	case config.RepositoryTypeGit:
+		out.Location = cfg.RepositoryURL
+		if m := githubRepoPattern.FindStringSubmatch(cfg.RepositoryURL); m != nil {
+			if ghPath, err := exec.LookPath("gh"); err == nil {
+				ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
+				defer cancel()
+				// Only offer deletion the user can actually perform: repo
+				// admins. (The delete itself may still need the delete_repo
+				// scope; RemoveLibrary explains that if it comes up.)
+				admin, err := exec.CommandContext(ctx, ghPath, "api",
+					"repos/"+m[1]+"/"+m[2], "--jq", ".permissions.admin").Output()
+				if err == nil && strings.TrimSpace(string(admin)) == "true" {
+					out.CanDeleteSource = true
+					out.SourceLabel = m[1] + "/" + m[2] + " on GitHub"
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+// RemoveLibrary disconnects a library from the shared sx configuration —
+// the same operation as `sx profile remove`, including its refusal to
+// remove the last one. With deleteSource, the underlying storage goes too:
+// the vault folder for path libraries, the GitHub repository for git ones.
+// Source deletion happens first — if it fails, the library stays configured
+// so the user can retry.
+func (a *App) RemoveLibrary(name string, deleteSource bool) (VaultInfo, error) {
+	mpc, err := config.LoadMultiProfile()
+	if err != nil {
+		return VaultInfo{}, err
+	}
+	profile, ok := mpc.GetProfile(name)
+	if !ok {
+		return VaultInfo{}, fmt.Errorf("library %q not found", name)
+	}
+	if len(mpc.Profiles) <= 1 {
+		return VaultInfo{}, errors.New("can't remove the last library — add another one first")
+	}
+	cfg := profile.ToConfig(nil, nil)
+
+	if deleteSource {
+		switch cfg.Type {
+		case config.RepositoryTypePath:
+			if err := deleteVaultFolder(strings.TrimPrefix(cfg.RepositoryURL, "file://")); err != nil {
+				return VaultInfo{}, err
+			}
+		case config.RepositoryTypeGit:
+			if err := a.deleteGitHubRepo(cfg.RepositoryURL); err != nil {
+				return VaultInfo{}, err
+			}
+		case config.RepositoryTypeSleuth:
+			// Server-side data; never deletable from here.
+			return VaultInfo{}, errors.New("this library type has no deletable source")
+		default:
+			return VaultInfo{}, errors.New("this library type has no deletable source")
+		}
+	}
+
+	// A git library leaves a working clone in the cache; clear it either way
+	// so a future re-add starts fresh.
+	if cfg.Type == config.RepositoryTypeGit {
+		if clonePath, err := cache.GetGitRepoCachePath(cfg.RepositoryURL); err == nil {
+			_ = os.RemoveAll(clonePath)
+		}
+	}
+
+	if err := mpc.DeleteProfile(name); err != nil {
+		return VaultInfo{}, err
+	}
+	if err := config.SaveMultiProfile(mpc); err != nil {
+		return VaultInfo{}, err
+	}
+	// Clear any session override and re-resolve — the default may have moved.
+	config.SetActiveProfile("")
+	a.resetVault()
+	return a.GetVaultInfo(), nil
+}
+
+// deleteVaultFolder removes a path library's folder, but only when it looks
+// like one: empty, or containing an sx.toml manifest. A mispointed config
+// must never be able to erase somebody's documents folder.
+func deleteVaultFolder(dir string) error {
+	dir = strings.TrimSpace(dir)
+	if dir == "" || dir == "/" || !filepath.IsAbs(dir) {
+		return fmt.Errorf("refusing to delete %q", dir)
+	}
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil // already gone
+	}
+	if err != nil {
+		return err
+	}
+	if len(entries) > 0 {
+		if _, err := os.Stat(filepath.Join(dir, "sx.toml")); err != nil {
+			return fmt.Errorf("%s doesn't look like a library folder (no sx.toml) — not deleting it", dir)
+		}
+	}
+	return os.RemoveAll(dir)
+}
+
+// deleteGitHubRepo deletes the repository behind a git library via the
+// GitHub CLI. Deletion needs the delete_repo scope, which gh doesn't hold
+// by default — the error explains how to grant it.
+func (a *App) deleteGitHubRepo(repoURL string) error {
+	m := githubRepoPattern.FindStringSubmatch(repoURL)
+	if m == nil {
+		return errors.New("only GitHub repositories can be deleted from here")
+	}
+	ghPath, err := exec.LookPath("gh")
+	if err != nil {
+		return errors.New("the GitHub CLI (gh) is required to delete repositories")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	if out, err := exec.CommandContext(ctx, ghPath, "api", "-X", "DELETE", "repos/"+m[1]+"/"+m[2]).Output(); err != nil {
+		msg := ghErrorMessage(out, err)
+		if strings.Contains(msg, "delete_repo") || strings.Contains(msg, "403") {
+			return fmt.Errorf("GitHub refused to delete %s/%s: your gh token lacks the delete_repo scope. Run 'gh auth refresh -h github.com -s delete_repo', then try again", m[1], m[2])
+		}
+		return fmt.Errorf("couldn't delete %s/%s on GitHub: %s", m[1], m[2], msg)
+	}
+	return nil
 }
 
 // PickDirectory opens the native folder picker (for new local libraries).

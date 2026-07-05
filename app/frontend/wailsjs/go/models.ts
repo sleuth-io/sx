@@ -229,6 +229,30 @@ export namespace main {
 	        this.scopes = source["scopes"];
 	    }
 	}
+	export class LibraryRemoval {
+	    name: string;
+	    type: string;
+	    location: string;
+	    lastLibrary: boolean;
+	    active: boolean;
+	    canDeleteSource: boolean;
+	    sourceLabel: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LibraryRemoval(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.type = source["type"];
+	        this.location = source["location"];
+	        this.lastLibrary = source["lastLibrary"];
+	        this.active = source["active"];
+	        this.canDeleteSource = source["canDeleteSource"];
+	        this.sourceLabel = source["sourceLabel"];
+	    }
+	}
 	export class ProfileInfo {
 	    name: string;
 	    type: string;
@@ -250,7 +274,6 @@ export namespace main {
 	    }
 	}
 	export class Settings {
-	    configPath: string;
 	    profiles: ProfileInfo[];
 	
 	    static createFrom(source: any = {}) {
@@ -259,7 +282,6 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.configPath = source["configPath"];
 	        this.profiles = this.convertValues(source["profiles"], ProfileInfo);
 	    }
 	

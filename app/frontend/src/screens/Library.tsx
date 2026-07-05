@@ -83,9 +83,9 @@ export default function Library({
     readPins("teams", vault.location),
   );
   const [typeFilter, setTypeFilter] = useState("");
-  const [installedInfo, setInstalledInfo] = useState<
-    main.InstalledAssetInfo[]
-  >([]);
+  const [installedInfo, setInstalledInfo] = useState<main.InstalledAssetInfo[]>(
+    [],
+  );
   const [aiClients, setAiClients] = useState<main.AIClient[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -142,9 +142,11 @@ export default function Library({
   const loadGen = useRef(0);
   const load = useCallback(() => {
     const gen = ++loadGen.current;
-    const apply = <T,>(setter: (v: T) => void) => (v: T) => {
-      if (gen === loadGen.current) setter(v);
-    };
+    const apply =
+      <T,>(setter: (v: T) => void) =>
+      (v: T) => {
+        if (gen === loadGen.current) setter(v);
+      };
     setError("");
     ListAssets()
       .then(apply(setAssets))
@@ -198,7 +200,10 @@ export default function Library({
         document.activeElement instanceof HTMLInputElement ||
         document.activeElement instanceof HTMLTextAreaElement ||
         document.activeElement?.closest(".cm-editor");
-      if (((e.metaKey || e.ctrlKey) && e.key === "f") || (!inField && e.key === "/")) {
+      if (
+        ((e.metaKey || e.ctrlKey) && e.key === "f") ||
+        (!inField && e.key === "/")
+      ) {
         e.preventDefault();
         searchRef.current?.focus();
       }
@@ -371,10 +376,14 @@ export default function Library({
     return m;
   }, [installedInfo]);
 
-  // Native menu → Settings (Cmd+, / Ctrl+,)
+  // Native menu → frontend views (Settings Cmd+,; File → New …)
   useEffect(() => {
     EventsOn("open-settings", () => setShowSettings(true));
-    return () => EventsOff("open-settings");
+    EventsOn("new-skill", () => setShowAddAsset(true));
+    EventsOn("new-collection", () => setShowCollectionModal(true));
+    EventsOn("new-library", () => setShowSettings(true));
+    return () =>
+      EventsOff("open-settings", "new-skill", "new-collection", "new-library");
   }, []);
 
   const types = useMemo(() => {
@@ -422,7 +431,8 @@ export default function Library({
   }
 
   function togglePin(kind: PinKind, name: string) {
-    const current = kind === "collections" ? shownCollectionPins : shownTeamPins;
+    const current =
+      kind === "collections" ? shownCollectionPins : shownTeamPins;
     setPins(
       kind,
       current.includes(name)
@@ -432,7 +442,8 @@ export default function Library({
   }
 
   function ensurePinned(kind: PinKind, name: string) {
-    const current = kind === "collections" ? shownCollectionPins : shownTeamPins;
+    const current =
+      kind === "collections" ? shownCollectionPins : shownTeamPins;
     if (!current.includes(name)) setPins(kind, [...current, name]);
   }
 
@@ -465,7 +476,16 @@ export default function Library({
       if (sort === "name") return a.name.localeCompare(b.name);
       return (b.updatedAt || "").localeCompare(a.updatedAt || "");
     });
-  }, [assets, query, scope, installed, activeCollection, teamAssets, sort, typeFilter]);
+  }, [
+    assets,
+    query,
+    scope,
+    installed,
+    activeCollection,
+    teamAssets,
+    sort,
+    typeFilter,
+  ]);
 
   // Collections fully shared with the viewed team — every asset in the
   // collection is installed for the team (same rule GetCollectionSharing
@@ -556,7 +576,10 @@ export default function Library({
   useEffect(() => {
     setRenderCap(RENDER_CAP);
   }, [scope, query, typeFilter, sort]);
-  const shown = useMemo(() => visible.slice(0, renderCap), [visible, renderCap]);
+  const shown = useMemo(
+    () => visible.slice(0, renderCap),
+    [visible, renderCap],
+  );
 
   const nothingToShow =
     visible.length === 0 &&
@@ -789,9 +812,7 @@ export default function Library({
             >
               <span className="text-ink-soft">
                 {(activeTeam.members ?? []).length}{" "}
-                {(activeTeam.members ?? []).length === 1
-                  ? "member"
-                  : "members"}{" "}
+                {(activeTeam.members ?? []).length === 1 ? "member" : "members"}{" "}
                 · assets shared with this team install automatically for its
                 members
               </span>
@@ -871,8 +892,8 @@ export default function Library({
                   onClick={() => setRenderCap((c) => c + RENDER_CAP)}
                   className="mx-3 my-2 rounded-lg border border-line px-3 py-2 text-sm text-ink-soft transition hover:border-accent hover:text-ink"
                 >
-                  Show {Math.min(RENDER_CAP, visible.length - shown.length)} more (
-                  {visible.length - shown.length} remaining)
+                  Show {Math.min(RENDER_CAP, visible.length - shown.length)}{" "}
+                  more ({visible.length - shown.length} remaining)
                 </button>
               )}
             </div>
@@ -963,9 +984,7 @@ export default function Library({
           style={{ left: assetDrag.x + 12, top: assetDrag.y }}
         >
           {assetDrag.name}
-          {dropCollection || dropTeam
-            ? ` → ${dropCollection || dropTeam}`
-            : ""}
+          {dropCollection || dropTeam ? ` → ${dropCollection || dropTeam}` : ""}
         </div>
       )}
 
@@ -1135,8 +1154,8 @@ export default function Library({
               className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
             />
             <p className="mt-2 text-xs text-ink-faint">
-              You'll be its first member and admin. Share assets with the
-              team from any asset's panel.
+              You'll be its first member and admin. Share assets with the team
+              from any asset's panel.
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -1166,6 +1185,7 @@ export default function Library({
             setScope({ kind: "all" });
             onVaultChanged();
           }}
+          onLibrariesChanged={() => onVaultChanged()}
         />
       )}
 
@@ -1343,9 +1363,7 @@ function EmptyState({
         <div className="text-sm font-medium">Nothing installed yet</div>
         <div className="mt-1 max-w-sm text-sm text-ink-faint">
           Open any asset and choose{" "}
-          <span className="font-medium text-ink-soft">
-            Use in my AI tools
-          </span>{" "}
+          <span className="font-medium text-ink-soft">Use in my AI tools</span>{" "}
           — it lands in the AI tools shown above.
         </div>
       </Centered>
@@ -1369,8 +1387,8 @@ function EmptyState({
         </div>
         <div className="mt-1 max-w-sm text-sm text-ink-faint">
           Open an asset and use{" "}
-          <span className="font-medium text-ink-soft">Share…</span> to send
-          it to {scope.name} — it installs automatically for every member.
+          <span className="font-medium text-ink-soft">Share…</span> to send it
+          to {scope.name} — it installs automatically for every member.
         </div>
       </Centered>
     );
@@ -1378,9 +1396,7 @@ function EmptyState({
   if (hasAssets) {
     return (
       <Centered>
-        <div className="text-sm font-medium text-ink-soft">
-          Nothing matches
-        </div>
+        <div className="text-sm font-medium text-ink-soft">Nothing matches</div>
         <div className="mt-1 text-sm text-ink-faint">
           Try a different search, or another section in the sidebar.
         </div>
@@ -1393,8 +1409,8 @@ function EmptyState({
       <div className="text-sm font-medium">Your library is empty</div>
       <div className="mt-1 max-w-sm text-sm text-ink-faint">
         Drop a markdown file, folder, or zip anywhere in this window — or use
-        the <span className="font-medium text-ink-soft">+ New</span> button —
-        to add your first asset.
+        the <span className="font-medium text-ink-soft">+ New</span> button — to
+        add your first asset.
       </div>
     </Centered>
   );

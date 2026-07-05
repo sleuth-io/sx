@@ -38,12 +38,20 @@ export function CreateDraftFromPaths(arg1) {
   return window['go']['main']['App']['CreateDraftFromPaths'](arg1);
 }
 
+export function CreateGitRepo(arg1) {
+  return window['go']['main']['App']['CreateGitRepo'](arg1);
+}
+
 export function CreateTeam(arg1) {
   return window['go']['main']['App']['CreateTeam'](arg1);
 }
 
 export function DeleteCollection(arg1) {
   return window['go']['main']['App']['DeleteCollection'](arg1);
+}
+
+export function DescribeLibraryRemoval(arg1) {
+  return window['go']['main']['App']['DescribeLibraryRemoval'](arg1);
 }
 
 export function DiscardDraft(arg1) {
@@ -72,6 +80,10 @@ export function GetSettings() {
 
 export function GetVaultInfo() {
   return window['go']['main']['App']['GetVaultInfo']();
+}
+
+export function GitHubAccount() {
+  return window['go']['main']['App']['GitHubAccount']();
 }
 
 export function GitStatus() {
@@ -144,6 +156,10 @@ export function PublishDraft(arg1) {
 
 export function Quit() {
   return window['go']['main']['App']['Quit']();
+}
+
+export function RemoveLibrary(arg1, arg2) {
+  return window['go']['main']['App']['RemoveLibrary'](arg1, arg2);
 }
 
 export function RemoveTeamMember(arg1, arg2) {

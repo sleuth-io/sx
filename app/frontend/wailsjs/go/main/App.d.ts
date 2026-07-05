@@ -20,9 +20,13 @@ export function CreateDraftFromAsset(arg1:string):Promise<main.Draft>;
 
 export function CreateDraftFromPaths(arg1:Array<string>):Promise<main.Draft>;
 
+export function CreateGitRepo(arg1:string):Promise<main.GitRepoOption>;
+
 export function CreateTeam(arg1:string):Promise<main.TeamInfo>;
 
 export function DeleteCollection(arg1:string):Promise<void>;
+
+export function DescribeLibraryRemoval(arg1:string):Promise<main.LibraryRemoval>;
 
 export function DiscardDraft(arg1:string):Promise<void>;
 
@@ -37,6 +41,8 @@ export function GetDraft(arg1:string):Promise<main.Draft>;
 export function GetSettings():Promise<main.Settings>;
 
 export function GetVaultInfo():Promise<main.VaultInfo>;
+
+export function GitHubAccount():Promise<string>;
 
 export function GitStatus():Promise<main.GitStatusInfo>;
 
@@ -73,6 +79,8 @@ export function PickFolderForDraft():Promise<main.Draft>;
 export function PublishDraft(arg1:string):Promise<main.AssetCard>;
 
 export function Quit():Promise<void>;
+
+export function RemoveLibrary(arg1:string,arg2:boolean):Promise<main.VaultInfo>;
 
 export function RemoveTeamMember(arg1:string,arg2:string):Promise<void>;
 

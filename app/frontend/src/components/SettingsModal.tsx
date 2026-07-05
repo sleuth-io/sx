@@ -3,16 +3,20 @@ import {
   AddLibrary,
   CancelSleuthLogin,
   CompleteSleuthLogin,
+  CreateGitRepo,
+  DescribeLibraryRemoval,
   GetSettings,
+  GitHubAccount,
   GitStatus,
   ListSyncFolders,
   PickDirectory,
+  RemoveLibrary,
   StartSleuthLogin,
   SwitchProfile,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import Modal from "./Modal";
-import RepoPicker from "./RepoPicker";
+import RepoPicker, { CreateRepoCard, suggestRepoName } from "./RepoPicker";
 
 const TYPE_LABELS: Record<string, string> = {
   git: "Team git repository",
@@ -23,15 +27,20 @@ const TYPE_LABELS: Record<string, string> = {
 type AddKind = "path" | "folder" | "git" | "sleuth" | null;
 
 /**
- * Settings: which libraries exist, which one is active, and adding new
- * ones. Shared with the sx CLI — changes here change it everywhere.
+ * Settings: which libraries exist, which one is active, and adding or
+ * removing them. Shared with the sx CLI — changes here change it
+ * everywhere. onProfileChanged fires when the ACTIVE library changed
+ * (caller closes settings and reloads); onLibrariesChanged when the list
+ * changed but the active library didn't (caller refreshes in place).
  */
 export default function SettingsModal({
   onClose,
   onProfileChanged,
+  onLibrariesChanged,
 }: {
   onClose: () => void;
   onProfileChanged: () => void;
+  onLibrariesChanged?: () => void;
 }) {
   const [settings, setSettings] = useState<main.Settings | null>(null);
   const [busy, setBusy] = useState("");
@@ -48,6 +57,13 @@ export default function SettingsModal({
   const [gitStatus, setGitStatus] = useState<main.GitStatusInfo | null>(null);
   const gitUsable = gitStatus === null || gitStatus.available;
   const [syncFolders, setSyncFolders] = useState<main.SyncFolderOption[]>([]);
+  // GitHub login for the create-a-repo offer: null = not looked up yet.
+  const [ghLogin, setGhLogin] = useState<string | null>(null);
+
+  // Remove-library confirmation state.
+  const [removal, setRemoval] = useState<main.LibraryRemoval | null>(null);
+  const [removeSource, setRemoveSource] = useState(false);
+  const [removeError, setRemoveError] = useState("");
 
   const load = () => {
     GetSettings()
@@ -128,6 +144,56 @@ export default function SettingsModal({
     setNewName("");
     setNewLocation(kind === "sleuth" ? "https://app.skills.new" : "");
     setLoginCode(null);
+    if (kind === "git" && ghLogin === null) {
+      GitHubAccount()
+        .then(setGhLogin)
+        .catch(() => setGhLogin(""));
+    }
+  }
+
+  // Create a fresh private repo under the user's GitHub account and connect
+  // it as the library in one step — the common case for a new git library.
+  async function createRepoAndAdd() {
+    setBusy("add");
+    setError("");
+    try {
+      const repo = await CreateGitRepo(suggestRepoName(newName));
+      await AddLibrary(newName, "git", repo.url, "");
+      onProfileChanged();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function openRemoval(name: string) {
+    setError("");
+    setRemoveError("");
+    setRemoveSource(false);
+    DescribeLibraryRemoval(name)
+      .then(setRemoval)
+      .catch((e) => setError(String(e)));
+  }
+
+  async function confirmRemoval() {
+    if (!removal) return;
+    setBusy("remove");
+    setRemoveError("");
+    try {
+      await RemoveLibrary(removal.name, removeSource);
+      const wasActive = removal.active;
+      setRemoval(null);
+      load();
+      // Removing the active library changes the whole app's context;
+      // removing any other one is just list housekeeping.
+      if (wasActive) onProfileChanged();
+      else onLibrariesChanged?.();
+    } catch (e) {
+      setRemoveError(String(e));
+    } finally {
+      setBusy("");
+    }
   }
 
   return (
@@ -140,8 +206,8 @@ export default function SettingsModal({
             LIBRARIES
           </div>
           <p className="mb-3 text-xs text-ink-faint">
-            Shared with the <code className="font-mono">sx</code> command line
-            — switching here switches everywhere.
+            Shared with the <code className="font-mono">sx</code> command line —
+            switching here switches everywhere.
           </p>
           <ul className="space-y-2">
             {settings.profiles.map((p) => (
@@ -182,6 +248,27 @@ export default function SettingsModal({
                     className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-50"
                   >
                     {busy === p.name ? "Switching…" : "Use this"}
+                  </button>
+                )}
+                {settings.profiles.length > 1 && (
+                  <button
+                    onClick={() => openRemoval(p.name)}
+                    disabled={busy !== ""}
+                    title={`Remove ${p.name}…`}
+                    aria-label={`Remove ${p.name}`}
+                    className="shrink-0 rounded-lg p-1.5 text-ink-faint transition hover:bg-canvas hover:text-danger disabled:opacity-50"
+                  >
+                    <svg
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    >
+                      <path d="M2.5 4.5h11M6.5 2.5h3M4 4.5l.6 9a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-9M6.5 7v5M9.5 7v5" />
+                    </svg>
                   </button>
                 )}
               </li>
@@ -237,7 +324,9 @@ export default function SettingsModal({
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="Name (e.g. personal, acme)"
                     disabled={busy !== ""}
-                    className="w-44 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+                    className={`rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent ${
+                      addKind === "git" ? "min-w-0 flex-1" : "w-44"
+                    }`}
                   />
                   {addKind === "path" && (
                     <>
@@ -284,13 +373,6 @@ export default function SettingsModal({
                       </button>
                     </>
                   )}
-                  {addKind === "git" && (
-                    <RepoPicker
-                      value={newLocation}
-                      onChange={setNewLocation}
-                      disabled={busy !== "" || !gitUsable}
-                    />
-                  )}
                   {addKind === "sleuth" && (
                     <input
                       value={newLocation}
@@ -318,6 +400,38 @@ export default function SettingsModal({
                       </button>
                     ))}
                   </div>
+                )}
+                {addKind === "git" && gitUsable && (
+                  <>
+                    {ghLogin && (
+                      <>
+                        <CreateRepoCard
+                          title={
+                            busy === "add"
+                              ? "Creating repository…"
+                              : newName.trim()
+                                ? `Create ${ghLogin}/${suggestRepoName(newName)}`
+                                : "Create a new repository"
+                          }
+                          subtitle={
+                            newName.trim()
+                              ? "New private GitHub repository, connected as this library"
+                              : "Name the library above to see the suggested repository"
+                          }
+                          disabled={busy !== "" || !newName.trim()}
+                          onCreate={() => void createRepoAndAdd()}
+                        />
+                        <div className="text-center text-[11px] text-ink-faint">
+                          or connect an existing repository
+                        </div>
+                      </>
+                    )}
+                    <RepoPicker
+                      value={newLocation}
+                      onChange={setNewLocation}
+                      disabled={busy !== ""}
+                    />
+                  </>
                 )}
                 {addKind === "git" && !gitUsable && (
                   <div className="rounded-lg bg-canvas px-3 py-2 text-xs text-ink-soft">
@@ -365,16 +479,96 @@ export default function SettingsModal({
               </form>
             )}
           </div>
-
-          <div className="mt-4 border-t border-line pt-3 text-xs text-ink-faint">
-            Configuration file:{" "}
-            <code className="break-all font-mono">{settings.configPath}</code>
-          </div>
         </>
       )}
       {error && (
         <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
           {error}
+        </div>
+      )}
+
+      {/* Remove-library confirmation. Deleting the source is opt-in and
+          spelled out; plain removal just disconnects. */}
+      {removal && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && busy !== "remove") {
+              setRemoval(null);
+            }
+          }}
+        >
+          <div className="w-[440px] rounded-2xl border border-line bg-surface p-5 shadow-2xl">
+            <div className="text-sm font-semibold">
+              Remove “{removal.name}”?
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+              This disconnects the library from the app and the{" "}
+              <code className="font-mono">sx</code> command line.
+              {removal.active && " Another library becomes active."}
+              {!removeSource &&
+                (removal.type === "sleuth"
+                  ? " Your skills.new account and its assets are untouched."
+                  : " Its assets stay where they are.")}
+            </p>
+            {removal.canDeleteSource && (
+              <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-line px-3 py-2.5 transition hover:border-danger/50">
+                <input
+                  type="checkbox"
+                  checked={removeSource}
+                  onChange={(e) => setRemoveSource(e.target.checked)}
+                  disabled={busy === "remove"}
+                  className="mt-0.5 accent-[--color-danger]"
+                />
+                <span
+                  className={`text-xs leading-relaxed ${removeSource ? "text-danger" : "text-ink-soft"}`}
+                >
+                  {removal.type === "git" ? (
+                    <>
+                      Also permanently delete{" "}
+                      <span className="font-mono font-medium">
+                        {removal.sourceLabel}
+                      </span>{" "}
+                      — this deletes it for everyone who uses it
+                    </>
+                  ) : (
+                    <>
+                      Also permanently delete the folder{" "}
+                      <span className="font-mono font-medium">
+                        {removal.sourceLabel}
+                      </span>{" "}
+                      and everything in it
+                    </>
+                  )}
+                </span>
+              </label>
+            )}
+            {removeError && (
+              <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">
+                {removeError}
+              </div>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setRemoval(null)}
+                disabled={busy === "remove"}
+                className="rounded-lg px-3 py-1.5 text-xs font-medium text-ink-faint transition hover:text-ink disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void confirmRemoval()}
+                disabled={busy === "remove"}
+                className="rounded-lg bg-danger px-4 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                {busy === "remove"
+                  ? "Removing…"
+                  : removeSource
+                    ? "Remove and delete"
+                    : "Remove library"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </Modal>

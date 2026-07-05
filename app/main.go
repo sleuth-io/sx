@@ -21,6 +21,7 @@ import (
 	_ "github.com/sleuth-io/sx/internal/clients/kiro"           // Register Kiro client
 	_ "github.com/sleuth-io/sx/internal/clients/openclaw"       // Register OpenClaw client
 	_ "github.com/sleuth-io/sx/internal/clients/opencode"       // Register OpenCode client
+	"github.com/sleuth-io/sx/internal/config"
 )
 
 //go:embed all:frontend/dist
@@ -30,9 +31,14 @@ func main() {
 	app := NewApp()
 
 	// Native menu. macOS gets the standard app menu (with Settings… living
-	// there per platform convention) and an Edit menu so clipboard
-	// shortcuts work in the webview; Cmd+, / Ctrl+, opens Settings
-	// everywhere.
+	// there per platform convention), an Edit menu so clipboard shortcuts
+	// work in the webview, and the standard Window menu; other platforms
+	// fold Settings/Quit into File. File's New items and Help are the same
+	// everywhere — menu clicks become frontend events, since the frontend
+	// owns the create flows.
+	emit := func(event string) func(*menu.CallbackData) {
+		return func(*menu.CallbackData) { app.emitMenuEvent(event) }
+	}
 	appMenu := menu.NewMenu()
 	if goruntime.GOOS == "darwin" {
 		sxMenu := appMenu.AddSubmenu("sx")
@@ -44,9 +50,14 @@ func main() {
 		sxMenu.AddText("Quit sx", keys.CmdOrCtrl("q"), func(*menu.CallbackData) {
 			app.Quit()
 		})
-		appMenu.Append(menu.EditMenu())
-	} else {
-		fileMenu := appMenu.AddSubmenu("File")
+	}
+
+	fileMenu := appMenu.AddSubmenu("File")
+	fileMenu.AddText("New Skill…", keys.CmdOrCtrl("n"), emit("new-skill"))
+	fileMenu.AddText("New Collection…", keys.Combo("n", keys.CmdOrCtrlKey, keys.ShiftKey), emit("new-collection"))
+	fileMenu.AddText("New Library…", nil, emit("new-library"))
+	if goruntime.GOOS != "darwin" {
+		fileMenu.AddSeparator()
 		fileMenu.AddText("Settings…", keys.CmdOrCtrl(","), func(*menu.CallbackData) {
 			app.OpenSettings()
 		})
@@ -55,6 +66,16 @@ func main() {
 			app.Quit()
 		})
 	}
+
+	if goruntime.GOOS == "darwin" {
+		appMenu.Append(menu.EditMenu())
+		appMenu.Append(menu.WindowMenu())
+	}
+
+	helpMenu := appMenu.AddSubmenu("Help")
+	helpMenu.AddText("sx Documentation", nil, func(*menu.CallbackData) {
+		_ = config.OpenBrowser("https://github.com/sleuth-io/sx#readme")
+	})
 
 	err := wails.Run(&options.App{
 		Title:     "sx",

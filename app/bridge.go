@@ -52,8 +52,14 @@ func (a *App) shutdown(ctx context.Context) {
 // OpenSettings asks the frontend to show the settings view. Wired to the
 // native menu's Settings… item (Cmd+, / Ctrl+,).
 func (a *App) OpenSettings() {
+	a.emitMenuEvent("open-settings")
+}
+
+// emitMenuEvent forwards a native menu action to the frontend, which owns
+// the corresponding view state. Safe before startup (no-op).
+func (a *App) emitMenuEvent(event string) {
 	if a.ctx != nil {
-		wailsruntime.EventsEmit(a.ctx, "open-settings")
+		wailsruntime.EventsEmit(a.ctx, event)
 	}
 }
 

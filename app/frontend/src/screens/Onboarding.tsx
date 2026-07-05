@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   CancelSleuthLogin,
   CompleteSleuthLogin,
+  CreateGitRepo,
+  GitHubAccount,
   GitStatus,
   HasIdentity,
   ListSyncFolders,
@@ -12,7 +14,10 @@ import {
   StartSleuthLogin,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
-import RepoPicker from "../components/RepoPicker";
+import RepoPicker, {
+  CreateRepoCard,
+  suggestRepoName,
+} from "../components/RepoPicker";
 
 type Choice = "solo" | "folder" | "team" | "sleuth";
 
@@ -43,6 +48,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   // Whether this machine can run git at all (some won't — no developer
   // tools installed). Optimistic default avoids a flash of the warning.
   const [gitStatus, setGitStatus] = useState<main.GitStatusInfo | null>(null);
+  // GitHub login for the create-a-repo offer: null = not looked up yet.
+  const [ghLogin, setGhLogin] = useState<string | null>(null);
 
   useEffect(() => {
     HasIdentity()
@@ -80,6 +87,31 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     setError("");
     try {
       await SetupGitVault(gitUrl.trim(), email.trim());
+      onDone();
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  }
+
+  function pickTeam() {
+    setChoice("team");
+    if (ghLogin === null) {
+      GitHubAccount()
+        .then(setGhLogin)
+        .catch(() => setGhLogin(""));
+    }
+  }
+
+  // Create a fresh private repo under the user's GitHub account and
+  // connect it as the team library in one step.
+  async function createRepoAndConnect() {
+    if (!emailOK) return;
+    setBusy(true);
+    setError("");
+    try {
+      const repo = await CreateGitRepo(suggestRepoName(""));
+      await SetupGitVault(repo.url, email.trim());
       onDone();
     } catch (e) {
       setError(String(e));
@@ -186,8 +218,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             >
               <div className="text-sm font-semibold">Just me</div>
               <div className="mt-0.5 text-sm text-ink-soft">
-                Keep a private library on this computer. You can share it
-                later.
+                Keep a private library on this computer. You can share it later.
               </div>
             </button>
 
@@ -262,8 +293,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                     </button>
                   </form>
                   <p className="text-xs text-ink-faint">
-                    Teammates connect by pointing sx at the same folder once
-                    it syncs to their computer.
+                    Teammates connect by pointing sx at the same folder once it
+                    syncs to their computer.
                   </p>
                 </div>
               )}
@@ -275,7 +306,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
               }`}
             >
               <button
-                onClick={() => setChoice("team")}
+                onClick={pickTeam}
                 disabled={busy}
                 className="w-full text-left"
               >
@@ -294,27 +325,46 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                 </div>
               )}
               {choice === "team" && gitUsable && (
-                <form
-                  className="mt-3 flex gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void connectTeam();
-                  }}
-                >
-                  <RepoPicker
-                    autoFocus
-                    value={gitUrl}
-                    onChange={setGitUrl}
-                    disabled={busy}
-                  />
-                  <button
-                    type="submit"
-                    disabled={busy || !gitUrl.trim() || !emailOK}
-                    className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                <div className="mt-3 space-y-2.5">
+                  {ghLogin && (
+                    <>
+                      <CreateRepoCard
+                        title={
+                          busy
+                            ? "Creating repository…"
+                            : `Create ${ghLogin}/${suggestRepoName("")}`
+                        }
+                        subtitle="New private GitHub repository for your team's library"
+                        disabled={busy || !emailOK}
+                        onCreate={() => void createRepoAndConnect()}
+                      />
+                      <div className="text-center text-[11px] text-ink-faint">
+                        or connect an existing repository
+                      </div>
+                    </>
+                  )}
+                  <form
+                    className="flex gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void connectTeam();
+                    }}
                   >
-                    {busy ? "Connecting…" : "Connect"}
-                  </button>
-                </form>
+                    <RepoPicker
+                      autoFocus
+                      value={gitUrl}
+                      onChange={setGitUrl}
+                      disabled={busy}
+                    />
+                    <button
+                      type="submit"
+                      disabled={busy || !gitUrl.trim() || !emailOK}
+                      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                    >
+                      {busy ? "Connecting…" : "Connect"}
+                    </button>
+                  </form>
+                </div>
               )}
             </div>
 
