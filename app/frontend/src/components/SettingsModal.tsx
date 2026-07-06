@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   AddLibrary,
   CancelSleuthLogin,
+  ChooseLibraryIcon,
+  ClearLibraryIcon,
   CompleteSleuthLogin,
   CreateGitRepo,
   DescribeLibraryRemoval,
@@ -11,6 +13,7 @@ import {
   ListSyncFolders,
   PickDirectory,
   RemoveLibrary,
+  SetLibraryActive,
   SetLibraryRepoTracking,
   StartSleuthLogin,
   SwitchProfile,
@@ -182,6 +185,44 @@ export default function SettingsModal({
     }
   }
 
+  // A library's icon replaces the sx mark in the sidebar switcher.
+  async function chooseIcon(name: string) {
+    setError("");
+    try {
+      const icon = await ChooseLibraryIcon(name);
+      if (!icon) return; // picker cancelled
+      load();
+      onLibrariesChanged?.();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function clearIcon(name: string) {
+    setError("");
+    try {
+      await ClearLibraryIcon(name);
+      load();
+      onLibrariesChanged?.();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Multi-vault sync: any number of libraries can be in the active set;
+  // Sync merges assets from all of them. Viewing/writing stays with the
+  // current (default) library.
+  async function toggleActive(p: main.ProfileInfo) {
+    setError("");
+    try {
+      await SetLibraryActive(p.name, !p.active);
+      load();
+      onLibrariesChanged?.();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   // Repository views are opt-in per library — technical users want them,
   // everyone else shouldn't have to know they exist.
   async function toggleRepoTracking(name: string, enabled: boolean) {
@@ -245,6 +286,17 @@ export default function SettingsModal({
                   p.default ? "border-accent bg-accent-soft/40" : "border-line"
                 }`}
               >
+                {p.icon ? (
+                  <img
+                    src={p.icon}
+                    alt=""
+                    className="h-8 w-8 shrink-0 rounded-lg border border-line object-cover"
+                  />
+                ) : (
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-gradient-to-b from-[#2e3138] to-[#15171b] text-[10px] font-bold text-[#8fa6ff]">
+                    sx
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold">{p.name}</span>
@@ -265,9 +317,17 @@ export default function SettingsModal({
                     </div>
                   )}
                 </div>
+                {!p.default && p.active && (
+                  <span
+                    className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[11px] text-ink-faint"
+                    title="Sync also installs this library's assets"
+                  >
+                    Synced
+                  </span>
+                )}
                 {p.default ? (
                   <span className="shrink-0 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-medium text-white">
-                    Active
+                    Current
                   </span>
                 ) : (
                   <button
@@ -305,7 +365,56 @@ export default function SettingsModal({
                     </svg>
                   </button>
                   {menuFor === p.name && (
-                    <div className="absolute right-0 top-full z-40 mt-1 w-56 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                    <div className="absolute right-0 top-full z-40 mt-1 w-60 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                      <button
+                        onClick={() => {
+                          setMenuFor(null);
+                          void chooseIcon(p.name);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
+                      >
+                        <span className="w-3.5" />
+                        <span className="flex-1">
+                          <span className="block">
+                            {p.icon ? "Change icon…" : "Set icon…"}
+                          </span>
+                          <span className="block text-xs text-ink-faint">
+                            Shown in the sidebar for this library
+                          </span>
+                        </span>
+                      </button>
+                      {p.icon && (
+                        <button
+                          onClick={() => {
+                            setMenuFor(null);
+                            void clearIcon(p.name);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
+                        >
+                          <span className="w-3.5" />
+                          Remove icon
+                        </button>
+                      )}
+                      <div className="mx-3 my-1 border-t border-line" />
+                      <button
+                        onClick={() => {
+                          setMenuFor(null);
+                          void toggleActive(p);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
+                      >
+                        <span className="w-3.5 text-accent">
+                          {p.active ? "✓" : ""}
+                        </span>
+                        <span className="flex-1">
+                          <span className="block">Include in sync</span>
+                          <span className="block text-xs text-ink-faint">
+                            {p.default
+                              ? "The current library is always synced"
+                              : "Sync installs this library's assets too"}
+                          </span>
+                        </span>
+                      </button>
                       <button
                         onClick={() => {
                           setMenuFor(null);

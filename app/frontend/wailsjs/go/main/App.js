@@ -26,6 +26,14 @@ export function CheckForUpdatesInteractively() {
   return window['go']['main']['App']['CheckForUpdatesInteractively']();
 }
 
+export function ChooseLibraryIcon(arg1) {
+  return window['go']['main']['App']['ChooseLibraryIcon'](arg1);
+}
+
+export function ClearLibraryIcon(arg1) {
+  return window['go']['main']['App']['ClearLibraryIcon'](arg1);
+}
+
 export function CompleteSleuthLogin(arg1, arg2, arg3) {
   return window['go']['main']['App']['CompleteSleuthLogin'](arg1, arg2, arg3);
 }
@@ -196,6 +204,10 @@ export function SetCollectionMembership(arg1, arg2, arg3) {
 
 export function SetCollectionTeamSharing(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetCollectionTeamSharing'](arg1, arg2, arg3);
+}
+
+export function SetLibraryActive(arg1, arg2) {
+  return window['go']['main']['App']['SetLibraryActive'](arg1, arg2);
 }
 
 export function SetLibraryRepoTracking(arg1, arg2) {

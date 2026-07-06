@@ -145,6 +145,9 @@ type VaultInfo struct {
 	// TrackRepos: this library surfaces repository-scoped views
 	// (a per-library setting; see SetLibraryRepoTracking).
 	TrackRepos bool `json:"trackRepos"`
+	// Icon is the library's uploaded icon as a data URL; empty means the
+	// default sx mark.
+	Icon string `json:"icon"`
 }
 
 // libraryName derives a short display name from a vault's location.
@@ -196,7 +199,13 @@ func (a *App) GetVaultInfo() VaultInfo {
 	if err != nil {
 		return VaultInfo{Configured: false}
 	}
-	info := VaultInfo{Configured: true, Type: string(cfg.Type), Identity: cfg.Identity, TrackRepos: cfg.TrackRepos}
+	info := VaultInfo{
+		Configured: true,
+		Type:       string(cfg.Type),
+		Identity:   cfg.Identity,
+		TrackRepos: cfg.TrackRepos,
+		Icon:       libraryIconDataURL(cfg.ProfileName),
+	}
 	switch cfg.Type {
 	case config.RepositoryTypeSleuth:
 		info.Location = cfg.ServerURL

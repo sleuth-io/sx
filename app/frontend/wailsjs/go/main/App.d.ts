@@ -14,6 +14,10 @@ export function CheckForUpdate():Promise<main.UpdateInfo>;
 
 export function CheckForUpdatesInteractively():Promise<void>;
 
+export function ChooseLibraryIcon(arg1:string):Promise<string>;
+
+export function ClearLibraryIcon(arg1:string):Promise<void>;
+
 export function CompleteSleuthLogin(arg1:string,arg2:string,arg3:string):Promise<main.VaultInfo>;
 
 export function CreateBlankDraft(arg1:string):Promise<main.Draft>;
@@ -99,6 +103,8 @@ export function SetAssetTeamSharing(arg1:string,arg2:string,arg3:boolean):Promis
 export function SetCollectionMembership(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function SetCollectionTeamSharing(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function SetLibraryActive(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetLibraryRepoTracking(arg1:string,arg2:boolean):Promise<main.VaultInfo>;
 

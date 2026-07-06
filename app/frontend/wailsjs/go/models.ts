@@ -263,7 +263,9 @@ export namespace main {
 	    location: string;
 	    identity: string;
 	    default: boolean;
+	    active: boolean;
 	    trackRepos: boolean;
+	    icon: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProfileInfo(source);
@@ -276,7 +278,9 @@ export namespace main {
 	        this.location = source["location"];
 	        this.identity = source["identity"];
 	        this.default = source["default"];
+	        this.active = source["active"];
 	        this.trackRepos = source["trackRepos"];
+	        this.icon = source["icon"];
 	    }
 	}
 	export class Settings {
@@ -386,6 +390,7 @@ export namespace main {
 	    name: string;
 	    identity: string;
 	    trackRepos: boolean;
+	    icon: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new VaultInfo(source);
@@ -399,6 +404,7 @@ export namespace main {
 	        this.name = source["name"];
 	        this.identity = source["identity"];
 	        this.trackRepos = source["trackRepos"];
+	        this.icon = source["icon"];
 	    }
 	}
 

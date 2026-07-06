@@ -32,9 +32,15 @@ type ProfileInfo struct {
 	Type     string `json:"type"`     // "git" | "path" | "sleuth"
 	Location string `json:"location"` // URL or path, display form
 	Identity string `json:"identity"`
-	Default  bool   `json:"default"`
+	// Default: the library the app is viewing and writes go to.
+	Default bool `json:"default"`
+	// Active: part of the active set — Sync installs this library's assets
+	// too. More than one library can be active at a time (sx multi-profile).
+	Active bool `json:"active"`
 	// TrackRepos: repository views are enabled for this library.
 	TrackRepos bool `json:"trackRepos"`
+	// Icon is the library's uploaded icon as a data URL ("" = none).
+	Icon string `json:"icon"`
 }
 
 // Settings is the app's view of the sx configuration.
@@ -59,7 +65,9 @@ func (a *App) GetSettings() (Settings, error) {
 			Type:       string(cfg.Type),
 			Identity:   cfg.Identity,
 			Default:    name == active,
+			Active:     mpc.IsProfileActive(name) || name == active,
 			TrackRepos: cfg.TrackRepos,
+			Icon:       libraryIconDataURL(name),
 		}
 		switch cfg.Type {
 		case config.RepositoryTypeSleuth:
@@ -90,7 +98,11 @@ func (a *App) SwitchProfile(name string) (VaultInfo, error) {
 	if _, ok := mpc.GetProfile(name); !ok {
 		return VaultInfo{}, fmt.Errorf("profile %q not found", name)
 	}
-	mpc.DefaultProfile = name
+	// SetDefaultProfile keeps the invariant that the default library is in
+	// the active set; other active libraries stay active (multi-vault sync).
+	if err := mpc.SetDefaultProfile(name); err != nil {
+		return VaultInfo{}, err
+	}
 	if err := config.SaveMultiProfile(mpc); err != nil {
 		return VaultInfo{}, err
 	}
@@ -600,10 +612,39 @@ func (a *App) RemoveLibrary(name string, deleteSource bool) (VaultInfo, error) {
 	if err := config.SaveMultiProfile(mpc); err != nil {
 		return VaultInfo{}, err
 	}
+	// The icon belongs to the library; no library, no icon.
+	removeIconFiles(name)
 	// Clear any session override and re-resolve — the default may have moved.
 	config.SetActiveProfile("")
 	a.resetVault()
 	return a.GetVaultInfo(), nil
+}
+
+// SetLibraryActive adds or removes a library from the active set — the
+// libraries Sync (and `sx install`) merge assets from. The current library
+// is always active; the last active library can't be deactivated. Mirrors
+// `sx profile activate` / `sx profile deactivate`.
+func (a *App) SetLibraryActive(name string, active bool) error {
+	mpc, err := config.LoadMultiProfile()
+	if err != nil {
+		return err
+	}
+	if _, ok := mpc.GetProfile(name); !ok {
+		return fmt.Errorf("library %q not found", name)
+	}
+	if active {
+		if err := mpc.Activate(name); err != nil {
+			return err
+		}
+	} else {
+		if name == config.GetActiveProfileName(mpc) {
+			return errors.New("the current library is always synced — switch to another library first")
+		}
+		if err := mpc.Deactivate(name); err != nil {
+			return err
+		}
+	}
+	return config.SaveMultiProfile(mpc)
 }
 
 // deleteVaultFolder removes a path library's folder, but only when it looks
