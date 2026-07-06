@@ -8,7 +8,7 @@ driven entirely by repository secrets:
 | Secrets present | App | Artifacts |
 |---|---|---|
 | none | ad-hoc signed | `sx-app-macos-<arch>-unsigned.{zip,dmg}` — Gatekeeper warns on open |
-| certificate only | Developer ID + hardened runtime | signed but **not notarized** (loud warning in the job log) — Gatekeeper still warns |
+| certificate only | Developer ID + hardened runtime | `sx-app-macos-<arch>-unnotarized.{zip,dmg}` (loud warning in the job log) — Gatekeeper still warns |
 | certificate + notary key | signed, notarized, stapled | `sx-app-macos-<arch>.{zip,dmg}` — opens cleanly |
 
 Nothing needs to change in the workflow when the secrets land — the next

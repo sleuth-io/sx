@@ -70,12 +70,7 @@ else
   codesign --force --deep -s - "$APP_PATH"
 fi
 
-SUFFIX="-unsigned"
-if [ "$SIGNED" = true ]; then
-  SUFFIX=""
-fi
-ZIP_NAME="sx-app-macos-${ARCH}${SUFFIX}.zip"
-DMG_NAME="sx-app-macos-${ARCH}${SUFFIX}.dmg"
+NOTARIZED=false
 
 notarize() {
   # Submit one artifact and wait for the verdict. A missing App Store
@@ -101,17 +96,35 @@ notarize() {
   rm -f "$key_path"
 }
 
-echo "==> Building $ZIP_NAME (auto-update feed)"
-ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$OUT_DIR/$ZIP_NAME"
+STAGING_ZIP="$OUT_DIR/.staging-update.zip"
+echo "==> Building update zip (auto-update feed)"
+ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$STAGING_ZIP"
 
-if [ "$SIGNED" = true ] && notarize "$OUT_DIR/$ZIP_NAME"; then
+if [ "$SIGNED" = true ] && notarize "$STAGING_ZIP"; then
   # The ticket staples to the .app, not the zip — staple, then rebuild
   # the zip so the update feed carries the stapled bundle.
   echo "==> Stapling $APP_NAME and rebuilding the zip"
   xcrun stapler staple "$APP_PATH"
-  rm -f "$OUT_DIR/$ZIP_NAME"
-  ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$OUT_DIR/$ZIP_NAME"
+  rm -f "$STAGING_ZIP"
+  ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$STAGING_ZIP"
+  NOTARIZED=true
 fi
+
+# The name suffix tracks what a downloader will actually experience:
+# only a notarized+stapled build opens without a Gatekeeper warning, so
+# only that build earns the clean name. Certificate-but-no-notary-key is
+# a transient setup state — mark it distinctly rather than either lying
+# ("-unsigned") or overpromising (clean).
+if [ "$NOTARIZED" = true ]; then
+  SUFFIX=""
+elif [ "$SIGNED" = true ]; then
+  SUFFIX="-unnotarized"
+else
+  SUFFIX="-unsigned"
+fi
+ZIP_NAME="sx-app-macos-${ARCH}${SUFFIX}.zip"
+DMG_NAME="sx-app-macos-${ARCH}${SUFFIX}.dmg"
+mv "$STAGING_ZIP" "$OUT_DIR/$ZIP_NAME"
 
 echo "==> Building $DMG_NAME"
 STAGING="$(mktemp -d)"
