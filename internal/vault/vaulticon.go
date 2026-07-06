@@ -20,6 +20,12 @@ import (
 
 const vaultIconRel = ".sx/vault-icon"
 
+// maxVaultIconBytes bounds reads as well as writes: the file is shared
+// vault data that other clients (or hand edits) could oversize, and the
+// getters run on every settings poll — an oversized icon must not be
+// slurped into memory over and over.
+const maxVaultIconBytes = 1 << 20
+
 // VaultIconStore is implemented by file-backed vaults (git, path) whose
 // icon is stored in the vault itself.
 type VaultIconStore interface {
@@ -33,7 +39,19 @@ func vaultIconPath(vaultRoot string) string {
 }
 
 func readVaultIcon(vaultRoot string) ([]byte, error) {
-	data, err := os.ReadFile(vaultIconPath(vaultRoot))
+	p := vaultIconPath(vaultRoot)
+	info, err := os.Stat(p)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > maxVaultIconBytes {
+		// Oversized shared icons are treated as absent, not read.
+		return nil, nil
+	}
+	data, err := os.ReadFile(p)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -77,11 +95,17 @@ func (p *PathVault) SetVaultIcon(ctx context.Context, data []byte) error {
 // GetVaultIcon reads the shared icon from the working clone. It never
 // pulls: icon freshness rides along with every other vault operation's
 // sync, and a library that has never been used yet simply has no icon to
-// show until it is.
+// show until it is. The vault flock keeps the read from observing a
+// working tree mid-rewrite (pull/rebase in another process).
 func (g *GitVault) GetVaultIcon(ctx context.Context) ([]byte, error) {
 	if _, err := os.Stat(g.repoPath); os.IsNotExist(err) {
 		return nil, nil
 	}
+	fileLock, err := g.acquireFileLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = fileLock.Unlock() }()
 	return readVaultIcon(g.repoPath)
 }
 

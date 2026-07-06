@@ -41,6 +41,15 @@ func TestPathVaultIconRoundTrip(t *testing.T) {
 	if data, err := v.GetVaultIcon(ctx); err != nil || data != nil {
 		t.Fatalf("after remove = %v, %v", data, err)
 	}
+
+	// An oversized shared icon (another client, hand edit) is treated as
+	// absent rather than read into memory on every poll.
+	if err := os.WriteFile(filepath.Join(dir, ".sx", "vault-icon"), bytes.Repeat([]byte("x"), maxVaultIconBytes+1), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := v.GetVaultIcon(ctx); err != nil || data != nil {
+		t.Fatalf("oversized icon = %d bytes, %v", len(data), err)
+	}
 }
 
 // One user sets the icon; a second user (own clone) sees it after sync.
