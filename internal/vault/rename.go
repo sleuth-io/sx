@@ -46,10 +46,19 @@ func commonRenameTeam(vaultRoot string, actor mgmt.Actor, oldName, newName strin
 		}
 		team.Name = newName
 		// Every reference follows the rename in the same transaction:
-		// team-scoped installations and bot memberships.
+		// team-scoped installations (on assets AND collections) and bot
+		// memberships.
 		for i := range m.Assets {
 			for j := range m.Assets[i].Scopes {
 				s := &m.Assets[i].Scopes[j]
+				if s.Kind == manifest.ScopeKindTeam && s.Team == oldName {
+					s.Team = newName
+				}
+			}
+		}
+		for i := range m.Collections {
+			for j := range m.Collections[i].Scopes {
+				s := &m.Collections[i].Scopes[j]
 				if s.Kind == manifest.ScopeKindTeam && s.Team == oldName {
 					s.Team = newName
 				}

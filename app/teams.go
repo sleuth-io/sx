@@ -31,9 +31,23 @@ type TeamInfo struct {
 type teamManager interface {
 	ListTeams(ctx context.Context, opts vaultpkg.ListTeamsOptions) (*vaultpkg.ListTeamsResult, error)
 	CreateTeam(ctx context.Context, team mgmt.Team) error
+	DeleteTeam(ctx context.Context, name string) error
 	AddTeamMember(ctx context.Context, team, email string, admin bool) error
 	RemoveTeamMember(ctx context.Context, team, email string) error
 	SetTeamAdmin(ctx context.Context, team, email string, admin bool) error
+}
+
+// DeleteTeam removes a team. Team-scoped installs referencing it stop
+// resolving; assets themselves are untouched. Callers confirm first.
+func (a *App) DeleteTeam(name string) error {
+	tm, err := a.teamVault()
+	if err != nil {
+		return err
+	}
+	if err := tm.DeleteTeam(a.ctx, name); err != nil {
+		return friendlyVaultError(err)
+	}
+	return nil
 }
 
 func (a *App) teamVault() (teamManager, error) {

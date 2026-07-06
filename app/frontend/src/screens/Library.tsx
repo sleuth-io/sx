@@ -4,6 +4,7 @@ import {
   CreateDraftFromPaths,
   CreateTeam,
   DeleteCollection,
+  DeleteTeam,
   GetCollectionSharing,
   AddAssetRepoScope,
   AddCollectionRepoScope,
@@ -1319,15 +1320,22 @@ export default function Library({
               <button
                 disabled={busyAction}
                 onClick={() => {
-                  DeleteCollection(activeCollection.name)
-                    .then(() => {
-                      setScope({ kind: "all" });
-                      load();
-                      setToastMessage(
-                        "Collection removed — its assets are still in the library",
-                      );
-                    })
-                    .catch((e) => setToastMessage(String(e)));
+                  void (async () => {
+                    const ok = await confirmAction(
+                      `Delete ${activeCollection.name}? Its assets stay in the library`,
+                      "Delete",
+                    );
+                    if (!ok) return;
+                    DeleteCollection(activeCollection.name)
+                      .then(() => {
+                        setScope({ kind: "all" });
+                        load();
+                        setToastMessage(
+                          "Collection removed — its assets are still in the library",
+                        );
+                      })
+                      .catch((e) => setToastMessage(String(e)));
+                  })();
                 }}
                 className="rounded-md px-2 py-1 font-medium text-ink-faint transition hover:text-danger"
               >
@@ -1359,6 +1367,27 @@ export default function Library({
                 className="rounded-md border border-line bg-surface px-2.5 py-1 font-medium text-ink-soft transition hover:border-accent hover:text-ink"
               >
                 Manage team…
+              </button>
+              <button
+                onClick={() => {
+                  void (async () => {
+                    const ok = await confirmAction(
+                      `Delete team ${activeTeam.name}? Assets stay in the library, but anything shared only with this team stops installing for its members`,
+                      "Delete",
+                    );
+                    if (!ok) return;
+                    DeleteTeam(activeTeam.name)
+                      .then(() => {
+                        setScope({ kind: "all" });
+                        load();
+                        setToastMessage(`Team ${activeTeam.name} deleted`);
+                      })
+                      .catch((e) => setToastMessage(String(e)));
+                  })();
+                }}
+                className="rounded-md px-2 py-1 font-medium text-ink-faint transition hover:text-danger"
+              >
+                Delete
               </button>
             </div>
           )}
@@ -1759,6 +1788,26 @@ export default function Library({
           installedScopes={installedScopes.get(selected) ?? []}
           onClose={() => setSelected(null)}
           onEdit={() => void editAsset(selected)}
+          onDelete={() => {
+            const name = selected;
+            void (async () => {
+              const ok = await confirmAction(
+                `Delete ${name}? This permanently removes it from the library for everyone`,
+                "Delete",
+              );
+              if (!ok) return;
+              try {
+                await DeleteAssets([name]);
+              } catch (e) {
+                setToastMessage(String(e));
+                return;
+              }
+              setSelected(null);
+              setMultiSel(new Set());
+              load();
+              setToastMessage(`Deleted ${name}`);
+            })();
+          }}
           onChanged={() => {
             load();
             setToastMessage("Restored — it's now the current revision");

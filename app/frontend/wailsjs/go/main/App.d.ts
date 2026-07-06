@@ -40,6 +40,8 @@ export function DeleteAssets(arg1:Array<string>):Promise<void>;
 
 export function DeleteCollection(arg1:string):Promise<void>;
 
+export function DeleteTeam(arg1:string):Promise<void>;
+
 export function DescribeLibraryRemoval(arg1:string):Promise<main.LibraryRemoval>;
 
 export function DiscardDraft(arg1:string):Promise<void>;

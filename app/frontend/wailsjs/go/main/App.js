@@ -78,6 +78,10 @@ export function DeleteCollection(arg1) {
   return window['go']['main']['App']['DeleteCollection'](arg1);
 }
 
+export function DeleteTeam(arg1) {
+  return window['go']['main']['App']['DeleteTeam'](arg1);
+}
+
 export function DescribeLibraryRemoval(arg1) {
   return window['go']['main']['App']['DescribeLibraryRemoval'](arg1);
 }

@@ -244,6 +244,20 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 				clearedAssets = append(clearedAssets, asset.Name)
 			}
 		}
+		// Collections carry their own team scope rows; strip them the
+		// same way as asset scopes, or a re-created team would silently
+		// re-inherit the collection installs.
+		for i := range m.Collections {
+			c := &m.Collections[i]
+			kept := c.Scopes[:0]
+			for _, s := range c.Scopes {
+				if s.Kind == manifest.ScopeKindTeam && s.Team == name {
+					continue
+				}
+				kept = append(kept, s)
+			}
+			c.Scopes = kept
+		}
 		// Cascade to bot team memberships: every bot that referenced
 		// the deleted team must drop it from its Teams slice. Without
 		// this, the data invariant "every entry in Bot.Teams references

@@ -29,6 +29,7 @@ export default function AssetDetail({
   installedScopes,
   onClose,
   onEdit,
+  onDelete,
   onChanged,
   onToast,
   onCollectionsChanged,
@@ -40,6 +41,7 @@ export default function AssetDetail({
   installedScopes: string[];
   onClose: () => void;
   onEdit: () => void;
+  onDelete: () => void;
   onChanged: () => void;
   onToast: (message: string) => void;
   onCollectionsChanged: () => void;
@@ -260,6 +262,13 @@ export default function AssetDetail({
             className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:border-accent hover:text-ink"
           >
             Edit
+          </button>
+          <button
+            onClick={onDelete}
+            title="Delete from the library (asks first)"
+            className="rounded-lg px-2 py-1.5 text-sm font-medium text-ink-faint transition hover:text-danger"
+          >
+            Delete
           </button>
           <button
             onClick={onClose}
