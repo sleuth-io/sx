@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import {
+  DownloadAsset,
   GetAsset,
   GetAssetSharing,
   RestoreRevision,
@@ -262,6 +263,19 @@ export default function AssetDetail({
             className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:border-accent hover:text-ink"
           >
             Edit
+          </button>
+          <button
+            onClick={() => {
+              DownloadAsset(name)
+                .then((path) => {
+                  if (path) onToast(`Saved to ${path}`);
+                })
+                .catch((e) => onToast(String(e)));
+            }}
+            title={`Save ${name}.zip to your computer`}
+            className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:border-accent hover:text-ink"
+          >
+            Download
           </button>
           <button
             onClick={onDelete}

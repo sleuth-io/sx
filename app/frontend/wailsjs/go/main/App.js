@@ -90,6 +90,10 @@ export function DiscardDraft(arg1) {
   return window['go']['main']['App']['DiscardDraft'](arg1);
 }
 
+export function DownloadAsset(arg1) {
+  return window['go']['main']['App']['DownloadAsset'](arg1);
+}
+
 export function GetAsset(arg1, arg2) {
   return window['go']['main']['App']['GetAsset'](arg1, arg2);
 }

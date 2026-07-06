@@ -479,3 +479,54 @@ func (a *App) GetAsset(name, version string) (AssetDetail, error) {
 	}
 	return detail, nil
 }
+
+// latestAssetZip fetches the stored archive for an asset's newest
+// revision — the exact bytes DownloadAsset writes to disk.
+func (a *App) latestAssetZip(name string) ([]byte, error) {
+	if err := validateAssetRef(name, ""); err != nil {
+		return nil, err
+	}
+	v, err := a.currentVault()
+	if err != nil {
+		return nil, err
+	}
+	versions, err := v.GetVersionList(a.ctx, name)
+	if err != nil {
+		return nil, friendlyVaultError(err)
+	}
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("%s has no versions", name)
+	}
+	zipData, err := v.GetAssetByVersion(a.ctx, name, versions[len(versions)-1])
+	if err != nil {
+		return nil, friendlyVaultError(err)
+	}
+	return zipData, nil
+}
+
+// DownloadAsset saves an asset's latest revision as <name>.zip wherever
+// the user picks. Returns the saved path, or "" when the dialog is
+// cancelled.
+func (a *App) DownloadAsset(name string) (string, error) {
+	zipData, err := a.latestAssetZip(name)
+	if err != nil {
+		return "", err
+	}
+	path, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
+		Title:           "Save " + name,
+		DefaultFilename: name + ".zip",
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: "Zip archives (*.zip)", Pattern: "*.zip"},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	if path == "" {
+		return "", nil // cancelled
+	}
+	if err := os.WriteFile(path, zipData, 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
+}

@@ -1,10 +1,21 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
+	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/lockfile"
+	"github.com/sleuth-io/sx/internal/mgmt"
+	"github.com/sleuth-io/sx/internal/utils"
+	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
 // Drafts persisted without a type (created while a vault's metadata read
@@ -41,4 +52,75 @@ func TestLoadDraft_RepairsMissingType(t *testing.T) {
 	if d.TypeLabel == "" {
 		t.Fatalf("repaired draft has no type label")
 	}
+}
+
+// The download path serves the stored archive for the newest revision —
+// a real zip whose entries are the skill's files.
+func TestLatestAssetZip(t *testing.T) {
+	t.Setenv("SX_CONFIG_DIR", t.TempDir())
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init")
+	runGitCmd(t, dir, "config", "user.email", "alice@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Alice")
+
+	v, err := vaultpkg.NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	a := &App{ctx: context.Background(), vault: v}
+
+	skillZip := zipOf(t, map[string]string{
+		"SKILL.md":      "---\nname: docs-tone\ndescription: Tone.\n---\n\n# docs-tone\n",
+		"metadata.toml": "[asset]\nname = \"docs-tone\"\nversion = \"1\"\ntype = \"skill\"\ndescription = \"Tone.\"\n\n[skill]\nprompt-file = \"SKILL.md\"\n",
+	})
+	if err := v.AddAsset(a.ctx, &lockfile.Asset{
+		Name: "docs-tone", Version: "1", Type: asset.TypeSkill,
+	}, skillZip); err != nil {
+		t.Fatalf("AddAsset: %v", err)
+	}
+
+	got, err := a.latestAssetZip("docs-tone")
+	if err != nil {
+		t.Fatalf("latestAssetZip: %v", err)
+	}
+	content, err := utils.ReadZipFile(got, "SKILL.md")
+	if err != nil {
+		t.Fatalf("returned bytes are not the asset zip: %v", err)
+	}
+	if !strings.Contains(string(content), "# docs-tone") {
+		t.Fatalf("SKILL.md content = %q", content)
+	}
+
+	if _, err := a.latestAssetZip("missing"); err == nil {
+		t.Fatalf("want error for unknown asset")
+	}
+}
+
+func runGitCmd(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func zipOf(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	for name, content := range files {
+		f, err := w.Create(name)
+		if err != nil {
+			t.Fatalf("zip create: %v", err)
+		}
+		if _, err := f.Write([]byte(content)); err != nil {
+			t.Fatalf("zip write: %v", err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("zip close: %v", err)
+	}
+	return buf.Bytes()
 }
