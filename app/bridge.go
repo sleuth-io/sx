@@ -15,6 +15,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/manifest"
+	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/utils"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -461,6 +462,20 @@ func (a *App) GetAsset(name, version string) (AssetDetail, error) {
 			continue
 		}
 		detail.Files = append(detail.Files, AssetFile{Path: entry, Content: string(content)})
+	}
+	// GetMetadata failures are tolerated above, but a typeless detail
+	// poisons anything built from it (a draft with no type can't publish).
+	// The downloaded archive carries the same metadata — use it.
+	if detail.Type == "" {
+		if metaBytes, err := utils.ReadZipFile(zipData, "metadata.toml"); err == nil {
+			if meta, err := metadata.Parse(metaBytes); err == nil {
+				if detail.Description == "" {
+					detail.Description = meta.Asset.Description
+				}
+				detail.Type = meta.Asset.Type.Key
+				detail.TypeLabel = meta.Asset.Type.Label
+			}
+		}
 	}
 	return detail, nil
 }

@@ -570,6 +570,19 @@ func (a *App) loadDraft(id string) (Draft, error) {
 		return Draft{}, err
 	}
 	sort.Slice(draft.Files, func(i, j int) bool { return draft.Files[i].Path < draft.Files[j].Path })
+	// Repair drafts persisted without a type (a vault whose metadata read
+	// failed used to produce them) — otherwise they can never publish
+	// ("unknown asset type"). Detect from the files, defaulting to skill.
+	if draft.Type == "" {
+		repaired := asset.TypeSkill
+		if zipData, zerr := zipFromFiles(draft.Files); zerr == nil {
+			if _, detected, _, derr := publish.DetectNameAndType(zipData, draft.Name); derr == nil && detected.Key != "" {
+				repaired = detected
+			}
+		}
+		draft.Type = repaired.Key
+		draft.TypeLabel = repaired.Label
+	}
 	return draft, nil
 }
 

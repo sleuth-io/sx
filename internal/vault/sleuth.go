@@ -24,6 +24,7 @@ import (
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/mgmt"
+	"github.com/sleuth-io/sx/internal/utils"
 	vaultgql "github.com/sleuth-io/sx/internal/vault/graphql"
 	"github.com/sleuth-io/sx/internal/version"
 )
@@ -414,6 +415,18 @@ func (s *SleuthVault) GetMetadata(ctx context.Context, name, version string) (*m
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// The server may answer this path with the whole asset archive rather
+	// than the bare TOML file (observed on app.skills.new). Feeding zip
+	// bytes to the TOML parser fails, and callers that swallow that error
+	// end up with a typeless asset — so unwrap the archive here.
+	if utils.IsZipFile(data) {
+		inner, zipErr := utils.ReadZipFile(data, "metadata.toml")
+		if zipErr != nil {
+			return nil, fmt.Errorf("metadata endpoint returned an archive without metadata.toml: %w", zipErr)
+		}
+		data = inner
 	}
 
 	return metadata.Parse(data)
