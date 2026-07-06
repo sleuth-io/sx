@@ -22,78 +22,153 @@ import (
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
-// Library icons personalize the switcher. For git and path libraries the
-// user uploads one, stored under the sx config dir (icons/<library>.<ext>).
-// skills.new libraries belong to an organization, so their icon IS the org
-// icon — pulled from the API and cached locally (icons/<library>.org).
+// Library icons personalize the switcher. Git and path libraries store the
+// icon IN the vault (.sx/icon), so one user setting it applies to everyone
+// sharing that vault. skills.new libraries belong to an organization, so
+// their icon IS the org icon — pulled from the API and cached locally
+// (config dir icons/<library>.org).
 
 var iconExts = []string{".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
-// maxIconBytes bounds uploads: the icon renders at ~28px, so anything
-// beyond this is waste that would bloat every GetSettings payload.
+// maxIconBytes bounds icons: they render at ~28px, so anything beyond
+// this is waste that would bloat every GetSettings payload (and, for
+// shared vaults, every clone).
 const maxIconBytes = 1 << 20
 
-func iconsDir() (string, error) {
-	dir, err := utils.GetConfigDir()
+func iconDataURL(data []byte) string {
+	if len(data) == 0 || len(data) > maxIconBytes {
+		return ""
+	}
+	return "data:" + http.DetectContentType(data) + ";base64," + base64.StdEncoding.EncodeToString(data)
+}
+
+// libraryIcon resolves a library's icon by type: skills.new libraries show
+// their organization's icon; git and path libraries show the icon stored
+// in the vault.
+func (a *App) libraryIcon(cfgType config.RepositoryType, name string) string {
+	if cfgType == config.RepositoryTypeSleuth {
+		return a.orgIconDataURL(name)
+	}
+	return a.vaultIconDataURL(name)
+}
+
+// vaultIconDataURL reads the shared icon out of a git/path library's vault.
+func (a *App) vaultIconDataURL(name string) string {
+	store, err := a.vaultIconStore(name)
+	if err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
+	defer cancel()
+	data, err := store.GetVaultIcon(ctx)
+	if err != nil {
+		return ""
+	}
+	return iconDataURL(data)
+}
+
+// vaultIconStore opens the named library's vault as an icon store.
+func (a *App) vaultIconStore(name string) (vaultpkg.VaultIconStore, error) {
+	mpc, err := config.LoadMultiProfile()
+	if err != nil {
+		return nil, err
+	}
+	profile, ok := mpc.GetProfile(name)
+	if !ok {
+		return nil, fmt.Errorf("library %q not found", name)
+	}
+	v, err := vaultpkg.NewFromConfig(profile.ToConfig(nil, nil))
+	if err != nil {
+		return nil, err
+	}
+	store, ok := v.(vaultpkg.VaultIconStore)
+	if !ok {
+		return nil, errors.New("this library type has no stored icon")
+	}
+	return store, nil
+}
+
+// resolveLibraryName turns "" into the active library, validates the name,
+// and rejects skills.new libraries — their icon is the org's, managed on
+// the server.
+func resolveLibraryName(name string) (string, error) {
+	mpc, err := config.LoadMultiProfile()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "icons"), nil
-}
-
-// libraryIconFile finds the stored icon for a library, "" when none.
-func libraryIconFile(name string) string {
+	if name == "" {
+		name = config.GetActiveProfileName(mpc)
+	}
 	if !safePathComponent(name) {
-		return ""
+		return "", fmt.Errorf("library %q not found", name)
 	}
-	dir, err := iconsDir()
+	if profile, ok := mpc.GetProfile(name); ok && profile.Type == config.RepositoryTypeSleuth {
+		return "", errors.New("this library's icon comes from your skills.new organization — change it there")
+	}
+	return name, nil
+}
+
+// ChooseLibraryIcon opens the native image picker and stores the choice in
+// the library's vault, where everyone sharing it will see it. Returns the
+// new icon as a data URL — empty when the user cancelled the picker.
+func (a *App) ChooseLibraryIcon(name string) (string, error) {
+	name, err := resolveLibraryName(name)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	for _, ext := range iconExts {
-		p := filepath.Join(dir, name+ext)
-		if info, err := os.Stat(p); err == nil && info.Size() <= maxIconBytes {
-			return p
-		}
-	}
-	return ""
-}
-
-// libraryIconDataURL loads a library's icon as a data URL for the frontend.
-func libraryIconDataURL(name string) string {
-	p := libraryIconFile(name)
-	if p == "" {
-		return ""
-	}
-	data, err := os.ReadFile(p)
-	if err != nil || len(data) == 0 {
-		return ""
-	}
-	return "data:" + iconMime(p) + ";base64," + base64.StdEncoding.EncodeToString(data)
-}
-
-func iconMime(path string) string {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".webp":
-		return "image/webp"
-	case ".gif":
-		return "image/gif"
-	default:
-		return "image/png"
-	}
-}
-
-func removeIconFiles(name string) {
-	dir, err := iconsDir()
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Choose a library icon",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Images (*.png, *.jpg, *.webp, *.gif)", Pattern: "*.png;*.jpg;*.jpeg;*.webp;*.gif"},
+		},
+	})
 	if err != nil {
-		return
+		return "", err
 	}
-	for _, ext := range iconExts {
-		_ = os.Remove(filepath.Join(dir, name+ext))
+	if path == "" {
+		return "", nil // cancelled
 	}
-	_ = os.Remove(filepath.Join(dir, name+orgIconExt))
+	ext := strings.ToLower(filepath.Ext(path))
+	if !slices.Contains(iconExts, ext) {
+		return "", errors.New("choose a PNG, JPEG, WebP, or GIF image")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maxIconBytes {
+		return "", errors.New("that image is over 1 MB — icons render small, pick a smaller file")
+	}
+	store, err := a.vaultIconStore(name)
+	if err != nil {
+		return "", err
+	}
+	// Git vaults commit and push the icon; give the sync room to run.
+	ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
+	defer cancel()
+	if err := store.SetVaultIcon(ctx, data); err != nil {
+		return "", friendlyVaultError(err)
+	}
+	return iconDataURL(data), nil
+}
+
+// ClearLibraryIcon removes a library's shared icon (back to the default
+// mark, for everyone using the vault).
+func (a *App) ClearLibraryIcon(name string) error {
+	name, err := resolveLibraryName(name)
+	if err != nil {
+		return err
+	}
+	store, err := a.vaultIconStore(name)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
+	defer cancel()
+	if err := store.SetVaultIcon(ctx, nil); err != nil {
+		return friendlyVaultError(err)
+	}
+	return nil
 }
 
 // --- Org icons (skills.new libraries) ---
@@ -106,13 +181,20 @@ const orgIconExt = ".org"
 // this session, so GetSettings polls don't hammer the API.
 var orgIconRefreshed sync.Map
 
-// libraryIcon resolves a library's icon by type: skills.new libraries show
-// their organization's icon; everything else shows the local upload.
-func (a *App) libraryIcon(cfgType config.RepositoryType, name string) string {
-	if cfgType == config.RepositoryTypeSleuth {
-		return a.orgIconDataURL(name)
+func iconsDir() (string, error) {
+	dir, err := utils.GetConfigDir()
+	if err != nil {
+		return "", err
 	}
-	return libraryIconDataURL(name)
+	return filepath.Join(dir, "icons"), nil
+}
+
+func removeIconFiles(name string) {
+	dir, err := iconsDir()
+	if err != nil {
+		return
+	}
+	_ = os.Remove(filepath.Join(dir, name+orgIconExt))
 }
 
 // orgIconDataURL serves the cached org icon and keeps it fresh: a cached
@@ -131,12 +213,12 @@ func (a *App) orgIconDataURL(name string) string {
 		if _, loaded := orgIconRefreshed.LoadOrStore(name, true); !loaded {
 			go a.refreshOrgIcon(name, cache)
 		}
-		return "data:" + http.DetectContentType(data) + ";base64," + base64.StdEncoding.EncodeToString(data)
+		return iconDataURL(data)
 	}
 	if _, loaded := orgIconRefreshed.LoadOrStore(name, true); !loaded {
 		a.refreshOrgIcon(name, cache)
 		if data, err := os.ReadFile(cache); err == nil && len(data) > 0 {
-			return "data:" + http.DetectContentType(data) + ";base64," + base64.StdEncoding.EncodeToString(data)
+			return iconDataURL(data)
 		}
 	}
 	return ""
@@ -220,80 +302,4 @@ func fetchOrgIconImage(ctx context.Context, cfg *config.Config, iconURL string) 
 		return nil, errors.New("org icon exceeds the size cap")
 	}
 	return data, nil
-}
-
-// resolveLibraryName turns "" into the active library, validates the name
-// is usable as a filename component, and rejects skills.new libraries —
-// their icon is the org's, managed on the server.
-func resolveLibraryName(name string) (string, error) {
-	mpc, err := config.LoadMultiProfile()
-	if err != nil {
-		return "", err
-	}
-	if name == "" {
-		name = config.GetActiveProfileName(mpc)
-	}
-	if !safePathComponent(name) {
-		return "", fmt.Errorf("library %q not found", name)
-	}
-	if profile, ok := mpc.GetProfile(name); ok && profile.Type == config.RepositoryTypeSleuth {
-		return "", errors.New("this library's icon comes from your skills.new organization — change it there")
-	}
-	return name, nil
-}
-
-// ChooseLibraryIcon opens the native image picker and stores the choice
-// as the library's icon. Returns the new icon as a data URL — empty when
-// the user cancelled the picker.
-func (a *App) ChooseLibraryIcon(name string) (string, error) {
-	name, err := resolveLibraryName(name)
-	if err != nil {
-		return "", err
-	}
-	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Choose a library icon",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Images (*.png, *.jpg, *.webp, *.gif)", Pattern: "*.png;*.jpg;*.jpeg;*.webp;*.gif"},
-		},
-	})
-	if err != nil {
-		return "", err
-	}
-	if path == "" {
-		return "", nil // cancelled
-	}
-	ext := strings.ToLower(filepath.Ext(path))
-	if !slices.Contains(iconExts, ext) {
-		return "", errors.New("choose a PNG, JPEG, WebP, or GIF image")
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	if len(data) > maxIconBytes {
-		return "", errors.New("that image is over 1 MB — icons render small, pick a smaller file")
-	}
-	dir, err := iconsDir()
-	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", err
-	}
-	// One icon per library: drop any previous file with a different ext.
-	removeIconFiles(name)
-	if err := os.WriteFile(filepath.Join(dir, name+ext), data, 0644); err != nil {
-		return "", err
-	}
-	return libraryIconDataURL(name), nil
-}
-
-// ClearLibraryIcon removes a library's icon (back to the default mark).
-func (a *App) ClearLibraryIcon(name string) error {
-	name, err := resolveLibraryName(name)
-	if err != nil {
-		return err
-	}
-	removeIconFiles(name)
-	return nil
 }

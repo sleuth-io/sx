@@ -102,6 +102,7 @@ edit them by hand. They're removed when the vault has no skill assets.
       SKILL.md
       metadata.toml
   .sx/
+    vault-icon            # optional library icon (raw image bytes)
     versions/
       github-mcp/
         list.txt          # "1.2.3\n1.2.4\n"
@@ -111,6 +112,16 @@ edit them by hand. They're removed when the vault has no skill assets.
         list.txt          # "3.0.0\n"
         3.0.0/ …
 ```
+
+## Library Icon (`.sx/vault-icon`)
+
+Optional. Raw image bytes (PNG/JPEG/WebP/GIF, ≤1 MB; consumers sniff the
+mime from content). Shared vault data: one user setting it applies to
+everyone using the vault. The desktop app reads and writes it; for git
+vaults changes are their own commit. skills.new vaults do not use this
+file — their icon is the organization's icon, served by the API. (The
+name avoids an `icon` basename, which the common macOS `Icon?` gitignore
+rule would match case-insensitively and silently exclude from commits.)
 
 ## Version Listing (`list.txt`)
 

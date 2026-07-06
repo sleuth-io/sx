@@ -13,6 +13,38 @@ import (
 	"github.com/sleuth-io/sx/internal/config"
 )
 
+func TestIconDataURL(t *testing.T) {
+	if got := iconDataURL(nil); got != "" {
+		t.Fatalf("nil data: %q", got)
+	}
+	got := iconDataURL([]byte("\x89PNG\r\n\x1a\n fake"))
+	if !strings.HasPrefix(got, "data:image/png;base64,") {
+		t.Fatalf("data URL = %q", got)
+	}
+	if got := iconDataURL(bytes.Repeat([]byte("x"), maxIconBytes+1)); got != "" {
+		t.Fatalf("oversized data should be dropped, got %d bytes", len(got))
+	}
+}
+
+func TestOrgIconCacheRemoval(t *testing.T) {
+	t.Setenv("SX_CONFIG_DIR", t.TempDir())
+	dir, err := iconsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cache := filepath.Join(dir, "work"+orgIconExt)
+	if err := os.WriteFile(cache, []byte("img"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	removeIconFiles("work")
+	if _, err := os.Stat(cache); !os.IsNotExist(err) {
+		t.Fatal("org icon cache not removed")
+	}
+}
+
 func TestFetchOrgIconImage(t *testing.T) {
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -55,44 +87,5 @@ func TestFetchOrgIconImage(t *testing.T) {
 	}
 	if gotAuth != "" {
 		t.Fatalf("cross-host auth leaked: %q", gotAuth)
-	}
-}
-
-func TestLibraryIconRoundTrip(t *testing.T) {
-	t.Setenv("SX_CONFIG_DIR", t.TempDir())
-
-	if got := libraryIconDataURL("work"); got != "" {
-		t.Fatalf("expected no icon, got %q", got)
-	}
-
-	dir, err := iconsDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	// Tiny valid PNG header is enough — the app never decodes, only serves.
-	if err := os.WriteFile(filepath.Join(dir, "work.png"), []byte("\x89PNG fake"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	got := libraryIconDataURL("work")
-	if !strings.HasPrefix(got, "data:image/png;base64,") {
-		t.Fatalf("data URL = %q", got)
-	}
-
-	removeIconFiles("work")
-	if got := libraryIconDataURL("work"); got != "" {
-		t.Fatalf("expected icon removed, got %q", got)
-	}
-}
-
-func TestLibraryIconRejectsUnsafeNames(t *testing.T) {
-	t.Setenv("SX_CONFIG_DIR", t.TempDir())
-	for _, bad := range []string{"../escape", "a/b", ""} {
-		if got := libraryIconFile(bad); got != "" {
-			t.Errorf("%q: expected no path, got %q", bad, got)
-		}
 	}
 }
