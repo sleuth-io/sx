@@ -223,6 +223,7 @@ func commonUpdateTeam(vaultRoot string, actor mgmt.Actor, team mgmt.Team) error 
 // here, but ordering is kept for defense in depth.
 func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 	var clearedAssets []string
+	var clearedCollections []string
 	var unlinkedBots []string
 	if err := withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
 		if _, err := requireTeamAdminInTx(m, name, actor); err != nil {
@@ -250,13 +251,18 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 		for i := range m.Collections {
 			c := &m.Collections[i]
 			kept := c.Scopes[:0]
+			removed := false
 			for _, s := range c.Scopes {
 				if s.Kind == manifest.ScopeKindTeam && s.Team == name {
+					removed = true
 					continue
 				}
 				kept = append(kept, s)
 			}
-			c.Scopes = kept
+			if removed {
+				c.Scopes = kept
+				clearedCollections = append(clearedCollections, c.Name)
+			}
 		}
 		// Cascade to bot team memberships: every bot that referenced
 		// the deleted team must drop it from its Teams slice. Without
@@ -320,6 +326,25 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 			},
 		}); err != nil {
 			auditErrs = append(auditErrs, fmt.Errorf("asset %s: %w", assetName, err))
+		}
+	}
+
+	// Same trail for collections whose team row the cascade stripped —
+	// without it, a collection silently stops installing for the deleted
+	// team's members with no audit row explaining why.
+	for _, collectionName := range clearedCollections {
+		if err := mgmt.AppendAuditEvent(vaultRoot, mgmt.AuditEvent{
+			Actor:      actor.Email,
+			Event:      mgmt.EventCollectionUninstalled,
+			TargetType: mgmt.TargetTypeCollection,
+			Target:     collectionName,
+			Data: map[string]any{
+				"kind":   string(manifest.ScopeKindTeam),
+				"team":   name,
+				"reason": "team_deleted",
+			},
+		}); err != nil {
+			auditErrs = append(auditErrs, fmt.Errorf("collection %s: %w", collectionName, err))
 		}
 	}
 	return errors.Join(auditErrs...)
