@@ -120,6 +120,8 @@ export function StartSleuthLogin(arg1:string):Promise<main.SleuthLoginStart>;
 
 export function SwitchProfile(arg1:string):Promise<main.VaultInfo>;
 
+export function SyncAITools():Promise<string>;
+
 export function TeamAssets():Promise<Record<string, Array<string>>>;
 
 export function UninstallAsset(arg1:string):Promise<void>;

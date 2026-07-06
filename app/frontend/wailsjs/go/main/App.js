@@ -238,6 +238,10 @@ export function SwitchProfile(arg1) {
   return window['go']['main']['App']['SwitchProfile'](arg1);
 }
 
+export function SyncAITools() {
+  return window['go']['main']['App']['SyncAITools']();
+}
+
 export function TeamAssets() {
   return window['go']['main']['App']['TeamAssets']();
 }

@@ -18,6 +18,7 @@ import {
   SetCollectionMembership,
   SetCollectionTeamSharing,
   ShareCollectionWithEveryone,
+  SyncAITools,
   TeamAssets,
 } from "../../wailsjs/go/main/App";
 import {
@@ -146,6 +147,21 @@ export default function Library({
   const dragHappenedRef = useRef(false);
   const [toast, setToast] = useState("");
   const [busyAction, setBusyAction] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  // The library-level equivalent of `sx install`.
+  async function syncAITools() {
+    setSyncing(true);
+    try {
+      const summary = await SyncAITools();
+      setToastMessage(summary);
+      load();
+    } catch (e) {
+      setToastMessage(String(e));
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   // Guard against overlapping loads resolving out of order (focus events,
   // post-mutation refreshes): only the newest generation's results apply.
@@ -763,6 +779,30 @@ export default function Library({
                   onClick={() => setView("grid")}
                 />
               </div>
+
+              {/* The library-level `sx install`: deliver everything scoped
+                  to this machine into the AI tools, clean up what's stale. */}
+              <button
+                onClick={() => void syncAITools()}
+                disabled={syncing}
+                title="Sync your AI tools — install everything scoped to you (like sx install)"
+                className="flex h-full items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-60"
+              >
+                <svg
+                  aria-hidden="true"
+                  className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`}
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M13.5 8a5.5 5.5 0 0 1-9.6 3.7M2.5 8a5.5 5.5 0 0 1 9.6-3.7" />
+                  <path d="M13.7 1.9v2.7H11M2.3 14.1v-2.7H5" />
+                </svg>
+                {syncing ? "Syncing…" : "Sync"}
+              </button>
 
               <div className="relative h-full" ref={newMenuRef}>
                 <button
