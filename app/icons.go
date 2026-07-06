@@ -213,7 +213,13 @@ func (a *App) orgIconDataURL(name string) string {
 	cache := filepath.Join(dir, name+orgIconExt)
 	if _, loaded := orgIconRefreshed.LoadOrStore(name, true); !loaded {
 		go func() {
-			a.refreshOrgIcon(name, cache)
+			if !a.refreshOrgIcon(name, cache) {
+				// Transient failure (offline launch, server blip): release
+				// the once-flag so a later poll retries. The in-flight
+				// goroutine held it, so there's no concurrent-fetch storm.
+				orgIconRefreshed.Delete(name)
+				return
+			}
 			a.emitMenuEvent("library-icons-updated")
 		}()
 	}
@@ -224,50 +230,52 @@ func (a *App) orgIconDataURL(name string) string {
 }
 
 // refreshOrgIcon asks the org's vault for its icon URL and re-caches the
-// image. Best-effort: failures keep whatever cache exists.
-func (a *App) refreshOrgIcon(name, cache string) {
+// image. Reports whether the refresh reached a definitive answer (icon
+// cached, or the org genuinely has none); false means a transient failure
+// worth retrying later. Failures keep whatever cache exists.
+func (a *App) refreshOrgIcon(name, cache string) bool {
 	mpc, err := config.LoadMultiProfile()
 	if err != nil {
-		return
+		return false
 	}
 	profile, ok := mpc.GetProfile(name)
 	if !ok {
-		return
+		return false
 	}
 	cfg := profile.ToConfig(nil, nil)
 	v, err := vaultpkg.NewFromConfig(cfg)
 	if err != nil {
-		return
+		return false
 	}
 	provider, ok := v.(interface {
 		OrgInfo(ctx context.Context) (string, string, error)
 	})
 	if !ok {
-		return
+		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_, iconURL, err := provider.OrgInfo(ctx)
 	if err != nil {
-		return
+		return false
 	}
 	if iconURL == "" {
-		// The org has no icon (anymore) — drop any stale cache.
+		// Definitive: the org has no icon (anymore) — drop any stale cache.
 		_ = os.Remove(cache)
-		return
+		return true
 	}
 	data, err := fetchOrgIconImage(ctx, cfg, iconURL)
 	if err != nil || len(data) == 0 {
-		return
+		return false
 	}
 	if err := os.MkdirAll(filepath.Dir(cache), 0755); err != nil {
-		return
+		return false
 	}
 	tmp := cache + ".tmp"
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
-		return
+		return false
 	}
-	_ = os.Rename(tmp, cache)
+	return os.Rename(tmp, cache) == nil
 }
 
 // fetchOrgIconImage downloads the icon, resolving relative URLs against
