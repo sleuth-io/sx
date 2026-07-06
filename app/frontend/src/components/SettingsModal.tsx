@@ -398,10 +398,14 @@ export default function SettingsModal({
                       <div className="mx-3 my-1 border-t border-line" />
                       <button
                         onClick={() => {
+                          // Always-synced is a fact for the current
+                          // library, not a togglable state.
+                          if (p.default) return;
                           setMenuFor(null);
                           void toggleActive(p);
                         }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
+                        disabled={p.default}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition enabled:hover:bg-canvas enabled:hover:text-ink disabled:cursor-default disabled:opacity-70"
                       >
                         <span className="w-3.5 text-accent">
                           {p.active ? "✓" : ""}
