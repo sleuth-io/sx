@@ -4,12 +4,11 @@ import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import {
   GetAsset,
   GetAssetSharing,
-  InstallAsset,
   RestoreRevision,
+  SetAssetPersonal,
   SetAssetTeamSharing,
   SetCollectionMembership,
   ShareAssetWithEveryone,
-  UninstallAsset,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import usePanelSize from "../lib/usePanelSize";
@@ -94,13 +93,15 @@ export default function AssetDetail({
   const showInstallHint =
     !installed && !localStorage.getItem("sx-install-explained");
 
+  // Both directions are scope changes plus a real sync — never a bare file
+  // copy that the next sync would fight.
   async function install() {
     setInstalling(true);
     setInstallMenu(false);
     try {
-      const result = await InstallAsset(name);
+      const summary = await SetAssetPersonal(name, true);
       localStorage.setItem("sx-install-explained", "1");
-      onToast(`Ready to use in ${result.clients.join(", ")}`);
+      onToast(summary);
     } catch (e) {
       onToast(String(e));
     } finally {
@@ -112,8 +113,7 @@ export default function AssetDetail({
     setInstalling(true);
     setInstallMenu(false);
     try {
-      await UninstallAsset(name);
-      onToast(`Removed ${name} from your AI tools`);
+      onToast(await SetAssetPersonal(name, false));
     } catch (e) {
       onToast(String(e));
     } finally {
@@ -203,9 +203,7 @@ export default function AssetDetail({
               )}
             </div>
             {detail?.description && (
-              <p className="mt-1 text-sm text-ink-soft">
-                {detail.description}
-              </p>
+              <p className="mt-1 text-sm text-ink-soft">{detail.description}</p>
             )}
             {installed && installedScopes.length > 0 && (
               <p className="mt-1.5 text-xs text-emerald-600 dark:text-emerald-400">
@@ -214,8 +212,8 @@ export default function AssetDetail({
             )}
             {showInstallHint && (
               <p className="mt-1.5 text-xs text-ink-faint">
-                Installing copies this into the AI tools on this machine so
-                they can use it. Assets shared with you through your team are
+                Installing copies this into the AI tools on this machine so they
+                can use it. Assets shared with you through your team are
                 installed automatically when sx syncs. Nothing leaves your
                 computer.
               </p>

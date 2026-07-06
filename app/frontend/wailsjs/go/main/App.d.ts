@@ -98,6 +98,8 @@ export function RepoAssets():Promise<Record<string, Array<string>>>;
 
 export function RestoreRevision(arg1:string,arg2:string):Promise<void>;
 
+export function SetAssetPersonal(arg1:string,arg2:boolean):Promise<string>;
+
 export function SetAssetTeamSharing(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function SetCollectionMembership(arg1:string,arg2:string,arg3:boolean):Promise<void>;

@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -84,6 +85,107 @@ func (a *App) bundleForLatest(name string) (*clients.AssetBundle, error) {
 
 func globalScope() *clients.InstallScope {
 	return &clients.InstallScope{Type: clients.ScopeGlobal}
+}
+
+// SetAssetPersonal is the durable form of "Use in my AI tools": it makes
+// the asset part of what sx resolves FOR THIS USER (adding a personal user
+// scope in the vault when the asset doesn't already reach them), then runs
+// the real sync so files land immediately and every future sync agrees.
+// Disabling removes only the caller's own user scope — never anyone
+// else's sharing — and explains when the asset stays because the library
+// still shares it with them.
+func (a *App) SetAssetPersonal(name string, enabled bool) (string, error) {
+	if err := validateAssetRef(name, ""); err != nil {
+		return "", err
+	}
+	self := manifest.NormalizeEmail(strings.TrimSpace(a.GetVaultInfo().Identity))
+	if self == "" {
+		return "", errors.New("set your email in Settings first — personal installs are scoped to you")
+	}
+	r, err := a.sharingVault()
+	if err != nil {
+		return "", err
+	}
+	targets, _, err := r.CurrentInstallTargets(a.ctx, name)
+	if err != nil {
+		return "", friendlyVaultError(err)
+	}
+	shared, minePersonally := a.assetReachesUser(targets, self)
+
+	if enabled {
+		// A global asset must NOT get a user scope appended — scopes are
+		// "who receives this", and narrowing everyone's asset to one
+		// person is the opposite of what the button means.
+		if !shared && !minePersonally {
+			target := vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindUser, User: self}
+			if err := r.SetAssetInstallation(a.ctx, name, target); err != nil {
+				return "", friendlyVaultError(err)
+			}
+		}
+		return a.SyncAITools()
+	}
+
+	if !minePersonally {
+		if shared {
+			return "", errors.New("this is shared with you by the library, so sync would bring it right back — change its sharing to stop receiving it")
+		}
+		// Nothing personal to remove and nothing shares it; sync will
+		// clean up any stray local copy.
+		return a.SyncAITools()
+	}
+	target := vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindUser, User: self}
+	if err := r.RemoveAssetInstallation(a.ctx, name, target); err != nil {
+		return "", friendlyVaultError(err)
+	}
+	summary, err := a.SyncAITools()
+	if err != nil {
+		return "", err
+	}
+	if shared {
+		return "Removed from your personal picks — but the library still shares it with you, so it stays installed", nil
+	}
+	return summary, nil
+}
+
+// assetReachesUser reports how an asset's install targets relate to the
+// user: shared = it reaches them without a personal scope (org-wide, or a
+// team they belong to); minePersonally = their own user scope is present.
+func (a *App) assetReachesUser(targets []vaultpkg.InstallTarget, self string) (shared, minePersonally bool) {
+	var teamNames []string
+	for _, t := range targets {
+		switch t.Kind {
+		case vaultpkg.InstallKindOrg:
+			shared = true
+		case vaultpkg.InstallKindUser:
+			if manifest.NormalizeEmail(t.User) == self {
+				minePersonally = true
+			}
+		case vaultpkg.InstallKindTeam:
+			teamNames = append(teamNames, t.Team)
+		}
+	}
+	// An asset with no targets at all is library-wide (global).
+	if len(targets) == 0 {
+		shared = true
+	}
+	if shared || len(teamNames) == 0 {
+		return shared, minePersonally
+	}
+	teams, err := a.ListTeams()
+	if err != nil {
+		return shared, minePersonally
+	}
+	for _, team := range teams {
+		if !slices.Contains(teamNames, team.Name) {
+			continue
+		}
+		for _, member := range team.Members {
+			if manifest.NormalizeEmail(member) == self {
+				return true, minePersonally
+			}
+		}
+	}
+	return shared, minePersonally
 }
 
 // InstallAsset delivers an asset to every detected AI client.

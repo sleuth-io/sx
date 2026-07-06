@@ -112,6 +112,8 @@ export default function Library({
   const [showSettings, setShowSettings] = useState(false);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const newMenuRef = useRef<HTMLDivElement>(null);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [openDraft, setOpenDraft] = useState<main.Draft | null>(null);
@@ -384,6 +386,19 @@ export default function Library({
     window.addEventListener("mousedown", onClick);
     return () => window.removeEventListener("mousedown", onClick);
   }, [newMenuOpen]);
+
+  useEffect(() => {
+    if (!sortMenuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (
+        !(e.target instanceof Node) ||
+        !sortMenuRef.current?.contains(e.target)
+      )
+        setSortMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onClick);
+    return () => window.removeEventListener("mousedown", onClick);
+  }, [sortMenuOpen]);
 
   const toastTimer = useRef(0);
   function setToastMessage(message: string) {
@@ -757,27 +772,113 @@ export default function Library({
                 ))}
               </select>
 
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortMode)}
-                title="Sort"
-                className="h-full rounded-lg border border-line bg-canvas py-0 pl-3 pr-7 text-sm text-ink-soft outline-none"
-              >
-                <option value="updated">Recently updated</option>
-                <option value="name">Name</option>
-              </select>
+              {/* Sort is a view preference, not a filter — it lives in a
+                  quiet icon menu (the Linear "display options" pattern)
+                  instead of crowding the filter row. */}
+              <div className="relative h-full" ref={sortMenuRef}>
+                <button
+                  onClick={() => setSortMenuOpen((v) => !v)}
+                  title={`Sort: ${sort === "name" ? "Name" : "Recently updated"}`}
+                  aria-label="Sort"
+                  aria-expanded={sortMenuOpen}
+                  className={`flex h-full items-center rounded-lg px-2 transition hover:bg-canvas hover:text-ink ${
+                    sortMenuOpen ? "bg-canvas text-ink" : "text-ink-faint"
+                  }`}
+                >
+                  <svg
+                    aria-hidden="true"
+                    className="h-4 w-4"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M5 3v10M5 13l-2.5-2.5M5 13l2.5-2.5M11 13V3M11 3 8.5 5.5M11 3l2.5 2.5" />
+                  </svg>
+                </button>
+                {sortMenuOpen && (
+                  <div className="absolute right-0 z-40 mt-1.5 w-48 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                    <div className="px-3 pb-1 pt-1.5 text-[11px] font-semibold tracking-wide text-ink-faint">
+                      SORT BY
+                    </div>
+                    {(
+                      [
+                        ["updated", "Recently updated"],
+                        ["name", "Name"],
+                      ] as [SortMode, string][]
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        onClick={() => {
+                          setSort(value);
+                          setSortMenuOpen(false);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
+                      >
+                        <span className="w-3.5 text-accent">
+                          {sort === value ? "✓" : ""}
+                        </span>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-              <div className="flex h-full overflow-hidden rounded-lg border border-line">
-                <ViewToggle
-                  label="List"
-                  active={view === "list"}
+              {/* List/grid: icon-only segments — one of the few controls
+                  where icons alone are unambiguous. */}
+              <div className="flex h-full items-center overflow-hidden rounded-lg border border-line">
+                <button
                   onClick={() => setView("list")}
-                />
-                <ViewToggle
-                  label="Grid"
-                  active={view === "grid"}
+                  title="List view"
+                  aria-label="List view"
+                  aria-pressed={view === "list"}
+                  className={`flex h-full items-center px-2 transition ${
+                    view === "list"
+                      ? "bg-canvas text-ink"
+                      : "text-ink-faint hover:text-ink"
+                  }`}
+                >
+                  <svg
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  >
+                    <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
+                  </svg>
+                </button>
+                <button
                   onClick={() => setView("grid")}
-                />
+                  title="Grid view"
+                  aria-label="Grid view"
+                  aria-pressed={view === "grid"}
+                  className={`flex h-full items-center px-2 transition ${
+                    view === "grid"
+                      ? "bg-canvas text-ink"
+                      : "text-ink-faint hover:text-ink"
+                  }`}
+                >
+                  <svg
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" />
+                    <rect x="9" y="2.5" width="4.5" height="4.5" rx="1" />
+                    <rect x="2.5" y="9" width="4.5" height="4.5" rx="1" />
+                    <rect x="9" y="9" width="4.5" height="4.5" rx="1" />
+                  </svg>
+                </button>
               </div>
 
               {/* The library-level `sx install`: deliver everything scoped
@@ -1415,27 +1516,6 @@ function DraftRow({
           ? `Unpublished changes to ${draft.targetAsset}`
           : draft.description || "Not published yet."}
       </span>
-    </button>
-  );
-}
-
-function ViewToggle({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-2.5 py-1.5 text-xs font-medium transition ${
-        active ? "bg-accent-soft text-accent" : "text-ink-faint hover:text-ink"
-      }`}
-    >
-      {label}
     </button>
   );
 }

@@ -194,6 +194,10 @@ export function RestoreRevision(arg1, arg2) {
   return window['go']['main']['App']['RestoreRevision'](arg1, arg2);
 }
 
+export function SetAssetPersonal(arg1, arg2) {
+  return window['go']['main']['App']['SetAssetPersonal'](arg1, arg2);
+}
+
 export function SetAssetTeamSharing(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetAssetTeamSharing'](arg1, arg2, arg3);
 }
