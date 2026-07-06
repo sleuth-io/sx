@@ -199,20 +199,6 @@ export namespace main {
 	        this.reason = source["reason"];
 	    }
 	}
-	export class InstallResult {
-	    clients: string[];
-	    failed: string[];
-	
-	    static createFrom(source: any = {}) {
-	        return new InstallResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.clients = source["clients"];
-	        this.failed = source["failed"];
-	    }
-	}
 	export class InstalledAssetInfo {
 	    name: string;
 	    version: string;

@@ -7,14 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sleuth-io/sx/internal/asset"
 	assetspkg "github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/clients"
-	"github.com/sleuth-io/sx/internal/lockfile"
-	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/manifest"
-	"github.com/sleuth-io/sx/internal/metadata"
-	"github.com/sleuth-io/sx/internal/utils"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
@@ -37,50 +32,6 @@ func (a *App) ListAIClients() []AIClient {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
-}
-
-// InstallResult summarizes an install/uninstall for the frontend.
-type InstallResult struct {
-	Clients []string `json:"clients"` // display names that received it
-	// Failed lists clients that errored while others succeeded, so a
-	// partial install is never silently reported as a full one.
-	Failed []string `json:"failed"`
-}
-
-// bundleForLatest builds the client install bundle for an asset's latest
-// revision.
-func (a *App) bundleForLatest(name string) (*clients.AssetBundle, error) {
-	v, err := a.currentVault()
-	if err != nil {
-		return nil, err
-	}
-	versions, err := v.GetVersionList(a.ctx, name)
-	if err != nil || len(versions) == 0 {
-		return nil, fmt.Errorf("%s has no published revisions", name)
-	}
-	latest := versions[len(versions)-1]
-	zipData, err := v.GetAssetByVersion(a.ctx, name, latest)
-	if err != nil {
-		return nil, friendlyVaultError(err)
-	}
-	metaBytes, err := utils.ReadZipFile(zipData, "metadata.toml")
-	if err != nil {
-		return nil, fmt.Errorf("%s is missing its metadata", name)
-	}
-	meta, err := metadata.Parse(metaBytes)
-	if err != nil {
-		return nil, err
-	}
-	return &clients.AssetBundle{
-		Asset: &lockfile.Asset{
-			Name:    name,
-			Version: latest,
-			Type:    meta.Asset.Type,
-			Clients: append([]string(nil), meta.Asset.Clients...),
-		},
-		Metadata: meta,
-		ZipData:  zipData,
-	}, nil
 }
 
 func globalScope() *clients.InstallScope {
@@ -197,114 +148,6 @@ func (a *App) assetReachesUser(targets []vaultpkg.InstallTarget, self string) (s
 	return shared, minePersonally
 }
 
-// InstallAsset delivers an asset to every detected AI client.
-func (a *App) InstallAsset(name string) (InstallResult, error) {
-	if err := validateAssetRef(name, ""); err != nil {
-		return InstallResult{}, err
-	}
-	bundle, err := a.bundleForLatest(name)
-	if err != nil {
-		return InstallResult{}, err
-	}
-	return a.installBundles([]*clients.AssetBundle{bundle})
-}
-
-// InstallCollection delivers every asset in a collection.
-func (a *App) InstallCollection(name string) (InstallResult, error) {
-	c, err := a.findCollection(name)
-	if err != nil {
-		return InstallResult{}, err
-	}
-	if len(c.Assets) == 0 {
-		return InstallResult{}, fmt.Errorf("%s has no assets yet", name)
-	}
-	bundles := make([]*clients.AssetBundle, 0, len(c.Assets))
-	var skipped []string
-	for _, assetName := range c.Assets {
-		bundle, err := a.bundleForLatest(assetName)
-		if err != nil {
-			skipped = append(skipped, assetName)
-			continue
-		}
-		bundles = append(bundles, bundle)
-	}
-	if len(bundles) == 0 {
-		return InstallResult{}, fmt.Errorf("none of the assets in %s could be loaded", name)
-	}
-	result, err := a.installBundles(bundles)
-	if err != nil {
-		return result, err
-	}
-	if len(skipped) > 0 {
-		return result, fmt.Errorf("installed, but skipped: %s", strings.Join(skipped, ", "))
-	}
-	return result, nil
-}
-
-func (a *App) installBundles(bundles []*clients.AssetBundle) (InstallResult, error) {
-	registry := clients.Global()
-	orchestrator := clients.NewOrchestrator(registry)
-	results := orchestrator.InstallToAll(a.ctx, bundles, globalScope(), clients.InstallOptions{})
-
-	var succeeded []string
-	var failures []string
-	// The orchestrator filters assets per client, so success is tracked
-	// per asset: recording the union would claim every asset reached every
-	// client, misleading uninstall and `sx install --repair`.
-	clientsByAsset := map[string][]string{}
-	for id, resp := range results {
-		client, err := registry.Get(id)
-		displayName := id
-		if err == nil {
-			displayName = client.DisplayName()
-		}
-		ok := false
-		for _, r := range resp.Results {
-			switch r.Status {
-			case clients.StatusSuccess:
-				ok = true
-				clientsByAsset[r.AssetName] = append(clientsByAsset[r.AssetName], id)
-			case clients.StatusFailed:
-				failures = append(failures, displayName)
-			case clients.StatusSkipped:
-				// not compatible with this client — fine
-			}
-		}
-		if ok {
-			succeeded = append(succeeded, displayName)
-		}
-	}
-	sort.Strings(succeeded)
-	sort.Strings(failures)
-	if len(succeeded) == 0 {
-		if len(failures) > 0 {
-			return InstallResult{}, fmt.Errorf("installation failed for %s", strings.Join(failures, ", "))
-		}
-		return InstallResult{}, errors.New("no AI tools on this machine can use this asset")
-	}
-
-	// Record the installs in the shared tracker so the app, `sx install`,
-	// and `sx install --repair` agree about what's on this machine.
-	if tracker, err := assetspkg.LoadTracker(); err == nil {
-		for _, bundle := range bundles {
-			assetClients := clientsByAsset[bundle.Asset.Name]
-			if len(assetClients) == 0 {
-				continue
-			}
-			sort.Strings(assetClients)
-			tracker.UpsertAsset(assetspkg.InstalledAsset{
-				Name:    bundle.Asset.Name,
-				Version: bundle.Asset.Version,
-				Type:    bundle.Asset.Type.Key,
-				Clients: assetClients,
-			})
-		}
-		_ = assetspkg.SaveTracker(tracker)
-	}
-
-	return InstallResult{Clients: succeeded}, nil
-}
-
 // InstalledAssetInfo describes one asset installed on this machine, in ANY
 // scope — whether the app installed it directly or `sx install` (or its
 // client hooks) delivered it via an org/team/repo scope.
@@ -367,61 +210,6 @@ func (a *App) InstalledAssets() ([]InstalledAssetInfo, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
-}
-
-// UninstallAsset removes an asset from every detected AI client. The
-// asset's type/version are resolved locally (tracker, then the vault) so
-// files already on this machine can be removed even when the vault is
-// unreachable or the asset was deleted from it. Per-client failures don't
-// stop the remaining clients.
-func (a *App) UninstallAsset(name string) error {
-	if err := validateAssetRef(name, ""); err != nil {
-		return err
-	}
-	target := asset.Asset{Name: name}
-	if tracker, err := assetspkg.LoadTracker(); err == nil {
-		if installed := tracker.FindAsset(assetspkg.AssetKey{Name: name}); installed != nil {
-			target.Version = installed.Version
-			target.Type = asset.FromString(installed.Type)
-		}
-	}
-	if !target.Type.IsValid() {
-		bundle, err := a.bundleForLatest(name)
-		if err != nil {
-			return err
-		}
-		target.Version = bundle.Asset.Version
-		target.Type = bundle.Asset.Type
-	}
-	req := clients.UninstallRequest{
-		Assets: []asset.Asset{target},
-		Scope:  globalScope(),
-	}
-	var failures []string
-	for _, client := range clients.Global().DetectInstalled() {
-		if !client.SupportsAssetType(target.Type) {
-			continue
-		}
-		if _, err := client.UninstallAssets(a.ctx, req); err != nil {
-			failures = append(failures, client.DisplayName())
-		}
-	}
-
-	// Keep the shared tracker in sync (see installBundles) even on partial
-	// failure — the successful removals are real.
-	if tracker, err := assetspkg.LoadTracker(); err == nil {
-		if tracker.RemoveAsset(assetspkg.AssetKey{Name: name}) {
-			if err := assetspkg.SaveTracker(tracker); err != nil {
-				logger.Get().Warn("failed to save install tracker", "error", err)
-			}
-		}
-	} else {
-		logger.Get().Warn("failed to load install tracker", "error", err)
-	}
-	if len(failures) > 0 {
-		return fmt.Errorf("couldn't remove from %s", strings.Join(failures, ", "))
-	}
-	return nil
 }
 
 // Collection is the frontend view of a manifest collection.

@@ -58,10 +58,6 @@ export function HasIdentity():Promise<boolean>;
 
 export function HideApp():Promise<void>;
 
-export function InstallAsset(arg1:string):Promise<main.InstallResult>;
-
-export function InstallCollection(arg1:string):Promise<main.InstallResult>;
-
 export function InstalledAssets():Promise<Array<main.InstalledAssetInfo>>;
 
 export function ListAIClients():Promise<Array<main.AIClient>>;
@@ -93,6 +89,10 @@ export function Quit():Promise<void>;
 export function RemoveLibrary(arg1:string,arg2:boolean):Promise<main.VaultInfo>;
 
 export function RemoveTeamMember(arg1:string,arg2:string):Promise<void>;
+
+export function RenameCollection(arg1:string,arg2:string):Promise<void>;
+
+export function RenameTeam(arg1:string,arg2:string):Promise<void>;
 
 export function RepoAssets():Promise<Record<string, Array<string>>>;
 
@@ -131,7 +131,5 @@ export function SwitchProfile(arg1:string):Promise<main.VaultInfo>;
 export function SyncAITools():Promise<string>;
 
 export function TeamAssets():Promise<Record<string, Array<string>>>;
-
-export function UninstallAsset(arg1:string):Promise<void>;
 
 export function UpdateDraft(arg1:main.Draft):Promise<main.Draft>;

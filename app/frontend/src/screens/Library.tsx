@@ -6,13 +6,14 @@ import {
   DeleteCollection,
   GetCollectionSharing,
   GetDraft,
-  InstallCollection,
   InstalledAssets,
   ListAIClients,
   ListAssets,
   ListCollections,
   ListDrafts,
   ListTeams,
+  RenameCollection,
+  RenameTeam,
   RepoAssets,
   SetAssetTeamSharing,
   SetCollectionMembership,
@@ -150,6 +151,58 @@ export default function Library({
   const [toast, setToast] = useState("");
   const [busyAction, setBusyAction] = useState(false);
   const [syncing, setSyncing] = useState(false);
+
+  // Renaming a collection or team: one small modal for both.
+  const [renameTarget, setRenameTarget] = useState<{
+    kind: "collection" | "team";
+    name: string;
+  } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  function startRename(kind: "collection" | "team", name: string) {
+    setRenameTarget({ kind, name });
+    setRenameValue(name);
+  }
+
+  async function confirmRename() {
+    if (!renameTarget) return;
+    const next = renameValue.trim();
+    if (!next || next === renameTarget.name) {
+      setRenameTarget(null);
+      return;
+    }
+    setBusyAction(true);
+    try {
+      if (renameTarget.kind === "collection") {
+        await RenameCollection(renameTarget.name, next);
+        // Pins and the current view follow the rename.
+        if (shownCollectionPins.includes(renameTarget.name)) {
+          setPins(
+            "collections",
+            shownCollectionPins.map((n) =>
+              n === renameTarget.name ? next : n,
+            ),
+          );
+        }
+        setScope({ kind: "collection", name: next });
+      } else {
+        await RenameTeam(renameTarget.name, next);
+        if (shownTeamPins.includes(renameTarget.name)) {
+          setPins(
+            "teams",
+            shownTeamPins.map((n) => (n === renameTarget.name ? next : n)),
+          );
+        }
+        setScope({ kind: "team", name: next });
+      }
+      setRenameTarget(null);
+      load();
+    } catch (e) {
+      setToastMessage(String(e));
+    } finally {
+      setBusyAction(false);
+    }
+  }
 
   // The library-level equivalent of `sx install`.
   async function syncAITools() {
@@ -967,24 +1020,11 @@ export default function Library({
               </span>
               <div className="flex-1" />
               <button
-                disabled={
-                  busyAction || (activeCollection.assets ?? []).length === 0
-                }
-                onClick={() => {
-                  setBusyAction(true);
-                  InstallCollection(activeCollection.name)
-                    .then((r) => {
-                      setToastMessage(
-                        `Ready to use in ${r.clients.join(", ")}`,
-                      );
-                      load();
-                    })
-                    .catch((e) => setToastMessage(String(e)))
-                    .finally(() => setBusyAction(false));
-                }}
-                className="rounded-md bg-accent px-2.5 py-1 font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                disabled={busyAction}
+                onClick={() => startRename("collection", activeCollection.name)}
+                className="rounded-md border border-line bg-surface px-2.5 py-1 font-medium text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-50"
               >
-                {busyAction ? "Setting up…" : "Use all in my AI tools"}
+                Rename…
               </button>
               <button
                 disabled={
@@ -1028,6 +1068,12 @@ export default function Library({
                 members
               </span>
               <div className="flex-1" />
+              <button
+                onClick={() => startRename("team", activeTeam.name)}
+                className="rounded-md border border-line bg-surface px-2.5 py-1 font-medium text-ink-soft transition hover:border-accent hover:text-ink"
+              >
+                Rename…
+              </button>
               <button
                 onClick={() => setOpenTeam(activeTeam)}
                 className="rounded-md border border-line bg-surface px-2.5 py-1 font-medium text-ink-soft transition hover:border-accent hover:text-ink"
@@ -1405,6 +1451,52 @@ export default function Library({
                 className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
               >
                 Create
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {renameTarget && (
+        <Modal
+          title={`Rename ${renameTarget.kind}`}
+          onClose={() => setRenameTarget(null)}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void confirmRename();
+            }}
+          >
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+            <p className="mt-2 text-xs text-ink-faint">
+              {renameTarget.kind === "team"
+                ? "Everything shared with this team follows the new name."
+                : "The collection keeps its assets under the new name."}
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRenameTarget(null)}
+                className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink-soft transition hover:text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={
+                  busyAction ||
+                  !renameValue.trim() ||
+                  renameValue.trim() === renameTarget.name
+                }
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                {busyAction ? "Renaming…" : "Rename"}
               </button>
             </div>
           </form>

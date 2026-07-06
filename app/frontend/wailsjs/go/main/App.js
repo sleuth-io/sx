@@ -114,14 +114,6 @@ export function HideApp() {
   return window['go']['main']['App']['HideApp']();
 }
 
-export function InstallAsset(arg1) {
-  return window['go']['main']['App']['InstallAsset'](arg1);
-}
-
-export function InstallCollection(arg1) {
-  return window['go']['main']['App']['InstallCollection'](arg1);
-}
-
 export function InstalledAssets() {
   return window['go']['main']['App']['InstalledAssets']();
 }
@@ -184,6 +176,14 @@ export function RemoveLibrary(arg1, arg2) {
 
 export function RemoveTeamMember(arg1, arg2) {
   return window['go']['main']['App']['RemoveTeamMember'](arg1, arg2);
+}
+
+export function RenameCollection(arg1, arg2) {
+  return window['go']['main']['App']['RenameCollection'](arg1, arg2);
+}
+
+export function RenameTeam(arg1, arg2) {
+  return window['go']['main']['App']['RenameTeam'](arg1, arg2);
 }
 
 export function RepoAssets() {
@@ -260,10 +260,6 @@ export function SyncAITools() {
 
 export function TeamAssets() {
   return window['go']['main']['App']['TeamAssets']();
-}
-
-export function UninstallAsset(arg1) {
-  return window['go']['main']['App']['UninstallAsset'](arg1);
 }
 
 export function UpdateDraft(arg1) {

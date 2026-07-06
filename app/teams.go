@@ -134,6 +134,38 @@ func (a *App) RemoveTeamMember(team, email string) error {
 	return nil
 }
 
+// RenameTeam renames a team; team scopes and bot memberships follow.
+func (a *App) RenameTeam(oldName, newName string) error {
+	v, err := a.currentVault()
+	if err != nil {
+		return err
+	}
+	r, ok := v.(vaultpkg.TeamRenamer)
+	if !ok {
+		return errors.New("this library doesn't support renaming teams")
+	}
+	if err := r.RenameTeam(a.ctx, oldName, strings.TrimSpace(newName)); err != nil {
+		return friendlyVaultError(err)
+	}
+	return nil
+}
+
+// RenameCollection renames a collection; membership follows.
+func (a *App) RenameCollection(oldName, newName string) error {
+	v, err := a.currentVault()
+	if err != nil {
+		return err
+	}
+	r, ok := v.(vaultpkg.CollectionRenamer)
+	if !ok {
+		return errors.New("this library doesn't support renaming collections")
+	}
+	if err := r.RenameCollection(a.ctx, oldName, strings.TrimSpace(newName)); err != nil {
+		return friendlyVaultError(err)
+	}
+	return nil
+}
+
 // TeamAssets maps team name → asset names shared with that team, for the
 // sidebar counts and the team detail view. Vaults that can't report this
 // return an empty map rather than an error.
