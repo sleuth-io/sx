@@ -50,10 +50,12 @@ export default function Sidebar({
   repoAssets,
   pinnedCollections,
   pinnedTeams,
+  pinnedRepos,
   onNewCollection,
   onNewTeam,
   onBrowseCollections,
   onBrowseTeams,
+  onBrowseRepos,
   onSettings,
   dropCollection,
   dropTeam,
@@ -74,10 +76,12 @@ export default function Sidebar({
   repoAssets: Record<string, string[]> | null;
   pinnedCollections: string[];
   pinnedTeams: string[];
+  pinnedRepos: string[];
   onNewCollection: () => void;
   onNewTeam: () => void;
   onBrowseCollections: () => void;
   onBrowseTeams: () => void;
+  onBrowseRepos: () => void;
   onSettings: () => void;
   dropCollection: string;
   dropTeam: string;
@@ -252,7 +256,9 @@ export default function Sidebar({
         )}
 
         {/* Per-library opt-in (Settings → Track repositories): which repos
-            assets are scoped to. Off means the concept never appears. */}
+            assets are scoped to. Off means the concept never appears. Like
+            collections and teams, only pinned repos live in the sidebar;
+            the browse row searches and pins the rest. */}
         {repoAssets !== null && (
           <>
             <div className="mt-4 flex items-center justify-between pr-1">
@@ -263,18 +269,25 @@ export default function Sidebar({
                 Assets scoped to repositories will show up here
               </div>
             ) : (
-              Object.keys(repoAssets)
-                .sort((a, b) => repoLabel(a).localeCompare(repoLabel(b)))
-                .map((url) => (
-                  <div key={url} title={url}>
-                    <Row
-                      label={repoLabel(url)}
-                      count={(repoAssets[url] ?? []).length}
-                      active={active === "repo:" + url}
-                      onClick={() => onScope({ kind: "repo", name: url })}
-                    />
-                  </div>
-                ))
+              <>
+                {Object.keys(repoAssets)
+                  .filter((url) => pinnedRepos.includes(url))
+                  .sort((a, b) => repoLabel(a).localeCompare(repoLabel(b)))
+                  .map((url) => (
+                    <div key={url} title={url}>
+                      <Row
+                        label={repoLabel(url)}
+                        count={(repoAssets[url] ?? []).length}
+                        active={active === "repo:" + url}
+                        onClick={() => onScope({ kind: "repo", name: url })}
+                      />
+                    </div>
+                  ))}
+                <BrowseRow
+                  label={`All repositories (${Object.keys(repoAssets).length})…`}
+                  onClick={onBrowseRepos}
+                />
+              </>
             )}
           </>
         )}

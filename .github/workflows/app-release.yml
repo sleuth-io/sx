@@ -34,10 +34,18 @@ jobs:
             os: windows-latest
             platform: windows/amd64
             artifact: sx-app-windows-amd64.zip
+          - name: windows-arm64
+            os: windows-11-arm
+            platform: windows/arm64
+            artifact: sx-app-windows-arm64.zip
           - name: linux-amd64
             os: ubuntu-latest
             platform: linux/amd64
             artifact: sx-app-linux-amd64.tar.gz
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            platform: linux/arm64
+            artifact: sx-app-linux-arm64.tar.gz
     steps:
       - name: Checkout
         uses: actions/checkout@v6

@@ -42,7 +42,7 @@ import TypeBadge from "../components/TypeBadge";
 
 type ViewMode = "list" | "grid";
 type SortMode = "updated" | "name";
-type PinKind = "collections" | "teams";
+type PinKind = "collections" | "teams" | "repos";
 
 function readPins(kind: PinKind, location: string): string[] | null {
   try {
@@ -77,7 +77,9 @@ export default function Library({
   const [openTeam, setOpenTeam] = useState<main.TeamInfo | null>(null);
   const [showNewTeam, setShowNewTeam] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
-  const [browse, setBrowse] = useState<"" | "collections" | "teams">("");
+  const [browse, setBrowse] = useState<"" | "collections" | "teams" | "repos">(
+    "",
+  );
   const [shareCollection, setShareCollection] = useState("");
   // Pins are per-library. null = the user never pinned anything, so the
   // sidebar defaults to the first few; once they pin/unpin we persist.
@@ -86,6 +88,9 @@ export default function Library({
   );
   const [pinnedTeams, setPinnedTeams] = useState<string[] | null>(() =>
     readPins("teams", vault.location),
+  );
+  const [pinnedRepos, setPinnedRepos] = useState<string[] | null>(() =>
+    readPins("repos", vault.location),
   );
   const [typeFilter, setTypeFilter] = useState("");
   const [installedInfo, setInstalledInfo] = useState<main.InstalledAssetInfo[]>(
@@ -427,11 +432,22 @@ export default function Library({
     [teams, scope],
   );
 
+  // Repo URLs, sorted by their display label so the sidebar and browse
+  // list read alphabetically.
+  const repoUrls = useMemo(
+    () =>
+      Object.keys(repoAssets ?? {}).sort((a, b) =>
+        repoLabel(a).localeCompare(repoLabel(b)),
+      ),
+    [repoAssets],
+  );
+
   // Never-pinned libraries default to the first few so the sidebar isn't
   // empty; an explicit pin/unpin takes over from there.
   const shownCollectionPins =
     pinnedCollections ?? collections.slice(0, 5).map((c) => c.name);
   const shownTeamPins = pinnedTeams ?? teams.slice(0, 5).map((t) => t.name);
+  const shownRepoPins = pinnedRepos ?? repoUrls.slice(0, 5);
 
   const teamAssetCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -439,17 +455,27 @@ export default function Library({
     return counts;
   }, [teams, teamAssets]);
 
+  const pinShown: Record<PinKind, string[]> = {
+    collections: shownCollectionPins,
+    teams: shownTeamPins,
+    repos: shownRepoPins,
+  };
+  const pinSetters: Record<PinKind, (v: string[]) => void> = {
+    collections: setPinnedCollections,
+    teams: setPinnedTeams,
+    repos: setPinnedRepos,
+  };
+
   function setPins(kind: PinKind, next: string[]) {
     localStorage.setItem(
       `sx-pins-${kind}:${vault.location}`,
       JSON.stringify(next),
     );
-    (kind === "collections" ? setPinnedCollections : setPinnedTeams)(next);
+    pinSetters[kind](next);
   }
 
   function togglePin(kind: PinKind, name: string) {
-    const current =
-      kind === "collections" ? shownCollectionPins : shownTeamPins;
+    const current = pinShown[kind];
     setPins(
       kind,
       current.includes(name)
@@ -459,8 +485,7 @@ export default function Library({
   }
 
   function ensurePinned(kind: PinKind, name: string) {
-    const current =
-      kind === "collections" ? shownCollectionPins : shownTeamPins;
+    const current = pinShown[kind];
     if (!current.includes(name)) setPins(kind, [...current, name]);
   }
 
@@ -637,10 +662,12 @@ export default function Library({
         repoAssets={vault.trackRepos ? (repoAssets ?? {}) : null}
         pinnedCollections={shownCollectionPins}
         pinnedTeams={shownTeamPins}
+        pinnedRepos={shownRepoPins}
         onNewCollection={() => setShowCollectionModal(true)}
         onNewTeam={() => setShowNewTeam(true)}
         onBrowseCollections={() => setBrowse("collections")}
         onBrowseTeams={() => setBrowse("teams")}
+        onBrowseRepos={() => setBrowse("repos")}
         onSettings={() => setShowSettings(true)}
         dropCollection={dropCollection}
         dropTeam={dropTeam}
@@ -1150,6 +1177,29 @@ export default function Library({
             setShowNewTeam(true);
           }}
           createLabel="New team"
+          onClose={() => setBrowse("")}
+        />
+      )}
+
+      {browse === "repos" && (
+        <BrowseModal
+          title="All repositories"
+          items={repoUrls.map((url) => {
+            const count = (repoAssets?.[url] ?? []).length;
+            return {
+              name: url,
+              label: repoLabel(url),
+              count,
+              countLabel: count === 1 ? "asset" : "assets",
+            };
+          })}
+          pinned={shownRepoPins}
+          onTogglePin={(name) => togglePin("repos", name)}
+          onSelect={(name) => {
+            setBrowse("");
+            setScope({ kind: "repo", name });
+            setSelected(null);
+          }}
           onClose={() => setBrowse("")}
         />
       )}
