@@ -33,6 +33,8 @@ type ProfileInfo struct {
 	Location string `json:"location"` // URL or path, display form
 	Identity string `json:"identity"`
 	Default  bool   `json:"default"`
+	// TrackRepos: repository views are enabled for this library.
+	TrackRepos bool `json:"trackRepos"`
 }
 
 // Settings is the app's view of the sx configuration.
@@ -53,10 +55,11 @@ func (a *App) GetSettings() (Settings, error) {
 	for name, p := range mpc.Profiles {
 		cfg := p.ToConfig(nil, nil)
 		info := ProfileInfo{
-			Name:     name,
-			Type:     string(cfg.Type),
-			Identity: cfg.Identity,
-			Default:  name == active,
+			Name:       name,
+			Type:       string(cfg.Type),
+			Identity:   cfg.Identity,
+			Default:    name == active,
+			TrackRepos: cfg.TrackRepos,
 		}
 		switch cfg.Type {
 		case config.RepositoryTypeSleuth:

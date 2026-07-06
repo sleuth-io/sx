@@ -178,6 +178,10 @@ export function RemoveTeamMember(arg1, arg2) {
   return window['go']['main']['App']['RemoveTeamMember'](arg1, arg2);
 }
 
+export function RepoAssets() {
+  return window['go']['main']['App']['RepoAssets']();
+}
+
 export function RestoreRevision(arg1, arg2) {
   return window['go']['main']['App']['RestoreRevision'](arg1, arg2);
 }
@@ -192,6 +196,10 @@ export function SetCollectionMembership(arg1, arg2, arg3) {
 
 export function SetCollectionTeamSharing(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetCollectionTeamSharing'](arg1, arg2, arg3);
+}
+
+export function SetLibraryRepoTracking(arg1, arg2) {
+  return window['go']['main']['App']['SetLibraryRepoTracking'](arg1, arg2);
 }
 
 export function SetTeamAdmin(arg1, arg2, arg3) {

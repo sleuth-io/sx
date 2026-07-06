@@ -6,12 +6,23 @@ export type Scope =
   | { kind: "installed" }
   | { kind: "drafts" }
   | { kind: "collection"; name: string }
-  | { kind: "team"; name: string };
+  | { kind: "team"; name: string }
+  | { kind: "repo"; name: string };
 
 function scopeKey(s: Scope): string {
   if (s.kind === "collection") return "collection:" + s.name;
   if (s.kind === "team") return "team:" + s.name;
+  if (s.kind === "repo") return "repo:" + s.name;
   return s.kind;
+}
+
+/** Short display label for a repository URL: "owner/repo". */
+export function repoLabel(url: string): string {
+  const cleaned = url.replace(/\.git$/, "").replace(/\/+$/, "");
+  const sshMatch = /^git@[^:]+:(.+)$/.exec(cleaned);
+  const path = sshMatch ? sshMatch[1] : cleaned.replace(/^\w+:\/\/[^/]+\//, "");
+  const parts = path.split("/").filter(Boolean);
+  return parts.slice(-2).join("/") || url;
 }
 
 /**
@@ -36,6 +47,7 @@ export default function Sidebar({
   collections,
   teams,
   teamAssetCounts,
+  repoAssets,
   pinnedCollections,
   pinnedTeams,
   onNewCollection,
@@ -57,6 +69,9 @@ export default function Sidebar({
   collections: main.Collection[];
   teams: main.TeamInfo[];
   teamAssetCounts: Record<string, number>;
+  // Repo URL → asset names; null when this library doesn't track repos
+  // (the section is absent entirely).
+  repoAssets: Record<string, string[]> | null;
   pinnedCollections: string[];
   pinnedTeams: string[];
   onNewCollection: () => void;
@@ -235,6 +250,34 @@ export default function Sidebar({
             />
           </>
         )}
+
+        {/* Per-library opt-in (Settings → Track repositories): which repos
+            assets are scoped to. Off means the concept never appears. */}
+        {repoAssets !== null && (
+          <>
+            <div className="mt-4 flex items-center justify-between pr-1">
+              <SectionLabel>REPOSITORIES</SectionLabel>
+            </div>
+            {Object.keys(repoAssets).length === 0 ? (
+              <div className="mx-1 mt-1 rounded-lg border border-dashed border-line px-3 py-2.5 text-xs text-ink-faint">
+                Assets scoped to repositories will show up here
+              </div>
+            ) : (
+              Object.keys(repoAssets)
+                .sort((a, b) => repoLabel(a).localeCompare(repoLabel(b)))
+                .map((url) => (
+                  <div key={url} title={url}>
+                    <Row
+                      label={repoLabel(url)}
+                      count={(repoAssets[url] ?? []).length}
+                      active={active === "repo:" + url}
+                      onClick={() => onScope({ kind: "repo", name: url })}
+                    />
+                  </div>
+                ))
+            )}
+          </>
+        )}
       </nav>
 
       {/* Who you are in this library: the skills.new account, or the git
@@ -260,13 +303,7 @@ export default function Sidebar({
   );
 }
 
-function BrowseRow({
-  label,
-  onClick,
-}: {
-  label: string;
-  onClick: () => void;
-}) {
+function BrowseRow({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}

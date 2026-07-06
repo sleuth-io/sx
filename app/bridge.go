@@ -142,6 +142,9 @@ type VaultInfo struct {
 	// Identity is who vault changes are attributed to — for skills.new,
 	// who you're signed in as.
 	Identity string `json:"identity"`
+	// TrackRepos: this library surfaces repository-scoped views
+	// (a per-library setting; see SetLibraryRepoTracking).
+	TrackRepos bool `json:"trackRepos"`
 }
 
 // libraryName derives a short display name from a vault's location.
@@ -193,7 +196,7 @@ func (a *App) GetVaultInfo() VaultInfo {
 	if err != nil {
 		return VaultInfo{Configured: false}
 	}
-	info := VaultInfo{Configured: true, Type: string(cfg.Type), Identity: cfg.Identity}
+	info := VaultInfo{Configured: true, Type: string(cfg.Type), Identity: cfg.Identity, TrackRepos: cfg.TrackRepos}
 	switch cfg.Type {
 	case config.RepositoryTypeSleuth:
 		info.Location = cfg.ServerURL

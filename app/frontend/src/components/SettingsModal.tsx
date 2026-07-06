@@ -11,6 +11,7 @@ import {
   ListSyncFolders,
   PickDirectory,
   RemoveLibrary,
+  SetLibraryRepoTracking,
   StartSleuthLogin,
   SwitchProfile,
 } from "../../wailsjs/go/main/App";
@@ -64,6 +65,20 @@ export default function SettingsModal({
   const [removal, setRemoval] = useState<main.LibraryRemoval | null>(null);
   const [removeSource, setRemoveSource] = useState(false);
   const [removeError, setRemoveError] = useState("");
+
+  // Which library's ⋯ menu is open.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (menuFor === null) return;
+    const onDown = (e: globalThis.MouseEvent) => {
+      const root = (e.target as Element | null)?.closest?.(
+        `[data-library-menu="${CSS.escape(menuFor)}"]`,
+      );
+      if (!root) setMenuFor(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [menuFor]);
 
   const load = () => {
     GetSettings()
@@ -167,6 +182,19 @@ export default function SettingsModal({
     }
   }
 
+  // Repository views are opt-in per library — technical users want them,
+  // everyone else shouldn't have to know they exist.
+  async function toggleRepoTracking(name: string, enabled: boolean) {
+    setError("");
+    try {
+      await SetLibraryRepoTracking(name, enabled);
+      load();
+      onLibrariesChanged?.();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   function openRemoval(name: string) {
     setError("");
     setRemoveError("");
@@ -250,27 +278,69 @@ export default function SettingsModal({
                     {busy === p.name ? "Switching…" : "Use this"}
                   </button>
                 )}
-                {settings.profiles.length > 1 && (
+                <div className="relative shrink-0" data-library-menu={p.name}>
                   <button
-                    onClick={() => openRemoval(p.name)}
+                    onClick={() =>
+                      setMenuFor(menuFor === p.name ? null : p.name)
+                    }
                     disabled={busy !== ""}
-                    title={`Remove ${p.name}…`}
-                    aria-label={`Remove ${p.name}`}
-                    className="shrink-0 rounded-lg p-1.5 text-ink-faint transition hover:bg-canvas hover:text-danger disabled:opacity-50"
+                    title={`Options for ${p.name}`}
+                    aria-label={`Options for ${p.name}`}
+                    aria-expanded={menuFor === p.name}
+                    className={`rounded-lg p-1.5 transition hover:bg-canvas hover:text-ink disabled:opacity-50 ${
+                      menuFor === p.name
+                        ? "bg-canvas text-ink"
+                        : "text-ink-faint"
+                    }`}
                   >
                     <svg
                       aria-hidden="true"
                       className="h-3.5 w-3.5"
                       viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
+                      fill="currentColor"
                     >
-                      <path d="M2.5 4.5h11M6.5 2.5h3M4 4.5l.6 9a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-9M6.5 7v5M9.5 7v5" />
+                      <circle cx="3" cy="8" r="1.4" />
+                      <circle cx="8" cy="8" r="1.4" />
+                      <circle cx="13" cy="8" r="1.4" />
                     </svg>
                   </button>
-                )}
+                  {menuFor === p.name && (
+                    <div className="absolute right-0 top-full z-40 mt-1 w-56 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                      <button
+                        onClick={() => {
+                          setMenuFor(null);
+                          void toggleRepoTracking(p.name, !p.trackRepos);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
+                      >
+                        <span className="w-3.5 text-accent">
+                          {p.trackRepos ? "✓" : ""}
+                        </span>
+                        <span className="flex-1">
+                          <span className="block">Track repositories</span>
+                          <span className="block text-xs text-ink-faint">
+                            See which repos assets are scoped to
+                          </span>
+                        </span>
+                      </button>
+                      {settings.profiles.length > 1 && (
+                        <>
+                          <div className="mx-3 my-1 border-t border-line" />
+                          <button
+                            onClick={() => {
+                              setMenuFor(null);
+                              openRemoval(p.name);
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-danger"
+                          >
+                            <span className="w-3.5" />
+                            Remove…
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </li>
             ))}
             {settings.profiles.length === 0 && (

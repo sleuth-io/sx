@@ -42,6 +42,11 @@ type Config struct {
 	// this Config is the active profile. Empty falls back to git config.
 	Identity string `json:"identity,omitempty"`
 
+	// TrackRepos surfaces repository-scoped views for this library in the
+	// desktop app. Technical users working with code want them; for
+	// everyone else they're overhead, so the choice is per library.
+	TrackRepos bool `json:"trackRepos,omitempty"`
+
 	// ProfileName is the active profile name this Config was loaded from.
 	// Populated by Load(); not serialized.
 	ProfileName string `json:"-"`

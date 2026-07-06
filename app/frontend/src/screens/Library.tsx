@@ -13,6 +13,7 @@ import {
   ListCollections,
   ListDrafts,
   ListTeams,
+  RepoAssets,
   SetAssetTeamSharing,
   SetCollectionMembership,
   SetCollectionTeamSharing,
@@ -34,7 +35,7 @@ import DraftSheet from "../components/DraftSheet";
 import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
 import ShareModal from "../components/ShareModal";
-import Sidebar, { Scope } from "../components/Sidebar";
+import Sidebar, { repoLabel, Scope } from "../components/Sidebar";
 import usePanelSize from "../lib/usePanelSize";
 import TeamModal from "../components/TeamModal";
 import TypeBadge from "../components/TypeBadge";
@@ -69,6 +70,10 @@ export default function Library({
   const [collections, setCollections] = useState<main.Collection[]>([]);
   const [teams, setTeams] = useState<main.TeamInfo[]>([]);
   const [teamAssets, setTeamAssets] = useState<Record<string, string[]>>({});
+  // Repo URL → asset names; null when this library doesn't track repos.
+  const [repoAssets, setRepoAssets] = useState<Record<string, string[]> | null>(
+    null,
+  );
   const [openTeam, setOpenTeam] = useState<main.TeamInfo | null>(null);
   const [showNewTeam, setShowNewTeam] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
@@ -170,7 +175,14 @@ export default function Library({
     TeamAssets()
       .then((m) => apply(setTeamAssets)(m ?? {}))
       .catch(() => apply(setTeamAssets)({}));
-  }, []);
+    if (vault.trackRepos) {
+      RepoAssets()
+        .then((m) => apply(setRepoAssets)(m ?? {}))
+        .catch(() => apply(setRepoAssets)({}));
+    } else {
+      apply(setRepoAssets)(null);
+    }
+  }, [vault.trackRepos]);
 
   useEffect(load, [load]);
   useEffect(() => {
@@ -376,6 +388,11 @@ export default function Library({
     return m;
   }, [installedInfo]);
 
+  // A repo view can't outlive repo tracking being switched off.
+  useEffect(() => {
+    if (!vault.trackRepos && scope.kind === "repo") setScope({ kind: "all" });
+  }, [vault.trackRepos, scope]);
+
   // Native menu → frontend views (Settings Cmd+,; File → New …)
   useEffect(() => {
     EventsOn("open-settings", () => setShowSettings(true));
@@ -463,6 +480,9 @@ export default function Library({
         case "team":
           if (!(teamAssets[scope.name] ?? []).includes(a.name)) return false;
           break;
+        case "repo":
+          if (!(repoAssets?.[scope.name] ?? []).includes(a.name)) return false;
+          break;
         case "all":
           break;
       }
@@ -483,6 +503,7 @@ export default function Library({
     installed,
     activeCollection,
     teamAssets,
+    repoAssets,
     sort,
     typeFilter,
   ]);
@@ -546,6 +567,8 @@ export default function Library({
         return scope.name;
       case "team":
         return scope.name;
+      case "repo":
+        return repoLabel(scope.name);
     }
   })();
 
@@ -611,6 +634,7 @@ export default function Library({
         collections={collections}
         teams={teams}
         teamAssetCounts={teamAssetCounts}
+        repoAssets={vault.trackRepos ? (repoAssets ?? {}) : null}
         pinnedCollections={shownCollectionPins}
         pinnedTeams={shownTeamPins}
         onNewCollection={() => setShowCollectionModal(true)}

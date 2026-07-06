@@ -41,6 +41,10 @@ type Profile struct {
 	// per-profile so a single machine can use different identities for
 	// different vaults (e.g. work vs personal email).
 	Identity string `json:"identity,omitempty"`
+
+	// TrackRepos surfaces repository-scoped views for this library in the
+	// desktop app (per library, not app-wide).
+	TrackRepos bool `json:"trackRepos,omitempty"`
 }
 
 // MultiProfileConfig represents the full configuration file with multiple profiles
@@ -547,6 +551,7 @@ func (p *Profile) ToConfig(forceEnabled, forceDisabled []string) *Config {
 		AuthUsername:         p.AuthUsername,
 		RepositoryURL:        p.RepositoryURL,
 		Identity:             p.Identity,
+		TrackRepos:           p.TrackRepos,
 		ForceEnabledClients:  forceEnabled,
 		ForceDisabledClients: forceDisabled,
 	}
@@ -561,6 +566,7 @@ func ProfileFromConfig(cfg *Config) *Profile {
 		AuthUsername:  cfg.AuthUsername,
 		RepositoryURL: cfg.RepositoryURL,
 		Identity:      cfg.Identity,
+		TrackRepos:    cfg.TrackRepos,
 	}
 }
 

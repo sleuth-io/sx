@@ -263,6 +263,7 @@ export namespace main {
 	    location: string;
 	    identity: string;
 	    default: boolean;
+	    trackRepos: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProfileInfo(source);
@@ -275,6 +276,7 @@ export namespace main {
 	        this.location = source["location"];
 	        this.identity = source["identity"];
 	        this.default = source["default"];
+	        this.trackRepos = source["trackRepos"];
 	    }
 	}
 	export class Settings {
@@ -383,6 +385,7 @@ export namespace main {
 	    location: string;
 	    name: string;
 	    identity: string;
+	    trackRepos: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new VaultInfo(source);
@@ -395,6 +398,7 @@ export namespace main {
 	        this.location = source["location"];
 	        this.name = source["name"];
 	        this.identity = source["identity"];
+	        this.trackRepos = source["trackRepos"];
 	    }
 	}
 

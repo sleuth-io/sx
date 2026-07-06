@@ -9,6 +9,7 @@ import {
   HasIdentity,
   ListSyncFolders,
   PickDirectory,
+  SetLibraryRepoTracking,
   SetupGitVault,
   SetupLocalVault,
   SetupSharedFolderVault,
@@ -21,6 +22,7 @@ import RepoPicker, {
 } from "../components/RepoPicker";
 
 type Choice = "solo" | "folder" | "team" | "sleuth";
+type Audience = "technical" | "simple";
 
 const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -31,6 +33,9 @@ const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  * library need a name on them.
  */
 export default function Onboarding({ onDone }: { onDone: () => void }) {
+  // First question: who is this for? Technical users get repository
+  // views on their new library; everyone else never sees the concept.
+  const [audience, setAudience] = useState<Audience | null>(null);
   const [choice, setChoice] = useState<Choice | null>(null);
   const [gitUrl, setGitUrl] = useState("");
   const [email, setEmail] = useState("");
@@ -73,13 +78,26 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
 
   const emailOK = !needsEmail || EMAIL_SHAPE.test(email.trim());
 
+  // Apply the audience choice to the just-created library, then hand off.
+  // A failure to set the flag is not worth blocking a finished setup.
+  async function finishSetup() {
+    if (audience === "technical") {
+      try {
+        await SetLibraryRepoTracking("", true);
+      } catch {
+        // Repos can be toggled per library in Settings later.
+      }
+    }
+    onDone();
+  }
+
   async function pickSolo() {
     if (!emailOK) return;
     setBusy(true);
     setError("");
     try {
       await SetupLocalVault(email.trim());
-      onDone();
+      await finishSetup();
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -92,7 +110,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     setError("");
     try {
       await SetupGitVault(gitUrl.trim(), email.trim());
-      onDone();
+      await finishSetup();
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -123,7 +141,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     try {
       const repo = await CreateGitRepo(repoName);
       await SetupGitVault(repo.url, email.trim());
-      onDone();
+      await finishSetup();
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -136,7 +154,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     setError("");
     try {
       await SetupSharedFolderVault(folderPath.trim(), email.trim());
-      onDone();
+      await finishSetup();
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -163,7 +181,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       setSignIn(start);
       // Waits for the user to approve in the browser.
       await CompleteSleuthLogin("", start.deviceCode, "skills-new");
-      onDone();
+      await finishSetup();
     } catch (e) {
       // A user-initiated cancel is not an error worth showing.
       if (!signInCancelled.current) setError(String(e));
@@ -199,7 +217,35 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             </p>
           </div>
 
-          {needsEmail && (
+          {audience === null && (
+            <div className="space-y-3">
+              <p className="text-center text-xs font-medium uppercase tracking-wide text-ink-faint">
+                How will you use it?
+              </p>
+              <button
+                onClick={() => setAudience("simple")}
+                className="w-full rounded-xl border border-line bg-surface p-4 text-left transition hover:border-accent"
+              >
+                <div className="text-sm font-semibold">Keep it simple</div>
+                <div className="mt-0.5 text-sm text-ink-soft">
+                  Skills and know-how for your AI tools — no technical
+                  machinery. Great for marketing, ops, and everyone else.
+                </div>
+              </button>
+              <button
+                onClick={() => setAudience("technical")}
+                className="w-full rounded-xl border border-line bg-surface p-4 text-left transition hover:border-accent"
+              >
+                <div className="text-sm font-semibold">I work with code</div>
+                <div className="mt-0.5 text-sm text-ink-soft">
+                  Everything above, plus repository views: see and manage which
+                  repos your skills are scoped to.
+                </div>
+              </button>
+            </div>
+          )}
+
+          {audience !== null && needsEmail && (
             <label className="mb-4 block">
               <span className="mb-1 block text-xs font-medium text-ink-soft">
                 Your email
@@ -218,7 +264,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             </label>
           )}
 
-          <div className="space-y-3">
+          <div className={audience === null ? "hidden" : "space-y-3"}>
             <button
               onClick={() => {
                 setChoice("solo");
@@ -422,6 +468,20 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
               )}
             </div>
           </div>
+
+          {audience !== null && (
+            <div className="mt-4 text-center">
+              <button
+                onClick={() => {
+                  if (!busy) setAudience(null);
+                }}
+                disabled={busy}
+                className="text-xs text-ink-faint transition hover:text-ink disabled:opacity-50"
+              >
+                ← Back
+              </button>
+            </div>
+          )}
 
           {error && (
             <div className="mt-4 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
