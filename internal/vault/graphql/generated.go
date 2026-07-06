@@ -115,9 +115,6 @@ func (v *AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutation
 // The GraphQL type's documentation follows.
 //
 // GraphQL type for an asset collection.
-//
-// “installations“ and “permissions“ walk every member asset — request
-// them only for a single collection (the install dialog), not in lists.
 type AddAssetsToCollectionAddAssetsToCollectionAddAssetsToCollectionMutationCollectionVaultAssetCollection struct {
 	Id string `json:"id"`
 }
@@ -1483,9 +1480,6 @@ func (v *BotInstalledResponse) GetBot() BotInstalledBotManagedBot { return v.Bot
 // The GraphQL type's documentation follows.
 //
 // GraphQL type for an asset collection.
-//
-// “installations“ and “permissions“ walk every member asset — request
-// them only for a single collection (the install dialog), not in lists.
 type CollectionAssetsCollectionVaultAssetCollection struct {
 	Assets CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnection `json:"assets"`
 }
@@ -2464,9 +2458,6 @@ func (v *CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutation
 // The GraphQL type's documentation follows.
 //
 // GraphQL type for an asset collection.
-//
-// “installations“ and “permissions“ walk every member asset — request
-// them only for a single collection (the install dialog), not in lists.
 type CreateAssetCollectionCreateAssetCollectionCreateAssetCollectionMutationCollectionVaultAssetCollection struct {
 	Id string `json:"id"`
 }
@@ -3336,9 +3327,6 @@ func (v *ListCollectionsCollectionsVaultAssetCollectionConnection) GetNodes() []
 // The GraphQL type's documentation follows.
 //
 // GraphQL type for an asset collection.
-//
-// “installations“ and “permissions“ walk every member asset — request
-// them only for a single collection (the install dialog), not in lists.
 type ListCollectionsCollectionsVaultAssetCollectionConnectionNodesVaultAssetCollection struct {
 	Id          string `json:"id"`
 	Name        string `json:"name"`
@@ -3771,9 +3759,6 @@ func (v *RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCol
 // The GraphQL type's documentation follows.
 //
 // GraphQL type for an asset collection.
-//
-// “installations“ and “permissions“ walk every member asset — request
-// them only for a single collection (the install dialog), not in lists.
 type RemoveAssetsFromCollectionRemoveAssetsFromCollectionRemoveAssetsFromCollectionMutationCollectionVaultAssetCollection struct {
 	Id string `json:"id"`
 }
@@ -4984,9 +4969,6 @@ func (v *UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutation
 // The GraphQL type's documentation follows.
 //
 // GraphQL type for an asset collection.
-//
-// “installations“ and “permissions“ walk every member asset — request
-// them only for a single collection (the install dialog), not in lists.
 type UpdateAssetCollectionUpdateAssetCollectionUpdateAssetCollectionMutationCollectionVaultAssetCollection struct {
 	Id string `json:"id"`
 }

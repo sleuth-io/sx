@@ -3610,6 +3610,16 @@ type VaultAssetInstallation {
 
   """Whether the current user can uninstall from this target"""
   canUninstall: Boolean!
+
+  """
+  GID of the collection this installation is derived from (null for direct installs)
+  """
+  viaCollectionId: ID
+
+  """
+  Name of the collection this installation is derived from (null for direct installs)
+  """
+  viaCollectionName: String
 }
 
 """Result from an AI query."""
@@ -4136,6 +4146,19 @@ type RemoteMarketplacePlugin {
 type InstalledAssetsResponse {
   assets: InstalledAssetsByOwnership!
   syncSummary: InstalledAssetsSyncSummary
+
+  """
+  Collections installed to the queried context, each with its member assets
+  """
+  installedCollections: [InstalledCollectionGroup!]!
+}
+
+"""A collection installed to the queried context, with its member assets."""
+type InstalledCollectionGroup {
+  collection: VaultAssetCollection!
+
+  """Member assets visible in the queried context"""
+  assets: [InstalledAssetData!]!
 }
 
 """Assets grouped by ownership type."""
@@ -4190,6 +4213,16 @@ type InstalledAssetInstallation {
   entityProvider: String
   monoRepoConfigId: String
   monoRepoConfigName: String
+
+  """
+  GID of the collection this installation is derived from (null for direct installs)
+  """
+  viaCollectionId: ID
+
+  """
+  Name of the collection this installation is derived from (null for direct installs)
+  """
+  viaCollectionName: String
 }
 
 """Token counts for an installed asset's current version."""
@@ -4754,12 +4787,7 @@ enum ChangeRequestStatusEnum {
   REJECTED
 }
 
-"""
-GraphQL type for an asset collection.
-
-``installations`` and ``permissions`` walk every member asset — request
-them only for a single collection (the install dialog), not in lists.
-"""
+"""GraphQL type for an asset collection."""
 type VaultAssetCollection {
   name: String!
   description: String!
@@ -4767,10 +4795,10 @@ type VaultAssetCollection {
   createdAt: DateTime!
   updatedAt: DateTime!
   assets(
-    """Maximum allowed value is 50."""
+    """Maximum allowed value is 250."""
     first: Int
 
-    """Maximum allowed value is 50."""
+    """Maximum allowed value is 250."""
     last: Int
     before: String
     after: String
@@ -4780,12 +4808,10 @@ type VaultAssetCollection {
   """GIDs of every member asset (unpaginated)"""
   assetIds: [ID!]!
 
-  """Installation targets shared by every asset in the collection"""
+  """Targets this collection is installed to"""
   installations: [VaultAssetInstallation!]!
 
-  """
-  Current user's permissions, combined across every asset in the collection
-  """
+  """Current user's target-level install permissions"""
   permissions: VaultAssetPermissions
 }
 
@@ -5072,6 +5098,12 @@ type Query {
   collections(
     """Filter by name (case-insensitive contains)"""
     name: String
+
+    """Only collections installed to this target type"""
+    installedEntityType: VaultAssetInstallationEntityType
+
+    """GID of the install target (null for organization-wide)"""
+    installedEntityId: ID
 
     """Maximum allowed value is 50."""
     first: Int
@@ -5813,17 +5845,20 @@ type Mutation {
   removeAssetsFromCollection(input: ModifyAssetCollectionAssetsInput!): RemoveAssetsFromCollectionMutation
 
   """
-  Add installation targets to every asset in a collection.
+  Install a collection to one or more targets.
   
-  Best-effort per asset: assets the caller can't modify are reported in
-  ``errors`` while the rest proceed.
+  Writes one AssetCollectionInstallation row per target; member assets are
+  resolved at read time and are never modified. Permission is checked per
+  target (the same entity-level checks a single-asset install uses), and all
+  targets are validated before any row is written.
   """
   installCollection(input: InstallCollectionInput!): InstallCollectionMutation
 
   """
-  Remove one installation target from every asset in a collection.
+  Remove a collection's installation row for one target.
   
-  Best-effort per asset, mirroring InstallCollectionMutation.
+  Member assets' own installations are never touched, so a direct install
+  made outside the collection always survives a collection uninstall.
   """
   uninstallCollection(input: UninstallCollectionInput!): UninstallCollectionMutation
   runEvalBenchmark(input: RunEvalBenchmarkInput!): RunEvalBenchmarkMutation
@@ -6654,16 +6689,15 @@ type RemoveAssetsFromCollectionMutation {
 }
 
 """
-Add installation targets to every asset in a collection.
+Install a collection to one or more targets.
 
-Best-effort per asset: assets the caller can't modify are reported in
-``errors`` while the rest proceed.
+Writes one AssetCollectionInstallation row per target; member assets are
+resolved at read time and are never modified. Permission is checked per
+target (the same entity-level checks a single-asset install uses), and all
+targets are validated before any row is written.
 """
 type InstallCollectionMutation {
   collection: VaultAssetCollection
-
-  """Assets whose installations changed"""
-  affectedCount: Int!
   errors: [ErrorType!]!
 }
 
@@ -6676,15 +6710,13 @@ input InstallCollectionInput {
 }
 
 """
-Remove one installation target from every asset in a collection.
+Remove a collection's installation row for one target.
 
-Best-effort per asset, mirroring InstallCollectionMutation.
+Member assets' own installations are never touched, so a direct install
+made outside the collection always survives a collection uninstall.
 """
 type UninstallCollectionMutation {
   collection: VaultAssetCollection
-
-  """Assets whose installations changed"""
-  affectedCount: Int!
   errors: [ErrorType!]!
 }
 
