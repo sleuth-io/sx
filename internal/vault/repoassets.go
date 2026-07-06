@@ -63,6 +63,10 @@ func (g *GitVault) ListRepoAssets(ctx context.Context) (map[string][]string, err
 // paged query over the vault's assets and their installations.
 func (s *SleuthVault) ListRepoAssets(ctx context.Context) (map[string][]string, error) {
 	out := map[string][]string{}
+	// An asset can reach the same repository through several installation
+	// records (e.g. two path scopes under one repo) — dedupe like the
+	// manifest path does, or sidebar counts inflate.
+	seen := map[string]map[string]bool{}
 	pageSize := 50
 	var after *string
 	for {
@@ -90,9 +94,17 @@ func (s *SleuthVault) ListRepoAssets(ctx context.Context) (map[string][]string, 
 				if repo == "" {
 					repo = inst.EntityName
 				}
-				if repo != "" {
-					out[repo] = append(out[repo], name)
+				if repo == "" {
+					continue
 				}
+				if seen[repo] == nil {
+					seen[repo] = map[string]bool{}
+				}
+				if seen[repo][name] {
+					continue
+				}
+				seen[repo][name] = true
+				out[repo] = append(out[repo], name)
 			}
 		}
 		if !conn.PageInfo.HasNextPage || conn.PageInfo.EndCursor == nil {
