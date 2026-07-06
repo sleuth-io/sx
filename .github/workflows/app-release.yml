@@ -71,6 +71,11 @@ jobs:
 
       - name: Build app
         working-directory: app
+        # bash everywhere: the ${GITHUB_REF_NAME#v} suffix strip is bash
+        # syntax — under the Windows runners' default PowerShell it expands
+        # to "" and Windows builds would self-identify as dev builds
+        # (disabling updates entirely).
+        shell: bash
         run: >
           wails build -platform ${{ matrix.platform }}
           -ldflags "-X github.com/sleuth-io/sx/internal/buildinfo.Version=${GITHUB_REF_NAME#v}"
