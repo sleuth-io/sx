@@ -35,7 +35,9 @@ export function repoLabel(url: string): string {
  * native webview's file-drop handling swallows): Library hit-tests
  * [data-drop-collection] / [data-drop-team] under the cursor and passes
  * the hovered name in dropCollection / dropTeam. Collection rows start
- * their own drags via onCollectionDragHandle.
+ * their own drags via onCollectionDragHandle, and repo rows via
+ * onRepoDragHandle (drop one on a team to add it to the team's
+ * repositories).
  */
 export default function Sidebar({
   vault,
@@ -61,6 +63,7 @@ export default function Sidebar({
   dropTeam,
   dropRepo,
   onCollectionDragHandle,
+  onRepoDragHandle,
   width,
 }: {
   vault: main.VaultInfo;
@@ -88,6 +91,7 @@ export default function Sidebar({
   dropTeam: string;
   dropRepo: string;
   onCollectionDragHandle: (name: string, e: MouseEvent) => void;
+  onRepoDragHandle: (url: string, e: MouseEvent) => void;
   width: number;
 }) {
   const active = scopeKey(scope);
@@ -288,6 +292,7 @@ export default function Sidebar({
                       key={url}
                       title={url}
                       data-drop-repo={url}
+                      onMouseDown={(e) => onRepoDragHandle(url, e)}
                       className={
                         dropRepo === url
                           ? "rounded-lg ring-2 ring-accent"

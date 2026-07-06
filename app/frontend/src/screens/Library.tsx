@@ -22,6 +22,7 @@ import {
   SetAssetTeamSharing,
   SetCollectionMembership,
   SetCollectionTeamSharing,
+  SetTeamRepository,
   ShareAssetWithEveryone,
   ShareCollectionWithEveryone,
   SyncAITools,
@@ -131,11 +132,12 @@ export default function Library({
     420,
   );
 
-  // In-app drags: asset rows → collections or teams, collection rows →
-  // teams. Pointer-based, NOT HTML5 drag-and-drop: the native webview's
-  // file-drop handling swallows HTML5 drop events, so rows track the
-  // mouse and drops hit-test [data-drop-collection] / [data-drop-team].
-  type DragKind = "asset" | "collection";
+  // In-app drags: asset rows → collections, teams, or repos; collection
+  // rows → teams or repos; repo rows → teams (adds the repo to the
+  // team's repositories). Pointer-based, NOT HTML5 drag-and-drop: the
+  // native webview's file-drop handling swallows HTML5 drop events, so
+  // rows track the mouse and drops hit-test [data-drop-*] targets.
+  type DragKind = "asset" | "collection" | "repo";
   const [assetDrag, setAssetDrag] = useState<{
     name: string;
     x: number;
@@ -145,11 +147,13 @@ export default function Library({
   const [dropTeam, setDropTeam] = useState("");
   const [dropRepo, setDropRepo] = useState("");
   // names carries a multi-selection when the dragged row is part of one;
-  // name stays the display label for the ghost chip.
+  // label overrides name in the ghost chip when the payload isn't
+  // presentable as-is (a repo drag carries the full URL in name).
   const pendingDragRef = useRef<{
     kind: DragKind;
     name: string;
     names?: string[];
+    label?: string;
     x: number;
     y: number;
   } | null>(null);
@@ -157,6 +161,7 @@ export default function Library({
     kind: DragKind;
     name: string;
     names?: string[];
+    label?: string;
   } | null>(null);
   const dropCollectionRef = useRef("");
   const dropTeamRef = useRef("");
@@ -513,7 +518,7 @@ export default function Library({
   // Drive the in-app drag: activate past a small threshold, follow the
   // cursor with a ghost chip, hit-test drop targets, commit on mouseup.
   // Assets can drop on collections, teams, or repos; collections on teams
-  // and repos.
+  // and repos; repos on teams.
   useEffect(() => {
     const finish = () => {
       pendingDragRef.current = null;
@@ -538,17 +543,24 @@ export default function Library({
           kind: pending.kind,
           name: pending.name,
           names: pending.names,
+          label: pending.label,
         };
         dragHappenedRef.current = true;
         document.body.style.userSelect = "none";
         document.body.style.cursor = "grabbing";
       }
       const drag = dragRef.current;
-      setAssetDrag({ name: drag.name, x: e.clientX, y: e.clientY });
+      setAssetDrag({
+        name: drag.label ?? drag.name,
+        x: e.clientX,
+        y: e.clientY,
+      });
       const selector =
         drag.kind === "asset"
           ? "[data-drop-collection], [data-drop-team], [data-drop-repo]"
-          : "[data-drop-team], [data-drop-repo]";
+          : drag.kind === "collection"
+            ? "[data-drop-team], [data-drop-repo]"
+            : "[data-drop-team]";
       const hit = document
         .elementFromPoint(e.clientX, e.clientY)
         ?.closest(selector);
@@ -650,6 +662,15 @@ export default function Library({
             load();
             setToastMessage(
               `Everything in ${drag.name} now installs in ${repoLabel(repo)}`,
+            );
+          })
+          .catch((e) => setToastMessage(String(e)));
+      } else if (drag.kind === "repo" && team) {
+        SetTeamRepository(team, drag.name, true)
+          .then(() => {
+            load();
+            setToastMessage(
+              `${team}'s assets now install in ${repoLabel(drag.name)}`,
             );
           })
           .catch((e) => setToastMessage(String(e)));
@@ -1005,6 +1026,17 @@ export default function Library({
           pendingDragRef.current = {
             kind: "collection",
             name,
+            x: e.clientX,
+            y: e.clientY,
+          };
+        }}
+        onRepoDragHandle={(url, e) => {
+          if (e.button !== 0) return;
+          dragHappenedRef.current = false;
+          pendingDragRef.current = {
+            kind: "repo",
+            name: url,
+            label: repoLabel(url),
             x: e.clientX,
             y: e.clientY,
           };
