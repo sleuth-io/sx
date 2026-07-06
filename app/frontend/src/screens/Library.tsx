@@ -567,9 +567,14 @@ export default function Library({
         const names = drag.names ?? [drag.name];
         // Sequential on purpose: some mutations read-modify-write shared
         // state (collection membership), and parallel writes lose updates.
+        // Git vaults commit+push per mutation, so larger batches get a
+        // running count instead of looking hung.
         void (async () => {
           let failed = 0;
-          for (const n of names) {
+          for (const [i, n] of names.entries()) {
+            if (names.length > 3) {
+              setToastMessage(`Working… ${i + 1}/${names.length}`);
+            }
             try {
               await each(n);
             } catch {
@@ -1507,11 +1512,16 @@ export default function Library({
           }
           teams={teams}
           getSharing={async () => {
-            // The dialog shows the intersection: a team appears as shared
-            // only when EVERY selected asset already has it.
-            const all = await Promise.all(
-              [...multiSel].map((n) => GetAssetSharing(n)),
-            );
+            // A single selection shows the asset's real sharing (matching
+            // the detail panel, including the "+N more places" hint). A
+            // true multi-selection shows the intersection: a team appears
+            // as shared only when EVERY selected asset already has it;
+            // opaque "other" scope counts can't be intersected.
+            const names = [...multiSel];
+            if (names.length === 1) {
+              return GetAssetSharing(names[0]);
+            }
+            const all = await Promise.all(names.map((n) => GetAssetSharing(n)));
             return {
               everyone: all.every((s) => s.everyone),
               teams: (all[0]?.teams ?? []).filter((t) =>
