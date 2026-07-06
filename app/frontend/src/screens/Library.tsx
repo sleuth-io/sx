@@ -20,7 +20,7 @@ import {
   RenameTeam,
   RepoAssets,
   SetAssetTeamSharing,
-  SetCollectionMembership,
+  SetCollectionMembershipBulk,
   SetCollectionTeamSharing,
   SetTeamRepository,
   ShareAssetWithEveryone,
@@ -589,17 +589,20 @@ export default function Library({
       }, 0);
       if (!drag) return;
       // The dragged unit may be a multi-selection: apply the drop action
-      // to every dragged asset and report once.
+      // to every dragged asset and report once. An `applyAll` batch runner
+      // replaces the per-name loop when the backend can take the whole
+      // batch in one transaction (one git commit instead of N).
       const dropAssets = (
-        each: (name: string) => Promise<void>,
+        each: ((name: string) => Promise<void>) | null,
         message: (label: string) => string,
         ask: (label: string) => string,
+        applyAll?: (names: string[]) => Promise<void>,
       ) => {
         const names = drag.names ?? [drag.name];
-        // Sequential on purpose: some mutations read-modify-write shared
-        // state (collection membership), and parallel writes lose updates.
-        // Git vaults commit+push per mutation, so larger batches get a
-        // running count instead of looking hung.
+        // Sequential on purpose when looping: some mutations
+        // read-modify-write shared state, and parallel writes lose
+        // updates. Git vaults commit+push per mutation, so larger batches
+        // get a running count instead of looking hung.
         void (async () => {
           // A drop that mutates several assets confirms first — a drag is
           // too easy a gesture to change N things silently.
@@ -610,20 +613,31 @@ export default function Library({
             );
             if (!ok) return;
           }
+          const label =
+            names.length === 1 ? names[0] : `${names.length} skills`;
+          if (applyAll) {
+            try {
+              await applyAll(names);
+            } catch (e) {
+              setToastMessage(String(e));
+              return;
+            }
+            load();
+            setToastMessage(message(label));
+            return;
+          }
           let failed = 0;
           for (const [i, n] of names.entries()) {
             if (names.length > 3) {
               setToastMessage(`Working… ${i + 1}/${names.length}`);
             }
             try {
-              await each(n);
+              await each!(n);
             } catch {
               failed++;
             }
           }
           load();
-          const label =
-            names.length === 1 ? names[0] : `${names.length} skills`;
           setToastMessage(
             failed === 0
               ? message(label)
@@ -633,9 +647,10 @@ export default function Library({
       };
       if (drag.kind === "asset" && collection) {
         dropAssets(
-          (n) => SetCollectionMembership(collection, n, true),
+          null,
           (label) => `Added ${label} to ${collection}`,
           (label) => `Add ${label} to ${collection}`,
+          (names) => SetCollectionMembershipBulk(collection, names, true),
         );
       } else if (drag.kind === "asset" && team) {
         dropAssets(

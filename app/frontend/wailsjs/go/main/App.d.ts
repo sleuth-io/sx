@@ -110,6 +110,8 @@ export function SetAssetTeamSharing(arg1:string,arg2:string,arg3:boolean):Promis
 
 export function SetCollectionMembership(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
+export function SetCollectionMembershipBulk(arg1:string,arg2:Array<string>,arg3:boolean):Promise<void>;
+
 export function SetCollectionTeamSharing(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function SetLibraryActive(arg1:string,arg2:boolean):Promise<void>;

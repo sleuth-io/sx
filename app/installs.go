@@ -334,20 +334,35 @@ func (a *App) CreateCollection(name string) (Collection, error) {
 var collectionMembershipMu sync.Mutex
 
 func (a *App) SetCollectionMembership(collection, assetName string, member bool) error {
+	return a.SetCollectionMembershipBulk(collection, []string{assetName}, member)
+}
+
+// SetCollectionMembershipBulk adds or removes several assets in ONE
+// read-modify-write — one SaveCollection, so a git vault makes one
+// commit+push for the whole batch (not one per asset) and a skills.new
+// vault issues one membership mutation.
+func (a *App) SetCollectionMembershipBulk(collection string, assetNames []string, member bool) error {
+	if len(assetNames) == 0 {
+		return nil
+	}
 	collectionMembershipMu.Lock()
 	defer collectionMembershipMu.Unlock()
 	c, err := a.findCollection(collection)
 	if err != nil {
 		return err
 	}
-	assets := make([]string, 0, len(c.Assets)+1)
+	batch := make(map[string]bool, len(assetNames))
+	for _, n := range assetNames {
+		batch[n] = true
+	}
+	assets := make([]string, 0, len(c.Assets)+len(assetNames))
 	for _, existing := range c.Assets {
-		if existing != assetName {
+		if !batch[existing] {
 			assets = append(assets, existing)
 		}
 	}
 	if member {
-		assets = append(assets, assetName)
+		assets = append(assets, assetNames...)
 	}
 	c.Assets = assets
 	store, err := a.collectionStore()

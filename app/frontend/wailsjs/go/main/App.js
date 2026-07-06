@@ -218,6 +218,10 @@ export function SetCollectionMembership(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetCollectionMembership'](arg1, arg2, arg3);
 }
 
+export function SetCollectionMembershipBulk(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetCollectionMembershipBulk'](arg1, arg2, arg3);
+}
+
 export function SetCollectionTeamSharing(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetCollectionTeamSharing'](arg1, arg2, arg3);
 }
