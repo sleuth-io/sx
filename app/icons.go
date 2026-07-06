@@ -1,23 +1,31 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/utils"
+	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
-// Library icons personalize the switcher: one optional image per library,
-// stored under the sx config dir (icons/<library>.<ext>) so each machine
-// keeps its own copy regardless of vault type.
+// Library icons personalize the switcher. For git and path libraries the
+// user uploads one, stored under the sx config dir (icons/<library>.<ext>).
+// skills.new libraries belong to an organization, so their icon IS the org
+// icon — pulled from the API and cached locally (icons/<library>.org).
 
 var iconExts = []string{".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
@@ -85,20 +93,151 @@ func removeIconFiles(name string) {
 	for _, ext := range iconExts {
 		_ = os.Remove(filepath.Join(dir, name+ext))
 	}
+	_ = os.Remove(filepath.Join(dir, name+orgIconExt))
 }
 
-// resolveLibraryName turns "" into the active library and validates the
-// name is usable as a filename component.
-func resolveLibraryName(name string) (string, error) {
-	if name == "" {
-		cfg, err := config.Load()
-		if err != nil {
-			return "", err
+// --- Org icons (skills.new libraries) ---
+
+// orgIconExt marks a cached organization icon; the mime is sniffed from
+// the bytes since the org can change image formats server-side.
+const orgIconExt = ".org"
+
+// orgIconRefreshed tracks which libraries already refreshed their org icon
+// this session, so GetSettings polls don't hammer the API.
+var orgIconRefreshed sync.Map
+
+// libraryIcon resolves a library's icon by type: skills.new libraries show
+// their organization's icon; everything else shows the local upload.
+func (a *App) libraryIcon(cfgType config.RepositoryType, name string) string {
+	if cfgType == config.RepositoryTypeSleuth {
+		return a.orgIconDataURL(name)
+	}
+	return libraryIconDataURL(name)
+}
+
+// orgIconDataURL serves the cached org icon and keeps it fresh: a cached
+// copy is returned immediately with a once-per-session background refresh;
+// with no cache yet, one synchronous (bounded) fetch fills it.
+func (a *App) orgIconDataURL(name string) string {
+	if !safePathComponent(name) {
+		return ""
+	}
+	dir, err := iconsDir()
+	if err != nil {
+		return ""
+	}
+	cache := filepath.Join(dir, name+orgIconExt)
+	if data, err := os.ReadFile(cache); err == nil && len(data) > 0 {
+		if _, loaded := orgIconRefreshed.LoadOrStore(name, true); !loaded {
+			go a.refreshOrgIcon(name, cache)
 		}
-		name = cfg.ProfileName
+		return "data:" + http.DetectContentType(data) + ";base64," + base64.StdEncoding.EncodeToString(data)
+	}
+	if _, loaded := orgIconRefreshed.LoadOrStore(name, true); !loaded {
+		a.refreshOrgIcon(name, cache)
+		if data, err := os.ReadFile(cache); err == nil && len(data) > 0 {
+			return "data:" + http.DetectContentType(data) + ";base64," + base64.StdEncoding.EncodeToString(data)
+		}
+	}
+	return ""
+}
+
+// refreshOrgIcon asks the org's vault for its icon URL and re-caches the
+// image. Best-effort: failures keep whatever cache exists.
+func (a *App) refreshOrgIcon(name, cache string) {
+	mpc, err := config.LoadMultiProfile()
+	if err != nil {
+		return
+	}
+	profile, ok := mpc.GetProfile(name)
+	if !ok {
+		return
+	}
+	cfg := profile.ToConfig(nil, nil)
+	v, err := vaultpkg.NewFromConfig(cfg)
+	if err != nil {
+		return
+	}
+	provider, ok := v.(interface {
+		OrgInfo(ctx context.Context) (string, string, error)
+	})
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	_, iconURL, err := provider.OrgInfo(ctx)
+	if err != nil {
+		return
+	}
+	if iconURL == "" {
+		// The org has no icon (anymore) — drop any stale cache.
+		_ = os.Remove(cache)
+		return
+	}
+	data, err := fetchOrgIconImage(ctx, cfg, iconURL)
+	if err != nil || len(data) == 0 {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(cache), 0755); err != nil {
+		return
+	}
+	tmp := cache + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, cache)
+}
+
+// fetchOrgIconImage downloads the icon, resolving relative URLs against
+// the server and sending auth only to the vault's own host.
+func fetchOrgIconImage(ctx context.Context, cfg *config.Config, iconURL string) ([]byte, error) {
+	resolved := iconURL
+	server, serverErr := url.Parse(cfg.ServerURL)
+	if u, err := url.Parse(iconURL); err == nil && !u.IsAbs() && serverErr == nil {
+		resolved = server.ResolveReference(u).String()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, resolved, nil)
+	if err != nil {
+		return nil, err
+	}
+	if target, err := url.Parse(resolved); err == nil && serverErr == nil && target.Host == server.Host && cfg.AuthToken != "" {
+		req.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
+	}
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("icon download failed: %s", resp.Status)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxIconBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxIconBytes {
+		return nil, errors.New("org icon exceeds the size cap")
+	}
+	return data, nil
+}
+
+// resolveLibraryName turns "" into the active library, validates the name
+// is usable as a filename component, and rejects skills.new libraries —
+// their icon is the org's, managed on the server.
+func resolveLibraryName(name string) (string, error) {
+	mpc, err := config.LoadMultiProfile()
+	if err != nil {
+		return "", err
+	}
+	if name == "" {
+		name = config.GetActiveProfileName(mpc)
 	}
 	if !safePathComponent(name) {
 		return "", fmt.Errorf("library %q not found", name)
+	}
+	if profile, ok := mpc.GetProfile(name); ok && profile.Type == config.RepositoryTypeSleuth {
+		return "", errors.New("this library's icon comes from your skills.new organization — change it there")
 	}
 	return name, nil
 }

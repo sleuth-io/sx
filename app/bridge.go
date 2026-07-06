@@ -204,7 +204,7 @@ func (a *App) GetVaultInfo() VaultInfo {
 		Type:       string(cfg.Type),
 		Identity:   cfg.Identity,
 		TrackRepos: cfg.TrackRepos,
-		Icon:       libraryIconDataURL(cfg.ProfileName),
+		Icon:       a.libraryIcon(cfg.Type, cfg.ProfileName),
 	}
 	switch cfg.Type {
 	case config.RepositoryTypeSleuth:

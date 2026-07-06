@@ -366,34 +366,48 @@ export default function SettingsModal({
                   </button>
                   {menuFor === p.name && (
                     <div className="absolute right-0 top-full z-40 mt-1 w-60 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
-                      <button
-                        onClick={() => {
-                          setMenuFor(null);
-                          void chooseIcon(p.name);
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
-                      >
-                        <span className="w-3.5" />
-                        <span className="flex-1">
-                          <span className="block">
-                            {p.icon ? "Change icon…" : "Set icon…"}
-                          </span>
-                          <span className="block text-xs text-ink-faint">
-                            Shown in the sidebar for this library
-                          </span>
-                        </span>
-                      </button>
-                      {p.icon && (
-                        <button
-                          onClick={() => {
-                            setMenuFor(null);
-                            void clearIcon(p.name);
-                          }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
-                        >
+                      {p.type === "sleuth" ? (
+                        <div className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-faint">
                           <span className="w-3.5" />
-                          Remove icon
-                        </button>
+                          <span className="flex-1">
+                            <span className="block">Icon</span>
+                            <span className="block text-xs">
+                              Uses your skills.new organization's icon
+                            </span>
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => {
+                              setMenuFor(null);
+                              void chooseIcon(p.name);
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
+                          >
+                            <span className="w-3.5" />
+                            <span className="flex-1">
+                              <span className="block">
+                                {p.icon ? "Change icon…" : "Set icon…"}
+                              </span>
+                              <span className="block text-xs text-ink-faint">
+                                Shown in the sidebar for this library
+                              </span>
+                            </span>
+                          </button>
+                          {p.icon && (
+                            <button
+                              onClick={() => {
+                                setMenuFor(null);
+                                void clearIcon(p.name);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
+                            >
+                              <span className="w-3.5" />
+                              Remove icon
+                            </button>
+                          )}
+                        </>
                       )}
                       <div className="mx-3 my-1 border-t border-line" />
                       <button

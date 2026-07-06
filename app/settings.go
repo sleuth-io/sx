@@ -67,7 +67,7 @@ func (a *App) GetSettings() (Settings, error) {
 			Default:    name == active,
 			Active:     mpc.IsProfileActive(name) || name == active,
 			TrackRepos: cfg.TrackRepos,
-			Icon:       libraryIconDataURL(name),
+			Icon:       a.libraryIcon(cfg.Type, name),
 		}
 		switch cfg.Type {
 		case config.RepositoryTypeSleuth:

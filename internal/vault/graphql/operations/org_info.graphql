@@ -1,0 +1,6 @@
+query OrgInfo {
+  organization {
+    name
+    iconUrl
+  }
+}

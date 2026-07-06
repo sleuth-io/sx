@@ -3592,6 +3592,29 @@ func (v *ModifyAssetCollectionAssetsInput) GetCollectionGid() string { return v.
 // GetAssetGids returns ModifyAssetCollectionAssetsInput.AssetGids, and is useful for accessing the field via an interface.
 func (v *ModifyAssetCollectionAssetsInput) GetAssetGids() []string { return v.AssetGids }
 
+// OrgInfoOrganizationOrganizationType includes the requested fields of the GraphQL type OrganizationType.
+type OrgInfoOrganizationOrganizationType struct {
+	Name string `json:"name"`
+	// URL to the organization's icon
+	IconUrl *string `json:"iconUrl"`
+}
+
+// GetName returns OrgInfoOrganizationOrganizationType.Name, and is useful for accessing the field via an interface.
+func (v *OrgInfoOrganizationOrganizationType) GetName() string { return v.Name }
+
+// GetIconUrl returns OrgInfoOrganizationOrganizationType.IconUrl, and is useful for accessing the field via an interface.
+func (v *OrgInfoOrganizationOrganizationType) GetIconUrl() *string { return v.IconUrl }
+
+// OrgInfoResponse is returned by OrgInfo on success.
+type OrgInfoResponse struct {
+	Organization OrgInfoOrganizationOrganizationType `json:"organization"`
+}
+
+// GetOrganization returns OrgInfoResponse.Organization, and is useful for accessing the field via an interface.
+func (v *OrgInfoResponse) GetOrganization() OrgInfoOrganizationOrganizationType {
+	return v.Organization
+}
+
 // OrgRepositoriesOrganizationOrganizationType includes the requested fields of the GraphQL type OrganizationType.
 type OrgRepositoriesOrganizationOrganizationType struct {
 	Repositories OrgRepositoriesOrganizationOrganizationTypeRepositoriesRepositoryConnection `json:"repositories"`
@@ -8008,6 +8031,37 @@ func ListTeams(
 	}
 
 	data_ = &ListTeamsResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The query executed by OrgInfo.
+const OrgInfo_Operation = `
+query OrgInfo {
+	organization {
+		name
+		iconUrl
+	}
+}
+`
+
+func OrgInfo(
+	ctx_ context.Context,
+	client_ graphql.Client,
+) (data_ *OrgInfoResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "OrgInfo",
+		Query:  OrgInfo_Operation,
+	}
+
+	data_ = &OrgInfoResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(
