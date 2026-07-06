@@ -166,5 +166,8 @@ func (s *SleuthVault) RenameCollection(ctx context.Context, oldName, newName str
 	if err != nil {
 		return err
 	}
+	if resp.UpdateAssetCollection == nil {
+		return nil
+	}
 	return firstGqlError(resp.UpdateAssetCollection.Errors)
 }
