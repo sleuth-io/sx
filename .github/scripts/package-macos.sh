@@ -2,12 +2,12 @@
 # Package the built sx.app for macOS distribution: a zip (the auto-update
 # feed the app itself downloads) and a DMG (the first-install artifact).
 #
-# With signing credentials present, the app is signed with a Developer ID
-# certificate + hardened runtime, notarized, and stapled — so Gatekeeper
-# opens it cleanly — and the artifacts drop the "-unsigned" suffix.
-# Without credentials (forks, PR builds, pre-enrollment), the app is
-# ad-hoc signed and both artifacts keep the "-unsigned" suffix. The
-# auto-updater matches "sx-app-macos-<arch>*.zip", so both names feed it.
+# The artifact suffix tracks what a downloader will experience:
+#   (clean name)   signed + notarized + stapled — opens with no warning
+#   -unnotarized   Developer ID cert but no notary key — Gatekeeper warns
+#   -unsigned      no credentials (forks, pre-enrollment) — ad-hoc signed
+# The auto-updater matches "sx-app-macos-<arch>*.zip", so all three
+# names feed it.
 #
 # Inputs (env):
 #   ARCH                        arm64 | amd64 — artifact naming only
@@ -18,8 +18,9 @@
 #   NOTARY_ISSUER_ID            App Store Connect issuer ID        (optional)
 #   NOTARY_KEY                  App Store Connect .p8 key contents (optional)
 #
-# Outputs: sx-app-macos-<arch>[-unsigned].{zip,dmg} next to the bundle;
-# names are appended to $GITHUB_ENV (ZIP_NAME/DMG_NAME) when set.
+# Outputs: sx-app-macos-<arch>[-unsigned|-unnotarized].{zip,dmg} next to
+# the bundle; names are appended to $GITHUB_ENV (ZIP_NAME/DMG_NAME) when
+# set.
 set -euo pipefail
 
 ARCH="${ARCH:?set ARCH to arm64 or amd64}"
