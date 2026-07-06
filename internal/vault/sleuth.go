@@ -599,7 +599,6 @@ func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*
 	// If no type specified, query all asset types and combine results
 	if opts.Type == "" {
 		allAssets := make([]AssetSummary, 0)
-		var lastErr error
 		for _, t := range asset.AllTypes() {
 			// Skip types not supported by the backend
 			if sxAssetTypeToGQL(t) == "" {
@@ -612,16 +611,13 @@ func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*
 			}
 			result, err := s.listAssetsByType(ctx, typeOpts)
 			if err != nil {
-				// Track the error but continue - we want to return partial results
-				// if some types succeed
-				lastErr = err
-				continue
+				// A silently partial list reads as "that's everything" —
+				// one transient failure would make skills vanish from every
+				// consumer's view. Callers keep their previous (complete)
+				// data on error; they can't do that if we lie.
+				return nil, fmt.Errorf("listing %s assets: %w", t.Key, err)
 			}
 			allAssets = append(allAssets, result.Assets...)
-		}
-		// If we got no assets and had errors, return the last error
-		if len(allAssets) == 0 && lastErr != nil {
-			return nil, lastErr
 		}
 		return &ListAssetsResult{Assets: allAssets}, nil
 	}

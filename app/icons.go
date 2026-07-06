@@ -197,9 +197,11 @@ func removeIconFiles(name string) {
 	_ = os.Remove(filepath.Join(dir, name+orgIconExt))
 }
 
-// orgIconDataURL serves the cached org icon and keeps it fresh: a cached
-// copy is returned immediately with a once-per-session background refresh;
-// with no cache yet, one synchronous (bounded) fetch fills it.
+// orgIconDataURL serves the cached org icon and keeps it fresh in the
+// background — never synchronously. GetSettings and GetVaultInfo sit on
+// the render path; one slow network fetch here would hold up the whole
+// settings view (or app startup). The first-ever open shows the default
+// mark and the icon pops in via the library-icons-updated event.
 func (a *App) orgIconDataURL(name string) string {
 	if !safePathComponent(name) {
 		return ""
@@ -209,17 +211,14 @@ func (a *App) orgIconDataURL(name string) string {
 		return ""
 	}
 	cache := filepath.Join(dir, name+orgIconExt)
-	if data, err := os.ReadFile(cache); err == nil && len(data) > 0 {
-		if _, loaded := orgIconRefreshed.LoadOrStore(name, true); !loaded {
-			go a.refreshOrgIcon(name, cache)
-		}
-		return iconDataURL(data)
-	}
 	if _, loaded := orgIconRefreshed.LoadOrStore(name, true); !loaded {
-		a.refreshOrgIcon(name, cache)
-		if data, err := os.ReadFile(cache); err == nil && len(data) > 0 {
-			return iconDataURL(data)
-		}
+		go func() {
+			a.refreshOrgIcon(name, cache)
+			a.emitMenuEvent("library-icons-updated")
+		}()
+	}
+	if data, err := os.ReadFile(cache); err == nil && len(data) > 0 {
+		return iconDataURL(data)
 	}
 	return ""
 }

@@ -167,7 +167,11 @@ export default function Library({
 
   // Guard against overlapping loads resolving out of order (focus events,
   // post-mutation refreshes): only the newest generation's results apply.
+  // Failures follow stale-while-error semantics: a background refresh that
+  // errors keeps the last good data on screen instead of blanking it —
+  // only the very first load falls back to empty (with the error shown).
   const loadGen = useRef(0);
+  const loadedOnce = useRef(false);
   const load = useCallback(() => {
     const gen = ++loadGen.current;
     const apply =
@@ -175,33 +179,40 @@ export default function Library({
       (v: T) => {
         if (gen === loadGen.current) setter(v);
       };
+    const applyFallback =
+      <T,>(setter: (v: T) => void, fallback: T) =>
+      () => {
+        if (gen === loadGen.current && !loadedOnce.current) setter(fallback);
+      };
     setError("");
     ListAssets()
-      .then(apply(setAssets))
+      .then((v) => {
+        if (gen !== loadGen.current) return;
+        loadedOnce.current = true;
+        setAssets(v);
+      })
       .catch((e) => {
         if (gen !== loadGen.current) return;
-        setError(String(e));
-        setAssets([]);
+        if (!loadedOnce.current) {
+          setError(String(e));
+          setAssets([]);
+        }
       });
-    ListDrafts()
-      .then(apply(setDrafts))
-      .catch(() => apply(setDrafts)([]));
+    ListDrafts().then(apply(setDrafts)).catch(applyFallback(setDrafts, []));
     ListCollections()
       .then(apply(setCollections))
-      .catch(() => apply(setCollections)([]));
+      .catch(applyFallback(setCollections, []));
     InstalledAssets()
       .then(apply(setInstalledInfo))
-      .catch(() => apply(setInstalledInfo)([]));
-    ListTeams()
-      .then(apply(setTeams))
-      .catch(() => apply(setTeams)([]));
+      .catch(applyFallback(setInstalledInfo, []));
+    ListTeams().then(apply(setTeams)).catch(applyFallback(setTeams, []));
     TeamAssets()
       .then((m) => apply(setTeamAssets)(m ?? {}))
-      .catch(() => apply(setTeamAssets)({}));
+      .catch(applyFallback(setTeamAssets, {}));
     if (vault.trackRepos) {
       RepoAssets()
         .then((m) => apply(setRepoAssets)(m ?? {}))
-        .catch(() => apply(setRepoAssets)({}));
+        .catch(applyFallback(setRepoAssets, {}));
     } else {
       apply(setRepoAssets)(null);
     }
@@ -726,21 +737,27 @@ export default function Library({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Toolbar */}
         <header className="titlebar-drag shrink-0 border-b border-line bg-surface">
-          <div className="flex items-center gap-3 px-5 pb-3 pt-9">
-            <h1 className="text-sm font-semibold">{scopeTitle}</h1>
-            <span className="text-xs text-ink-faint">
+          {/* flex-wrap: when the window is too narrow for one row, the
+              controls drop to a second line instead of collapsing the
+              title or clipping buttons off-screen. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 pb-3 pt-9">
+            <h1
+              className="min-w-0 max-w-full truncate whitespace-nowrap text-sm font-semibold"
+              title={scopeTitle}
+            >
+              {scopeTitle}
+            </h1>
+            <span className="shrink-0 text-xs text-ink-faint">
               {visible.length + visibleDrafts.length + teamCollections.length}
             </span>
             {scope.kind === "installed" && aiClients.length > 0 && (
-              <span className="text-xs text-ink-faint">
+              <span className="hidden min-w-0 truncate text-xs text-ink-faint xl:inline">
                 · delivered to {aiClients.map((c) => c.name).join(", ")}
               </span>
             )}
 
-            <div className="flex-1" />
-
             <div
-              className="flex h-9 items-center gap-2"
+              className="ml-auto flex h-9 shrink-0 items-center gap-2"
               style={{ ["--wails-draggable" as never]: "no-drag" }}
             >
               <div className="relative h-full">
@@ -749,7 +766,7 @@ export default function Library({
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search…"
-                  className="peer h-full w-56 rounded-lg border border-line bg-canvas px-3 pr-8 text-sm outline-none focus:border-accent"
+                  className="peer h-full w-36 rounded-lg border border-line bg-canvas px-3 pr-8 text-sm outline-none focus:border-accent lg:w-56"
                 />
                 {!query && (
                   <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-faint peer-focus:hidden">
@@ -902,7 +919,9 @@ export default function Library({
                   <path d="M13.5 8a5.5 5.5 0 0 1-9.6 3.7M2.5 8a5.5 5.5 0 0 1 9.6-3.7" />
                   <path d="M13.7 1.9v2.7H11M2.3 14.1v-2.7H5" />
                 </svg>
-                {syncing ? "Syncing…" : "Sync"}
+                <span className="hidden lg:inline">
+                  {syncing ? "Syncing…" : "Sync"}
+                </span>
               </button>
 
               <div className="relative h-full" ref={newMenuRef}>

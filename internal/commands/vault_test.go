@@ -1309,8 +1309,10 @@ func TestVaultListWithGraphQL(t *testing.T) {
 
 		// genqlient wraps top-level GraphQL errors with gqlerror.List, which
 		// appends a trailing newline to its formatted string. Trim before
-		// comparing so we're not asserting on that quirk.
-		expectedErr := "failed to list assets: input: Authentication required"
+		// comparing so we're not asserting on that quirk. The vault names
+		// the failing type: one failed type query fails the whole list
+		// rather than returning a silently partial result.
+		expectedErr := "failed to list assets: listing mcp assets: input: Authentication required"
 		var got string
 		if err != nil {
 			got = strings.TrimSpace(err.Error())

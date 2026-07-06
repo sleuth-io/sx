@@ -18,6 +18,7 @@ import {
   StartSleuthLogin,
   SwitchProfile,
 } from "../../wailsjs/go/main/App";
+import { EventsOn } from "../../wailsjs/runtime/runtime";
 import type { main } from "../../wailsjs/go/models";
 import Modal from "./Modal";
 import RepoPicker, { CreateRepoCard, suggestRepoName } from "./RepoPicker";
@@ -96,6 +97,9 @@ export default function SettingsModal({
     ListSyncFolders()
       .then((folders) => setSyncFolders(folders ?? []))
       .catch(() => setSyncFolders([]));
+    // Org icons resolve in the background; repaint rows when one lands.
+    // (Unsubscribe removes only this listener, not other subscribers.)
+    return EventsOn("library-icons-updated", load);
   }, []);
 
   async function switchTo(name: string) {

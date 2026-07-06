@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckForUpdate, GetVaultInfo, Quit } from "../wailsjs/go/main/App";
-import { BrowserOpenURL } from "../wailsjs/runtime/runtime";
+import { BrowserOpenURL, EventsOn } from "../wailsjs/runtime/runtime";
 import type { main } from "../wailsjs/go/models";
 import Onboarding from "./screens/Onboarding";
 import Library from "./screens/Library";
@@ -18,6 +18,10 @@ export default function App() {
   }, []);
 
   useEffect(refresh, [refresh]);
+  // Org icons load in the background; refresh the switcher when one lands.
+  // EventsOn's returned unsubscriber removes only THIS listener —
+  // EventsOff(name) would tear down every subscriber of the event.
+  useEffect(() => EventsOn("library-icons-updated", refresh), [refresh]);
   useEffect(() => {
     CheckForUpdate()
       .then((u) => (u.available || u.installed) && setUpdate(u))
