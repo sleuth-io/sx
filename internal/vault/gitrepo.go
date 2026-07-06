@@ -38,6 +38,14 @@ const (
 	// installScriptTemplateVersion is the current version of the install.sh template
 	// Increment this when making changes to the template
 	installScriptTemplateVersion = "1"
+
+	// gitSyncTTL is how long cloneOrUpdate trusts the local clone before
+	// pulling again. Within the window every read short-circuits to the
+	// clone (rapid UI interactions stay fast); the first read after it
+	// re-pulls, so a long-lived desktop session picks up teammates'
+	// pushes. Mutations are unaffected — push conflicts already
+	// pull-rebase — and the CLI never notices (one vault per invocation).
+	gitSyncTTL = 2 * time.Minute
 )
 
 // GitVault implements Vault for Git vaults
@@ -49,16 +57,18 @@ type GitVault struct {
 	pathHandler *PathSourceHandler
 	gitHandler  *GitSourceHandler
 
-	// hasSynced + syncMu guard cloneOrUpdate against concurrent MCP tool
+	// lastSynced + syncMu guard cloneOrUpdate against concurrent MCP tool
 	// goroutines (one per inbound JSON-RPC frame in cloud serve). A plain
-	// bool was a data race that ``go test -race`` would catch and that
+	// field would be a data race that ``go test -race`` catches and that
 	// could manifest as duplicate ``git pull`` invocations in production.
-	// Using a mutex + bool (instead of ``sync.Once``) preserves the
-	// original "retry on next call after a cancelled clone" semantics —
-	// ``sync.Once`` would permanently latch the cancellation error onto
-	// every subsequent caller.
-	syncMu    sync.Mutex
-	hasSynced bool
+	// Using a mutex + timestamp (instead of ``sync.Once``) preserves the
+	// "retry on next call after a cancelled clone" semantics — and, unlike
+	// the boolean it replaced, lets a long-lived process (the desktop app
+	// holds ONE GitVault for its whole session) see remote changes: reads
+	// within gitSyncTTL of the last sync serve the local clone, the first
+	// read after expiry pulls again.
+	syncMu     sync.Mutex
+	lastSynced time.Time
 
 	// prBranch is set by StartPRBranch when the caller lacks RBAC permission to
 	// publish directly and has opted to open a pull request instead. While it is
@@ -341,7 +351,7 @@ func (g *GitVault) VerifyIntegrity(data []byte, hashes map[string]string, size i
 func (g *GitVault) cloneOrUpdate(ctx context.Context) error {
 	g.syncMu.Lock()
 	defer g.syncMu.Unlock()
-	if g.hasSynced {
+	if !g.lastSynced.IsZero() && time.Since(g.lastSynced) < gitSyncTTL {
 		return nil
 	}
 
@@ -374,7 +384,7 @@ func (g *GitVault) cloneOrUpdate(ctx context.Context) error {
 		}
 	}
 
-	g.hasSynced = true
+	g.lastSynced = time.Now()
 	return nil
 }
 
@@ -1141,4 +1151,13 @@ func (g *GitVault) GetMCPTools() any {
 // GetBootstrapOptions returns no bootstrap options for GitVault
 func (g *GitVault) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	return nil
+}
+
+// markSynced records a just-completed remote sync performed outside
+// cloneOrUpdate (repair, PR-branch flows), restarting the gitSyncTTL
+// window under the same mutex cloneOrUpdate uses.
+func (g *GitVault) markSynced() {
+	g.syncMu.Lock()
+	g.lastSynced = time.Now()
+	g.syncMu.Unlock()
 }
