@@ -338,6 +338,7 @@ export namespace main {
 	    description: string;
 	    members: string[];
 	    admins: string[];
+	    repositories: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new TeamInfo(source);
@@ -349,6 +350,7 @@ export namespace main {
 	        this.description = source["description"];
 	        this.members = source["members"];
 	        this.admins = source["admins"];
+	        this.repositories = source["repositories"];
 	    }
 	}
 	export class UpdateInfo {

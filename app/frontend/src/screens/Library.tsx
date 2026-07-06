@@ -5,6 +5,8 @@ import {
   CreateTeam,
   DeleteCollection,
   GetCollectionSharing,
+  AddAssetRepoScope,
+  AddCollectionRepoScope,
   GetDraft,
   InstalledAssets,
   ListAIClients,
@@ -138,6 +140,7 @@ export default function Library({
   } | null>(null);
   const [dropCollection, setDropCollection] = useState("");
   const [dropTeam, setDropTeam] = useState("");
+  const [dropRepo, setDropRepo] = useState("");
   const pendingDragRef = useRef<{
     kind: DragKind;
     name: string;
@@ -147,6 +150,7 @@ export default function Library({
   const dragRef = useRef<{ kind: DragKind; name: string } | null>(null);
   const dropCollectionRef = useRef("");
   const dropTeamRef = useRef("");
+  const dropRepoRef = useRef("");
   const dragHappenedRef = useRef(false);
   const [toast, setToast] = useState("");
   const [busyAction, setBusyAction] = useState(false);
@@ -347,16 +351,19 @@ export default function Library({
 
   // Drive the in-app drag: activate past a small threshold, follow the
   // cursor with a ghost chip, hit-test drop targets, commit on mouseup.
-  // Assets can drop on collections or teams; collections on teams only.
+  // Assets can drop on collections, teams, or repos; collections on teams
+  // and repos.
   useEffect(() => {
     const finish = () => {
       pendingDragRef.current = null;
       dragRef.current = null;
       dropCollectionRef.current = "";
       dropTeamRef.current = "";
+      dropRepoRef.current = "";
       setAssetDrag(null);
       setDropCollection("");
       setDropTeam("");
+      setDropRepo("");
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
     };
@@ -375,23 +382,27 @@ export default function Library({
       setAssetDrag({ name: drag.name, x: e.clientX, y: e.clientY });
       const selector =
         drag.kind === "asset"
-          ? "[data-drop-collection], [data-drop-team]"
-          : "[data-drop-team]";
+          ? "[data-drop-collection], [data-drop-team], [data-drop-repo]"
+          : "[data-drop-team], [data-drop-repo]";
       const hit = document
         .elementFromPoint(e.clientX, e.clientY)
         ?.closest(selector);
       // A collection must not highlight as a drop target for itself.
       const collection = hit?.getAttribute("data-drop-collection") ?? "";
       const team = hit?.getAttribute("data-drop-team") ?? "";
+      const repo = hit?.getAttribute("data-drop-repo") ?? "";
       dropCollectionRef.current = collection;
       dropTeamRef.current = team;
+      dropRepoRef.current = repo;
       setDropCollection(collection);
       setDropTeam(team);
+      setDropRepo(repo);
     };
     const onUp = () => {
       const drag = dragRef.current;
       const collection = dropCollectionRef.current;
       const team = dropTeamRef.current;
+      const repo = dropRepoRef.current;
       finish();
       // The click event (if any) fires synchronously after mouseup; clear
       // the suppress flag right after so the NEXT click isn't swallowed
@@ -419,6 +430,22 @@ export default function Library({
           .then(() => {
             load();
             setToastMessage(`Shared everything in ${drag.name} with ${team}`);
+          })
+          .catch((e) => setToastMessage(String(e)));
+      } else if (drag.kind === "asset" && repo) {
+        AddAssetRepoScope(drag.name, repo)
+          .then(() => {
+            load();
+            setToastMessage(`${drag.name} now installs in ${repoLabel(repo)}`);
+          })
+          .catch((e) => setToastMessage(String(e)));
+      } else if (drag.kind === "collection" && repo) {
+        AddCollectionRepoScope(drag.name, repo)
+          .then(() => {
+            load();
+            setToastMessage(
+              `Everything in ${drag.name} now installs in ${repoLabel(repo)}`,
+            );
           })
           .catch((e) => setToastMessage(String(e)));
       }
@@ -766,6 +793,7 @@ export default function Library({
         onSettings={() => setShowSettings(true)}
         dropCollection={dropCollection}
         dropTeam={dropTeam}
+        dropRepo={dropRepo}
         onCollectionDragHandle={(name, e) => {
           if (e.button !== 0) return;
           dragHappenedRef.current = false;
@@ -1413,6 +1441,7 @@ export default function Library({
       {openTeam && (
         <TeamModal
           team={openTeam}
+          showRepos={vault.trackRepos}
           onClose={() => setOpenTeam(null)}
           onChanged={load}
         />

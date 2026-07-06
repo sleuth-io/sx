@@ -22,6 +22,9 @@ type TeamInfo struct {
 	Description string   `json:"description"`
 	Members     []string `json:"members"`
 	Admins      []string `json:"admins"`
+	// Repositories drive team-scope resolution: team-scoped assets flatten
+	// to these repos at install time (empty = members get them globally).
+	Repositories []string `json:"repositories"`
 }
 
 // teamManager is the slice of the vault interface team operations need.
@@ -58,10 +61,11 @@ func (a *App) ListTeams() ([]TeamInfo, error) {
 	out := make([]TeamInfo, 0, len(result.Teams))
 	for _, t := range result.Teams {
 		out = append(out, TeamInfo{
-			Name:        t.Name,
-			Description: t.Description,
-			Members:     append([]string{}, t.Members...),
-			Admins:      append([]string{}, t.Admins...),
+			Name:         t.Name,
+			Description:  t.Description,
+			Members:      append([]string{}, t.Members...),
+			Admins:       append([]string{}, t.Admins...),
+			Repositories: append([]string{}, t.Repositories...),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -130,6 +134,84 @@ func (a *App) RemoveTeamMember(team, email string) error {
 	}
 	if err := tm.RemoveTeamMember(a.ctx, team, email); err != nil {
 		return friendlyVaultError(err)
+	}
+	return nil
+}
+
+// teamRepoManager is the vault capability behind the team-repositories
+// editor (Settings gates it on repository tracking).
+type teamRepoManager interface {
+	AddTeamRepository(ctx context.Context, team, repoURL string) error
+	RemoveTeamRepository(ctx context.Context, team, repoURL string) error
+}
+
+// SetTeamRepository adds or removes one repository on a team. Team scopes
+// flatten to these repositories at install time.
+func (a *App) SetTeamRepository(team, repoURL string, member bool) error {
+	repoURL = strings.TrimSpace(repoURL)
+	if repoURL == "" {
+		return errors.New("enter a repository URL")
+	}
+	v, err := a.currentVault()
+	if err != nil {
+		return err
+	}
+	m, ok := v.(teamRepoManager)
+	if !ok {
+		return errors.New("this library doesn't support team repositories")
+	}
+	if member {
+		err = m.AddTeamRepository(a.ctx, team, repoURL)
+	} else {
+		err = m.RemoveTeamRepository(a.ctx, team, repoURL)
+	}
+	if err != nil {
+		return friendlyVaultError(err)
+	}
+	return nil
+}
+
+// AddAssetRepoScope scopes an asset to a repository (the sidebar
+// drag-onto-repo gesture): it installs into that repo's checkouts.
+func (a *App) AddAssetRepoScope(name, repoURL string) error {
+	if err := validateAssetRef(name, ""); err != nil {
+		return err
+	}
+	r, err := a.sharingVault()
+	if err != nil {
+		return err
+	}
+	target := vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindRepo, Repo: repoURL}
+	if err := r.SetAssetInstallation(a.ctx, name, target); err != nil {
+		return friendlyVaultError(err)
+	}
+	return nil
+}
+
+// AddCollectionRepoScope scopes every asset in a collection to a
+// repository (dragging a collection onto a repo row). Continues past
+// per-asset failures and reports them together.
+func (a *App) AddCollectionRepoScope(collection, repoURL string) error {
+	c, err := a.findCollection(collection)
+	if err != nil {
+		return err
+	}
+	if len(c.Assets) == 0 {
+		return fmt.Errorf("%s has no assets yet", collection)
+	}
+	r, err := a.sharingVault()
+	if err != nil {
+		return err
+	}
+	target := vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindRepo, Repo: repoURL}
+	var failed []string
+	for _, assetName := range c.Assets {
+		if err := r.SetAssetInstallation(a.ctx, assetName, target); err != nil {
+			failed = append(failed, assetName)
+		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("some assets could not be scoped: %s", strings.Join(failed, ", "))
 	}
 	return nil
 }

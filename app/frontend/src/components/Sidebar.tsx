@@ -59,6 +59,7 @@ export default function Sidebar({
   onSettings,
   dropCollection,
   dropTeam,
+  dropRepo,
   onCollectionDragHandle,
   width,
 }: {
@@ -85,6 +86,7 @@ export default function Sidebar({
   onSettings: () => void;
   dropCollection: string;
   dropTeam: string;
+  dropRepo: string;
   onCollectionDragHandle: (name: string, e: MouseEvent) => void;
   width: number;
 }) {
@@ -282,7 +284,16 @@ export default function Sidebar({
                   .filter((url) => pinnedRepos.includes(url))
                   .sort((a, b) => repoLabel(a).localeCompare(repoLabel(b)))
                   .map((url) => (
-                    <div key={url} title={url}>
+                    <div
+                      key={url}
+                      title={url}
+                      data-drop-repo={url}
+                      className={
+                        dropRepo === url
+                          ? "rounded-lg ring-2 ring-accent"
+                          : undefined
+                      }
+                    >
                       <Row
                         label={repoLabel(url)}
                         count={(repoAssets[url] ?? []).length}
