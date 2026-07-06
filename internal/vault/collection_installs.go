@@ -69,8 +69,13 @@ func commonSetCollectionInstallation(vaultRoot string, actor mgmt.Actor, name st
 				return nil, err
 			}
 		}
-		if scopeExistsOnAsset(c.Scopes, s) {
-			return nil, nil
+		// Dedupe with the org-aware matcher, keeping set/remove symmetric:
+		// installScopeMatches never matches org rows (on assets they don't
+		// exist as rows), but collections store org explicitly.
+		for _, existing := range c.Scopes {
+			if collectionScopeMatches(existing, s) {
+				return nil, nil
+			}
 		}
 		c.Scopes = append(c.Scopes, s)
 		return &mgmt.AuditEvent{

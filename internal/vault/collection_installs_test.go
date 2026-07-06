@@ -11,7 +11,15 @@ import (
 
 func newCollectionInstallTestVault(t *testing.T) (*PathVault, string) {
 	t.Helper()
+	mgmt.ResetActorCache()
 	dir := t.TempDir()
+
+	// Vault mutations resolve the actor from the vault dir's git config;
+	// CI runners have no global identity, so pin one locally.
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "alice@example.com")
+	runGit(t, dir, "config", "user.name", "Alice Admin")
+
 	if err := manifest.Save(dir, &manifest.Manifest{
 		SchemaVersion: manifest.CurrentSchemaVersion,
 		Assets: []manifest.Asset{
@@ -118,6 +126,12 @@ func TestPathVault_CollectionOrgRow(t *testing.T) {
 
 	if err := v.SetCollectionInstallation(ctx, "essentials", org); err != nil {
 		t.Fatalf("SetCollectionInstallation(org): %v", err)
+	}
+	// Idempotent like every other kind: a repeat must not stack a second
+	// org row (installScopeMatches can't match org; the collection path
+	// uses the org-aware matcher).
+	if err := v.SetCollectionInstallation(ctx, "essentials", org); err != nil {
+		t.Fatalf("SetCollectionInstallation(org, repeat): %v", err)
 	}
 	scopes := collectionScopes(t, dir, "essentials")
 	if len(scopes) != 1 || scopes[0].Kind != manifest.ScopeKindOrg {
