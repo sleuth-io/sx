@@ -182,6 +182,24 @@ export default function Library({
     y1: number;
   } | null>(null);
 
+  // Promise-based confirmation for bulk mutations: the caller awaits the
+  // user's answer, so gesture-triggered bulk actions (drops) and the bulk
+  // share dialog can pause before touching N assets.
+  const [confirmState, setConfirmState] = useState<{
+    message: string;
+    action: string;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
+  const confirmAction = useCallback(
+    (message: string, action: string): Promise<boolean> =>
+      new Promise((resolve) => setConfirmState({ message, action, resolve })),
+    [],
+  );
+  function answerConfirm(ok: boolean) {
+    confirmState?.resolve(ok);
+    setConfirmState(null);
+  }
+
   function handleRowClick(name: string, e: React.MouseEvent, order: string[]) {
     if (dragHappenedRef.current) {
       dragHappenedRef.current = false;
@@ -563,6 +581,7 @@ export default function Library({
       const dropAssets = (
         each: (name: string) => Promise<void>,
         message: (label: string) => string,
+        ask: (label: string) => string,
       ) => {
         const names = drag.names ?? [drag.name];
         // Sequential on purpose: some mutations read-modify-write shared
@@ -570,6 +589,15 @@ export default function Library({
         // Git vaults commit+push per mutation, so larger batches get a
         // running count instead of looking hung.
         void (async () => {
+          // A drop that mutates several assets confirms first — a drag is
+          // too easy a gesture to change N things silently.
+          if (names.length > 1) {
+            const ok = await confirmAction(
+              `${ask(`${names.length} skills`)}?`,
+              "Apply",
+            );
+            if (!ok) return;
+          }
           let failed = 0;
           for (const [i, n] of names.entries()) {
             if (names.length > 3) {
@@ -595,11 +623,13 @@ export default function Library({
         dropAssets(
           (n) => SetCollectionMembership(collection, n, true),
           (label) => `Added ${label} to ${collection}`,
+          (label) => `Add ${label} to ${collection}`,
         );
       } else if (drag.kind === "asset" && team) {
         dropAssets(
           (n) => SetAssetTeamSharing(n, team, true),
           (label) => `Shared ${label} with ${team}`,
+          (label) => `Share ${label} with ${team}`,
         );
       } else if (drag.kind === "collection" && team) {
         SetCollectionTeamSharing(drag.name, team, true)
@@ -612,6 +642,7 @@ export default function Library({
         dropAssets(
           (n) => AddAssetRepoScope(n, repo),
           (label) => `${label} now installs in ${repoLabel(repo)}`,
+          (label) => `Install ${label} in ${repoLabel(repo)}`,
         );
       } else if (drag.kind === "collection" && repo) {
         AddCollectionRepoScope(drag.name, repo)
@@ -1443,6 +1474,40 @@ export default function Library({
         </main>
       </div>
 
+      {confirmState && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) answerConfirm(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              answerConfirm(false);
+            }
+          }}
+        >
+          <div className="w-[400px] rounded-2xl border border-line bg-surface p-5 shadow-2xl">
+            <p className="text-sm text-ink-soft">{confirmState.message}</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => answerConfirm(false)}
+                className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink-soft transition hover:text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                autoFocus
+                onClick={() => answerConfirm(true)}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+              >
+                {confirmState.action}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {marquee && (
         <div
           className="pointer-events-none fixed z-40 border border-accent bg-accent/10"
@@ -1531,11 +1596,29 @@ export default function Library({
             } as main.AssetSharing;
           }}
           setTeamShared={async (team, shared) => {
+            if (
+              multiSel.size > 1 &&
+              !(await confirmAction(
+                `${shared ? "Share" : "Stop sharing"} ${multiSel.size} skills with ${team}?`,
+                shared ? "Share" : "Stop sharing",
+              ))
+            ) {
+              return;
+            }
             for (const n of multiSel) {
               await SetAssetTeamSharing(n, team, shared);
             }
           }}
           shareEveryone={async () => {
+            if (
+              multiSel.size > 1 &&
+              !(await confirmAction(
+                `Share ${multiSel.size} skills with everyone in this library?`,
+                "Share",
+              ))
+            ) {
+              return;
+            }
             for (const n of multiSel) {
               await ShareAssetWithEveryone(n);
             }
