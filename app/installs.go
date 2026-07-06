@@ -106,11 +106,17 @@ func (a *App) SetAssetPersonal(name string, enabled bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	targets, _, err := r.CurrentInstallTargets(a.ctx, name)
+	targets, present, err := r.CurrentInstallTargets(a.ctx, name)
 	if err != nil {
 		return "", friendlyVaultError(err)
 	}
 	shared, minePersonally := a.assetReachesUser(targets, self)
+	if !present {
+		// Absent from the manifest (orphaned storage) is NOT library-wide:
+		// let enable add the user scope, which also triggers the
+		// SetAssetInstallation storage-recovery repair.
+		shared = false
+	}
 
 	if enabled {
 		// A global asset must NOT get a user scope appended — scopes are
