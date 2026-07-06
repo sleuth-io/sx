@@ -80,6 +80,8 @@ func Resolve(m *Manifest, actor mgmt.Actor) *lockfile.LockFile {
 		// docs/bots.md.
 	}
 
+	collectionScopes := collectionScopesByAsset(m)
+
 	out.Assets = make([]lockfile.Asset, 0, len(m.Assets))
 	for i := range m.Assets {
 		src := m.Assets[i]
@@ -94,18 +96,51 @@ func Resolve(m *Manifest, actor mgmt.Actor) *lockfile.LockFile {
 			SourceGit:    resolveSourceGit(src.SourceGit),
 		}
 
+		// Collection scopes are dereferenced here, at resolve time, and
+		// unioned with the asset's own rows — installing a collection never
+		// rewrites its members' scopes, so adding an asset to an installed
+		// collection reaches the collection's targets immediately and
+		// uninstalling the collection can't take a direct install with it.
+		// A scope-less asset is already org-wide; collection rows can only
+		// widen a scoped asset, never narrow a global one.
+		effective := src.Scopes
+		if extra := collectionScopes[src.Name]; len(extra) > 0 && len(src.Scopes) > 0 {
+			effective = make([]Scope, 0, len(src.Scopes)+len(extra))
+			effective = append(effective, src.Scopes...)
+			effective = append(effective, extra...)
+		}
+
 		var resolved []lockfile.Scope
 		var drop bool
 		if actor.IsBot() {
-			resolved, drop = resolveScopesForBot(src.Scopes, m, actor.Bot, botTeams)
+			resolved, drop = resolveScopesForBot(effective, m, actor.Bot, botTeams)
 		} else {
-			resolved, drop = resolveScopes(src.Scopes, m, actorEmail)
+			resolved, drop = resolveScopes(effective, m, actorEmail)
 		}
 		if drop {
 			continue
 		}
 		dst.Scopes = resolved
 		out.Assets = append(out.Assets, dst)
+	}
+	return out
+}
+
+// collectionScopesByAsset flattens every collection's own scope rows onto
+// its member asset names. Collections without scopes contribute nothing.
+func collectionScopesByAsset(m *Manifest) map[string][]Scope {
+	var out map[string][]Scope
+	for i := range m.Collections {
+		c := &m.Collections[i]
+		if len(c.Scopes) == 0 {
+			continue
+		}
+		if out == nil {
+			out = map[string][]Scope{}
+		}
+		for _, name := range c.Assets {
+			out[name] = append(out[name], c.Scopes...)
+		}
 	}
 	return out
 }

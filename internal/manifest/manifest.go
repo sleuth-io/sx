@@ -105,12 +105,21 @@ type Manifest struct {
 }
 
 // Collection is a named list of asset names. Collections organize assets
-// for browsing and bulk install; they grant no access by themselves (teams
-// remain the ACL mechanism).
+// for browsing and bulk install.
+//
+// Scopes are the collection's OWN install targets, dereferenced at
+// resolve time: every member asset additionally reaches everyone a
+// collection scope reaches, without the member's own scope rows being
+// touched. Unlike assets — where an empty scope list means org-wide — a
+// collection with no scopes grants nothing; org-wide is an explicit
+// kind=org row. This keeps existing (scope-less) collections purely
+// organizational and makes install/uninstall symmetric: removing a
+// collection scope never disturbs a member's direct installs.
 type Collection struct {
 	Name        string   `toml:"name"`
 	Description string   `toml:"description,omitempty"`
 	Assets      []string `toml:"assets,omitempty"`
+	Scopes      []Scope  `toml:"scopes,omitempty"`
 	CreatedBy   string   `toml:"created_by,omitempty"`
 }
 

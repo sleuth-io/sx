@@ -27,21 +27,27 @@ func manifestTeamAssets(vaultRoot string) (map[string][]string, error) {
 	// One row exists per published version and rows for the same asset are
 	// not necessarily adjacent — dedupe with a per-team seen set.
 	seen := map[string]map[string]bool{}
+	add := func(team, assetName string) {
+		if seen[team] == nil {
+			seen[team] = map[string]bool{}
+		}
+		if seen[team][assetName] {
+			return
+		}
+		seen[team][assetName] = true
+		out[team] = append(out[team], assetName)
+	}
 	for _, a := range m.Assets {
 		for _, s := range a.Scopes {
 			if s.Kind != manifest.ScopeKindTeam || s.Team == "" {
 				continue
 			}
-			if seen[s.Team] == nil {
-				seen[s.Team] = map[string]bool{}
-			}
-			if seen[s.Team][a.Name] {
-				continue
-			}
-			seen[s.Team][a.Name] = true
-			out[s.Team] = append(out[s.Team], a.Name)
+			add(s.Team, a.Name)
 		}
 	}
+	// Collection installs reach the team's members at resolve time, so the
+	// team view reports those member assets alongside directly-scoped ones.
+	collectionTeamAssets(m, add)
 	return out, nil
 }
 

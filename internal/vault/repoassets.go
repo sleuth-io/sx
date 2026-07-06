@@ -28,21 +28,30 @@ func manifestRepoAssets(vaultRoot string) (map[string][]string, error) {
 	// not necessarily adjacent — dedupe with a per-repo seen set. Path
 	// scopes name a repository too; the asset still belongs to that repo.
 	seen := map[string]map[string]bool{}
+	add := func(repoURL, assetName string) {
+		if repoURL == "" {
+			return
+		}
+		if seen[repoURL] == nil {
+			seen[repoURL] = map[string]bool{}
+		}
+		if seen[repoURL][assetName] {
+			return
+		}
+		seen[repoURL][assetName] = true
+		out[repoURL] = append(out[repoURL], assetName)
+	}
 	for _, a := range m.Assets {
 		for _, s := range a.Scopes {
 			if (s.Kind != manifest.ScopeKindRepo && s.Kind != manifest.ScopeKindPath) || s.Repo == "" {
 				continue
 			}
-			if seen[s.Repo] == nil {
-				seen[s.Repo] = map[string]bool{}
-			}
-			if seen[s.Repo][a.Name] {
-				continue
-			}
-			seen[s.Repo][a.Name] = true
-			out[s.Repo] = append(out[s.Repo], a.Name)
+			add(s.Repo, a.Name)
 		}
 	}
+	// Collection installs scope their member assets to the repo at resolve
+	// time, so the repo view reports those alongside directly-scoped ones.
+	collectionRepoAssets(m, add)
 	return out, nil
 }
 

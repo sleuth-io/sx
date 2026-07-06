@@ -59,6 +59,12 @@ const (
 	EventCollectionCreated = "collection.created"
 	EventCollectionUpdated = "collection.updated"
 	EventCollectionDeleted = "collection.deleted"
+
+	// Collection install events mirror skills.new's COLLECTION_INSTALLED /
+	// COLLECTION_UNINSTALLED audit rows: the target is the collection and
+	// Data carries the install target, matching EventInstallSet's shape.
+	EventCollectionInstalled   = "collection.installed"
+	EventCollectionUninstalled = "collection.uninstalled"
 )
 
 // Audit target type constants.

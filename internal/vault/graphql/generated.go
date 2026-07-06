@@ -1228,6 +1228,8 @@ type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallati
 	EntityRef        *string `json:"entityRef"`
 	EntityId         *string `json:"entityId"`
 	MonoRepoConfigId *string `json:"monoRepoConfigId"`
+	// GID of the collection this installation is derived from (null for direct installs)
+	ViaCollectionId *string `json:"viaCollectionId"`
 }
 
 // GetEntityType returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.EntityType, and is useful for accessing the field via an interface.
@@ -1253,6 +1255,11 @@ func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstal
 // GetMonoRepoConfigId returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.MonoRepoConfigId, and is useful for accessing the field via an interface.
 func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetMonoRepoConfigId() *string {
 	return v.MonoRepoConfigId
+}
+
+// GetViaCollectionId returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation.ViaCollectionId, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation) GetViaCollectionId() *string {
+	return v.ViaCollectionId
 }
 
 // AssetInstallationsVaultAssetsVaultAssetsConnectionPageInfo includes the requested fields of the GraphQL type PageInfo.
@@ -1922,6 +1929,68 @@ type CollectionAssetsResponse struct {
 
 // GetCollection returns CollectionAssetsResponse.Collection, and is useful for accessing the field via an interface.
 func (v *CollectionAssetsResponse) GetCollection() CollectionAssetsCollectionVaultAssetCollection {
+	return v.Collection
+}
+
+// CollectionInstallationsCollectionVaultAssetCollection includes the requested fields of the GraphQL type VaultAssetCollection.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for an asset collection.
+type CollectionInstallationsCollectionVaultAssetCollection struct {
+	// Targets this collection is installed to
+	Installations []CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation `json:"installations"`
+}
+
+// GetInstallations returns CollectionInstallationsCollectionVaultAssetCollection.Installations, and is useful for accessing the field via an interface.
+func (v *CollectionInstallationsCollectionVaultAssetCollection) GetInstallations() []CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation {
+	return v.Installations
+}
+
+// CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation includes the requested fields of the GraphQL type VaultAssetInstallation.
+// The GraphQL type's documentation follows.
+//
+// Installation location for a vault asset.
+type CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation struct {
+	EntityType VaultAssetInstallationEntityType `json:"entityType"`
+	EntityName string                           `json:"entityName"`
+	// Canonical reference used to install this entity, when it differs from entityName: the email for USER installations. Null for entity types whose entityName is already the canonical reference.
+	EntityRef        *string `json:"entityRef"`
+	EntityId         *string `json:"entityId"`
+	MonoRepoConfigId *string `json:"monoRepoConfigId"`
+}
+
+// GetEntityType returns CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation.EntityType, and is useful for accessing the field via an interface.
+func (v *CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation) GetEntityType() VaultAssetInstallationEntityType {
+	return v.EntityType
+}
+
+// GetEntityName returns CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation.EntityName, and is useful for accessing the field via an interface.
+func (v *CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation) GetEntityName() string {
+	return v.EntityName
+}
+
+// GetEntityRef returns CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation.EntityRef, and is useful for accessing the field via an interface.
+func (v *CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation) GetEntityRef() *string {
+	return v.EntityRef
+}
+
+// GetEntityId returns CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation.EntityId, and is useful for accessing the field via an interface.
+func (v *CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation) GetEntityId() *string {
+	return v.EntityId
+}
+
+// GetMonoRepoConfigId returns CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation.MonoRepoConfigId, and is useful for accessing the field via an interface.
+func (v *CollectionInstallationsCollectionVaultAssetCollectionInstallationsVaultAssetInstallation) GetMonoRepoConfigId() *string {
+	return v.MonoRepoConfigId
+}
+
+// CollectionInstallationsResponse is returned by CollectionInstallations on success.
+type CollectionInstallationsResponse struct {
+	Collection CollectionInstallationsCollectionVaultAssetCollection `json:"collection"`
+}
+
+// GetCollection returns CollectionInstallationsResponse.Collection, and is useful for accessing the field via an interface.
+func (v *CollectionInstallationsResponse) GetCollection() CollectionInstallationsCollectionVaultAssetCollection {
 	return v.Collection
 }
 
@@ -3186,6 +3255,88 @@ type ImportAuditEventsResponse struct {
 // GetImportAuditEvents returns ImportAuditEventsResponse.ImportAuditEvents, and is useful for accessing the field via an interface.
 func (v *ImportAuditEventsResponse) GetImportAuditEvents() *ImportAuditEventsImportAuditEventsImportAuditEventsMutation {
 	return v.ImportAuditEvents
+}
+
+type InstallCollectionInput struct {
+	// Collection GID
+	Gid string `json:"gid"`
+	// Installation targets to add to every asset in the collection
+	Installations []AssetInstallationInput `json:"installations"`
+}
+
+// GetGid returns InstallCollectionInput.Gid, and is useful for accessing the field via an interface.
+func (v *InstallCollectionInput) GetGid() string { return v.Gid }
+
+// GetInstallations returns InstallCollectionInput.Installations, and is useful for accessing the field via an interface.
+func (v *InstallCollectionInput) GetInstallations() []AssetInstallationInput { return v.Installations }
+
+// InstallCollectionInstallCollectionInstallCollectionMutation includes the requested fields of the GraphQL type InstallCollectionMutation.
+// The GraphQL type's documentation follows.
+//
+// Install a collection to one or more targets.
+//
+// Writes one AssetCollectionInstallation row per target; member assets are
+// resolved at read time and are never modified. Permission is checked per
+// target (the same entity-level checks a single-asset install uses), and all
+// targets are validated before any row is written.
+type InstallCollectionInstallCollectionInstallCollectionMutation struct {
+	Collection *InstallCollectionInstallCollectionInstallCollectionMutationCollectionVaultAssetCollection `json:"collection"`
+	Errors     []InstallCollectionInstallCollectionInstallCollectionMutationErrorsErrorType               `json:"errors"`
+}
+
+// GetCollection returns InstallCollectionInstallCollectionInstallCollectionMutation.Collection, and is useful for accessing the field via an interface.
+func (v *InstallCollectionInstallCollectionInstallCollectionMutation) GetCollection() *InstallCollectionInstallCollectionInstallCollectionMutationCollectionVaultAssetCollection {
+	return v.Collection
+}
+
+// GetErrors returns InstallCollectionInstallCollectionInstallCollectionMutation.Errors, and is useful for accessing the field via an interface.
+func (v *InstallCollectionInstallCollectionInstallCollectionMutation) GetErrors() []InstallCollectionInstallCollectionInstallCollectionMutationErrorsErrorType {
+	return v.Errors
+}
+
+// InstallCollectionInstallCollectionInstallCollectionMutationCollectionVaultAssetCollection includes the requested fields of the GraphQL type VaultAssetCollection.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for an asset collection.
+type InstallCollectionInstallCollectionInstallCollectionMutationCollectionVaultAssetCollection struct {
+	Id string `json:"id"`
+}
+
+// GetId returns InstallCollectionInstallCollectionInstallCollectionMutationCollectionVaultAssetCollection.Id, and is useful for accessing the field via an interface.
+func (v *InstallCollectionInstallCollectionInstallCollectionMutationCollectionVaultAssetCollection) GetId() string {
+	return v.Id
+}
+
+// InstallCollectionInstallCollectionInstallCollectionMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type InstallCollectionInstallCollectionInstallCollectionMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns InstallCollectionInstallCollectionInstallCollectionMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *InstallCollectionInstallCollectionInstallCollectionMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns InstallCollectionInstallCollectionInstallCollectionMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *InstallCollectionInstallCollectionInstallCollectionMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+// InstallCollectionResponse is returned by InstallCollection on success.
+type InstallCollectionResponse struct {
+	// Install a collection to one or more targets.
+	//
+	// Writes one AssetCollectionInstallation row per target; member assets are
+	// resolved at read time and are never modified. Permission is checked per
+	// target (the same entity-level checks a single-asset install uses), and all
+	// targets are validated before any row is written.
+	InstallCollection *InstallCollectionInstallCollectionInstallCollectionMutation `json:"installCollection"`
+}
+
+// GetInstallCollection returns InstallCollectionResponse.InstallCollection, and is useful for accessing the field via an interface.
+func (v *InstallCollectionResponse) GetInstallCollection() *InstallCollectionInstallCollectionInstallCollectionMutation {
+	return v.InstallCollection
 }
 
 // InstallSkillToBotInstallSkillToBotInstallSkillToBotMutation includes the requested fields of the GraphQL type InstallSkillToBotMutation.
@@ -4855,6 +5006,95 @@ func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation
 
 // GetMessages returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
 func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+type UninstallCollectionInput struct {
+	EntityType VaultAssetInstallationEntityType `json:"entityType"`
+	// GID of the entity (null for organization-wide installs)
+	EntityId *string `json:"entityId"`
+	// GID of the mono-repo config (only for repository targets)
+	MonoRepoConfigId *string `json:"monoRepoConfigId"`
+	// Collection GID
+	Gid string `json:"gid"`
+}
+
+// GetEntityType returns UninstallCollectionInput.EntityType, and is useful for accessing the field via an interface.
+func (v *UninstallCollectionInput) GetEntityType() VaultAssetInstallationEntityType {
+	return v.EntityType
+}
+
+// GetEntityId returns UninstallCollectionInput.EntityId, and is useful for accessing the field via an interface.
+func (v *UninstallCollectionInput) GetEntityId() *string { return v.EntityId }
+
+// GetMonoRepoConfigId returns UninstallCollectionInput.MonoRepoConfigId, and is useful for accessing the field via an interface.
+func (v *UninstallCollectionInput) GetMonoRepoConfigId() *string { return v.MonoRepoConfigId }
+
+// GetGid returns UninstallCollectionInput.Gid, and is useful for accessing the field via an interface.
+func (v *UninstallCollectionInput) GetGid() string { return v.Gid }
+
+// UninstallCollectionResponse is returned by UninstallCollection on success.
+type UninstallCollectionResponse struct {
+	// Remove a collection's installation row for one target.
+	//
+	// Member assets' own installations are never touched, so a direct install
+	// made outside the collection always survives a collection uninstall.
+	UninstallCollection *UninstallCollectionUninstallCollectionUninstallCollectionMutation `json:"uninstallCollection"`
+}
+
+// GetUninstallCollection returns UninstallCollectionResponse.UninstallCollection, and is useful for accessing the field via an interface.
+func (v *UninstallCollectionResponse) GetUninstallCollection() *UninstallCollectionUninstallCollectionUninstallCollectionMutation {
+	return v.UninstallCollection
+}
+
+// UninstallCollectionUninstallCollectionUninstallCollectionMutation includes the requested fields of the GraphQL type UninstallCollectionMutation.
+// The GraphQL type's documentation follows.
+//
+// Remove a collection's installation row for one target.
+//
+// Member assets' own installations are never touched, so a direct install
+// made outside the collection always survives a collection uninstall.
+type UninstallCollectionUninstallCollectionUninstallCollectionMutation struct {
+	Collection *UninstallCollectionUninstallCollectionUninstallCollectionMutationCollectionVaultAssetCollection `json:"collection"`
+	Errors     []UninstallCollectionUninstallCollectionUninstallCollectionMutationErrorsErrorType               `json:"errors"`
+}
+
+// GetCollection returns UninstallCollectionUninstallCollectionUninstallCollectionMutation.Collection, and is useful for accessing the field via an interface.
+func (v *UninstallCollectionUninstallCollectionUninstallCollectionMutation) GetCollection() *UninstallCollectionUninstallCollectionUninstallCollectionMutationCollectionVaultAssetCollection {
+	return v.Collection
+}
+
+// GetErrors returns UninstallCollectionUninstallCollectionUninstallCollectionMutation.Errors, and is useful for accessing the field via an interface.
+func (v *UninstallCollectionUninstallCollectionUninstallCollectionMutation) GetErrors() []UninstallCollectionUninstallCollectionUninstallCollectionMutationErrorsErrorType {
+	return v.Errors
+}
+
+// UninstallCollectionUninstallCollectionUninstallCollectionMutationCollectionVaultAssetCollection includes the requested fields of the GraphQL type VaultAssetCollection.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for an asset collection.
+type UninstallCollectionUninstallCollectionUninstallCollectionMutationCollectionVaultAssetCollection struct {
+	Id string `json:"id"`
+}
+
+// GetId returns UninstallCollectionUninstallCollectionUninstallCollectionMutationCollectionVaultAssetCollection.Id, and is useful for accessing the field via an interface.
+func (v *UninstallCollectionUninstallCollectionUninstallCollectionMutationCollectionVaultAssetCollection) GetId() string {
+	return v.Id
+}
+
+// UninstallCollectionUninstallCollectionUninstallCollectionMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type UninstallCollectionUninstallCollectionUninstallCollectionMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns UninstallCollectionUninstallCollectionUninstallCollectionMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *UninstallCollectionUninstallCollectionUninstallCollectionMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns UninstallCollectionUninstallCollectionUninstallCollectionMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *UninstallCollectionUninstallCollectionUninstallCollectionMutationErrorsErrorType) GetMessages() []string {
 	return v.Messages
 }
 
@@ -6569,6 +6809,14 @@ func (v *__CollectionAssetsInput) GetFirst() int { return v.First }
 // GetAfter returns __CollectionAssetsInput.After, and is useful for accessing the field via an interface.
 func (v *__CollectionAssetsInput) GetAfter() *string { return v.After }
 
+// __CollectionInstallationsInput is used internally by genqlient
+type __CollectionInstallationsInput struct {
+	Id string `json:"id"`
+}
+
+// GetId returns __CollectionInstallationsInput.Id, and is useful for accessing the field via an interface.
+func (v *__CollectionInstallationsInput) GetId() string { return v.Id }
+
 // __CreateAgentAssetInput is used internally by genqlient
 type __CreateAgentAssetInput struct {
 	Input CreateAssetInput `json:"input"`
@@ -6684,6 +6932,14 @@ type __ImportAuditEventsInput struct {
 
 // GetEvents returns __ImportAuditEventsInput.Events, and is useful for accessing the field via an interface.
 func (v *__ImportAuditEventsInput) GetEvents() []ImportAuditEventInput { return v.Events }
+
+// __InstallCollectionInput is used internally by genqlient
+type __InstallCollectionInput struct {
+	Input InstallCollectionInput `json:"input"`
+}
+
+// GetInput returns __InstallCollectionInput.Input, and is useful for accessing the field via an interface.
+func (v *__InstallCollectionInput) GetInput() InstallCollectionInput { return v.Input }
 
 // __InstallSkillToBotInput is used internally by genqlient
 type __InstallSkillToBotInput struct {
@@ -6810,6 +7066,14 @@ type __UninstallAssetTargetsInput struct {
 
 // GetInput returns __UninstallAssetTargetsInput.Input, and is useful for accessing the field via an interface.
 func (v *__UninstallAssetTargetsInput) GetInput() UninstallAssetTargetsInput { return v.Input }
+
+// __UninstallCollectionInput is used internally by genqlient
+type __UninstallCollectionInput struct {
+	Input UninstallCollectionInput `json:"input"`
+}
+
+// GetInput returns __UninstallCollectionInput.Input, and is useful for accessing the field via an interface.
+func (v *__UninstallCollectionInput) GetInput() UninstallCollectionInput { return v.Input }
 
 // __UninstallSkillFromBotInput is used internally by genqlient
 type __UninstallSkillFromBotInput struct {
@@ -7077,6 +7341,7 @@ query AssetInstallations ($first: Int, $after: String) {
 					entityRef
 					entityId
 					monoRepoConfigId
+					viaCollectionId
 				}
 			}
 		}
@@ -7281,6 +7546,46 @@ func CollectionAssets(
 	}
 
 	data_ = &CollectionAssetsResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The query executed by CollectionInstallations.
+const CollectionInstallations_Operation = `
+query CollectionInstallations ($id: ID!) {
+	collection(id: $id) {
+		installations {
+			entityType
+			entityName
+			entityRef
+			entityId
+			monoRepoConfigId
+		}
+	}
+}
+`
+
+func CollectionInstallations(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	id string,
+) (data_ *CollectionInstallationsResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "CollectionInstallations",
+		Query:  CollectionInstallations_Operation,
+		Variables: &__CollectionInstallationsInput{
+			Id: id,
+		},
+	}
+
+	data_ = &CollectionInstallationsResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(
@@ -7823,6 +8128,46 @@ func ImportAuditEvents(
 	}
 
 	data_ = &ImportAuditEventsResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by InstallCollection.
+const InstallCollection_Operation = `
+mutation InstallCollection ($input: InstallCollectionInput!) {
+	installCollection(input: $input) {
+		collection {
+			id
+		}
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func InstallCollection(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input InstallCollectionInput,
+) (data_ *InstallCollectionResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "InstallCollection",
+		Query:  InstallCollection_Operation,
+		Variables: &__InstallCollectionInput{
+			Input: input,
+		},
+	}
+
+	data_ = &InstallCollectionResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(
@@ -8434,6 +8779,46 @@ func UninstallAssetTargets(
 	}
 
 	data_ = &UninstallAssetTargetsResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by UninstallCollection.
+const UninstallCollection_Operation = `
+mutation UninstallCollection ($input: UninstallCollectionInput!) {
+	uninstallCollection(input: $input) {
+		collection {
+			id
+		}
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func UninstallCollection(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input UninstallCollectionInput,
+) (data_ *UninstallCollectionResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "UninstallCollection",
+		Query:  UninstallCollection_Operation,
+		Variables: &__UninstallCollectionInput{
+			Input: input,
+		},
+	}
+
+	data_ = &UninstallCollectionResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(

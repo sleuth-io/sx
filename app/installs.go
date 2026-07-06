@@ -69,6 +69,18 @@ func (a *App) SetAssetPersonal(name string, enabled bool) (string, error) {
 		// SetAssetInstallation storage-recovery repair.
 		shared = false
 	}
+	if !shared {
+		// Direct targets aren't the whole story: collection installs reach
+		// their member assets at resolve time. Without this, disabling a
+		// personal pick on a collection-shared asset would claim success
+		// and the next sync would silently bring the asset back. The
+		// length guard matters: assetReachesUser reads an empty list as
+		// "global", but no collection targets means no collection reach.
+		if colTargets := a.collectionTargetsForAsset(name); len(colTargets) > 0 {
+			colShared, _ := a.assetReachesUser(colTargets, self)
+			shared = colShared
+		}
+	}
 
 	if enabled {
 		// A global asset must NOT get a user scope appended — scopes are
@@ -103,6 +115,33 @@ func (a *App) SetAssetPersonal(name string, enabled bool) (string, error) {
 		return "Removed from your personal picks — but the library still shares it with you, so it stays installed", nil
 	}
 	return summary, nil
+}
+
+// collectionTargetsForAsset unions the install targets of every collection
+// containing the asset — the collection-derived half of "does the library
+// share this with me". Best-effort: vaults without collection installs, or
+// read failures, contribute nothing.
+func (a *App) collectionTargetsForAsset(name string) []vaultpkg.InstallTarget {
+	r, err := a.collectionInstallVault()
+	if err != nil {
+		return nil
+	}
+	cols, err := a.ListCollections()
+	if err != nil {
+		return nil
+	}
+	var out []vaultpkg.InstallTarget
+	for _, c := range cols {
+		if !slices.Contains(c.Assets, name) {
+			continue
+		}
+		targets, _, err := r.CurrentCollectionInstallTargets(a.ctx, c.Name)
+		if err != nil {
+			continue
+		}
+		out = append(out, targets...)
+	}
+	return out
 }
 
 // assetReachesUser reports how an asset's install targets relate to the

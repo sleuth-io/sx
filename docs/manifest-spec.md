@@ -177,9 +177,7 @@ vaults issue real OAuth tokens via `sx bot key create`.
 ## `[[collections]]` — named asset groupings
 
 Introduced in schema version 2. A collection is a curated, named list of
-asset names — an organizational and bulk-install unit. Collections carry
-**no ACL semantics** (teams remain the access mechanism); they exist so
-groups of related assets can be browsed, shared, and installed together.
+asset names — an organizational and bulk-install unit.
 
 ```toml
 [[collections]]
@@ -187,6 +185,10 @@ name        = "onboarding"
 description = "Everything a new marketer needs"
 assets      = ["brand-voice", "campaign-checklist"]
 created_by  = "alice@acme.com"
+
+  [[collections.scopes]]
+  kind = "team"
+  team = "marketing"
 ```
 
 | Field         | Type            | Notes                                          |
@@ -194,7 +196,30 @@ created_by  = "alice@acme.com"
 | `name`        | string          | Required. Primary key                          |
 | `description` | string          | Optional                                       |
 | `assets`      | array of string | Asset names; deduplicated, sorted. Entries naming assets missing from the manifest are tolerated (dangling references are pruned opportunistically on write) |
+| `scopes`      | array of table  | Optional. The collection's own install targets, same row shape as asset scopes |
 | `created_by`  | string          | Optional. Email of the creator                 |
+
+### Collection scopes — runtime dereference, never fan-out
+
+`collections.scopes` rows are the collection's **own** install targets,
+dereferenced at lock-resolution time: every member asset additionally
+reaches everyone a collection scope reaches, while the member's own
+`assets.scopes` rows are never rewritten. Consequences:
+
+* Adding an asset to an installed collection grants it the collection's
+  targets immediately — no re-install step.
+* Removing a collection scope removes only that grant; a member's direct
+  install (made before or after the collection's) always survives.
+* One deliberate difference from assets: an **empty scope list grants
+  nothing** (a scope-less collection is purely organizational), so
+  org-wide is an explicit `kind = "org"` row — addable and removable like
+  any other. On assets, org-wide is the *empty* scope set.
+
+This mirrors skills.new's collection installations (one
+`AssetCollectionInstallation` row per target, resolved at read time) and
+exists to avoid fan-out drift: partial installs from per-asset failures,
+members added later not inheriting targets, and collection uninstalls
+deleting direct installs they didn't create.
 
 ## `[org]` — vault governance
 
