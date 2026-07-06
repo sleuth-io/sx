@@ -162,6 +162,9 @@ func (a *App) assetReachesUser(targets []vaultpkg.InstallTarget, self string) (s
 			}
 		case vaultpkg.InstallKindTeam:
 			teamNames = append(teamNames, t.Team)
+		case vaultpkg.InstallKindRepo, vaultpkg.InstallKindPath, vaultpkg.InstallKindBot:
+			// Repo/path scopes apply in repository contexts and bot scopes
+			// to bot identities — neither reaches this user's global sync.
 		}
 	}
 	// An asset with no targets at all is library-wide (global).
