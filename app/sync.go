@@ -42,10 +42,19 @@ func (a *App) SyncAITools() (string, error) {
 	return "Your AI tools are up to date", nil
 }
 
-// installSummary pulls the human outcome line out of `sx install` output —
-// the last ✓/! line, stripped of its marker.
+// installSummary pulls the human outcome line out of `sx install` output.
+// Summary lines ("✓ Installed 3 assets") start at column 0; per-asset item
+// lines are indented — prefer the last top-level summary so a multi-asset
+// sync doesn't report the final asset's bare name.
 func installSummary(output string) string {
-	for _, raw := range slices.Backward(strings.Split(output, "\n")) {
+	lines := strings.Split(output, "\n")
+	for _, raw := range slices.Backward(lines) {
+		if strings.HasPrefix(raw, "✓") || strings.HasPrefix(raw, "!") || strings.HasPrefix(raw, "✗") {
+			return strings.TrimSpace(strings.TrimLeft(raw, "✓!✗ "))
+		}
+	}
+	// No top-level summary — fall back to any marked line.
+	for _, raw := range slices.Backward(lines) {
 		line := strings.TrimSpace(raw)
 		if strings.HasPrefix(line, "✓") || strings.HasPrefix(line, "!") || strings.HasPrefix(line, "✗") {
 			return strings.TrimSpace(strings.TrimLeft(line, "✓!✗ "))

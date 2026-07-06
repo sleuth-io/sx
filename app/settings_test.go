@@ -7,6 +7,20 @@ import (
 	"testing"
 )
 
+func TestInstallSummaryPrefersTopLevelLine(t *testing.T) {
+	out := "Installing...\n✓ Installed 3 assets\n  ✓ auth-helper\n  ✓ code-review\n  ✓ test-writer\n"
+	if got := installSummary(out); got != "Installed 3 assets" {
+		t.Fatalf("got %q", got)
+	}
+	// Only indented item lines: fall back to the last one.
+	if got := installSummary("  ✓ auth-helper\n"); got != "auth-helper" {
+		t.Fatalf("fallback got %q", got)
+	}
+	if got := installSummary("nothing marked"); got != "" {
+		t.Fatalf("unmarked got %q", got)
+	}
+}
+
 func TestGhErrorMessageExtractsAPIDetail(t *testing.T) {
 	// gh api puts the JSON error body on stdout and the summary on stderr.
 	stdout := `{"message":"Repository creation failed.","errors":[{"resource":"Repository","code":"custom","field":"name","message":"name already exists on this account"}],"status":"422"}`
