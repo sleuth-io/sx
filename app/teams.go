@@ -216,6 +216,33 @@ func (a *App) AddCollectionRepoScope(collection, repoURL string) error {
 	return nil
 }
 
+// DeleteAssets permanently removes assets from the library — every
+// version, including stored files. Continues past per-asset failures and
+// reports them together; callers confirm before invoking.
+func (a *App) DeleteAssets(names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	v, err := a.currentVault()
+	if err != nil {
+		return err
+	}
+	var failed []string
+	for _, name := range names {
+		if err := validateAssetRef(name, ""); err != nil {
+			failed = append(failed, name)
+			continue
+		}
+		if err := v.RemoveAsset(a.ctx, name, "", true); err != nil {
+			failed = append(failed, name)
+		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("could not delete: %s", strings.Join(failed, ", "))
+	}
+	return nil
+}
+
 // RenameTeam renames a team; team scopes and bot memberships follow.
 func (a *App) RenameTeam(oldName, newName string) error {
 	v, err := a.currentVault()

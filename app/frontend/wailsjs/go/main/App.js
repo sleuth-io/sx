@@ -70,6 +70,10 @@ export function CreateTeam(arg1) {
   return window['go']['main']['App']['CreateTeam'](arg1);
 }
 
+export function DeleteAssets(arg1) {
+  return window['go']['main']['App']['DeleteAssets'](arg1);
+}
+
 export function DeleteCollection(arg1) {
   return window['go']['main']['App']['DeleteCollection'](arg1);
 }

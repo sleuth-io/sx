@@ -36,6 +36,8 @@ export function CreateGitRepo(arg1:string):Promise<main.GitRepoOption>;
 
 export function CreateTeam(arg1:string):Promise<main.TeamInfo>;
 
+export function DeleteAssets(arg1:Array<string>):Promise<void>;
+
 export function DeleteCollection(arg1:string):Promise<void>;
 
 export function DescribeLibraryRemoval(arg1:string):Promise<main.LibraryRemoval>;

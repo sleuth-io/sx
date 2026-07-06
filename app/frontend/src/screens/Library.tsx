@@ -7,6 +7,8 @@ import {
   GetCollectionSharing,
   AddAssetRepoScope,
   AddCollectionRepoScope,
+  DeleteAssets,
+  GetAssetSharing,
   GetDraft,
   InstalledAssets,
   ListAIClients,
@@ -20,6 +22,7 @@ import {
   SetAssetTeamSharing,
   SetCollectionMembership,
   SetCollectionTeamSharing,
+  ShareAssetWithEveryone,
   ShareCollectionWithEveryone,
   SyncAITools,
   TeamAssets,
@@ -141,13 +144,20 @@ export default function Library({
   const [dropCollection, setDropCollection] = useState("");
   const [dropTeam, setDropTeam] = useState("");
   const [dropRepo, setDropRepo] = useState("");
+  // names carries a multi-selection when the dragged row is part of one;
+  // name stays the display label for the ghost chip.
   const pendingDragRef = useRef<{
     kind: DragKind;
     name: string;
+    names?: string[];
     x: number;
     y: number;
   } | null>(null);
-  const dragRef = useRef<{ kind: DragKind; name: string } | null>(null);
+  const dragRef = useRef<{
+    kind: DragKind;
+    name: string;
+    names?: string[];
+  } | null>(null);
   const dropCollectionRef = useRef("");
   const dropTeamRef = useRef("");
   const dropRepoRef = useRef("");
@@ -155,6 +165,122 @@ export default function Library({
   const [toast, setToast] = useState("");
   const [busyAction, setBusyAction] = useState(false);
   const [syncing, setSyncing] = useState(false);
+
+  // Multi-selection (OS conventions: click, shift-range, cmd/ctrl-toggle,
+  // background marquee). Plain click still opens the detail panel; the
+  // modified clicks only adjust the selection.
+  const [multiSel, setMultiSel] = useState<Set<string>>(new Set());
+  const selAnchorRef = useRef<string | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [bulkShare, setBulkShare] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [marquee, setMarquee] = useState<{
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+  } | null>(null);
+
+  function handleRowClick(name: string, e: React.MouseEvent, order: string[]) {
+    if (dragHappenedRef.current) {
+      dragHappenedRef.current = false;
+      return;
+    }
+    if (e.shiftKey && selAnchorRef.current) {
+      const i = order.indexOf(selAnchorRef.current);
+      const j = order.indexOf(name);
+      if (i >= 0 && j >= 0) {
+        const [lo, hi] = i < j ? [i, j] : [j, i];
+        setMultiSel(new Set(order.slice(lo, hi + 1)));
+        return;
+      }
+    }
+    if (e.metaKey || e.ctrlKey) {
+      setMultiSel((prev) => {
+        const next = new Set(prev);
+        if (next.has(name)) next.delete(name);
+        else next.add(name);
+        return next;
+      });
+      selAnchorRef.current = name;
+      return;
+    }
+    selAnchorRef.current = name;
+    setMultiSel(new Set([name]));
+    setSelected(name);
+  }
+
+  function handleRowContextMenu(name: string, e: React.MouseEvent) {
+    e.preventDefault();
+    if (!multiSel.has(name)) {
+      setMultiSel(new Set([name]));
+      selAnchorRef.current = name;
+    }
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }
+
+  // Dragging a row that belongs to the selection drags the whole
+  // selection; dragging an unselected row drags just that row.
+  function startAssetDrag(name: string, e: React.MouseEvent) {
+    if (e.button !== 0) return;
+    dragHappenedRef.current = false;
+    const names =
+      multiSel.has(name) && multiSel.size > 1 ? [...multiSel] : undefined;
+    pendingDragRef.current = {
+      kind: "asset",
+      name: names ? `${names.length} skills` : name,
+      names,
+      x: e.clientX,
+      y: e.clientY,
+    };
+  }
+
+  // Marquee selection: press on empty list background and drag a
+  // rectangle; rows it touches become the selection.
+  function startMarquee(e: React.MouseEvent) {
+    if (e.button !== 0) return;
+    if ((e.target as Element).closest("[data-asset-row], button, input")) {
+      return;
+    }
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let moved = false;
+    const onMove = (ev: MouseEvent) => {
+      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+      moved = true;
+      const rect = {
+        left: Math.min(x0, ev.clientX),
+        right: Math.max(x0, ev.clientX),
+        top: Math.min(y0, ev.clientY),
+        bottom: Math.max(y0, ev.clientY),
+      };
+      setMarquee({ x0, y0, x1: ev.clientX, y1: ev.clientY });
+      const hit = new Set<string>();
+      document.querySelectorAll("[data-asset-row]").forEach((el) => {
+        const b = el.getBoundingClientRect();
+        if (
+          b.left < rect.right &&
+          b.right > rect.left &&
+          b.top < rect.bottom &&
+          b.bottom > rect.top
+        ) {
+          hit.add(el.getAttribute("data-asset-row") ?? "");
+        }
+      });
+      hit.delete("");
+      setMultiSel(hit);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setMarquee(null);
+      // A plain background click (no drag) clears the selection.
+      if (!moved) setMultiSel(new Set());
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
 
   // Renaming a collection or team: one small modal for both.
   const [renameTarget, setRenameTarget] = useState<{
@@ -310,6 +436,23 @@ export default function Library({
         e.preventDefault();
         searchRef.current?.focus();
       }
+      // Select all visible skills (OS convention); Escape clears.
+      if (!inField && (e.metaKey || e.ctrlKey) && e.key === "a") {
+        e.preventDefault();
+        setMultiSel(
+          new Set(
+            document.body.querySelectorAll("[data-asset-row]").length
+              ? [...document.body.querySelectorAll("[data-asset-row]")].map(
+                  (el) => el.getAttribute("data-asset-row") ?? "",
+                )
+              : [],
+          ),
+        );
+      }
+      if (e.key === "Escape") {
+        setCtxMenu(null);
+        setMultiSel((prev) => (prev.size > 0 ? new Set() : prev));
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -373,7 +516,11 @@ export default function Library({
         if (!pending) return;
         if (Math.hypot(e.clientX - pending.x, e.clientY - pending.y) < 6)
           return;
-        dragRef.current = { kind: pending.kind, name: pending.name };
+        dragRef.current = {
+          kind: pending.kind,
+          name: pending.name,
+          names: pending.names,
+        };
         dragHappenedRef.current = true;
         document.body.style.userSelect = "none";
         document.body.style.cursor = "grabbing";
@@ -411,20 +558,44 @@ export default function Library({
         dragHappenedRef.current = false;
       }, 0);
       if (!drag) return;
+      // The dragged unit may be a multi-selection: apply the drop action
+      // to every dragged asset and report once.
+      const dropAssets = (
+        each: (name: string) => Promise<void>,
+        message: (label: string) => string,
+      ) => {
+        const names = drag.names ?? [drag.name];
+        // Sequential on purpose: some mutations read-modify-write shared
+        // state (collection membership), and parallel writes lose updates.
+        void (async () => {
+          let failed = 0;
+          for (const n of names) {
+            try {
+              await each(n);
+            } catch {
+              failed++;
+            }
+          }
+          load();
+          const label =
+            names.length === 1 ? names[0] : `${names.length} skills`;
+          setToastMessage(
+            failed === 0
+              ? message(label)
+              : `${message(label)} — ${failed} failed`,
+          );
+        })();
+      };
       if (drag.kind === "asset" && collection) {
-        SetCollectionMembership(collection, drag.name, true)
-          .then(() => {
-            load();
-            setToastMessage(`Added ${drag.name} to ${collection}`);
-          })
-          .catch((e) => setToastMessage(String(e)));
+        dropAssets(
+          (n) => SetCollectionMembership(collection, n, true),
+          (label) => `Added ${label} to ${collection}`,
+        );
       } else if (drag.kind === "asset" && team) {
-        SetAssetTeamSharing(drag.name, team, true)
-          .then(() => {
-            load();
-            setToastMessage(`Shared ${drag.name} with ${team}`);
-          })
-          .catch((e) => setToastMessage(String(e)));
+        dropAssets(
+          (n) => SetAssetTeamSharing(n, team, true),
+          (label) => `Shared ${label} with ${team}`,
+        );
       } else if (drag.kind === "collection" && team) {
         SetCollectionTeamSharing(drag.name, team, true)
           .then(() => {
@@ -433,12 +604,10 @@ export default function Library({
           })
           .catch((e) => setToastMessage(String(e)));
       } else if (drag.kind === "asset" && repo) {
-        AddAssetRepoScope(drag.name, repo)
-          .then(() => {
-            load();
-            setToastMessage(`${drag.name} now installs in ${repoLabel(repo)}`);
-          })
-          .catch((e) => setToastMessage(String(e)));
+        dropAssets(
+          (n) => AddAssetRepoScope(n, repo),
+          (label) => `${label} now installs in ${repoLabel(repo)}`,
+        );
       } else if (drag.kind === "collection" && repo) {
         AddCollectionRepoScope(drag.name, repo)
           .then(() => {
@@ -1113,7 +1282,7 @@ export default function Library({
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto" onMouseDown={startMarquee}>
           {error && (
             <div className="m-5 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
               {error}{" "}
@@ -1153,23 +1322,16 @@ export default function Library({
                   asset={a}
                   badgeWidth={badgeWidth}
                   installed={installed.has(a.name)}
-                  onClick={() => {
-                    if (dragHappenedRef.current) {
-                      dragHappenedRef.current = false;
-                      return;
-                    }
-                    setSelected(a.name);
-                  }}
-                  onDragHandle={(name, e) => {
-                    if (e.button !== 0) return;
-                    dragHappenedRef.current = false;
-                    pendingDragRef.current = {
-                      kind: "asset",
-                      name,
-                      x: e.clientX,
-                      y: e.clientY,
-                    };
-                  }}
+                  checked={multiSel.has(a.name)}
+                  onClick={(e) =>
+                    handleRowClick(
+                      a.name,
+                      e,
+                      shown.map((s) => s.name),
+                    )
+                  }
+                  onContextMenu={(e) => handleRowContextMenu(a.name, e)}
+                  onDragHandle={startAssetDrag}
                 />
               ))}
               {visible.length > shown.length && (
@@ -1226,8 +1388,21 @@ export default function Library({
               {shown.map((a) => (
                 <button
                   key={a.name}
-                  onClick={() => setSelected(a.name)}
-                  className="rounded-xl border border-line bg-surface p-4 text-left transition hover:-translate-y-px hover:border-accent hover:shadow-sm"
+                  data-asset-row={a.name}
+                  onClick={(e) =>
+                    handleRowClick(
+                      a.name,
+                      e,
+                      shown.map((s) => s.name),
+                    )
+                  }
+                  onContextMenu={(e) => handleRowContextMenu(a.name, e)}
+                  onMouseDown={(e) => startAssetDrag(a.name, e)}
+                  className={`rounded-xl border p-4 text-left transition hover:-translate-y-px hover:border-accent hover:shadow-sm ${
+                    multiSel.has(a.name)
+                      ? "border-accent bg-accent-soft"
+                      : "border-line bg-surface"
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="truncate text-sm font-semibold">
@@ -1263,13 +1438,161 @@ export default function Library({
         </main>
       </div>
 
+      {marquee && (
+        <div
+          className="pointer-events-none fixed z-40 border border-accent bg-accent/10"
+          style={{
+            left: Math.min(marquee.x0, marquee.x1),
+            top: Math.min(marquee.y0, marquee.y1),
+            width: Math.abs(marquee.x1 - marquee.x0),
+            height: Math.abs(marquee.y1 - marquee.y0),
+          }}
+        />
+      )}
+
+      {ctxMenu && multiSel.size > 0 && (
+        <div
+          className="fixed inset-0 z-50"
+          onMouseDown={() => setCtxMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setCtxMenu(null);
+          }}
+        >
+          <div
+            onMouseDown={(e) => e.stopPropagation()}
+            className="absolute w-56 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl"
+            style={{
+              left: Math.min(ctxMenu.x, window.innerWidth - 240),
+              top: Math.min(ctxMenu.y, window.innerHeight - 120),
+            }}
+          >
+            <button
+              onClick={() => {
+                setCtxMenu(null);
+                setBulkShare(true);
+              }}
+              className="block w-full px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
+            >
+              Share{" "}
+              {multiSel.size === 1
+                ? [...multiSel][0]
+                : `${multiSel.size} skills`}
+              …
+            </button>
+            <div className="mx-3 my-1 border-t border-line" />
+            <button
+              onClick={() => {
+                setCtxMenu(null);
+                setConfirmBulkDelete(true);
+              }}
+              className="block w-full px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-danger"
+            >
+              Delete{" "}
+              {multiSel.size === 1
+                ? [...multiSel][0]
+                : `${multiSel.size} skills`}
+              …
+            </button>
+          </div>
+        </div>
+      )}
+
+      {bulkShare && multiSel.size > 0 && (
+        <ShareModal
+          title={
+            multiSel.size === 1
+              ? `Share ${[...multiSel][0]}`
+              : `Share ${multiSel.size} skills`
+          }
+          teams={teams}
+          getSharing={async () => {
+            // The dialog shows the intersection: a team appears as shared
+            // only when EVERY selected asset already has it.
+            const all = await Promise.all(
+              [...multiSel].map((n) => GetAssetSharing(n)),
+            );
+            return {
+              everyone: all.every((s) => s.everyone),
+              teams: (all[0]?.teams ?? []).filter((t) =>
+                all.every((s) => (s.teams ?? []).includes(t)),
+              ),
+              other: 0,
+            } as main.AssetSharing;
+          }}
+          setTeamShared={async (team, shared) => {
+            for (const n of multiSel) {
+              await SetAssetTeamSharing(n, team, shared);
+            }
+          }}
+          shareEveryone={async () => {
+            for (const n of multiSel) {
+              await ShareAssetWithEveryone(n);
+            }
+          }}
+          onClose={() => setBulkShare(false)}
+          onChanged={load}
+        />
+      )}
+
+      {confirmBulkDelete && multiSel.size > 0 && (
+        <Modal
+          title={
+            multiSel.size === 1
+              ? `Delete ${[...multiSel][0]}?`
+              : `Delete ${multiSel.size} skills?`
+          }
+          onClose={() => setConfirmBulkDelete(false)}
+        >
+          <p className="text-sm text-ink-soft">
+            This permanently removes {multiSel.size === 1 ? "it" : "them"} from
+            the library — every revision, for everyone who uses this library.
+            Installed copies are cleaned up on the next sync.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              onClick={() => setConfirmBulkDelete(false)}
+              disabled={deleting}
+              className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink-soft transition hover:text-ink disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                setDeleting(true);
+                DeleteAssets([...multiSel])
+                  .then(() => {
+                    setToastMessage(
+                      multiSel.size === 1
+                        ? "Deleted 1 skill from the library"
+                        : `Deleted ${multiSel.size} skills from the library`,
+                    );
+                    setMultiSel(new Set());
+                    setSelected(null);
+                    setConfirmBulkDelete(false);
+                    load();
+                  })
+                  .catch((e) => setToastMessage(String(e)))
+                  .finally(() => setDeleting(false));
+              }}
+              disabled={deleting}
+              className="rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {assetDrag && (
         <div
           className="pointer-events-none fixed z-50 -translate-y-1/2 rounded-full bg-accent px-3 py-1 text-xs font-medium text-white shadow-lg"
           style={{ left: assetDrag.x + 12, top: assetDrag.y }}
         >
           {assetDrag.name}
-          {dropCollection || dropTeam ? ` → ${dropCollection || dropTeam}` : ""}
+          {dropCollection || dropTeam || dropRepo
+            ? ` → ${dropCollection || dropTeam || repoLabel(dropRepo)}`
+            : ""}
         </div>
       )}
 
@@ -1557,21 +1880,29 @@ function AssetRow({
   asset,
   installed,
   badgeWidth,
+  checked,
   onClick,
+  onContextMenu,
   onDragHandle,
 }: {
   asset: main.AssetCard;
   installed: boolean;
   badgeWidth: string;
-  onClick: () => void;
+  checked: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
   onDragHandle: (name: string, e: React.MouseEvent) => void;
 }) {
   return (
     <button
       onClick={onClick}
+      onContextMenu={onContextMenu}
       onMouseDown={(e) => onDragHandle(asset.name, e)}
+      data-asset-row={asset.name}
       title="Drag onto a collection in the sidebar to add it"
-      className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-surface"
+      className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition ${
+        checked ? "bg-accent-soft" : "hover:bg-surface"
+      }`}
     >
       <span className={`flex shrink-0 ${badgeWidth}`}>
         <TypeBadge type={asset.type} label={asset.typeLabel} />

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	assetspkg "github.com/sleuth-io/sx/internal/assets"
 	"github.com/sleuth-io/sx/internal/clients"
@@ -287,7 +288,15 @@ func (a *App) CreateCollection(name string) (Collection, error) {
 }
 
 // SetCollectionMembership adds or removes an asset from a collection.
+// collectionMembershipMu serializes membership read-modify-writes: the
+// mutation spans two vault calls (read the collection, save the whole
+// asset list), so concurrent callers — e.g. a bulk drop fanning out —
+// would otherwise overwrite each other's additions.
+var collectionMembershipMu sync.Mutex
+
 func (a *App) SetCollectionMembership(collection, assetName string, member bool) error {
+	collectionMembershipMu.Lock()
+	defer collectionMembershipMu.Unlock()
 	c, err := a.findCollection(collection)
 	if err != nil {
 		return err
