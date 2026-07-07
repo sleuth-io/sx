@@ -56,7 +56,8 @@ export default function MarketplaceSection() {
       .catch(() => {});
     VaultSupportsExtensions()
       .then(setSupported)
-      .catch(() => {});
+      // Fail CLOSED like the backend gate.
+      .catch(() => setSupported(false));
   }, []);
 
   const fetchCatalog = useCallback(async (force = false) => {

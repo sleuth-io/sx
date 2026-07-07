@@ -66,7 +66,9 @@ export default function ExtensionsSection() {
       .catch(() => {});
     VaultSupportsExtensions()
       .then(setSupported)
-      .catch(() => {});
+      // Fail CLOSED like the backend gate: if we can't tell whether the
+      // library stores extensions, a publish would fail anyway.
+      .catch(() => setSupported(false));
   }, []);
 
   useEffect(() => {

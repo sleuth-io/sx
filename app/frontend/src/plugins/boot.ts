@@ -80,8 +80,24 @@ export async function bootExtensions(): Promise<void> {
  * per-library, so this runs at boot AND on every library switch —
  * without the re-sync, switching libraries strands the previous
  * library's extensions (and its policy) in the host until restart.
+ *
+ * Serialized: rapid library switches must not interleave two syncs
+ * (concurrent enables of one plugin double-mount and the duplicate
+ * slot id tears the second down). Each call chains after any sync
+ * already in flight; the last switch wins because it runs last.
  */
-export async function syncVaultExtensions(): Promise<void> {
+let syncing: Promise<void> | null = null;
+
+export function syncVaultExtensions(): Promise<void> {
+  const run = (syncing ?? Promise.resolve()).then(doSyncVaultExtensions);
+  const guarded = run.finally(() => {
+    if (syncing === guarded) syncing = null;
+  });
+  syncing = guarded;
+  return guarded;
+}
+
+async function doSyncVaultExtensions(): Promise<void> {
   // Drop the previous library's vault extensions entirely; built-ins
   // stay registered and just re-evaluate against the new policy.
   for (const p of listPlugins()) {

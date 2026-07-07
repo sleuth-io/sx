@@ -196,7 +196,20 @@ export async function importFromSource(source: string): Promise<SxPlugin> {
   }
 }
 
-export async function enablePlugin(id: string): Promise<void> {
+// In-flight enables by id: `p.enabled` flips only after onload resolves,
+// so without this, two concurrent enablePlugin calls (racing syncs, a
+// double-click) both pass the enabled check and double-mount.
+const enabling = new Map<string, Promise<void>>();
+
+export function enablePlugin(id: string): Promise<void> {
+  const inflight = enabling.get(id);
+  if (inflight) return inflight;
+  const run = doEnablePlugin(id).finally(() => enabling.delete(id));
+  enabling.set(id, run);
+  return run;
+}
+
+async function doEnablePlugin(id: string): Promise<void> {
   const p = plugins.get(id);
   if (!p) throw new Error(`unknown extension ${id}`);
   if (p.enabled) return;
