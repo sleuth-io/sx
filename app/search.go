@@ -1,9 +1,11 @@
 package main
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/utils"
@@ -95,10 +97,15 @@ func (a *App) SearchAssetContent(query string) ([]ContentMatch, error) {
 
 // assetMarkdown returns the concatenated markdown of an asset's latest
 // revision, from the in-memory cache when the version hasn't changed.
+// Superseded revisions are evicted on the spot — without that, every
+// republish would leave the old blob resident for the app's lifetime.
 func (a *App) assetMarkdown(v vaultpkg.Vault, summary vaultpkg.AssetSummary) string {
 	key := summary.Name + "@" + summary.LatestVersion
 	if cached, ok := a.searchCache.Load(key); ok {
 		return cached.(string)
+	}
+	if oldKey, ok := a.searchCacheKeys.Load(summary.Name); ok && oldKey != key {
+		a.searchCache.Delete(oldKey.(string))
 	}
 	zipData, err := latestZipFromVault(a.ctx, v, summary.Name)
 	if err != nil {
@@ -120,7 +127,18 @@ func (a *App) assetMarkdown(v vaultpkg.Vault, summary vaultpkg.AssetSummary) str
 	}
 	text := strings.Join(parts, "\n")
 	a.searchCache.Store(key, text)
+	a.searchCacheKeys.Store(summary.Name, key)
 	return text
+}
+
+// purgeSearchCache drops an asset's cached markdown — called when the
+// asset is deleted so removed content can't linger in memory (or keep
+// matching searches for a beat after deletion).
+func (a *App) purgeSearchCache(name string) {
+	if key, ok := a.searchCacheKeys.Load(name); ok {
+		a.searchCache.Delete(key.(string))
+		a.searchCacheKeys.Delete(name)
+	}
 }
 
 // parseContentQuery splits a query into loose terms and "quoted phrases",
@@ -151,11 +169,13 @@ func parseContentQuery(query string) (terms, phrases []string) {
 
 // scoreContent scores one asset's markdown: every term and phrase must
 // appear (AND semantics — multi-word queries narrow, like every search
-// box people know), heading lines weigh 4× body.
+// box people know), heading lines weigh 4× body. Matching runs on the
+// ORIGINAL text via case-insensitive regexp — offsets from a lowercased
+// copy can misalign (ToLower may change byte length), which would
+// highlight the wrong characters.
 func scoreContent(name, text string, terms, phrases []string) (ContentMatch, bool) {
-	lower := strings.ToLower(text)
 	var headings []string
-	for line := range strings.SplitSeq(lower, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			headings = append(headings, line)
 		}
@@ -167,16 +187,20 @@ func scoreContent(name, text string, terms, phrases []string) (ContentMatch, boo
 	firstHit := -1
 	firstLen := 0
 	consider := func(needle string, weight float64) bool {
-		n := strings.Count(lower, needle)
-		if n == 0 {
+		re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(needle))
+		if err != nil {
 			return false
 		}
-		total += n
-		score += weight * float64(n)
-		score += 3 * weight * float64(strings.Count(headingText, needle))
-		if idx := strings.Index(lower, needle); firstHit < 0 || idx < firstHit {
-			firstHit = idx
-			firstLen = len(needle)
+		locs := re.FindAllStringIndex(text, -1)
+		if len(locs) == 0 {
+			return false
+		}
+		total += len(locs)
+		score += weight * float64(len(locs))
+		score += 3 * weight * float64(len(re.FindAllStringIndex(headingText, -1)))
+		if firstHit < 0 || locs[0][0] < firstHit {
+			firstHit = locs[0][0]
+			firstLen = locs[0][1] - locs[0][0]
 		}
 		return true
 	}
@@ -194,8 +218,17 @@ func scoreContent(name, text string, terms, phrases []string) (ContentMatch, boo
 		return ContentMatch{}, false
 	}
 
+	// The radius is in bytes; snap outward to rune boundaries so the
+	// excerpt never opens or closes mid-character (em-dashes and smart
+	// quotes are everyday markdown).
 	start := max(0, firstHit-excerptRadius)
+	for start > 0 && !utf8.RuneStart(text[start]) {
+		start--
+	}
 	end := min(len(text), firstHit+firstLen+excerptRadius)
+	for end < len(text) && !utf8.RuneStart(text[end]) {
+		end++
+	}
 	m := ContentMatch{
 		Name:    name,
 		Matches: total,

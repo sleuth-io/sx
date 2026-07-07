@@ -33,7 +33,10 @@ type App struct {
 
 	// searchCache holds each asset's concatenated markdown keyed by
 	// name@version, so content search reads the vault once per revision.
-	searchCache sync.Map
+	// searchCacheKeys maps name → current key so republish and delete
+	// can evict the stale entry.
+	searchCache     sync.Map
+	searchCacheKeys sync.Map
 
 	// loginCancel aborts an in-flight skills.new device sign-in poll
 	// (CancelSleuthLogin). loginGen identifies the sign-in attempt that

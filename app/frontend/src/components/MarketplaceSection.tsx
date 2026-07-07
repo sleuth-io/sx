@@ -4,12 +4,12 @@ import {
   InstallMarketplaceExtension,
   SearchMarketplace,
   SetMarketplaceURL,
+  SetPluginDecision,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import { refreshVaultPlugins } from "../plugins/boot";
 import { enablePlugin, listPlugins } from "../plugins/host";
 import { currentPolicy, policyBlocks, recordConsent } from "../plugins/policy";
-import { SetPluginDecision } from "../../wailsjs/go/main/App";
 
 /**
  * The marketplace browser inside Settings → Extensions: search a shared
