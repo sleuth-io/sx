@@ -65,6 +65,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # On a backfill dispatch, build the RELEASE TAG's source — only
+          # the workflow file (this file, from the dispatching branch)
+          # differs. Artifacts attached to a release are always built from
+          # exactly the commit the tag points at.
+          ref: ${{ inputs.release_tag || github.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@v6
