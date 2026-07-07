@@ -53,7 +53,7 @@ export default class LeaderboardWidget implements SxPlugin {
       console.error("leaderboard widget:", e);
       const err = document.createElement("div");
       err.className = "px-3 py-4 text-sm text-ink-faint";
-      err.textContent = "Couldn't load usage data";
+      err.textContent = "Couldn't load usage data: " + String(e).slice(0, 160);
       view.el.replaceChildren(err);
     }
   }
