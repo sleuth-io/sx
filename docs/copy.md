@@ -46,7 +46,8 @@ sx vault copy --from skills-new --to git-vault --dry-run  # explicit preview
 sx vault copy --from skills-new --to git-vault --yes      # apply
 ```
 
-Use `--only` to restrict to specific categories:
+Use `--only` to restrict to specific categories
+(`teams,bots,assets,collections,audit,usage`):
 
 ```bash
 sx vault copy --from a --to b --only assets,teams --yes
@@ -63,7 +64,8 @@ Copies between **git and path vaults are fully lossless** — those backends sto
 everything (manifest, audit, usage) as files.
 
 Copies involving **skills.new** are lossless for assets, teams, bots, scopes,
-audit, and usage in both directions, with these exceptions:
+collections (including their collection-level install rows), audit, and usage
+in both directions, with these exceptions:
 
 - **Bot API keys** can't be copied (they're shown once at creation). Regenerate
   them on the destination.

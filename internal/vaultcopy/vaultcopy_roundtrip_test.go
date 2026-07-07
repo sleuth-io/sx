@@ -54,6 +54,19 @@ func TestCopy_PathToPathRoundTrip(t *testing.T) {
 	if err := src.SetAssetInstallation(ctx, "global-skill", vault.InstallTarget{Kind: vault.InstallKindOrg}); err != nil {
 		t.Fatalf("seed org scope: %v", err)
 	}
+	// A collection with membership and its own team install row — copied as
+	// a unit (one row on the collection, never fanned out onto members).
+	if err := src.(vault.CollectionStore).SaveCollection(ctx, manifest.Collection{
+		Name: "essentials", Description: "Starter set", Assets: []string{"my-skill"},
+	}); err != nil {
+		t.Fatalf("seed collection: %v", err)
+	}
+	if err := src.(vault.CollectionInstaller).SetCollectionInstallation(ctx, "essentials", vault.InstallTarget{
+		Kind: vault.InstallKindTeam, Team: "platform",
+	}); err != nil {
+		t.Fatalf("seed collection install: %v", err)
+	}
+
 	ts := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
 	if err := src.ImportAuditEvents(ctx, []mgmt.AuditEvent{
 		{Timestamp: ts, Actor: "alice@example.com", Event: "asset.created", TargetType: "asset", Target: "my-skill"},
@@ -80,9 +93,9 @@ func TestCopy_PathToPathRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Copy: %v (warnings: %v)", err, report.Warnings)
 	}
-	if report.Teams != 1 || report.Assets != 2 || report.Versions != 3 || report.Scopes != 2 ||
-		report.AuditEvents != len(srcAudit) || report.UsageEvents != 1 {
-		t.Fatalf("report = %+v, want 1 team / 2 assets / 3 versions / 2 scopes / %d audit / 1 usage", report, len(srcAudit))
+	if report.Teams != 1 || report.Assets != 2 || report.Versions != 3 || report.Scopes != 3 ||
+		report.Collections != 1 || report.AuditEvents != len(srcAudit) || report.UsageEvents != 1 {
+		t.Fatalf("report = %+v, want 1 team / 2 assets / 3 versions / 1 collection / 3 scopes / %d audit / 1 usage", report, len(srcAudit))
 	}
 
 	// Assert destination.
@@ -107,6 +120,19 @@ func TestCopy_PathToPathRoundTrip(t *testing.T) {
 	if err != nil || !present || len(scopes) != 1 || scopes[0].Kind != manifest.ScopeKindRepo {
 		t.Fatalf("dst my-skill scopes = %+v present=%v err=%v, want one repo scope", scopes, present, err)
 	}
+	// The collection landed with membership and its own install row; the
+	// member asset's scopes were NOT widened by the collection install.
+	dstCols, err := dst.(vault.CollectionStore).ListCollections(ctx)
+	if err != nil || len(dstCols) != 1 || dstCols[0].Name != "essentials" ||
+		len(dstCols[0].Assets) != 1 || dstCols[0].Assets[0] != "my-skill" {
+		t.Fatalf("dst collections = %+v err=%v, want essentials with my-skill", dstCols, err)
+	}
+	colTargets, colPresent, err := dst.(vault.CollectionInstaller).CurrentCollectionInstallTargets(ctx, "essentials")
+	if err != nil || !colPresent || len(colTargets) != 1 ||
+		colTargets[0].Kind != vault.InstallKindTeam || colTargets[0].Team != "platform" {
+		t.Fatalf("dst collection installs = %+v present=%v err=%v, want one platform team row", colTargets, colPresent, err)
+	}
+
 	// The org-wide asset must be registered (present) with no scopes on dst.
 	orgScopes, orgPresent, err := scopeReader.AssetInstallScopes(ctx, "global-skill")
 	if err != nil || !orgPresent || len(orgScopes) != 0 {

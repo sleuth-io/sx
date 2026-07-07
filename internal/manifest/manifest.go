@@ -687,7 +687,7 @@ func Parse(data []byte) (*Manifest, error) {
 		m.SchemaVersion = 1
 	}
 	if m.SchemaVersion > CurrentSchemaVersion {
-		return nil, fmt.Errorf("%w: file uses schema %d, this build understands up to %d", ErrUnsupportedSchema, m.SchemaVersion, CurrentSchemaVersion)
+		return nil, fmt.Errorf("%w: this vault uses schema %d but this sx build only understands up to %d — run 'sx update' (sx also self-updates in the background, so simply retrying later usually works)", ErrUnsupportedSchema, m.SchemaVersion, CurrentSchemaVersion)
 	}
 	return &m, nil
 }

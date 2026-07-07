@@ -24,17 +24,18 @@ import (
 
 // Options selects which categories to copy and whether to run read-only.
 type Options struct {
-	Teams  bool
-	Bots   bool
-	Assets bool
-	Audit  bool
-	Usage  bool
-	DryRun bool
+	Teams       bool
+	Bots        bool
+	Assets      bool
+	Collections bool
+	Audit       bool
+	Usage       bool
+	DryRun      bool
 }
 
 // DefaultOptions copies everything.
 func DefaultOptions() Options {
-	return Options{Teams: true, Bots: true, Assets: true, Audit: true, Usage: true}
+	return Options{Teams: true, Bots: true, Assets: true, Collections: true, Audit: true, Usage: true}
 }
 
 // Report summarizes what a copy did (or would do, for a dry run).
@@ -45,6 +46,7 @@ type Report struct {
 	Versions        int
 	SkippedVersions int
 	Scopes          int
+	Collections     int
 	AuditEvents     int
 	UsageEvents     int
 	Warnings        []string
@@ -84,6 +86,10 @@ func Copy(ctx context.Context, src, dst vault.Vault, opts Options) (*Report, err
 		{"teams", opts.Teams, copyTeams},
 		{"bots", opts.Bots, copyBots},
 		{"assets", opts.Assets, copyAssets},
+		// After assets (membership references them; skills.new resolves
+		// member slugs to GIDs on save) and after teams (collection
+		// install rows may target them).
+		{"collections", opts.Collections, copyCollections},
 		{"audit", opts.Audit, copyAudit},
 		{"usage", opts.Usage, copyUsage},
 	}
@@ -387,6 +393,81 @@ func scopeToTarget(sc manifest.Scope) (vault.InstallTarget, bool) {
 		return vault.InstallTarget{Kind: vault.InstallKindBot, Bot: sc.Bot}, true
 	}
 	return vault.InstallTarget{}, false
+}
+
+// copyCollections migrates collections (name, description, membership) and
+// their collection-level install rows. Both sides feature-detect: a source
+// without collections copies nothing, a destination without them warns once.
+// Install rows are read/written through CollectionInstaller so the same code
+// covers file-backed vaults (manifest scope rows) and skills.new
+// (AssetCollectionInstallation rows).
+func copyCollections(ctx context.Context, src, dst vault.Vault, opts Options, r *Report) error {
+	srcStore, ok := src.(vault.CollectionStore)
+	if !ok {
+		return nil // source has no collections concept — nothing to copy
+	}
+	cols, err := srcStore.ListCollections(ctx)
+	if err != nil {
+		return err
+	}
+	if len(cols) == 0 {
+		return nil
+	}
+	dstStore, ok := dst.(vault.CollectionStore)
+	if !ok {
+		r.warnf("destination does not support collections; %d collections not copied", len(cols))
+		return nil
+	}
+
+	srcInstalls, srcHasInstalls := src.(vault.CollectionInstaller)
+	dstInstalls, dstHasInstalls := dst.(vault.CollectionInstaller)
+	if srcHasInstalls && !dstHasInstalls {
+		r.warnf("destination does not support collection installs; collections copied without their install targets")
+	}
+
+	for _, c := range cols {
+		// Read install rows before writing anything, mirroring the asset
+		// path: a failed read skips the collection rather than landing it
+		// half-migrated.
+		var targets []vault.InstallTarget
+		if srcHasInstalls && dstHasInstalls {
+			var present bool
+			targets, present, err = srcInstalls.CurrentCollectionInstallTargets(ctx, c.Name)
+			if err != nil {
+				r.warnf("read installs for collection %q: %v; skipping collection", c.Name, err)
+				continue
+			}
+			if !present {
+				targets = nil
+			}
+		}
+
+		r.Collections++
+		if opts.DryRun {
+			r.Scopes += len(targets)
+			continue
+		}
+		// Saved verbatim: on a file-backed destination the collection's
+		// scope rows land atomically with the save (UpsertCollection
+		// replaces the whole struct); skills.new ignores the Scopes field.
+		// The install loop below covers the sleuth cases and dedupes
+		// against rows the save already wrote.
+		if err := dstStore.SaveCollection(ctx, c); err != nil {
+			r.warnf("save collection %q: %v", c.Name, err)
+			continue
+		}
+		// A copy replicates rows that were already valid in the source, so
+		// it bypasses the destination's RBAC gate like asset scopes do.
+		trusted := vault.ContextWithTrustedScopeWrite(ctx)
+		for _, target := range targets {
+			if err := dstInstalls.SetCollectionInstallation(trusted, c.Name, target); err != nil {
+				r.warnf("install collection %q to %s: %v", c.Name, target.Describe(), err)
+				continue
+			}
+			r.Scopes++
+		}
+	}
+	return nil
 }
 
 func copyAudit(ctx context.Context, src, dst vault.Vault, opts Options, r *Report) error {

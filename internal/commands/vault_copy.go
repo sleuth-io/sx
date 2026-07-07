@@ -50,7 +50,7 @@ the destination.`,
 
 	cmd.Flags().StringVar(&fromProfile, "from", "", "source profile name (required)")
 	cmd.Flags().StringVar(&toProfile, "to", "", "destination profile name (required)")
-	cmd.Flags().StringSliceVar(&only, "only", nil, "restrict to categories: teams,bots,assets,audit,usage")
+	cmd.Flags().StringSliceVar(&only, "only", nil, "restrict to categories: teams,bots,assets,collections,audit,usage")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview what would copy without writing")
 	cmd.Flags().BoolVar(&yes, "yes", false, "apply the copy (without this, only a read-only preview is shown)")
 	_ = cmd.MarkFlagRequired("from")
@@ -119,12 +119,14 @@ func optionsFromOnly(only []string) (vaultcopy.Options, error) {
 			opts.Bots = true
 		case "assets":
 			opts.Assets = true
+		case "collections":
+			opts.Collections = true
 		case "audit":
 			opts.Audit = true
 		case "usage":
 			opts.Usage = true
 		default:
-			return opts, fmt.Errorf("unknown category %q (valid: teams,bots,assets,audit,usage)", c)
+			return opts, fmt.Errorf("unknown category %q (valid: teams,bots,assets,collections,audit,usage)", c)
 		}
 	}
 	return opts, nil
@@ -147,8 +149,8 @@ func printReport(out io.Writer, r *vaultcopy.Report, planned bool) {
 	if planned {
 		verb = "Would copy"
 	}
-	fmt.Fprintf(out, "  %s: %d teams, %d bots, %d assets (%d versions), %d scopes, %d audit events, %d usage events\n",
-		verb, r.Teams, r.Bots, r.Assets, r.Versions, r.Scopes, r.AuditEvents, r.UsageEvents)
+	fmt.Fprintf(out, "  %s: %d teams, %d bots, %d assets (%d versions), %d collections, %d scopes, %d audit events, %d usage events\n",
+		verb, r.Teams, r.Bots, r.Assets, r.Versions, r.Collections, r.Scopes, r.AuditEvents, r.UsageEvents)
 	if r.SkippedVersions > 0 {
 		fmt.Fprintf(out, "  Skipped %d already-present versions\n", r.SkippedVersions)
 	}
