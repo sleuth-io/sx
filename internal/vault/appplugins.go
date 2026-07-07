@@ -13,6 +13,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
+	"github.com/sleuth-io/sx/internal/utils"
 )
 
 // Desktop-app extension policy (docs/app-plugins-spec.md): stored in the
@@ -155,31 +156,10 @@ func commonAppPluginSharedSave(vaultRoot, pluginID, data string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	// Temp-file + rename: path-vault readers take no lock on Load, and a
-	// synced folder can replicate mid-write — neither may ever observe a
+	// Atomic write: path-vault readers take no lock on Load, and a synced
+	// folder can replicate mid-write — neither may ever observe a
 	// truncated document.
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	if _, err := tmp.WriteString(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	return nil
+	return utils.AtomicWriteFile(path, []byte(data), 0o644)
 }
 
 // AppPluginSharedLoad reads the extension's shared document.

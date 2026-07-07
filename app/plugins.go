@@ -127,43 +127,18 @@ func (a *App) PluginSaveData(id, data string) error {
 	return atomicWriteFile(filepath.Join(dir, id+".data.json"), []byte(data))
 }
 
-// atomicWriteFile writes via a UNIQUE temp file + rename. A fixed temp
-// name races when two callers save concurrently (two mounted views of
-// the same extension, say): both write the one temp file and the loser's
-// rename fails with ENOENT. CreateTemp gives each writer its own file;
-// last rename wins, nobody errors.
+// atomicWriteFile writes via utils.AtomicWriteFile (unique temp file +
+// rename; concurrent savers each get their own temp file, last rename
+// wins, nobody errors).
 func atomicWriteFile(target string, data []byte) error {
-	return atomicWriteFileMode(target, data, 0o644)
+	return utils.AtomicWriteFile(target, data, 0o644)
 }
 
-// atomicWriteFileMode is atomicWriteFile with an explicit final mode.
-// The mode is set on the TEMP file, before the rename, so the target
-// never exists with wider permissions than requested — secrets
-// fallbacks (0600) rely on that ordering.
+// atomicWriteFileMode is atomicWriteFile with an explicit final mode —
+// secrets fallbacks pass 0600, which the helper applies to the temp
+// file BEFORE the rename so the target is never world-readable.
 func atomicWriteFileMode(target string, data []byte, mode os.FileMode) error {
-	dir := filepath.Dir(target)
-	tmp, err := os.CreateTemp(dir, filepath.Base(target)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
-	if err := os.Chmod(tmp.Name(), mode); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
-	if err := os.Rename(tmp.Name(), target); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
-	return nil
+	return utils.AtomicWriteFile(target, data, mode)
 }
 
 // PluginDecisions returns the per-profile INTENDED enablement per
