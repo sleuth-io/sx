@@ -1212,150 +1212,150 @@ export default function Library({
                   asset list — on full-page surfaces (dashboard, plugin
                   views) they'd be dead controls, so they hide. */}
               {scope.kind !== "dashboard" && scope.kind !== "plugin-view" && (
-              <>
-              <div className="relative h-full">
-                <input
-                  ref={searchRef}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search…"
-                  className="peer h-full w-36 rounded-lg border border-line bg-canvas px-3 pr-8 text-sm outline-none focus:border-accent lg:w-56"
-                />
-                {!query && (
-                  <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-faint peer-focus:hidden">
-                    /
-                  </kbd>
-                )}
-                {contentSearching && (
-                  <span
-                    className="pointer-events-none absolute right-2.5 top-1/2 h-2 w-2 -translate-y-1/2 animate-pulse rounded-full bg-accent"
-                    title="Searching inside assets…"
+                <>
+                <div className="relative h-full">
+                  <input
+                    ref={searchRef}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search…"
+                    className="peer h-full w-36 rounded-lg border border-line bg-canvas px-3 pr-8 text-sm outline-none focus:border-accent lg:w-56"
                   />
-                )}
-              </div>
+                  {!query && (
+                    <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-faint peer-focus:hidden">
+                      /
+                    </kbd>
+                  )}
+                  {contentSearching && (
+                    <span
+                      className="pointer-events-none absolute right-2.5 top-1/2 h-2 w-2 -translate-y-1/2 animate-pulse rounded-full bg-accent"
+                      title="Searching inside assets…"
+                    />
+                  )}
+                </div>
 
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                title="Filter by type"
-                className="h-full rounded-lg border border-line bg-canvas py-0 pl-3 pr-7 text-sm text-ink-soft outline-none"
-              >
-                <option value="">All types</option>
-                {types.map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}s
-                  </option>
-                ))}
-              </select>
-
-              {/* Sort is a view preference, not a filter — it lives in a
-                  quiet icon menu (the Linear "display options" pattern)
-                  instead of crowding the filter row. */}
-              <div className="relative h-full" ref={sortMenuRef}>
-                <button
-                  onClick={() => setSortMenuOpen((v) => !v)}
-                  title={`Sort: ${sort === "name" ? "Name" : "Recently updated"}`}
-                  aria-label="Sort"
-                  aria-expanded={sortMenuOpen}
-                  className={`flex h-full items-center rounded-lg px-2 transition hover:bg-canvas hover:text-ink ${
-                    sortMenuOpen ? "bg-canvas text-ink" : "text-ink-faint"
-                  }`}
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  title="Filter by type"
+                  className="h-full rounded-lg border border-line bg-canvas py-0 pl-3 pr-7 text-sm text-ink-soft outline-none"
                 >
-                  <svg
-                    aria-hidden="true"
-                    className="h-4 w-4"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                  <option value="">All types</option>
+                  {types.map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}s
+                    </option>
+                  ))}
+                </select>
+
+                {/* Sort is a view preference, not a filter — it lives in a
+                    quiet icon menu (the Linear "display options" pattern)
+                    instead of crowding the filter row. */}
+                <div className="relative h-full" ref={sortMenuRef}>
+                  <button
+                    onClick={() => setSortMenuOpen((v) => !v)}
+                    title={`Sort: ${sort === "name" ? "Name" : "Recently updated"}`}
+                    aria-label="Sort"
+                    aria-expanded={sortMenuOpen}
+                    className={`flex h-full items-center rounded-lg px-2 transition hover:bg-canvas hover:text-ink ${
+                      sortMenuOpen ? "bg-canvas text-ink" : "text-ink-faint"
+                    }`}
                   >
-                    <path d="M5 3v10M5 13l-2.5-2.5M5 13l2.5-2.5M11 13V3M11 3 8.5 5.5M11 3l2.5 2.5" />
-                  </svg>
-                </button>
-                {sortMenuOpen && (
-                  <div className="absolute right-0 z-40 mt-1.5 w-48 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
-                    <div className="px-3 pb-1 pt-1.5 text-[11px] font-semibold tracking-wide text-ink-faint">
-                      SORT BY
+                    <svg
+                      aria-hidden="true"
+                      className="h-4 w-4"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M5 3v10M5 13l-2.5-2.5M5 13l2.5-2.5M11 13V3M11 3 8.5 5.5M11 3l2.5 2.5" />
+                    </svg>
+                  </button>
+                  {sortMenuOpen && (
+                    <div className="absolute right-0 z-40 mt-1.5 w-48 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                      <div className="px-3 pb-1 pt-1.5 text-[11px] font-semibold tracking-wide text-ink-faint">
+                        SORT BY
+                      </div>
+                      {(
+                        [
+                          ["updated", "Recently updated"],
+                          ["name", "Name"],
+                        ] as [SortMode, string][]
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          onClick={() => {
+                            setSort(value);
+                            setSortMenuOpen(false);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
+                        >
+                          <span className="w-3.5 text-accent">
+                            {sort === value ? "✓" : ""}
+                          </span>
+                          {label}
+                        </button>
+                      ))}
                     </div>
-                    {(
-                      [
-                        ["updated", "Recently updated"],
-                        ["name", "Name"],
-                      ] as [SortMode, string][]
-                    ).map(([value, label]) => (
-                      <button
-                        key={value}
-                        onClick={() => {
-                          setSort(value);
-                          setSortMenuOpen(false);
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
-                      >
-                        <span className="w-3.5 text-accent">
-                          {sort === value ? "✓" : ""}
-                        </span>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              {/* List/grid: icon-only segments — one of the few controls
-                  where icons alone are unambiguous. */}
-              <div className="flex h-full items-center overflow-hidden rounded-lg border border-line">
-                <button
-                  onClick={() => setView("list")}
-                  title="List view"
-                  aria-label="List view"
-                  aria-pressed={view === "list"}
-                  className={`flex h-full items-center px-2 transition ${
-                    view === "list"
-                      ? "bg-canvas text-ink"
-                      : "text-ink-faint hover:text-ink"
-                  }`}
-                >
-                  <svg
-                    aria-hidden="true"
-                    className="h-3.5 w-3.5"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
+                {/* List/grid: icon-only segments — one of the few controls
+                    where icons alone are unambiguous. */}
+                <div className="flex h-full items-center overflow-hidden rounded-lg border border-line">
+                  <button
+                    onClick={() => setView("list")}
+                    title="List view"
+                    aria-label="List view"
+                    aria-pressed={view === "list"}
+                    className={`flex h-full items-center px-2 transition ${
+                      view === "list"
+                        ? "bg-canvas text-ink"
+                        : "text-ink-faint hover:text-ink"
+                    }`}
                   >
-                    <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => setView("grid")}
-                  title="Grid view"
-                  aria-label="Grid view"
-                  aria-pressed={view === "grid"}
-                  className={`flex h-full items-center px-2 transition ${
-                    view === "grid"
-                      ? "bg-canvas text-ink"
-                      : "text-ink-faint hover:text-ink"
-                  }`}
-                >
-                  <svg
-                    aria-hidden="true"
-                    className="h-3.5 w-3.5"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinejoin="round"
+                    <svg
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    >
+                      <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setView("grid")}
+                    title="Grid view"
+                    aria-label="Grid view"
+                    aria-pressed={view === "grid"}
+                    className={`flex h-full items-center px-2 transition ${
+                      view === "grid"
+                        ? "bg-canvas text-ink"
+                        : "text-ink-faint hover:text-ink"
+                    }`}
                   >
-                    <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" />
-                    <rect x="9" y="2.5" width="4.5" height="4.5" rx="1" />
-                    <rect x="2.5" y="9" width="4.5" height="4.5" rx="1" />
-                    <rect x="9" y="9" width="4.5" height="4.5" rx="1" />
-                  </svg>
-                </button>
-              </div>
+                    <svg
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" />
+                      <rect x="9" y="2.5" width="4.5" height="4.5" rx="1" />
+                      <rect x="2.5" y="9" width="4.5" height="4.5" rx="1" />
+                      <rect x="9" y="9" width="4.5" height="4.5" rx="1" />
+                    </svg>
+                  </button>
+                </div>
               </>
               )}
 
