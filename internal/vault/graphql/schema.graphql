@@ -3517,6 +3517,7 @@ type Vault {
   ): VaultAssetsConnection!
   asset(id: ID!): VaultAsset
   appPluginPolicy: AppPluginPolicy!
+  appPluginStorage(pluginId: String!): JSONString
 }
 
 """Paginated list of vault assets."""
@@ -5839,6 +5840,11 @@ type Mutation {
   Replace the org's extension policy. Org admins only; the change is audited.
   """
   setAppPluginPolicy(input: SetAppPluginPolicyInput!): SetAppPluginPolicyMutation
+
+  """
+  Replace a plugin's shared storage document whole. Any vault member may write.
+  """
+  setAppPluginStorage(input: SetAppPluginStorageInput!): SetAppPluginStorageMutation
   updateSkillsSettings(input: UpdateSkillsSettingsInput!): UpdateSkillsSettingsMutation
 
   """Import an external (non-managed) asset as a new managed asset."""
@@ -6377,6 +6383,21 @@ input SetAppPluginPolicyInput {
   Extension ids to permit; only meaningful (and only stored) when mode is ALLOWLIST
   """
   allowed: [String!]
+}
+
+"""
+Replace a plugin's shared storage document whole. Any vault member may write.
+"""
+type SetAppPluginStorageMutation {
+  data: JSONString
+  errors: [ErrorType!]!
+}
+
+input SetAppPluginStorageInput {
+  pluginId: String!
+
+  """Full document to store; null or empty deletes the stored document"""
+  data: JSONString
 }
 
 type UpdateSkillsSettingsMutation {

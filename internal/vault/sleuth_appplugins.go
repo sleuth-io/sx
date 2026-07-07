@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/manifest"
@@ -13,11 +14,9 @@ import (
 // org's extension policy; sx reads and writes it through GraphQL. The
 // server enforces the org-admin gate and appends the policy audit event
 // itself, so unlike the file vaults there is no client-side RBAC here.
-//
-// Shared extension storage (storage:shared, API 1.5.0) has no server
-// twin yet — SleuthVault deliberately does NOT implement
-// AppPluginSharedStore, so the app degrades with its clear
-// "can't store shared extension data" error instead of half-working.
+// Shared extension storage (storage:shared, API 1.5.0) maps to the
+// appPluginStorage query/mutation — the server enforces the size cap
+// and id validation, so the client stays a thin pass-through.
 
 // isAppPluginSchemaUnknownErr reports whether err is the server saying
 // its SCHEMA has no app-plugin surface (a deployment predating P5) —
@@ -97,6 +96,50 @@ func (s *SleuthVault) SetAppPluginPolicy(ctx context.Context, policy *manifest.A
 		return err
 	}
 	return firstMutationError(resp.SetAppPluginPolicy.Errors)
+}
+
+// AppPluginSharedLoad reads the extension's shared document ("" when
+// none is stored) — the server twin of .sx/app-plugins/<id>.json.
+func (s *SleuthVault) AppPluginSharedLoad(ctx context.Context, pluginID string) (string, error) {
+	resp, err := vaultgql.GetAppPluginStorage(ctx, s.gqlClient(), pluginID)
+	if err != nil {
+		return "", err
+	}
+	raw := resp.Vault.AppPluginStorage
+	if raw == nil {
+		return "", nil
+	}
+	// JSONString is a STRING scalar: the document arrives as a quoted
+	// JSON string value, not inline JSON.
+	var doc string
+	if err := json.Unmarshal(*raw, &doc); err != nil {
+		return "", err
+	}
+	return doc, nil
+}
+
+// AppPluginSharedSave replaces the extension's shared document; empty
+// data deletes it. The server enforces the size cap and id validation.
+func (s *SleuthVault) AppPluginSharedSave(ctx context.Context, pluginID, data string) error {
+	input := vaultgql.SetAppPluginStorageInput{PluginId: pluginID}
+	if data != "" {
+		quoted, err := json.Marshal(data) // JSONString: document as a string value
+		if err != nil {
+			return err
+		}
+		raw := json.RawMessage(quoted)
+		input.Data = &raw
+	}
+	resp, err := vaultgql.SetAppPluginStorage(ctx, s.gqlClient(), input)
+	if err != nil {
+		return err
+	}
+	for _, e := range resp.SetAppPluginStorage.Errors {
+		if len(e.Messages) > 0 {
+			return &mutationError{message: e.Messages[0]}
+		}
+	}
+	return nil
 }
 
 // firstMutationError converts a GraphQL mutation error list to a Go

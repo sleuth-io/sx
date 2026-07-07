@@ -1,0 +1,17 @@
+# Shared extension storage on a sleuth vault — the .sx/app-plugins/
+# <id>.json twin. Whole-document replace; null data deletes.
+
+query GetAppPluginStorage($pluginId: String!) {
+  vault {
+    appPluginStorage(pluginId: $pluginId)
+  }
+}
+
+mutation SetAppPluginStorage($input: SetAppPluginStorageInput!) {
+  setAppPluginStorage(input: $input) {
+    errors {
+      field
+      messages
+    }
+  }
+}

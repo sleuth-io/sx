@@ -116,3 +116,35 @@ func TestSleuthAppPluginPolicyWriteDenied(t *testing.T) {
 		t.Fatalf("server denial not surfaced")
 	}
 }
+
+// Shared storage round-trips through appPluginStorage; null reads as
+// unset and empty save sends a delete (nil data).
+func TestSleuthAppPluginSharedStorage(t *testing.T) {
+	srv, records := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
+		"GetAppPluginStorage": func(map[string]any) any {
+			return map[string]any{"vault": map[string]any{
+				"appPluginStorage": `{"assets":{}}`,
+			}}
+		},
+		"SetAppPluginStorage": func(map[string]any) any {
+			return map[string]any{"setAppPluginStorage": map[string]any{"errors": []any{}}}
+		},
+	})
+	v := NewSleuthVault(srv.URL, "test-token")
+	ctx := context.Background()
+	got, err := v.AppPluginSharedLoad(ctx, "review-rota")
+	if err != nil || got != `{"assets":{}}` {
+		t.Fatalf("load = %q, %v", got, err)
+	}
+	if err := v.AppPluginSharedSave(ctx, "review-rota", `{"assets":{"a":1}}`); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if err := v.AppPluginSharedSave(ctx, "review-rota", ""); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	last := (*records)[len(*records)-1]
+	input := last.Variables["input"].(map[string]any)
+	if input["data"] != nil {
+		t.Fatalf("delete sent data = %v, want null", input["data"])
+	}
+}

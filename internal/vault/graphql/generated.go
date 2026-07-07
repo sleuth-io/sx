@@ -3363,6 +3363,25 @@ func (v *GetAppPluginPolicyVaultAppPluginPolicy) GetMode() AppPluginPolicyMode {
 // GetAllowed returns GetAppPluginPolicyVaultAppPluginPolicy.Allowed, and is useful for accessing the field via an interface.
 func (v *GetAppPluginPolicyVaultAppPluginPolicy) GetAllowed() []string { return v.Allowed }
 
+// GetAppPluginStorageResponse is returned by GetAppPluginStorage on success.
+type GetAppPluginStorageResponse struct {
+	Vault GetAppPluginStorageVault `json:"vault"`
+}
+
+// GetVault returns GetAppPluginStorageResponse.Vault, and is useful for accessing the field via an interface.
+func (v *GetAppPluginStorageResponse) GetVault() GetAppPluginStorageVault { return v.Vault }
+
+// GetAppPluginStorageVault includes the requested fields of the GraphQL type Vault.
+// The GraphQL type's documentation follows.
+//
+// Vault containing assets.
+type GetAppPluginStorageVault struct {
+	AppPluginStorage *json.RawMessage `json:"appPluginStorage"`
+}
+
+// GetAppPluginStorage returns GetAppPluginStorageVault.AppPluginStorage, and is useful for accessing the field via an interface.
+func (v *GetAppPluginStorageVault) GetAppPluginStorage() *json.RawMessage { return v.AppPluginStorage }
+
 // GetMeResponse is returned by GetMe on success.
 type GetMeResponse struct {
 	User *GetMeUser `json:"user"`
@@ -4409,6 +4428,58 @@ func (v *SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationErrorsErr
 
 // GetMessages returns SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
 func (v *SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+type SetAppPluginStorageInput struct {
+	PluginId string `json:"pluginId"`
+	// Full document to store; null or empty deletes the stored document
+	Data *json.RawMessage `json:"data"`
+}
+
+// GetPluginId returns SetAppPluginStorageInput.PluginId, and is useful for accessing the field via an interface.
+func (v *SetAppPluginStorageInput) GetPluginId() string { return v.PluginId }
+
+// GetData returns SetAppPluginStorageInput.Data, and is useful for accessing the field via an interface.
+func (v *SetAppPluginStorageInput) GetData() *json.RawMessage { return v.Data }
+
+// SetAppPluginStorageResponse is returned by SetAppPluginStorage on success.
+type SetAppPluginStorageResponse struct {
+	// Replace a plugin's shared storage document whole. Any vault member may write.
+	SetAppPluginStorage *SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutation `json:"setAppPluginStorage"`
+}
+
+// GetSetAppPluginStorage returns SetAppPluginStorageResponse.SetAppPluginStorage, and is useful for accessing the field via an interface.
+func (v *SetAppPluginStorageResponse) GetSetAppPluginStorage() *SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutation {
+	return v.SetAppPluginStorage
+}
+
+// SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutation includes the requested fields of the GraphQL type SetAppPluginStorageMutation.
+// The GraphQL type's documentation follows.
+//
+// Replace a plugin's shared storage document whole. Any vault member may write.
+type SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutation struct {
+	Errors []SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType `json:"errors"`
+}
+
+// GetErrors returns SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutation.Errors, and is useful for accessing the field via an interface.
+func (v *SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutation) GetErrors() []SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType {
+	return v.Errors
+}
+
+// SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType) GetMessages() []string {
 	return v.Messages
 }
 
@@ -7415,6 +7486,14 @@ type __FindUserInput struct {
 // GetTerm returns __FindUserInput.Term, and is useful for accessing the field via an interface.
 func (v *__FindUserInput) GetTerm() string { return v.Term }
 
+// __GetAppPluginStorageInput is used internally by genqlient
+type __GetAppPluginStorageInput struct {
+	PluginId string `json:"pluginId"`
+}
+
+// GetPluginId returns __GetAppPluginStorageInput.PluginId, and is useful for accessing the field via an interface.
+func (v *__GetAppPluginStorageInput) GetPluginId() string { return v.PluginId }
+
 // __ImportAuditEventsInput is used internally by genqlient
 type __ImportAuditEventsInput struct {
 	Events []ImportAuditEventInput `json:"events"`
@@ -7540,6 +7619,14 @@ type __SetAppPluginPolicyInput struct {
 
 // GetInput returns __SetAppPluginPolicyInput.Input, and is useful for accessing the field via an interface.
 func (v *__SetAppPluginPolicyInput) GetInput() SetAppPluginPolicyInput { return v.Input }
+
+// __SetAppPluginStorageInput is used internally by genqlient
+type __SetAppPluginStorageInput struct {
+	Input SetAppPluginStorageInput `json:"input"`
+}
+
+// GetInput returns __SetAppPluginStorageInput.Input, and is useful for accessing the field via an interface.
+func (v *__SetAppPluginStorageInput) GetInput() SetAppPluginStorageInput { return v.Input }
 
 // __SetAssetInstallationsInput is used internally by genqlient
 type __SetAssetInstallationsInput struct {
@@ -8598,6 +8685,40 @@ func GetAppPluginPolicy(
 	return data_, err_
 }
 
+// The query executed by GetAppPluginStorage.
+const GetAppPluginStorage_Operation = `
+query GetAppPluginStorage ($pluginId: String!) {
+	vault {
+		appPluginStorage(pluginId: $pluginId)
+	}
+}
+`
+
+func GetAppPluginStorage(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	pluginId string,
+) (data_ *GetAppPluginStorageResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "GetAppPluginStorage",
+		Query:  GetAppPluginStorage_Operation,
+		Variables: &__GetAppPluginStorageInput{
+			PluginId: pluginId,
+		},
+	}
+
+	data_ = &GetAppPluginStorageResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
 // The query executed by GetMe.
 const GetMe_Operation = `
 query GetMe {
@@ -9230,6 +9351,43 @@ func SetAppPluginPolicy(
 	}
 
 	data_ = &SetAppPluginPolicyResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by SetAppPluginStorage.
+const SetAppPluginStorage_Operation = `
+mutation SetAppPluginStorage ($input: SetAppPluginStorageInput!) {
+	setAppPluginStorage(input: $input) {
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func SetAppPluginStorage(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input SetAppPluginStorageInput,
+) (data_ *SetAppPluginStorageResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "SetAppPluginStorage",
+		Query:  SetAppPluginStorage_Operation,
+		Variables: &__SetAppPluginStorageInput{
+			Input: input,
+		},
+	}
+
+	data_ = &SetAppPluginStorageResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(
