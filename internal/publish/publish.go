@@ -112,7 +112,7 @@ func inferZipDescription(zipData []byte) string {
 	if err != nil {
 		return ""
 	}
-	var candidates []string
+	var skill, others []string
 	for _, name := range files {
 		if strings.ContainsRune(name, '/') {
 			continue
@@ -122,17 +122,16 @@ func inferZipDescription(zipData []byte) string {
 			continue
 		}
 		if lower == "skill.md" {
-			candidates = append([]string{name}, candidates...)
+			skill = append(skill, name)
 		} else {
-			candidates = append(candidates, name)
+			others = append(others, name)
 		}
 	}
-	if len(candidates) == 0 {
-		return ""
-	}
-	if strings.ToLower(candidates[0]) != "skill.md" {
-		sort.Strings(candidates)
-	}
+	// SKILL.md first, then the rest alphabetically — sorted even when
+	// SKILL.md exists, so the fallback stays deterministic when it
+	// yields no description.
+	sort.Strings(others)
+	candidates := append(skill, others...)
 	for _, name := range candidates {
 		content, err := utils.ReadZipFile(zipData, name)
 		if err != nil {

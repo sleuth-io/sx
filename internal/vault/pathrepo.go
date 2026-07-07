@@ -357,13 +357,6 @@ func (p *PathVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Li
 				assetSummary.Description = meta.Asset.Description
 			}
 		}
-		if assetSummary.Description == "" {
-			// Assets published without a metadata description usually
-			// still declare one in markdown frontmatter — show it.
-			assetSummary.Description = markdownDescription(
-				filepath.Join(p.repoPath, l.VersionDir(entry.Name(), latestVersion)))
-		}
-
 		// Get file timestamps
 		assetDirInfo, _ := entry.Info()
 		if assetDirInfo != nil {
@@ -374,6 +367,15 @@ func (p *PathVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Li
 		// Apply type filter if specified
 		if opts.Type != "" && assetSummary.Type.Key != opts.Type {
 			continue
+		}
+
+		// AFTER the type filter: this fallback reads files, and a
+		// filtered listing must not pay it for assets it discards.
+		if assetSummary.Description == "" {
+			// Assets published without a metadata description usually
+			// still declare one in markdown frontmatter — show it.
+			assetSummary.Description = markdownDescription(
+				filepath.Join(p.repoPath, l.VersionDir(entry.Name(), latestVersion)))
 		}
 
 		assets = append(assets, assetSummary)

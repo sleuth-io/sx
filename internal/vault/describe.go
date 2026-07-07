@@ -23,7 +23,7 @@ func markdownDescription(versionDir string) string {
 	if err != nil {
 		return ""
 	}
-	var candidates []string
+	var skill, others []string
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -34,17 +34,16 @@ func markdownDescription(versionDir string) string {
 			continue
 		}
 		if lower == "skill.md" {
-			candidates = append([]string{name}, candidates...)
+			skill = append(skill, name)
 		} else {
-			candidates = append(candidates, name)
+			others = append(others, name)
 		}
 	}
-	if len(candidates) == 0 {
-		return ""
-	}
-	if strings.ToLower(candidates[0]) != "skill.md" {
-		sort.Strings(candidates)
-	}
+	// SKILL.md first, then the rest alphabetically — sorted even when
+	// SKILL.md exists, so the fallback stays deterministic when it
+	// yields no description.
+	sort.Strings(others)
+	candidates := append(skill, others...)
 	for _, name := range candidates {
 		f, err := os.Open(filepath.Join(versionDir, name))
 		if err != nil {
