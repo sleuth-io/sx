@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/manifest"
@@ -27,8 +28,33 @@ func TestSleuthAppPluginPolicyRead(t *testing.T) {
 	if policy.Mode != AppPluginModeAllowlist || len(policy.Allowed) != 1 {
 		t.Fatalf("mapped policy = %+v", policy)
 	}
-	if !v.SupportsAppPlugins(context.Background()) {
-		t.Fatalf("probe reported unsupported against a serving backend")
+	supported, definitive := v.SupportsAppPlugins(context.Background())
+	if !supported || !definitive {
+		t.Fatalf("probe = %v/%v against a serving backend", supported, definitive)
+	}
+}
+
+// The schema-unknown classifier is pinned: unknown-field and enum
+// rejections are definitive "old server"; anything else is transient.
+func TestAppPluginSchemaUnknownErr(t *testing.T) {
+	definitive := []string{
+		`Cannot query field "appPluginPolicy" on type "VaultGqlType"`,
+		`Variable "$assetType" got invalid value "APP_PLUGIN"`,
+		`Enum "AssetType" cannot represent value: "APP_PLUGIN"`,
+	}
+	for _, m := range definitive {
+		if !isAppPluginSchemaUnknownErr(errors.New(m)) {
+			t.Errorf("%q not classified as schema-unknown", m)
+		}
+	}
+	transient := []string{"returned error 502: bad gateway", "context deadline exceeded", ""}
+	for _, m := range transient {
+		if isAppPluginSchemaUnknownErr(errors.New(m)) {
+			t.Errorf("%q wrongly classified as schema-unknown", m)
+		}
+	}
+	if isAppPluginSchemaUnknownErr(nil) {
+		t.Errorf("nil classified as schema-unknown")
 	}
 }
 

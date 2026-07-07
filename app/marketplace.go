@@ -53,16 +53,22 @@ func (a *App) VaultSupportsExtensions() bool {
 		return cached
 	}
 	supported := false
+	definitive := false
 	if v, err := a.currentVault(); err == nil {
 		if prober, isProber := v.(interface {
-			SupportsAppPlugins(ctx context.Context) bool
+			SupportsAppPlugins(ctx context.Context) (bool, bool)
 		}); isProber {
-			supported = prober.SupportsAppPlugins(a.ctx)
+			supported, definitive = prober.SupportsAppPlugins(a.ctx)
 		}
 	}
-	a.mu.Lock()
-	a.sleuthPluginSupport[key] = supported
-	a.mu.Unlock()
+	// Only a definitive answer is memoized: a transient probe failure
+	// stays fail-closed for THIS call but re-probes next time, instead
+	// of gating extensions off for the whole session.
+	if definitive {
+		a.mu.Lock()
+		a.sleuthPluginSupport[key] = supported
+		a.mu.Unlock()
+	}
 	return supported
 }
 

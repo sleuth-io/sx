@@ -630,8 +630,11 @@ func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*
 			if err != nil {
 				// Servers predating the app-plugin surface reject the
 				// APP_PLUGIN enum value outright; that type can hold
-				// nothing there, so skipping it is complete, not partial.
-				if t.Key == asset.TypeAppPlugin.Key {
+				// nothing there, so skipping it is complete, not
+				// partial. ONLY the schema-rejection error is skipped —
+				// a transient failure on a supporting server must
+				// surface like any other type's.
+				if t.Key == asset.TypeAppPlugin.Key && isAppPluginSchemaUnknownErr(err) {
 					continue
 				}
 				// A silently partial list reads as "that's everything" —

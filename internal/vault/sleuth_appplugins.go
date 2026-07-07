@@ -19,13 +19,43 @@ import (
 // AppPluginSharedStore, so the app degrades with its clear
 // "can't store shared extension data" error instead of half-working.
 
+// isAppPluginSchemaUnknownErr reports whether err is the server saying
+// its SCHEMA has no app-plugin surface (a deployment predating P5) —
+// as opposed to a transient failure that says nothing about capability.
+// Graphene phrases both the unknown field and the rejected enum value
+// as validation errors; the markers are pinned by tests so a reworded
+// server error breaks loudly instead of silently reclassifying.
+func isAppPluginSchemaUnknownErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, m := range []string{
+		"Cannot query field", // unknown appPluginPolicy field
+		"got invalid value",  // enum value rejected at variable coercion
+		"cannot represent",   // enum coercion phrasing variant
+	} {
+		if strings.Contains(msg, m) {
+			return true
+		}
+	}
+	return false
+}
+
 // SupportsAppPlugins probes whether the connected server knows the
 // app-plugin surface at all — deployed servers predating it reject both
 // the asset type and the policy query. The policy read doubles as the
-// capability check: unknown-field errors mean "not yet".
-func (s *SleuthVault) SupportsAppPlugins(ctx context.Context) bool {
+// capability check. definitive is false for transient failures, so
+// callers don't durably cache an answer the server never gave.
+func (s *SleuthVault) SupportsAppPlugins(ctx context.Context) (supported, definitive bool) {
 	_, err := vaultgql.GetAppPluginPolicy(ctx, s.gqlClient())
-	return err == nil
+	if err == nil {
+		return true, true
+	}
+	if isAppPluginSchemaUnknownErr(err) {
+		return false, true
+	}
+	return false, false
 }
 
 // AppPluginPolicy returns the org's extension policy (nil = open).
