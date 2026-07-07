@@ -777,7 +777,10 @@ func (a *App) PluginTeams() ([]PluginTeamRecord, error) {
 	out := []PluginTeamRecord{}
 	teams, err := a.ListTeams()
 	if err != nil {
-		return out, friendlyVaultError(err)
+		// Backends without team support (and transient vault errors)
+		// degrade to "no teams" — a metrics split must not take a widget
+		// down, matching how userStats treats the same absence.
+		return out, nil
 	}
 	for _, t := range teams {
 		members := t.Members

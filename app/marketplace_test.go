@@ -214,3 +214,15 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 		}
 	}
 }
+
+// teams.list degrades to empty on vaults without team support instead of
+// erroring — a metrics split must not take a widget down.
+func TestPluginTeamsDegrades(t *testing.T) {
+	a := pluginTestApp(t)
+	a.ctx = context.Background()
+	// No vault configured at all → empty, not error.
+	teams, err := a.PluginTeams()
+	if err != nil || len(teams) != 0 {
+		t.Fatalf("PluginTeams = %+v, %v", teams, err)
+	}
+}
