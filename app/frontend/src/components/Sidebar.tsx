@@ -200,7 +200,6 @@ export default function Sidebar({
             <Row
               key={key}
               label={v.spec.title}
-              count={0}
               active={active === "plugin-view:" + key}
               onClick={() => onScope({ kind: "plugin-view", name: key })}
             />
@@ -449,7 +448,7 @@ function Row({
   accent,
 }: {
   label: string;
-  count: number;
+  count?: number;
   active: boolean;
   onClick: () => void;
   accent?: "amber";
@@ -464,15 +463,17 @@ function Row({
       }`}
     >
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span
-        className={`text-xs tabular-nums ${
-          accent === "amber" && !active
-            ? "rounded-full bg-amber-50 px-1.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-            : "text-ink-faint"
-        }`}
-      >
-        {count}
-      </span>
+      {count !== undefined && (
+        <span
+          className={`text-xs tabular-nums ${
+            accent === "amber" && !active
+              ? "rounded-full bg-amber-50 px-1.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+              : "text-ink-faint"
+          }`}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }

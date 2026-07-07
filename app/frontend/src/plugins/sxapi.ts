@@ -309,16 +309,23 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
       async list() {
         need("drafts:write");
         const drafts = await ListDrafts();
-        return (drafts ?? []).map((d) => ({
-          id: d.id,
-          name: d.name,
-          type: d.type,
-          targetAsset: d.targetAsset ?? "",
-        }));
+        return (drafts ?? [])
+          // Extension drafts are as off-limits as extension assets: one
+          // extension must not see (or below, edit) another in progress.
+          .filter((d) => d.type !== "app-plugin")
+          .map((d) => ({
+            id: d.id,
+            name: d.name,
+            type: d.type,
+            targetAsset: d.targetAsset ?? "",
+          }));
       },
       async updateFiles(id: string, files) {
         need("drafts:write");
         const draft = await GetDraft(id);
+        if (draft.type === "app-plugin") {
+          throw new Error(`draft ${id} is not editable through the extension API`);
+        }
         draft.files = files.map((f) => ({ path: f.path, content: f.content })) as never;
         await UpdateDraft(draft);
         ui.refresh();
