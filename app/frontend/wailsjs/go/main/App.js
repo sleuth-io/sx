@@ -10,6 +10,10 @@ export function AddCollectionRepoScope(arg1, arg2) {
   return window['go']['main']['App']['AddCollectionRepoScope'](arg1, arg2);
 }
 
+export function AddExtensionFromFolder() {
+  return window['go']['main']['App']['AddExtensionFromFolder']();
+}
+
 export function AddLibrary(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddLibrary'](arg1, arg2, arg3, arg4);
 }

@@ -1,5 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { SetPluginDecision } from "../../wailsjs/go/main/App";
+import {
+  AddExtensionFromFolder,
+  SetPluginDecision,
+} from "../../wailsjs/go/main/App";
+import { refreshVaultPlugins } from "../plugins/boot";
 import {
   disablePlugin,
   enablePlugin,
@@ -91,12 +95,35 @@ export default function ExtensionsSection() {
     }
   }
 
-  if (plugins.length === 0) return null;
+  async function addFromFolder() {
+    setBusy("add");
+    setError("");
+    try {
+      const name = await AddExtensionFromFolder();
+      if (name) {
+        await refreshVaultPlugins();
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
 
   return (
     <>
-      <div className="mb-1 mt-6 text-xs font-semibold tracking-wide text-ink-faint">
-        EXTENSIONS
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-xs font-semibold tracking-wide text-ink-faint">
+          EXTENSIONS
+        </span>
+        <button
+          onClick={() => void addFromFolder()}
+          disabled={busy === "add"}
+          title="Publish an extension folder (plugin.json + main.js) to this library"
+          className="rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-50"
+        >
+          {busy === "add" ? "Publishing…" : "Add extension…"}
+        </button>
       </div>
       <p className="mb-3 text-xs text-ink-faint">
         Optional features that run inside sx. Disabling one removes

@@ -20,6 +20,8 @@ export default class Importer implements SxPlugin {
     sx.registerCommand({
       id: "import-folder",
       title: "Import skills from a folder…",
+      menu: "new",
+      hint: ".claude, Obsidian, or loose files",
       run: async () => {
         try {
           const res = await sx.drafts.importFromFolder();

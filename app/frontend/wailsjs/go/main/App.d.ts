@@ -6,6 +6,8 @@ export function AddAssetRepoScope(arg1:string,arg2:string):Promise<void>;
 
 export function AddCollectionRepoScope(arg1:string,arg2:string):Promise<void>;
 
+export function AddExtensionFromFolder():Promise<string>;
+
 export function AddLibrary(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.VaultInfo>;
 
 export function AddTeamMember(arg1:string,arg2:string,arg3:boolean):Promise<void>;

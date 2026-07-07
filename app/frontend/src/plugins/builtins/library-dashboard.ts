@@ -36,6 +36,15 @@ function emptyNote(text: string): HTMLElement {
   return h("div", "px-3 py-4 text-sm text-ink-faint", text);
 }
 
+function errorNote(e: unknown): HTMLElement {
+  // Raw backend errors can be pages long (HTML gateway bodies); a widget
+  // shows one readable line and leaves detail to the console.
+  console.error("dashboard widget:", e);
+  let msg = String(e).replace(/\s+/g, " ");
+  if (msg.length > 120) msg = msg.slice(0, 120) + "…";
+  return h("div", "px-3 py-4 text-sm text-ink-faint", "Couldn't load: " + msg);
+}
+
 function rowList(
   rows: { label: string; value: string }[],
   empty: string,
@@ -102,7 +111,7 @@ export default class LibraryDashboard implements SxPlugin {
         rowList(rows, "No usage recorded in the last 30 days"),
       );
     } catch (e) {
-      view.el.replaceChildren(emptyNote(String(e)));
+      view.el.replaceChildren(errorNote(e));
     }
   }
 
@@ -136,7 +145,7 @@ export default class LibraryDashboard implements SxPlugin {
         rowList(rows, "Everything has been used in the last 30 days"),
       );
     } catch (e) {
-      view.el.replaceChildren(emptyNote(String(e)));
+      view.el.replaceChildren(errorNote(e));
     }
   }
 
@@ -155,7 +164,7 @@ export default class LibraryDashboard implements SxPlugin {
         rowList(rows, "No library changes in the last 14 days"),
       );
     } catch (e) {
-      view.el.replaceChildren(emptyNote(String(e)));
+      view.el.replaceChildren(errorNote(e));
     }
   }
 }

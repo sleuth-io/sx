@@ -107,6 +107,11 @@ export interface CommandSpec {
   id: string;
   title: string;
   run(): void | Promise<void>;
+  /** Optional placement in core menus besides the palette: "new" adds
+   * the command to the “+ New” dropdown (creation-shaped actions only). */
+  menu?: "new";
+  /** Short hint line shown in menus (not the palette). */
+  hint?: string;
 }
 
 // ---- Events ----

@@ -101,6 +101,8 @@ export default class Templates implements SxPlugin {
       sx.registerCommand({
         id: t.id,
         title: t.title,
+        menu: "new",
+        hint: "Start from a scaffold",
         run: async () => {
           const draft = await sx.drafts.create({
             name: t.name,
@@ -113,6 +115,8 @@ export default class Templates implements SxPlugin {
     sx.registerCommand({
       id: "quick-capture",
       title: "Quick capture: clipboard → draft",
+      menu: "new",
+      hint: "Paste what you copied",
       run: async () => {
         let text = "";
         try {

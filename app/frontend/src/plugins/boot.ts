@@ -99,6 +99,22 @@ export async function bootExtensions(): Promise<void> {
   }
 }
 
+/** Re-scan the vault for extensions (after "Add extension…"). Already-
+ * registered ids are left untouched. */
+export async function refreshVaultPlugins(): Promise<void> {
+  try {
+    for (const vp of (await ListVaultPlugins()) ?? []) {
+      try {
+        registerVaultPlugin(parseVaultManifest(vp.manifest), vp.source);
+      } catch (e) {
+        console.error(`extension asset ${vp.assetName} rejected:`, e);
+      }
+    }
+  } catch {
+    // vault unreachable; the next boot retries
+  }
+}
+
 /** Test/dev helper. */
 export function resetBoot(): void {
   booted = false;

@@ -49,6 +49,7 @@ export default function SettingsModal({
   onLibrariesChanged?: () => void;
 }) {
   const [settings, setSettings] = useState<main.Settings | null>(null);
+  const [tab, setTab] = useState<"libraries" | "extensions">("libraries");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -271,8 +272,35 @@ export default function SettingsModal({
   }
 
   return (
-    <Modal title="Settings" onClose={onClose} width="w-[540px]">
-      {!settings ? (
+    <Modal title="Settings" onClose={onClose} width="w-[760px]">
+      {/* Settings tab rail (org-settings pattern): each concern gets its
+          own tab instead of one long scroll. */}
+      <div className="flex min-h-[420px] gap-5">
+        <nav className="w-40 shrink-0 border-r border-line pr-3">
+          {(
+            [
+              ["libraries", "Libraries"],
+              ["extensions", "Extensions"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              data-settings-tab={key}
+              onClick={() => setTab(key)}
+              className={`mb-1 w-full rounded-lg px-3 py-1.5 text-left text-sm transition ${
+                tab === key
+                  ? "bg-accent-soft font-medium text-accent"
+                  : "text-ink-soft hover:bg-canvas hover:text-ink"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+        <div className="min-w-0 flex-1">
+      {tab === "extensions" ? (
+        <ExtensionsSection />
+      ) : !settings ? (
         <div className="h-20 animate-pulse rounded-lg bg-canvas" />
       ) : (
         <>
@@ -683,13 +711,14 @@ export default function SettingsModal({
           </div>
         </>
       )}
-      <ExtensionsSection />
 
-      {error && (
+      {error && tab === "libraries" && (
         <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
           {error}
         </div>
       )}
+        </div>
+      </div>
 
       {/* Remove-library confirmation. Deleting the source is opt-in and
           spelled out; plain removal just disconnects. */}

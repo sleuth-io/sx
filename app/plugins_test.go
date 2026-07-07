@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
 func pluginTestApp(t *testing.T) *App {
@@ -169,5 +172,52 @@ func TestCreateDraftFromFilesUniquifies(t *testing.T) {
 	drafts, _ := a.ListDrafts()
 	if len(drafts) != 2 {
 		t.Fatalf("drafts = %d, want 2 (no clobber)", len(drafts))
+	}
+}
+
+// The "Add extension…" publish core: a plugin folder (even without
+// metadata.toml) becomes a published app-plugin asset, listable by the
+// vault-plugin loader.
+func TestAddExtensionFromFolder(t *testing.T) {
+	a := pluginTestApp(t)
+	// A real path vault so publish works end-to-end.
+	vdir := t.TempDir()
+	runGitCmd(t, vdir, "init")
+	runGitCmd(t, vdir, "config", "user.email", "alice@example.com")
+	runGitCmd(t, vdir, "config", "user.name", "Alice")
+	v, err := vaultpkg.NewPathVault("file://" + vdir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	a.vault = v
+	a.ctx = context.Background()
+
+	src := t.TempDir()
+	if err := os.WriteFile(src+"/plugin.json", []byte(`{"id":"hello-team","name":"Hello Team","version":"1.0.0","description":"Demo.","permissions":["commands"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(src+"/main.js", []byte("export default class { onload(sx) {} }"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	name, err := a.addExtensionFrom(src)
+	if err != nil {
+		t.Fatalf("addExtensionFrom: %v", err)
+	}
+	if name != "hello-team" {
+		t.Fatalf("name = %q", name)
+	}
+	plugins, err := a.ListVaultPlugins()
+	if err != nil || len(plugins) != 1 || plugins[0].AssetName != "hello-team" {
+		t.Fatalf("ListVaultPlugins = %+v err=%v", plugins, err)
+	}
+	if !strings.Contains(plugins[0].Source, "onload") {
+		t.Fatalf("bundle source missing")
+	}
+
+	// Rejects folders that aren't extensions.
+	empty := t.TempDir()
+	if _, err := a.addExtensionFrom(empty); err == nil {
+		t.Fatalf("folder without plugin.json accepted")
 	}
 }

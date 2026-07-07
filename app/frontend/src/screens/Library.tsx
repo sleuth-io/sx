@@ -48,6 +48,7 @@ import Sidebar, { repoLabel, Scope } from "../components/Sidebar";
 import CommandPalette from "../components/CommandPalette";
 import Dashboard from "../components/Dashboard";
 import { bootExtensions } from "../plugins/boot";
+import { useSlot } from "../plugins/registry";
 import { emitEvent } from "../plugins/events";
 import { setPluginUIHandlers } from "../plugins/sxapi";
 import type { CommandSpec } from "../plugins/api";
@@ -455,6 +456,11 @@ export default function Library({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  const pluginCommands = useSlot("command");
+  const newMenuCommands = useMemo(
+    () => pluginCommands.map((e) => e.spec).filter((c) => c.menu === "new"),
+    [pluginCommands],
+  );
   const coreCommands = useMemo<CommandSpec[]>(
     () => [
       { id: "core-new-skill", title: "New skill…", run: () => setShowAddAsset(true) },
@@ -1338,6 +1344,20 @@ export default function Library({
                         setShowCollectionModal(true);
                       }}
                     />
+                    {/* Creation-shaped extension commands (menu: "new") —
+                        how Templates and the Importer surface outside the
+                        palette. */}
+                    {newMenuCommands.map((c) => (
+                      <MenuItem
+                        key={c.id}
+                        label={c.title}
+                        hint={c.hint ?? ""}
+                        onClick={() => {
+                          setNewMenuOpen(false);
+                          void c.run();
+                        }}
+                      />
+                    ))}
                   </div>
                 )}
               </div>

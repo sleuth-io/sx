@@ -330,11 +330,13 @@ func (a *App) PluginUsageEvents(sinceDays int) ([]PluginUsageEventRecord, error)
 	if err != nil {
 		return nil, err
 	}
-	events, err := v.ReadUsageEvents(a.ctx, mgmt.UsageFilter{})
+	cutoff := usageCutoff(sinceDays)
+	// Since bounds the read server-side/file-side so a dashboard widget
+	// never walks an org's whole history.
+	events, err := v.ReadUsageEvents(a.ctx, mgmt.UsageFilter{Since: cutoff})
 	if err != nil {
 		return nil, friendlyVaultError(err)
 	}
-	cutoff := usageCutoff(sinceDays)
 	out := make([]PluginUsageEventRecord, 0, len(events))
 	for _, e := range events {
 		if e.Timestamp.Before(cutoff) {
@@ -368,11 +370,14 @@ func (a *App) PluginAuditEvents(sinceDays int) ([]PluginAuditEventRecord, error)
 	if err != nil {
 		return nil, err
 	}
-	events, err := v.QueryAuditEvents(a.ctx, mgmt.AuditFilter{})
+	cutoff := usageCutoff(sinceDays)
+	// Both bounds matter: Since scopes the window, Limit caps the walk —
+	// unbounded, the sleuth backend pages an org's ENTIRE audit log,
+	// which is slow at best and 502s at worst.
+	events, err := v.QueryAuditEvents(a.ctx, mgmt.AuditFilter{Since: cutoff, Limit: 500})
 	if err != nil {
 		return nil, friendlyVaultError(err)
 	}
-	cutoff := usageCutoff(sinceDays)
 	out := make([]PluginAuditEventRecord, 0, len(events))
 	for _, e := range events {
 		if e.Timestamp.Before(cutoff) {
@@ -484,6 +489,69 @@ func dirHasMarkdown(dir string) bool {
 		}
 	}
 	return false
+}
+
+// AddExtensionFromFolder publishes an extension folder (plugin.json +
+// main.js, per docs/app-plugin-authoring.md) into the current vault as an
+// app-plugin asset — the Extensions screen's "Add extension" path. A
+// missing metadata.toml is tolerated: type and description are forced
+// from plugin.json so authors only maintain one manifest. Returns the
+// published name, "" on cancel.
+func (a *App) AddExtensionFromFolder() (string, error) {
+	dir, err := wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{
+		Title: "Choose an extension folder (plugin.json + main.js)",
+	})
+	if err != nil {
+		return "", err
+	}
+	if dir == "" {
+		return "", nil // cancelled
+	}
+	return a.addExtensionFrom(dir)
+}
+
+// addExtensionFrom is the dialog-free publish core, split out for tests.
+func (a *App) addExtensionFrom(dir string) (string, error) {
+	manifestBytes, err := os.ReadFile(filepath.Join(dir, "plugin.json"))
+	if err != nil {
+		return "", errors.New("that folder has no plugin.json — see docs/app-plugin-authoring.md")
+	}
+	var pm struct {
+		ID          string   `json:"id"`
+		Name        string   `json:"name"`
+		Version     string   `json:"version"`
+		Description string   `json:"description"`
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.Unmarshal(manifestBytes, &pm); err != nil {
+		return "", errors.New("plugin.json is not valid JSON")
+	}
+	if err := validatePluginID(pm.ID); err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(filepath.Join(dir, "main.js")); err != nil {
+		return "", errors.New("that folder has no main.js — bundle your extension to a single ES module")
+	}
+
+	draft, err := a.CreateDraftFromPaths([]string{dir})
+	if err != nil {
+		return "", err
+	}
+	draft.Name = pm.ID
+	draft.Type = asset.TypeAppPlugin.Key
+	draft.TypeLabel = asset.TypeAppPlugin.Label
+	if pm.Description != "" {
+		draft.Description = pm.Description
+	}
+	updated, err := a.UpdateDraft(draft)
+	if err != nil {
+		return "", err
+	}
+	card, err := a.PublishDraft(updated.ID)
+	if err != nil {
+		return "", err
+	}
+	return card.Name, nil
 }
 
 // VaultPlugin is a vault-installed extension as the frontend consumes it:
