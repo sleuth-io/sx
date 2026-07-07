@@ -141,6 +141,19 @@ func commonAppPluginSharedLoad(vaultRoot, pluginID string) (string, error) {
 	return string(data), nil
 }
 
+// validateAppPluginSharedDoc is the one bounded-valid-JSON contract for
+// shared documents, enforced identically by every vault backend before
+// anything is written (or leaves the machine).
+func validateAppPluginSharedDoc(data string) error {
+	if len(data) > maxAppPluginSharedBytes {
+		return fmt.Errorf("shared extension data exceeds %d bytes", maxAppPluginSharedBytes)
+	}
+	if !json.Valid([]byte(data)) {
+		return errors.New("shared extension data must be valid JSON")
+	}
+	return nil
+}
+
 func commonAppPluginSharedSave(vaultRoot, pluginID, data string) error {
 	path, err := appPluginSharedPath(vaultRoot, pluginID)
 	if err != nil {
@@ -152,11 +165,8 @@ func commonAppPluginSharedSave(vaultRoot, pluginID, data string) error {
 		}
 		return nil
 	}
-	if len(data) > maxAppPluginSharedBytes {
-		return fmt.Errorf("shared extension data exceeds %d bytes", maxAppPluginSharedBytes)
-	}
-	if !json.Valid([]byte(data)) {
-		return errors.New("shared extension data must be valid JSON")
+	if err := validateAppPluginSharedDoc(data); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err

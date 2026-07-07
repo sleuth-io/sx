@@ -3,6 +3,9 @@ package vault
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/manifest"
@@ -146,5 +149,34 @@ func TestSleuthAppPluginSharedStorage(t *testing.T) {
 	input := last.Variables["input"].(map[string]any)
 	if input["data"] != nil {
 		t.Fatalf("delete sent data = %v, want null", input["data"])
+	}
+}
+
+// Sleuth saves enforce the same doc contract as file vaults, and a
+// schema-unknown server error maps to the one unsupported sentinel.
+func TestSleuthSharedStorageValidationAndSentinel(t *testing.T) {
+	srv, _ := mockSleuthGraphQL(t, map[string]func(map[string]any) any{})
+	v := NewSleuthVault(srv.URL, "test-token")
+	ctx := context.Background()
+	if err := v.AppPluginSharedSave(ctx, "review-rota", "not json"); err == nil {
+		t.Fatalf("non-JSON accepted")
+	}
+	if err := v.AppPluginSharedSave(ctx, "review-rota", `{"k":"`+strings.Repeat("x", maxAppPluginSharedBytes)+`"}`); err == nil {
+		t.Fatalf("oversized doc accepted")
+	}
+
+	// An old server rejects the storage field; both directions map to
+	// the sentinel rather than raw GraphQL text.
+	old := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"errors":[{"message":"Cannot query field \"appPluginStorage\" on type \"Vault\""}]}`))
+	}))
+	t.Cleanup(old.Close)
+	vOld := NewSleuthVault(old.URL, "test-token")
+	if _, err := vOld.AppPluginSharedLoad(ctx, "review-rota"); !errors.Is(err, ErrSharedStorageUnsupported) {
+		t.Fatalf("load err = %v, want unsupported sentinel", err)
+	}
+	if err := vOld.AppPluginSharedSave(ctx, "review-rota", `{}`); !errors.Is(err, ErrSharedStorageUnsupported) {
+		t.Fatalf("save err = %v, want unsupported sentinel", err)
 	}
 }

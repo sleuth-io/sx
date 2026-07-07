@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
-
 	"github.com/sleuth-io/sx/internal/mgmt"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
@@ -14,8 +12,10 @@ import (
 // same state — review rotas, shared settings. Contrast with
 // PluginLoad/SaveData, which is per user, per profile, app-side.
 
-var errSharedStorageUnsupported = errors.New(
-	"this library's backend can't store shared extension data yet")
+// errSharedStorageUnsupported is the vault package's sentinel — one
+// message for "backend can't do this", whether the backend lacks the
+// interface entirely or the server predates the surface.
+var errSharedStorageUnsupported = vaultpkg.ErrSharedStorageUnsupported
 
 // PluginSharedLoad returns the extension's shared document ("" when
 // none exists).

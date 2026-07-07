@@ -3,8 +3,6 @@ package vault
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/manifest"
@@ -128,13 +126,8 @@ func (s *SleuthVault) AppPluginSharedLoad(ctx context.Context, pluginID string) 
 func (s *SleuthVault) AppPluginSharedSave(ctx context.Context, pluginID, data string) error {
 	input := vaultgql.SetAppPluginStorageInput{PluginId: pluginID}
 	if data != "" {
-		// Same contract the file vaults enforce locally: bounded valid
-		// JSON, checked before anything leaves the machine.
-		if len(data) > maxAppPluginSharedBytes {
-			return fmt.Errorf("shared extension data exceeds %d bytes", maxAppPluginSharedBytes)
-		}
-		if !json.Valid([]byte(data)) {
-			return errors.New("shared extension data must be valid JSON")
+		if err := validateAppPluginSharedDoc(data); err != nil {
+			return err
 		}
 		quoted, err := json.Marshal(data) // JSONString: document as a string value
 		if err != nil {
