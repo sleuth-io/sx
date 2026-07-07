@@ -84,18 +84,19 @@ Everything registered through `sx.*` is tracked by the host and torn down automa
 | Permission | Capabilities |
 |---|---|
 | `assets:read` | List assets/collections, read asset files and metadata, read version history. Read-only. |
-| `usage:read` | Read usage and audit event streams (the `.sx/usage/`, `.sx/audit/` JSONL data, via Go). |
+| `usage:read` | Read usage and audit event streams (the `.sx/usage/`, `.sx/audit/` JSONL data, via Go), per-user stats, and team names/membership (`sx.teams.list()`, 1.2.0). |
 | `drafts:write` | Create/update drafts (never direct publishes — publish stays a human action in core UI). |
 | `views:sidebar` | Register a sidebar panel (icon + React-free mount point: plugin gets a DOM element + lifecycle). |
 | `views:asset-tab` | Register a tab in the asset detail pane (receives the asset context). |
 | `views:dashboard` | Register a widget on a (new) dashboard/home surface. |
 | `commands` | Register commands in the command palette (new core feature, see below) with optional shortcuts. |
+| `editor` | Character-offset text operations on the draft the user has open (`sx.editor`, 1.2.0): read value/cursor/selection, replace selection/range. Throws when no editor is open. |
 | `events` | Subscribe to lifecycle events: `draft-saved`, `before-publish` (may return warnings shown in the publish sheet — the doctor hook), `asset-published`, `asset-installed`, `vault-synced`. |
 | `net:fetch` | *Reserved (declared but unimplemented until its first consumer, the Claude Assist addendum):* HTTP fetch proxied through Go with per-plugin allowed-origin list surfaced at enable time. |
 | (always) | `sx.ui` kit — modal, notice/toast, confirm, settings panel schema; `sx.storage` — `loadData()`/`saveData()` per plugin per profile (stored app-side, not in the vault); `sx.app.version`, `sx.api.version`. |
 
 **Explicitly excluded from API v1** (deferred, revisit after P6 planning):
-- CodeMirror editor extensions — requires exporting our exact CM6 package instances and freezing them; Obsidian's biggest coupling trap. Defer.
+- CodeMirror *extension* exposure — exporting our exact CM6 package instances and freezing them; Obsidian's biggest coupling trap. Defer. (Distinct from the scoped `sx.editor` text facade shipped in 1.2.0, which exposes offsets and strings, never CM objects.)
 - Custom asset-type renderers / new asset types from plugins.
 - Any Go-side extensibility (scripting engines, `plugin` package). Go extension points (clients, vault backends) remain compile-time.
 - Theming beyond `styles.css` injection.

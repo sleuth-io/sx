@@ -55,11 +55,9 @@ export default function DraftSheet({
   // draft via updateFileContent, so extension edits behave exactly like
   // typing. Cleared on unmount so sx.editor throws instead of writing
   // into a dead view.
-  const viewRef = useRef<EditorView | null>(null);
   const activeFileRef = useRef(activeFile);
   activeFileRef.current = activeFile;
   function registerEditorView(view: EditorView) {
-    viewRef.current = view;
     setPluginEditor({
       getValue: () => view.state.doc.toString(),
       getCursor: () => view.state.selection.main.head,

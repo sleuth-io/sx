@@ -28,15 +28,15 @@ export default function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null);
   const pluginCommands = useSlot("command");
   const hasEditor = useSyncExternalStore(subscribeEditor, editorOpen);
-  const usableCommands = pluginCommands.filter(
-    (c) => c.spec.context !== "editor" || hasEditor,
-  );
 
   const commands = useMemo(() => {
+    // Editor-scoped commands only surface while a draft editor is open;
+    // the filter lives inside the memo so its inputs stay stable.
+    const usableCommands = pluginCommands.filter(
+      (c) => c.spec.context !== "editor" || hasEditor,
+    );
     const all: (CommandSpec & { ownerKey: string })[] = [
       ...coreCommands.map((c) => ({ ...c, ownerKey: "core:" + c.id })),
-      // Editor-scoped commands only surface while a draft editor is
-      // open — running them anywhere else can only throw.
       ...usableCommands.map((e) => ({
         ...e.spec,
         ownerKey: e.pluginId + ":" + e.spec.id,
@@ -55,7 +55,7 @@ export default function CommandPalette({
       }
       return true;
     });
-  }, [coreCommands, usableCommands, query]);
+  }, [coreCommands, pluginCommands, hasEditor, query]);
 
   useEffect(() => {
     if (open) {
