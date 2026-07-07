@@ -17,6 +17,7 @@ import (
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/utils"
@@ -668,14 +669,21 @@ func (a *App) PluginUserStats(sinceDays int) (PluginUserStatsResult, error) {
 	if err != nil {
 		return res, err
 	}
+	// Identities normalize through the same rule everywhere (manifest
+	// email normalization) so one person's team entry and usage-actor
+	// string can't double-count in the adoption denominator. A recorder
+	// that logs display names instead of emails still counts separately —
+	// there is nothing to join on.
 	known := map[string]bool{}
-	if self := strings.TrimSpace(a.GetVaultInfo().Identity); self != "" {
-		known[strings.ToLower(self)] = true
+	if self := manifest.NormalizeEmail(a.GetVaultInfo().Identity); self != "" {
+		known[self] = true
 	}
 	if teams, err := a.ListTeams(); err == nil {
 		for _, team := range teams {
 			for _, m := range team.Members {
-				known[strings.ToLower(m)] = true
+				if n := manifest.NormalizeEmail(m); n != "" {
+					known[n] = true
+				}
 			}
 		}
 	}
@@ -693,7 +701,7 @@ func (a *App) PluginUserStats(sinceDays int) (PluginUserStatsResult, error) {
 		if e.Timestamp.Before(cutoff) {
 			continue
 		}
-		actor := strings.ToLower(strings.TrimSpace(e.Actor))
+		actor := manifest.NormalizeEmail(e.Actor)
 		if actor == "" {
 			continue
 		}

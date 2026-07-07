@@ -165,7 +165,7 @@ Chosen by mapping Obsidian's download-mass categories (measured 2026-07-05 from 
 
 | Built-in | Obsidian analogue (downloads) | What it does | Slots/permissions exercised |
 |---|---|---|---|
-| **Library Dashboard** | Dataview (4.5M), Homepage (1.2M) | Saved queries over assets + usage/audit: "unused 30 days", team adoption, staleness, recent activity. | `views:dashboard`, `views:sidebar`, `assets:read`, `usage:read` |
+| **Dashboard widgets** (three extensions: User Adoption, Top Assets by Usage, User Leaderboard — split so teams toggle/replace each and third-party widgets sit beside them) | Dataview (4.5M), Homepage (1.2M) | Adoption donut over known users, top-asset daily usage trends, most-active-user bars. | `views:dashboard`, `usage:read` |
 | **Publish Doctor** | Linter (1.0M) | Pre-publish checks contributing warnings to the publish sheet: frontmatter validity, description quality/length, trigger-phrase presence, broken file references. Converges with the skillpack-doctor idea from the gbrain research. | `events` (`before-publish`), `assets:read` |
 | **Templates** | Templater (4.8M), QuickAdd (1.9M) | Org-blessed scaffolds for new skills/commands/agents with variable substitution; quick-capture from clipboard into a draft. | `commands`, `drafts:write`, `assets:read` |
 | **Importer** | Importer (1.4M) | Import from existing `.claude/` directories, an Obsidian vault folder, or a folder of loose prompts; batch-create drafts. | `commands`, `drafts:write` |

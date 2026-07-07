@@ -13,8 +13,8 @@ export default function Dashboard() {
   if (widgets.length === 0) {
     return (
       <div className="m-5 rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-ink-faint">
-        No dashboard widgets — enable the Library Dashboard extension in
-        Settings
+        No dashboard widgets — enable the widget extensions (User
+        Adoption, Top Assets, Leaderboard) under Settings → Extensions
       </div>
     );
   }

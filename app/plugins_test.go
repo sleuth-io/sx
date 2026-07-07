@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sleuth-io/sx/internal/mgmt"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
@@ -219,5 +220,54 @@ func TestAddExtensionFromFolder(t *testing.T) {
 	empty := t.TempDir()
 	if _, err := a.addExtensionFrom(empty); err == nil {
 		t.Fatalf("folder without plugin.json accepted")
+	}
+}
+
+// PluginUserStats: known users union team rosters with usage actors
+// (normalized, so case differences can't double-count), and activity
+// aggregates per actor.
+func TestPluginUserStats(t *testing.T) {
+	a := pluginTestApp(t)
+	vdir := t.TempDir()
+	runGitCmd(t, vdir, "init")
+	runGitCmd(t, vdir, "config", "user.email", "alice@example.com")
+	runGitCmd(t, vdir, "config", "user.name", "Alice")
+	v, err := vaultpkg.NewPathVault("file://" + vdir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	a.vault = v
+	a.ctx = context.Background()
+
+	if err := v.CreateTeam(a.ctx, mgmt.Team{
+		Name:    "eng",
+		Members: []string{"Alice@Example.com", "quiet@example.com"},
+		Admins:  []string{"alice@example.com"},
+	}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+	now := time.Now()
+	if err := v.RecordUsageEvents(a.ctx, []mgmt.UsageEvent{
+		{Timestamp: now.Add(-24 * time.Hour), Actor: "ALICE@example.com", AssetName: "linear", AssetVersion: "1", AssetType: "skill"},
+		{Timestamp: now.Add(-48 * time.Hour), Actor: "alice@example.com", AssetName: "code-review", AssetVersion: "1", AssetType: "skill"},
+		{Timestamp: now.Add(-24 * time.Hour), Actor: "bob@example.com", AssetName: "linear", AssetVersion: "1", AssetType: "skill"},
+	}); err != nil {
+		t.Fatalf("RecordUsageEvents: %v", err)
+	}
+
+	stats, err := a.PluginUserStats(30)
+	if err != nil {
+		t.Fatalf("PluginUserStats: %v", err)
+	}
+	// alice (cased three ways across team, usage, and the vault identity)
+	// counts once; quiet has no usage; bob comes from usage only.
+	if len(stats.KnownUsers) != 3 {
+		t.Fatalf("knownUsers = %v, want 3 distinct", stats.KnownUsers)
+	}
+	if len(stats.Active) != 2 {
+		t.Fatalf("active = %+v, want alice+bob", stats.Active)
+	}
+	if stats.Active[0].Actor != "alice@example.com" || stats.Active[0].DistinctAssets != 2 || stats.Active[0].Events != 2 {
+		t.Fatalf("top user = %+v, want alice with 2 assets / 2 events", stats.Active[0])
 	}
 }
