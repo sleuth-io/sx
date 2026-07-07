@@ -232,6 +232,13 @@ Per the v2-spec verification bar — nothing is done because it compiles:
 
 - **API becomes a contract too early.** Mitigation: nothing is public until P4; built-ins are deliberately diverse consumers; API carries `sx.api.version` from day one with an additive-only policy after freeze.
 - **Dynamic `import()` behavior varies across WebViews** (CSP, Blob URLs, WebKitGTK quirks). Mitigation: P1 acceptance explicitly gates on all three platforms; fallback is a Function-constructor module shim (still no remote code).
+  *Spike result (2026-07-07, macOS):* Blob-URL `import()` and CSS
+  injection verified working in WKWebView in both `wails dev` and a
+  production `wails build` binary (embedded asset server + its CSP), and
+  in a plain browser. Windows WebView2 / Linux WebKitGTK remain open —
+  the spike's self-test graduates into a permanent loader preflight in
+  the plugin host (run at startup, surfaced in Extensions diagnostics),
+  so those platforms verify themselves in CI and on first run.
 - **Security review shortcut culture** (Obsidian's trap). Mitigation: permission model from day one, org allowlist, no-Node-by-construction, plugin updates ride audited asset versioning. Residual risk: a permitted plugin can still misuse what it's granted (e.g. exfiltrate via `net:fetch`) — hence per-origin fetch grants and surfacing origins at consent time.
 - **Slot/registry refactor destabilizes existing UI.** Mitigation: built-in features migrate onto slots one at a time behind the same visual design; screenshot regression pass per the v2-spec quality loop.
 - **Scope creep toward Obsidian's surface area** (editor extensions, themes, renderers). Mitigation: the exclusion list above is normative; additions require a spec addendum, not a PR.
