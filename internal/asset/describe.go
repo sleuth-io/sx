@@ -1,6 +1,9 @@
 package asset
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // InferDescription pulls a short description out of markdown content:
 // frontmatter description first, else the first non-heading paragraph
@@ -30,7 +33,13 @@ func InferDescription(content string) string {
 			continue
 		}
 		if len(trimmed) > 200 {
-			trimmed = trimmed[:197] + "…"
+			// Truncate on a rune boundary — a byte slice can split a
+			// multi-byte character and emit a stray replacement char.
+			cut := 197
+			for cut > 0 && !utf8.RuneStart(trimmed[cut]) {
+				cut--
+			}
+			trimmed = trimmed[:cut] + "…"
 		}
 		return trimmed
 	}
