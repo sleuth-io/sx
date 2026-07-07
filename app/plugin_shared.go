@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+
 	"github.com/sleuth-io/sx/internal/mgmt"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
