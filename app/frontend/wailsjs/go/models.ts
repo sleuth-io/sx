@@ -243,6 +243,60 @@ export namespace main {
 	        this.sourceProvider = source["sourceProvider"];
 	    }
 	}
+	export class PluginAuditEventRecord {
+	    timestamp: string;
+	    actor: string;
+	    event: string;
+	    targetType: string;
+	    target: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginAuditEventRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = source["timestamp"];
+	        this.actor = source["actor"];
+	        this.event = source["event"];
+	        this.targetType = source["targetType"];
+	        this.target = source["target"];
+	    }
+	}
+	export class PluginEnabledState {
+	    configured: boolean;
+	    enabled: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginEnabledState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.configured = source["configured"];
+	        this.enabled = source["enabled"];
+	    }
+	}
+	export class PluginUsageEventRecord {
+	    timestamp: string;
+	    actor: string;
+	    assetName: string;
+	    assetVersion: string;
+	    assetType: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginUsageEventRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = source["timestamp"];
+	        this.actor = source["actor"];
+	        this.assetName = source["assetName"];
+	        this.assetVersion = source["assetVersion"];
+	        this.assetType = source["assetType"];
+	    }
+	}
 	export class ProfileInfo {
 	    name: string;
 	    type: string;

@@ -48,6 +48,8 @@ export function DiscardDraft(arg1:string):Promise<void>;
 
 export function DownloadAsset(arg1:string):Promise<string>;
 
+export function EnabledPlugins():Promise<main.PluginEnabledState>;
+
 export function GetAsset(arg1:string,arg2:string):Promise<main.AssetDetail>;
 
 export function GetAssetSharing(arg1:string):Promise<main.AssetSharing>;
@@ -92,6 +94,14 @@ export function PickFilesForDraft():Promise<main.Draft>;
 
 export function PickFolderForDraft():Promise<main.Draft>;
 
+export function PluginAuditEvents(arg1:number):Promise<Array<main.PluginAuditEventRecord>>;
+
+export function PluginLoadData(arg1:string):Promise<string>;
+
+export function PluginSaveData(arg1:string,arg2:string):Promise<void>;
+
+export function PluginUsageEvents(arg1:number):Promise<Array<main.PluginUsageEventRecord>>;
+
 export function PublishDraft(arg1:string):Promise<main.AssetCard>;
 
 export function Quit():Promise<void>;
@@ -121,6 +131,8 @@ export function SetCollectionTeamSharing(arg1:string,arg2:string,arg3:boolean):P
 export function SetLibraryActive(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetLibraryRepoTracking(arg1:string,arg2:boolean):Promise<main.VaultInfo>;
+
+export function SetPluginEnabled(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetTeamAdmin(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 

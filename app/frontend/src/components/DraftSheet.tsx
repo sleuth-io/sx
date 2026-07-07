@@ -5,6 +5,8 @@ import {
   UpdateDraft,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
+import { collectPublishWarnings, emitEvent } from "../plugins/events";
+import type { PublishWarning } from "../plugins/api";
 import FileRail from "./FileRail";
 import MarkdownEditor from "./MarkdownEditor";
 
@@ -34,6 +36,9 @@ export default function DraftSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
+  // Warnings from before-publish extension subscribers (the doctor hook).
+  // Non-blocking: the user sees them and chooses "Publish anyway".
+  const [warnings, setWarnings] = useState<PublishWarning[] | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -59,6 +64,7 @@ export default function DraftSheet({
     try {
       const saved = await UpdateDraft(draft);
       setDirty(false);
+      emitEvent("draft-saved", { draftId: saved.id });
       return saved;
     } catch (e) {
       setError(String(e));
@@ -73,16 +79,35 @@ export default function DraftSheet({
     onClose();
   }
 
-  async function publish() {
+  async function publish(force = false) {
     setBusy(true);
     setError("");
+    setWarnings(null);
     const saved = dirty ? await persist() : draft;
     if (!saved) {
       setBusy(false);
       return;
     }
+    // Extensions get one look before anything reaches the library. Their
+    // warnings render in the sheet; "Publish anyway" re-runs with force.
+    if (!force) {
+      const found = await collectPublishWarnings({
+        name: saved.name,
+        description: saved.description,
+        files: (saved.files ?? []).map((f) => ({
+          path: f.path,
+          content: f.content,
+        })),
+      });
+      if (found.length > 0) {
+        setWarnings(found.map((f) => f.warning));
+        setBusy(false);
+        return;
+      }
+    }
     try {
       const card = await PublishDraft(saved.id);
+      emitEvent("asset-published", { name: card.name });
       onPublished(card.name);
     } catch (e) {
       setError(String(e));
@@ -200,6 +225,30 @@ export default function DraftSheet({
           </div>
         )}
 
+        {warnings && warnings.length > 0 && (
+          <div
+            data-publish-warnings
+            className="mx-6 mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950"
+          >
+            <div className="mb-1 font-medium text-amber-800 dark:text-amber-200">
+              Worth a look before publishing
+            </div>
+            <ul className="space-y-1 text-amber-800 dark:text-amber-200">
+              {warnings.map((w, i) => (
+                <li key={i}>
+                  • {w.message}
+                  {w.detail && (
+                    <span className="text-amber-700/80 dark:text-amber-300/70">
+                      {" "}
+                      — {w.detail}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <footer className="flex items-center gap-2 border-t border-line px-6 py-4">
           <button
             onClick={() => void discard()}
@@ -217,11 +266,17 @@ export default function DraftSheet({
             Save for later
           </button>
           <button
-            onClick={() => void publish()}
+            onClick={() => void publish(warnings !== null)}
             disabled={busy || !draft.name.trim()}
             className="rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
           >
-            {busy ? "Publishing…" : isUpdate ? "Publish changes" : "Publish"}
+            {busy
+              ? "Publishing…"
+              : warnings && warnings.length > 0
+                ? "Publish anyway"
+                : isUpdate
+                  ? "Publish changes"
+                  : "Publish"}
           </button>
         </footer>
       </div>

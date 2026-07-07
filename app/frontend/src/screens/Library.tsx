@@ -45,6 +45,12 @@ import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
 import ShareModal from "../components/ShareModal";
 import Sidebar, { repoLabel, Scope } from "../components/Sidebar";
+import CommandPalette from "../components/CommandPalette";
+import Dashboard from "../components/Dashboard";
+import { bootExtensions } from "../plugins/boot";
+import { emitEvent } from "../plugins/events";
+import { setPluginUIHandlers } from "../plugins/sxapi";
+import type { CommandSpec } from "../plugins/api";
 import usePanelSize from "../lib/usePanelSize";
 import TeamModal from "../components/TeamModal";
 import TypeBadge from "../components/TypeBadge";
@@ -364,6 +370,7 @@ export default function Library({
     try {
       const summary = await SyncAITools();
       setToastMessage(summary);
+      emitEvent("vault-synced", {});
       load();
     } catch (e) {
       setToastMessage(String(e));
@@ -426,6 +433,48 @@ export default function Library({
   }, [vault.trackRepos]);
 
   useEffect(load, [load]);
+
+  // Extension system: boot once, and hand extensions the app's real UI
+  // services (toast + confirm) so sx.ui works.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    setPluginUIHandlers({ notice: setToastMessage, confirm: confirmAction });
+    void bootExtensions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const coreCommands = useMemo<CommandSpec[]>(
+    () => [
+      { id: "core-new-skill", title: "New skill…", run: () => setShowAddAsset(true) },
+      {
+        id: "core-new-collection",
+        title: "New collection…",
+        run: () => setShowCollectionModal(true),
+      },
+      { id: "core-sync", title: "Sync AI tools", run: () => syncAITools() },
+      {
+        id: "core-dashboard",
+        title: "Open dashboard",
+        run: () => setScope({ kind: "dashboard" }),
+      },
+      {
+        id: "core-settings",
+        title: "Open settings…",
+        run: () => setShowSettings(true),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   useEffect(() => {
     ListAIClients()
       .then(setAiClients)
@@ -948,6 +997,8 @@ export default function Library({
     switch (scope.kind) {
       case "all":
         return "Skills";
+      case "dashboard":
+        return "Dashboard";
       case "installed":
         return "In your AI tools";
       case "drafts":
@@ -1404,7 +1455,9 @@ export default function Library({
             </div>
           )}
 
-          {assets === null ? (
+          {scope.kind === "dashboard" ? (
+            <Dashboard />
+          ) : assets === null ? (
             <ListSkeleton />
           ) : nothingToShow ? (
             <EmptyState
@@ -1752,6 +1805,12 @@ export default function Library({
           </div>
         </Modal>
       )}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        coreCommands={coreCommands}
+      />
 
       {assetDrag && (
         <div

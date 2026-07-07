@@ -12,6 +12,7 @@ import {
   ShareAssetWithEveryone,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
+import { emitEvent } from "../plugins/events";
 import usePanelSize from "../lib/usePanelSize";
 import FileRail from "./FileRail";
 import ShareModal from "./ShareModal";
@@ -104,6 +105,7 @@ export default function AssetDetail({
     try {
       const summary = await SetAssetPersonal(name, true);
       localStorage.setItem("sx-install-explained", "1");
+      emitEvent("asset-installed", { name });
       onToast(summary);
     } catch (e) {
       onToast(String(e));

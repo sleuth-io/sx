@@ -94,6 +94,10 @@ export function DownloadAsset(arg1) {
   return window['go']['main']['App']['DownloadAsset'](arg1);
 }
 
+export function EnabledPlugins() {
+  return window['go']['main']['App']['EnabledPlugins']();
+}
+
 export function GetAsset(arg1, arg2) {
   return window['go']['main']['App']['GetAsset'](arg1, arg2);
 }
@@ -182,6 +186,22 @@ export function PickFolderForDraft() {
   return window['go']['main']['App']['PickFolderForDraft']();
 }
 
+export function PluginAuditEvents(arg1) {
+  return window['go']['main']['App']['PluginAuditEvents'](arg1);
+}
+
+export function PluginLoadData(arg1) {
+  return window['go']['main']['App']['PluginLoadData'](arg1);
+}
+
+export function PluginSaveData(arg1, arg2) {
+  return window['go']['main']['App']['PluginSaveData'](arg1, arg2);
+}
+
+export function PluginUsageEvents(arg1) {
+  return window['go']['main']['App']['PluginUsageEvents'](arg1);
+}
+
 export function PublishDraft(arg1) {
   return window['go']['main']['App']['PublishDraft'](arg1);
 }
@@ -240,6 +260,10 @@ export function SetLibraryActive(arg1, arg2) {
 
 export function SetLibraryRepoTracking(arg1, arg2) {
   return window['go']['main']['App']['SetLibraryRepoTracking'](arg1, arg2);
+}
+
+export function SetPluginEnabled(arg1, arg2) {
+  return window['go']['main']['App']['SetPluginEnabled'](arg1, arg2);
 }
 
 export function SetTeamAdmin(arg1, arg2, arg3) {

@@ -20,6 +20,7 @@ import {
 } from "../../wailsjs/go/main/App";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import type { main } from "../../wailsjs/go/models";
+import ExtensionsSection from "./ExtensionsSection";
 import Modal from "./Modal";
 import RepoPicker, { CreateRepoCard, suggestRepoName } from "./RepoPicker";
 
@@ -682,6 +683,8 @@ export default function SettingsModal({
           </div>
         </>
       )}
+      <ExtensionsSection />
+
       {error && (
         <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
           {error}

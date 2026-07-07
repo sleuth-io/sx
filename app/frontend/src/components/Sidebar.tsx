@@ -1,10 +1,13 @@
 import type { MouseEvent } from "react";
 import type { main } from "../../wailsjs/go/models";
+import { useSlot } from "../plugins/registry";
+import PluginMount from "./PluginMount";
 
 export type Scope =
   | { kind: "all" }
   | { kind: "installed" }
   | { kind: "drafts" }
+  | { kind: "dashboard" }
   | { kind: "collection"; name: string }
   | { kind: "team"; name: string }
   | { kind: "repo"; name: string };
@@ -95,6 +98,8 @@ export default function Sidebar({
   width: number;
 }) {
   const active = scopeKey(scope);
+  const sidebarPanels = useSlot("sidebar-panel");
+  const dashboardWidgets = useSlot("dashboard-widget").length;
 
   return (
     <aside
@@ -173,6 +178,25 @@ export default function Sidebar({
             accent="amber"
           />
         )}
+        {dashboardWidgets > 0 && (
+          <Row
+            label="Dashboard"
+            count={dashboardWidgets}
+            active={active === "dashboard"}
+            onClick={() => onScope({ kind: "dashboard" })}
+          />
+        )}
+        {/* Extension-contributed sidebar panels (views:sidebar). */}
+        {sidebarPanels.map((p) => (
+          <div key={p.pluginId + ":" + p.spec.id} className="mt-2">
+            <SectionLabel>{p.spec.title.toUpperCase()}</SectionLabel>
+            <PluginMount
+              pluginId={p.pluginId}
+              mount={p.spec.mount}
+              className="px-1"
+            />
+          </div>
+        ))}
 
         <div className="mt-4 flex items-center justify-between pr-1">
           <SectionLabel>COLLECTIONS</SectionLabel>
