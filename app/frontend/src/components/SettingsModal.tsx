@@ -87,12 +87,14 @@ export default function SettingsModal({
       );
       if (!root) setMenuFor(null);
     };
-    const onScroll = () => setMenuFor(null);
+    const close = () => setMenuFor(null);
     window.addEventListener("mousedown", onDown);
-    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
     return () => {
       window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
     };
   }, [menuFor]);
 
@@ -413,13 +415,33 @@ export default function SettingsModal({
                   </button>
                   {menuFor === p.name && menuRect && (
                     <div
-                      className="fixed z-[70] w-60 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl"
+                      // Positioned from the menu's MEASURED height (the
+                      // ref runs after insertion, before paint): open
+                      // below the trigger when it fits, flip above when
+                      // it doesn't. Menu height varies too much across
+                      // library types for an estimate.
+                      ref={(el) => {
+                        if (!el) return;
+                        const h = el.getBoundingClientRect().height;
+                        if (menuRect.bottom + 4 + h <= window.innerHeight - 8) {
+                          el.style.top = `${menuRect.bottom + 4}px`;
+                          el.style.bottom = "";
+                        } else if (h <= menuRect.top - 12) {
+                          el.style.top = "";
+                          el.style.bottom = `${window.innerHeight - menuRect.top + 4}px`;
+                        } else {
+                          // Fits neither side (tiny window): pin to the
+                          // top and let the internal scroll take over.
+                          el.style.top = "8px";
+                          el.style.bottom = "";
+                        }
+                      }}
+                      className="fixed z-[70] w-60 overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-xl"
                       style={{
                         right: window.innerWidth - menuRect.right,
-                        // Flip above the trigger when there's no room below.
-                        ...(menuRect.bottom + 230 > window.innerHeight
-                          ? { bottom: window.innerHeight - menuRect.top + 4 }
-                          : { top: menuRect.bottom + 4 }),
+                        // Backstop for tiny windows: never exceed the
+                        // viewport; scroll internally instead.
+                        maxHeight: "calc(100vh - 16px)",
                       }}
                     >
                       {p.type === "sleuth" ? (
