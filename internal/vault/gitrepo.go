@@ -1032,6 +1032,12 @@ func (g *GitVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Lis
 				assetSummary.Description = meta.Asset.Description
 			}
 		}
+		if assetSummary.Description == "" {
+			// Assets published without a metadata description usually
+			// still declare one in markdown frontmatter — show it.
+			assetSummary.Description = markdownDescription(
+				filepath.Join(g.repoPath, l.VersionDir(entry.Name(), latestVersion)))
+		}
 
 		// Get file timestamps
 		assetDirInfo, _ := entry.Info()
@@ -1129,6 +1135,10 @@ func (g *GitVault) GetAssetDetails(ctx context.Context, name string) (*AssetDeta
 			details.Description = meta.Asset.Description
 			details.Metadata = meta
 		}
+	}
+	if details.Description == "" {
+		details.Description = markdownDescription(
+			filepath.Join(g.repoPath, l.VersionDir(name, latestVersion)))
 	}
 
 	// Get directory timestamps
