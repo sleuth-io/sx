@@ -3,6 +3,8 @@ package vault
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/manifest"
@@ -103,6 +105,9 @@ func (s *SleuthVault) SetAppPluginPolicy(ctx context.Context, policy *manifest.A
 func (s *SleuthVault) AppPluginSharedLoad(ctx context.Context, pluginID string) (string, error) {
 	resp, err := vaultgql.GetAppPluginStorage(ctx, s.gqlClient(), pluginID)
 	if err != nil {
+		if isAppPluginSchemaUnknownErr(err) {
+			return "", ErrSharedStorageUnsupported
+		}
 		return "", err
 	}
 	raw := resp.Vault.AppPluginStorage
@@ -123,6 +128,14 @@ func (s *SleuthVault) AppPluginSharedLoad(ctx context.Context, pluginID string) 
 func (s *SleuthVault) AppPluginSharedSave(ctx context.Context, pluginID, data string) error {
 	input := vaultgql.SetAppPluginStorageInput{PluginId: pluginID}
 	if data != "" {
+		// Same contract the file vaults enforce locally: bounded valid
+		// JSON, checked before anything leaves the machine.
+		if len(data) > maxAppPluginSharedBytes {
+			return fmt.Errorf("shared extension data exceeds %d bytes", maxAppPluginSharedBytes)
+		}
+		if !json.Valid([]byte(data)) {
+			return errors.New("shared extension data must be valid JSON")
+		}
 		quoted, err := json.Marshal(data) // JSONString: document as a string value
 		if err != nil {
 			return err
@@ -132,6 +145,9 @@ func (s *SleuthVault) AppPluginSharedSave(ctx context.Context, pluginID, data st
 	}
 	resp, err := vaultgql.SetAppPluginStorage(ctx, s.gqlClient(), input)
 	if err != nil {
+		if isAppPluginSchemaUnknownErr(err) {
+			return ErrSharedStorageUnsupported
+		}
 		return err
 	}
 	for _, e := range resp.SetAppPluginStorage.Errors {

@@ -109,6 +109,11 @@ type AppPluginSharedStore interface {
 	AppPluginSharedSave(ctx context.Context, pluginID, data string) error
 }
 
+// ErrSharedStorageUnsupported is returned when the vault backend
+// cannot store shared extension data (a server predating the surface).
+var ErrSharedStorageUnsupported = errors.New(
+	"this library's server doesn't support shared extension data yet")
+
 // maxAppPluginSharedBytes bounds one extension's shared document.
 const maxAppPluginSharedBytes = 256 << 10
 
