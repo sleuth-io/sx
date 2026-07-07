@@ -150,3 +150,24 @@ func TestImportDraftsFromFolder(t *testing.T) {
 		t.Fatalf("drafts = %v err=%v, want the 2 imports", drafts, err)
 	}
 }
+
+// drafts.create must never clobber: same-name creates uniquify.
+func TestCreateDraftFromFilesUniquifies(t *testing.T) {
+	a := pluginTestApp(t)
+	files := []AssetFile{{Path: "SKILL.md", Content: "---\nname: capture\ndescription: x.\n---\n\n# capture\n"}}
+	first, err := a.CreateDraftFromFiles("capture", files)
+	if err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	second, err := a.CreateDraftFromFiles("capture", files)
+	if err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	if first.ID == second.ID {
+		t.Fatalf("ids collide: %s", first.ID)
+	}
+	drafts, _ := a.ListDrafts()
+	if len(drafts) != 2 {
+		t.Fatalf("drafts = %d, want 2 (no clobber)", len(drafts))
+	}
+}

@@ -32,6 +32,8 @@ export function CreateCollection(arg1:string):Promise<main.Collection>;
 
 export function CreateDraftFromAsset(arg1:string):Promise<main.Draft>;
 
+export function CreateDraftFromFiles(arg1:string,arg2:Array<main.AssetFile>):Promise<main.Draft>;
+
 export function CreateDraftFromPaths(arg1:Array<string>):Promise<main.Draft>;
 
 export function CreateGitRepo(arg1:string):Promise<main.GitRepoOption>;
@@ -89,6 +91,8 @@ export function ListGitRepos():Promise<Array<main.GitRepoOption>>;
 export function ListSyncFolders():Promise<Array<main.SyncFolderOption>>;
 
 export function ListTeams():Promise<Array<main.TeamInfo>>;
+
+export function ListVaultPlugins():Promise<Array<main.VaultPlugin>>;
 
 export function OpenSettings():Promise<void>;
 

@@ -463,6 +463,22 @@ export namespace main {
 	        this.icon = source["icon"];
 	    }
 	}
+	export class VaultPlugin {
+	    assetName: string;
+	    manifest: string;
+	    source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new VaultPlugin(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.assetName = source["assetName"];
+	        this.manifest = source["manifest"];
+	        this.source = source["source"];
+	    }
+	}
 
 }
 

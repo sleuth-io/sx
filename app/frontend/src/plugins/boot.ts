@@ -4,9 +4,15 @@
 // built-ins on). A load failure never rewrites intent — the extension
 // shows its error in the Extensions screen and retries next boot.
 
-import { AppVersion, PluginDecisions } from "../../wailsjs/go/main/App";
+import {
+  AppVersion,
+  ListVaultPlugins,
+  PluginDecisions,
+} from "../../wailsjs/go/main/App";
 import {
   registerBuiltIn,
+  registerVaultPlugin,
+  parseVaultManifest,
   enablePlugin,
   listPlugins,
   loaderPreflight,
@@ -51,6 +57,21 @@ export async function bootExtensions(): Promise<void> {
     // Dev/browser context without the bridge; version stays "".
   }
   await loadPolicyAndConsents();
+
+  // Vault-installed extensions: published like any asset, scoped to this
+  // user, surfaced ONLY in the Extensions screen. Default off; enabling
+  // is consent-gated below like everything else.
+  try {
+    for (const vp of (await ListVaultPlugins()) ?? []) {
+      try {
+        registerVaultPlugin(parseVaultManifest(vp.manifest), vp.source);
+      } catch (e) {
+        console.error(`extension asset ${vp.assetName} rejected:`, e);
+      }
+    }
+  } catch {
+    // Vault unreachable — built-ins still work.
+  }
 
   let decisions: Record<string, boolean> = {};
   try {

@@ -62,6 +62,10 @@ export function CreateDraftFromAsset(arg1) {
   return window['go']['main']['App']['CreateDraftFromAsset'](arg1);
 }
 
+export function CreateDraftFromFiles(arg1, arg2) {
+  return window['go']['main']['App']['CreateDraftFromFiles'](arg1, arg2);
+}
+
 export function CreateDraftFromPaths(arg1) {
   return window['go']['main']['App']['CreateDraftFromPaths'](arg1);
 }
@@ -176,6 +180,10 @@ export function ListSyncFolders() {
 
 export function ListTeams() {
   return window['go']['main']['App']['ListTeams']();
+}
+
+export function ListVaultPlugins() {
+  return window['go']['main']['App']['ListVaultPlugins']();
 }
 
 export function OpenSettings() {

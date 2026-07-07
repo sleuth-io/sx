@@ -13,9 +13,11 @@ import (
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/logger"
+	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/utils"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -161,26 +163,28 @@ func (a *App) SetPluginDecision(id string, enabled bool) error {
 	}
 	// Fire-and-forget: on a git vault the audit append is a full
 	// pull+commit+push, and a per-user preference toggle must not block
-	// the UI on network I/O. The decision file above is the durable state.
-	go a.auditPluginDecision(id, enabled)
+	// the UI on network I/O. The decision file above is the durable
+	// state. The event (incl. timestamp) is built NOW so rapid toggles
+	// log in decision order even if the goroutines run out of order.
+	event := mgmt.AuditEvent{
+		Timestamp:  time.Now(),
+		Actor:      strings.TrimSpace(a.GetVaultInfo().Identity),
+		Event:      mgmt.EventPluginEnabled,
+		TargetType: mgmt.TargetTypePlugin, Target: id,
+	}
+	if !enabled {
+		event.Event = mgmt.EventPluginDisabled
+	}
+	go a.appendPluginAudit(event)
 	return nil
 }
 
-func (a *App) auditPluginDecision(id string, enabled bool) {
+func (a *App) appendPluginAudit(event mgmt.AuditEvent) {
 	v, err := a.currentVault()
 	if err != nil {
 		return
 	}
-	event := mgmt.EventPluginEnabled
-	if !enabled {
-		event = mgmt.EventPluginDisabled
-	}
-	err = v.ImportAuditEvents(a.ctx, []mgmt.AuditEvent{{
-		Timestamp: time.Now(),
-		Actor:     strings.TrimSpace(a.GetVaultInfo().Identity),
-		Event:     event, TargetType: mgmt.TargetTypePlugin, Target: id,
-	}})
-	if err != nil {
+	if err := v.ImportAuditEvents(a.ctx, []mgmt.AuditEvent{event}); err != nil {
 		logger.Get().Warn("extension audit append failed", "error", err)
 	}
 }
@@ -446,12 +450,23 @@ func (a *App) importDraftsFrom(dir string) (ImportResult, error) {
 		return res, errors.New("no markdown files or skill folders found in that folder")
 	}
 
+	// Draft ids are slugified names, and same-name creates overwrite —
+	// so two imported items declaring the same name would silently
+	// collapse. Track ids produced by THIS batch and report the second
+	// occurrence as a skip instead of double-counting a clobber.
+	seen := map[string]bool{}
 	for _, c := range candidates {
 		draft, err := a.CreateDraftFromPaths([]string{c})
 		if err != nil {
 			res.Skipped++
 			continue
 		}
+		if seen[draft.ID] {
+			res.Skipped++
+			logger.Get().Warn("import name collision; later item overwrote the draft", "draft", draft.ID)
+			continue
+		}
+		seen[draft.ID] = true
 		res.Created = append(res.Created, draft.Name)
 	}
 	sort.Strings(res.Created)
@@ -469,6 +484,73 @@ func dirHasMarkdown(dir string) bool {
 		}
 	}
 	return false
+}
+
+// VaultPlugin is a vault-installed extension as the frontend consumes it:
+// the plugin.json manifest (runtime source of truth) plus its code.
+type VaultPlugin struct {
+	AssetName string `json:"assetName"`
+	Manifest  string `json:"manifest"` // raw plugin.json
+	Source    string `json:"source"`   // bundled ES module (entry file)
+}
+
+// maxPluginSourceBytes bounds a bundle so a hostile vault entry can't
+// balloon the webview; 5 MB is generous for a bundled extension.
+const maxPluginSourceBytes = 5 << 20
+
+// ListVaultPlugins returns every app-plugin asset in the current vault
+// with its manifest and code, ready for the host's Blob loader. Assets
+// missing plugin.json or their entry file are skipped with a log — a
+// malformed extension must not break the Extensions screen.
+func (a *App) ListVaultPlugins() ([]VaultPlugin, error) {
+	out := []VaultPlugin{}
+	v, err := a.currentVault()
+	if err != nil {
+		return out, nil
+	}
+	res, err := v.ListAssets(a.ctx, vaultpkg.ListAssetsOptions{Type: asset.TypeAppPlugin.Key, Limit: 200})
+	if err != nil {
+		// Backends without the type (skills.new until P5) list nothing.
+		return out, nil
+	}
+	for _, summary := range res.Assets {
+		plugin, err := a.loadVaultPlugin(summary.Name)
+		if err != nil {
+			logger.Get().Warn("skipping malformed extension asset", "asset", summary.Name, "error", err)
+			continue
+		}
+		out = append(out, plugin)
+	}
+	return out, nil
+}
+
+func (a *App) loadVaultPlugin(name string) (VaultPlugin, error) {
+	zipData, err := a.latestAssetZip(name)
+	if err != nil {
+		return VaultPlugin{}, err
+	}
+	manifestBytes, err := utils.ReadZipFile(zipData, "plugin.json")
+	if err != nil {
+		return VaultPlugin{}, errors.New("no plugin.json in the bundle")
+	}
+	entry := "main.js"
+	if metaBytes, err := utils.ReadZipFile(zipData, "metadata.toml"); err == nil {
+		if meta, err := metadata.Parse(metaBytes); err == nil && meta.AppPlugin != nil && meta.AppPlugin.Entry != "" {
+			entry = meta.AppPlugin.Entry
+		}
+	}
+	source, err := utils.ReadZipFile(zipData, entry)
+	if err != nil {
+		return VaultPlugin{}, fmt.Errorf("entry file %s missing from the bundle", entry)
+	}
+	if len(source) > maxPluginSourceBytes {
+		return VaultPlugin{}, fmt.Errorf("bundle exceeds %d bytes", maxPluginSourceBytes)
+	}
+	return VaultPlugin{
+		AssetName: name,
+		Manifest:  string(manifestBytes),
+		Source:    string(source),
+	}, nil
 }
 
 // usageCutoff caps history reads at a year so an extension can't force an

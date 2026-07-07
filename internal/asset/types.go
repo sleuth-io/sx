@@ -46,6 +46,15 @@ var (
 		Label:       "Rule",
 		Description: "Shared AI coding rule",
 	}
+	// TypeAppPlugin extends the sx DESKTOP APP itself ("extension" in UI
+	// copy — docs/app-plugins-spec.md). Never installed into AI coding
+	// clients: no client declares support for it, and the app hides it
+	// from asset views (it surfaces only in the Extensions screen).
+	TypeAppPlugin = Type{
+		Key:         "app-plugin",
+		Label:       "Extension",
+		Description: "sx desktop app extension",
+	}
 )
 
 // IsValid checks if the asset type is valid
@@ -56,7 +65,8 @@ func (t Type) IsValid() bool {
 		t.Key == TypeCommand.Key ||
 		t.Key == TypeHook.Key ||
 		t.Key == TypeClaudeCodePlugin.Key ||
-		t.Key == TypeRule.Key
+		t.Key == TypeRule.Key ||
+		t.Key == TypeAppPlugin.Key
 }
 
 // String returns the string representation (key) of the asset type
@@ -81,6 +91,8 @@ func FromString(key string) Type {
 		return TypeClaudeCodePlugin
 	case "rule":
 		return TypeRule
+	case "app-plugin":
+		return TypeAppPlugin
 	default:
 		return Type{Key: key} // Unknown type
 	}
@@ -107,7 +119,22 @@ func AllTypes() []Type {
 		TypeHook,
 		TypeClaudeCodePlugin,
 		TypeRule,
+		TypeAppPlugin,
 	}
+}
+
+// ClientTypes returns the types AI coding clients can carry — AllTypes
+// minus app-plugin, which extends the sx desktop app itself and never
+// installs into an AI tool (docs/app-plugins-spec.md).
+func ClientTypes() []Type {
+	out := make([]Type, 0, len(AllTypes()))
+	for _, t := range AllTypes() {
+		if t.Key == TypeAppPlugin.Key {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
 }
 
 // Asset represents a simple asset with just name, version, and type

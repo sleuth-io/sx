@@ -403,7 +403,10 @@ export default function Library({
       .then((v) => {
         if (gen !== loadGen.current) return;
         loadedOnce.current = true;
-        setAssets(v);
+        // App extensions ride the asset pipeline but are NOT AI assets:
+        // they surface only in the Extensions screen, never in the
+        // library views (docs/app-plugins-spec.md, strict UI separation).
+        setAssets((v ?? []).filter((a) => a.type !== "app-plugin"));
       })
       .catch((e) => {
         if (gen !== loadGen.current) return;

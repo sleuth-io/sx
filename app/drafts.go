@@ -431,6 +431,43 @@ func (a *App) assembleDraft(name string, files []AssetFile) (Draft, error) {
 	return draft, a.saveDraft(draft)
 }
 
+// CreateDraftFromFiles creates a draft from in-memory files — the
+// extension API's drafts.create path. The id derives from the name and
+// is uniquified against existing drafts, so repeated creates (multiple
+// quick-captures, the same template twice) never clobber each other.
+func (a *App) CreateDraftFromFiles(name string, files []AssetFile) (Draft, error) {
+	draftsMu.Lock()
+	defer draftsMu.Unlock()
+	if len(files) == 0 {
+		return Draft{}, errors.New("a draft needs at least one file")
+	}
+	base := slugify(name)
+	if base == "" {
+		base = "extension-draft"
+	}
+	id := base
+	for i := 2; ; i++ {
+		if _, err := a.loadDraft(id); err != nil {
+			break // free slot
+		}
+		id = fmt.Sprintf("%s-%d", base, i)
+	}
+	t := asset.TypeSkill
+	if zipData, err := zipFromFiles(files); err == nil {
+		if _, detected, _, derr := publish.DetectNameAndType(zipData, id); derr == nil && detected.Key != "" {
+			t = detected
+		}
+	}
+	draft := Draft{
+		ID:        id,
+		Name:      id,
+		Type:      t.Key,
+		TypeLabel: t.Label,
+		Files:     files,
+	}
+	return draft, a.saveDraft(draft)
+}
+
 // saveDraft persists a draft atomically: the new content is staged in a
 // sibling temp directory and swapped in, so a crash or write error never
 // destroys the previous copy. Callers must hold draftsMu.

@@ -258,6 +258,16 @@ Per the v2-spec verification bar — nothing is done because it compiles:
    P1–P3 (built-ins only, so the proxy is a discipline boundary). The
    iframe/realm sandbox question is a **formal P4 entry gate** — it must
    be explicitly re-decided before any third-party plugin can be enabled.
+   *P4 gate decision (2026-07-07, pending Dylan's ratification):*
+   third-party extensions run **main-context behind the proxy** in v1.
+   Rationale: the webview has no Node/filesystem/network (API v1 has no
+   net:fetch), distribution is org-internal and governed (allowlist +
+   consent + audited versioning + pinning), and the realistic threat is
+   a malicious org insider who already has vault write access — commit-
+   access-equivalent trust, stated plainly in the authoring guide. An
+   iframe/realm sandbox remains the planned hardening before any PUBLIC
+   community catalog exists (that catalog is the point where untrusted
+   authors appear).
 4. **skills.new**: not at launch. P4 ships git/path-vault-only; sleuth
    vault support is P5 (its own Pulse PR + release), so all vault types
    converge without coupling the app timeline to a server deploy.

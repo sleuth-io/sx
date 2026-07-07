@@ -7,9 +7,8 @@ import {
   GetAsset,
   ListAssets,
   ListCollections,
-  CreateBlankDraft,
+  CreateDraftFromFiles,
   ImportDraftsFromFolder,
-  UpdateDraft,
   PluginLoadData,
   PluginSaveData,
   PluginUsageEvents,
@@ -183,14 +182,11 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
     drafts: {
       async create(draft) {
         need("drafts:write");
-        const blank = await CreateBlankDraft("skill");
-        blank.name = draft.name;
-        blank.files = draft.files.map((f) => ({
-          path: f.path,
-          content: f.content,
-        }));
-        const updated = await UpdateDraft(blank);
-        return { id: updated.id };
+        const created = await CreateDraftFromFiles(
+          draft.name,
+          draft.files.map((f) => ({ path: f.path, content: f.content })),
+        );
+        return { id: created.id };
       },
       async importFromFolder() {
         need("drafts:write");

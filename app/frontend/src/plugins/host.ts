@@ -91,6 +91,63 @@ export function registerBuiltIn(
   notify();
 }
 
+const KNOWN_PERMISSIONS = new Set([
+  "assets:read",
+  "usage:read",
+  "drafts:write",
+  "views:sidebar",
+  "views:asset-tab",
+  "views:dashboard",
+  "commands",
+  "events",
+]);
+
+/** Parse and validate a vault extension's plugin.json. Throws with a
+ * user-readable reason; unknown permissions are rejected outright (the
+ * proxy would block them anyway, but a wrong manifest should fail loudly
+ * at registration, not confusingly at call time). */
+export function parseVaultManifest(raw: string): PluginManifest {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("plugin.json is not valid JSON");
+  }
+  const m = parsed as Partial<PluginManifest>;
+  if (!m.id || !/^[a-z][a-z0-9-]{1,63}$/.test(m.id)) {
+    throw new Error("plugin.json id must be lowercase letters/digits/hyphens");
+  }
+  if (m.id.includes("sx")) {
+    throw new Error('plugin.json id may not contain "sx"');
+  }
+  if (!m.name || !m.version) {
+    throw new Error("plugin.json needs name and version");
+  }
+  if (!Array.isArray(m.permissions)) {
+    throw new Error("plugin.json needs a permissions array (may be empty)");
+  }
+  for (const p of m.permissions) {
+    if (!KNOWN_PERMISSIONS.has(p)) {
+      throw new Error(`plugin.json declares unknown permission "${p}"`);
+    }
+  }
+  return m as PluginManifest;
+}
+
+/** Register a vault-installed extension: code arrives as source text and
+ * loads through the Blob importer. Defaults OFF; enabling requires
+ * consent and passes the org policy gate like everything else. */
+export function registerVaultPlugin(manifest: PluginManifest, source: string): void {
+  if (plugins.has(manifest.id)) return; // built-ins and earlier wins
+  plugins.set(manifest.id, {
+    manifest,
+    builtIn: false,
+    make: () => importFromSource(source),
+    enabled: false,
+  });
+  notify();
+}
+
 /** Load an extension's code from source text — the vault-installed path.
  * Blob-URL dynamic import: the only code source is the vault; no eval,
  * no remote scripts. (Verified on WKWebView dev+production 2026-07-07.) */

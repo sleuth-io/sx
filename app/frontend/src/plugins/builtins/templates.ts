@@ -125,9 +125,17 @@ export default class Templates implements SxPlugin {
           sx.ui.notice("Clipboard is empty");
           return;
         }
-        const body = `---\nname: captured-prompt\ndescription: \n---\n\n${text}\n`;
+        // Unique per capture: same-name drafts overwrite, and capturing
+        // several snippets in a row is this feature's whole premise.
+        const stamp = new Date()
+          .toISOString()
+          .slice(5, 19)
+          .replace(/[-:]/g, "")
+          .replace("T", "-");
+        const name = `captured-${stamp}`;
+        const body = `---\nname: ${name}\ndescription: \n---\n\n${text}\n`;
         const draft = await sx.drafts.create({
-          name: "captured-prompt",
+          name,
           files: [{ path: "SKILL.md", content: body }],
         });
         sx.ui.notice(`Captured to draft ${draft.id} — add a description before publishing`);
