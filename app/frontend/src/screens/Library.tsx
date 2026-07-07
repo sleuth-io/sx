@@ -486,6 +486,7 @@ export default function Library({
       confirm: confirmAction,
       refresh: () => loadRef.current(),
       openAsset: setSelected,
+      openView: (key) => setScope({ kind: "plugin-view", name: key }),
     });
     void bootExtensions();
     // eslint-disable-next-line react-hooks/exhaustive-deps

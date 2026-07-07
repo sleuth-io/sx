@@ -72,8 +72,7 @@ export async function recordConsent(manifest: PluginManifest): Promise<void> {
   consents[manifest.id] = [...manifest.permissions];
 }
 
-/** Plain-language permission descriptions for the consent sheet. */
-export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
+const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   "assets:read": "Read your library's skills, collections, and files",
   "usage:read": "Read your library's usage and change history",
   "drafts:write": "Create and edit drafts (never publishes on its own)",
@@ -86,7 +85,18 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "views:main": "Add full-page views to the sidebar",
   "assets:write-metadata":
     "Update asset descriptions, keywords, owner, and status (as new revisions)",
+  secrets: "Store its own API keys and tokens in your OS keychain",
 };
+
+/** Plain-language permission description for the consent sheet. The
+ * net:<host> family is described per host — the consent line IS the
+ * egress disclosure, so it must name where data can go. */
+export function describePermission(p: Permission): string {
+  if (p.startsWith("net:")) {
+    return `Connect to ${p.slice(4)} over the internet`;
+  }
+  return PERMISSION_DESCRIPTIONS[p] ?? p;
+}
 
 /** Test/dev helper. */
 export function resetPolicy(): void {

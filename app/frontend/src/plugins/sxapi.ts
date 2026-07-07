@@ -16,6 +16,8 @@ import {
   ImportDraftsFromFolder,
   PluginLoadData,
   PluginSaveData,
+  PluginSecretGet,
+  PluginSecretSet,
   PluginUsageEvents,
   PluginAuditEvents,
   PluginUserStats,
@@ -47,6 +49,8 @@ interface UIHandlers {
   refresh(): void;
   /** Open the named asset's detail panel. */
   openAsset(name: string): void;
+  /** Navigate to a plugin main view by its "pluginId:viewId" key. */
+  openView(key: string): void;
 }
 
 let ui: UIHandlers = {
@@ -54,6 +58,7 @@ let ui: UIHandlers = {
   confirm: async () => false,
   refresh: () => {},
   openAsset: () => {},
+  openView: () => {},
 };
 
 export function setPluginUIHandlers(handlers: UIHandlers): void {
@@ -170,6 +175,12 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
       notice: (message) => ui.notice(message),
       confirm: (message, action) => ui.confirm(message, action),
       openAsset: (name) => ui.openAsset(name),
+      openView: (viewId) => {
+        // Namespaced by the caller's id: an extension can open only its
+        // OWN main views, never navigate the user into someone else's.
+        need("views:main");
+        ui.openView(id + ":" + viewId);
+      },
     },
 
     storage: {
@@ -264,6 +275,46 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
           name: t.name,
           members: t.members ?? [],
         }));
+      },
+    },
+
+    secrets: {
+      async get(name: string) {
+        need("secrets");
+        return (await PluginSecretGet(id, name)) ?? "";
+      },
+      async set(name: string, value: string) {
+        need("secrets");
+        await PluginSecretSet(id, name, value);
+      },
+    },
+
+    net: {
+      async fetch(url: string, init?: RequestInit) {
+        let host: string;
+        let protocol: string;
+        try {
+          const u = new URL(url);
+          host = u.hostname;
+          protocol = u.protocol;
+        } catch {
+          throw new Error(`sx.net.fetch: invalid URL ${JSON.stringify(url)}`);
+        }
+        if (protocol !== "https:") {
+          throw new Error("sx.net.fetch is https-only");
+        }
+        // The permission IS the allowlist: exact host match, no
+        // subdomain wildcards, checked per call.
+        const grant = ("net:" + host) as Permission;
+        if (!granted.has(grant)) {
+          throw new Error(
+            `extension ${id} fetched ${host} without declaring "net:${host}" in plugin.json`,
+          );
+        }
+        // Redirects are refused outright: following one would re-send
+        // the request — custom headers (API keys) included — to a host
+        // the user never consented to.
+        return fetch(url, { ...init, redirect: "error" });
       },
     },
 

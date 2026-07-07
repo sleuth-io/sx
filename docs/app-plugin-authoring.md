@@ -75,6 +75,7 @@ event handlers.
 | Needs permission | Surface |
 |---|---|
 | — | `sx.ui.notice(msg)`, `sx.ui.confirm(msg, action)`, `sx.ui.openAsset(name)` (API 1.1.0 — opens an asset's detail panel, for making result rows navigable), `sx.storage.loadData()/saveData(data)`, `sx.app.version`, `sx.api.version` |
+| `views:main` (also) | `sx.ui.openView(viewId)` (API 1.4.0) — navigate to one of **your own** registered main views, e.g. from a command. |
 | `assets:read` | `sx.assets.list()`, `sx.assets.listCollections()`, `sx.assets.readFiles(name)` |
 | `usage:read` | `sx.usage.events(days)`, `sx.usage.auditEvents(days)`, `sx.usage.userStats(days)`, `sx.teams.list()` (names + membership, API 1.2.0) |
 | `drafts:write` | `sx.drafts.create({name, files})`, `sx.drafts.list()` (API 1.3.0), `sx.drafts.updateFiles(id, files)` (1.3.0), `sx.drafts.importFromFolder()` — drafts only, never publishes |
@@ -83,6 +84,8 @@ event handlers.
 | `editor` | `sx.editor.getValue()`, `getCursor()`, `getSelection()` → `{text, from, to}`, `replaceSelection(text)`, `replaceRange(from, to, text)` — operates on the draft the user has open (API 1.2.0). Positions are character offsets. Every call throws when no editor is open; pair editor commands with `context: "editor"`. Edits flow through the draft exactly like typing. |
 | `assets:write-metadata` | `sx.writeAssetMetadata(name, {description?, keywords?, owner?, status?})` (API 1.3.0) — publishes a new revision with unchanged content and updated descriptive metadata. Never content, type, scoping, or installs; refuses app-plugin assets. |
 | `events` | `sx.on("draft-saved" \| "asset-published" \| "asset-installed" \| "vault-synced", handler)` and `sx.onBeforePublish(ctx => warnings)` — returned warnings render in the publish sheet |
+| `secrets` | `sx.secrets.get(name)` / `set(name, value)` (API 1.4.0) — named secrets in the **OS keychain** (macOS Keychain, Windows Credential Manager, Secret Service on Linux; 0600-file fallback on headless machines), scoped to your extension and the active profile. For API keys and tokens — they never land in `storage` data files or the vault. Setting `""` deletes. Names: lowercase, `[a-z][a-z0-9._-]*`. |
+| `net:<host>` | `sx.net.fetch(url, init?)` (API 1.4.0) — your only network egress. Https-only; the URL's host must **exactly** equal a declared `net:<host>` grant (one permission per host, no wildcards, no ports/paths in the grant). Redirects are refused (they would re-send your headers to an undeclared host). Returns the real `Response`, so streaming bodies (SSE) work. The consent sheet names each host, so declare the minimum. |
 
 The API is versioned (`sx.api.version`) and changes additively only.
 Type definitions live at `app/frontend/src/plugins/api.ts` in the sx
@@ -139,7 +142,9 @@ Settings → Extensions → Browse marketplace.
 ## Trust model (read before publishing broadly)
 
 Extensions run in the app's webview behind the permission-gated API —
-there is no Node, no filesystem, and no network access in API v1. The
+there is no Node, no filesystem, and no network access beyond
+`sx.net.fetch` to hosts the extension declared (and the user saw at
+consent). The
 permission proxy is an integrity boundary, not a hardened sandbox:
 publishing an extension to a vault is trusted-code distribution within
 your org, governed by the `[app-plugins]` allowlist

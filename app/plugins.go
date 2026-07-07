@@ -44,7 +44,19 @@ var knownPluginPermissions = map[string]bool{
 	"assets:read": true, "usage:read": true, "drafts:write": true,
 	"views:sidebar": true, "views:asset-tab": true, "views:dashboard": true,
 	"commands": true, "events": true, "editor": true,
-	"views:main": true, "assets:write-metadata": true,
+	"views:main": true, "assets:write-metadata": true, "secrets": true,
+}
+
+// netPermissionPattern matches the host-scoped network permission
+// family ("net:api.anthropic.com"): a lowercase hostname, no scheme, no
+// port, no path — sx.net.fetch is https-only and the host is the whole
+// grant.
+var netPermissionPattern = regexp.MustCompile(`^net:[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$`)
+
+// isKnownPluginPermission accepts the fixed permission set plus the
+// parameterized net:<host> family.
+func isKnownPluginPermission(p string) bool {
+	return knownPluginPermissions[p] || netPermissionPattern.MatchString(p)
 }
 
 func validatePluginID(id string) error {
@@ -571,7 +583,7 @@ func (a *App) addExtensionFrom(dir string) (string, error) {
 		return "", errors.New("plugin.json needs a permissions array (may be empty)")
 	}
 	for _, perm := range pm.Permissions {
-		if !knownPluginPermissions[perm] {
+		if !isKnownPluginPermission(perm) {
 			return "", fmt.Errorf("plugin.json declares unknown permission %q", perm)
 		}
 	}

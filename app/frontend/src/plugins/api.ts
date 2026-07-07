@@ -3,9 +3,11 @@
 // extension needs something this file doesn't offer, the answer is an API
 // addition, never an escape hatch to app internals.
 
-export const SX_API_VERSION = "1.3.0";
+export const SX_API_VERSION = "1.4.0";
 
-/** Capabilities an extension may declare. Undeclared calls throw. */
+/** Capabilities an extension may declare. Undeclared calls throw.
+ * `net:<host>` is a parameterized family (API 1.4.0): each declared
+ * host is its own grant, and sx.net.fetch refuses every other host. */
 export type Permission =
   | "assets:read"
   | "usage:read"
@@ -17,7 +19,9 @@ export type Permission =
   | "commands"
   | "events"
   | "editor"
-  | "assets:write-metadata";
+  | "assets:write-metadata"
+  | "secrets"
+  | `net:${string}`;
 
 /** plugin.json — the extension manifest. */
 export interface PluginManifest {
@@ -171,6 +175,10 @@ export interface SxAPI {
      * (search results, related assets) make rows navigable. Added in
      * API 1.1.0. */
     openAsset(name: string): void;
+    /** Navigate to one of THIS extension's registered main views (API
+     * 1.4.0) — how a command routes the user into the extension's
+     * full-page surface. Requires views:main. */
+    openView(viewId: string): void;
   };
 
   /** Always available; per plugin, per profile, stored app-side. */
@@ -211,6 +219,24 @@ export interface SxAPI {
    * grouping — team management stays core. */
   readonly teams: {
     list(): Promise<{ name: string; members: string[] }[]>;
+  };
+
+  /** Requires secrets (API 1.4.0). Named secrets in the OS keychain,
+   * scoped to this extension and profile — for API keys and tokens
+   * that must never land in plugin data files or the vault. */
+  readonly secrets: {
+    /** Resolves to "" when the secret is unset. */
+    get(name: string): Promise<string>;
+    /** Setting "" deletes the secret. */
+    set(name: string, value: string): Promise<void>;
+  };
+
+  /** Requires a matching net:<host> permission (API 1.4.0). The ONLY
+   * network egress an extension has: https-only, and the URL's host
+   * must equal a declared net:<host> grant exactly. Returns the real
+   * Response, so streaming bodies (SSE) work. */
+  readonly net: {
+    fetch(url: string, init?: RequestInit): Promise<Response>;
   };
 
   /** Requires editor (API 1.2.0). Operates on the draft the user has

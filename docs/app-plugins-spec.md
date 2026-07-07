@@ -194,6 +194,31 @@ confirm).
   does it (per-revision markdown cache, AND semantics, heading-weighted,
   excerpt highlighting in result rows).
 
+### API 1.4.0 additions (wave-2, Claude Assist)
+
+- `secrets` permission + `sx.secrets.get(name)/set(name, value)`: named
+  per-extension secrets in the **OS keyring** (macOS Keychain, Windows
+  Credential Manager, Secret Service on Linux), keyed
+  `<profile>/<extension-id>/<name>` so profiles and extensions never
+  share entries. Headless machines without a keyring fall back to a
+  0600 file in the plugin data dir (same trade-off as `sx cloud`'s
+  relay token). Setting `""` deletes; a healthy keyring is never
+  shadowed by a stale fallback copy. Secrets exist so API keys never
+  land in `storage.saveData` files, which are plain JSON on disk.
+- `net:<host>` permission family + `sx.net.fetch(url, init?)`: the only
+  network egress extensions have. Each declared host is its own grant
+  (exact hostname match — no wildcards, schemes, ports, or paths in the
+  grant); the consent sheet renders one line per host ("Connect to
+  api.anthropic.com over the internet"), so the user sees exactly where
+  data can go. Https-only. Redirects are refused rather than followed:
+  a redirect re-sends request headers (API keys) to a host the user
+  never consented to. Returns the real `Response`, so streaming (SSE)
+  works. Both validators (Go publish gate, host load gate) accept the
+  family via the same pattern.
+- `sx.ui.openView(viewId)` under `views:main`: navigate to one of the
+  calling extension's OWN main views (key-namespaced by extension id) —
+  how a palette command routes into a full-page surface.
+
 ### API 1.3.0 additions (wave-2, grid & board)
 
 - `views:main` permission + `registerMainView` — full-page views listed
@@ -353,8 +378,10 @@ Per the v2-spec verification bar — nothing is done because it compiles:
    be explicitly re-decided before any third-party plugin can be enabled.
    *P4 gate decision (2026-07-07, pending Dylan's ratification):*
    third-party extensions run **main-context behind the proxy** in v1.
-   Rationale: the webview has no Node/filesystem/network (API v1 has no
-   net:fetch), distribution is org-internal and governed (allowlist +
+   Rationale: the webview has no Node/filesystem, network egress exists
+   only through `sx.net.fetch` to hosts declared per extension and shown
+   at consent (API 1.4.0; nothing before that had any network at all),
+   distribution is org-internal and governed (allowlist +
    consent + audited versioning + pinning), and the realistic threat is
    a malicious org insider who already has vault write access — commit-
    access-equivalent trust, stated plainly in the authoring guide. An

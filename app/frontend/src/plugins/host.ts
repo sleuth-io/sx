@@ -103,7 +103,16 @@ const KNOWN_PERMISSIONS = new Set([
   "events",
   "editor",
   "assets:write-metadata",
+  "secrets",
 ]);
+
+// net:<host> is a parameterized permission family; the host is a bare
+// lowercase hostname (no scheme, port, or path). Mirrors plugins.go.
+const NET_PERMISSION = /^net:[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/;
+
+export function isKnownPermission(p: string): boolean {
+  return KNOWN_PERMISSIONS.has(p) || NET_PERMISSION.test(p);
+}
 
 /** Parse and validate a vault extension's plugin.json. Throws with a
  * user-readable reason; unknown permissions are rejected outright (the
@@ -130,7 +139,7 @@ export function parseVaultManifest(raw: string): PluginManifest {
     throw new Error("plugin.json needs a permissions array (may be empty)");
   }
   for (const p of m.permissions) {
-    if (!KNOWN_PERMISSIONS.has(p)) {
+    if (!isKnownPermission(p)) {
       throw new Error(`plugin.json declares unknown permission "${p}"`);
     }
   }

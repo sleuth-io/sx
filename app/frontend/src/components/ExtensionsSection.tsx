@@ -26,8 +26,8 @@ import {
 } from "../plugins/updates";
 import {
   currentPolicy,
+  describePermission,
   hasConsent,
-  PERMISSION_DESCRIPTIONS,
   policyBlocks,
   recordConsent,
 } from "../plugins/policy";
@@ -414,7 +414,7 @@ export default function ExtensionsSection() {
               {consentFor.permissions.map((perm) => (
                 <li key={perm} className="flex gap-2 text-sm">
                   <span className="text-accent">•</span>
-                  {PERMISSION_DESCRIPTIONS[perm] ?? perm}
+                  {describePermission(perm)}
                 </li>
               ))}
             </ul>

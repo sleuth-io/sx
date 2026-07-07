@@ -234,6 +234,14 @@ export function PluginSaveData(arg1, arg2) {
   return window['go']['main']['App']['PluginSaveData'](arg1, arg2);
 }
 
+export function PluginSecretGet(arg1, arg2) {
+  return window['go']['main']['App']['PluginSecretGet'](arg1, arg2);
+}
+
+export function PluginSecretSet(arg1, arg2, arg3) {
+  return window['go']['main']['App']['PluginSecretSet'](arg1, arg2, arg3);
+}
+
 export function PluginTeams() {
   return window['go']['main']['App']['PluginTeams']();
 }
