@@ -83,6 +83,9 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   commands: "Add commands to the command palette",
   events: "React to library activity (saves, publishes, installs, syncs)",
   editor: "Read and edit the draft you have open in the editor",
+  "views:main": "Add full-page views to the sidebar",
+  "assets:write-metadata":
+    "Update asset descriptions, keywords, owner, and status (as new revisions)",
 };
 
 /** Test/dev helper. */

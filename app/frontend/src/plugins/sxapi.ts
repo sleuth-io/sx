@@ -5,7 +5,11 @@
 
 import {
   GetAsset,
+  GetDraft,
+  ListDrafts,
   PluginTeams,
+  PluginWriteMetadata,
+  UpdateDraft,
   ListAssets,
   ListCollections,
   CreateDraftFromFiles,
@@ -20,6 +24,7 @@ import type {
   AssetTabSpec,
   CommandSpec,
   DashboardWidgetSpec,
+  MainViewSpec,
   Permission,
   PluginManifest,
   SidebarPanelSpec,
@@ -240,6 +245,17 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
       },
     },
 
+    async writeAssetMetadata(name, patch) {
+      need("assets:write-metadata");
+      await PluginWriteMetadata(name, {
+        description: patch.description ?? null,
+        keywords: patch.keywords ?? null,
+        owner: patch.owner ?? null,
+        status: patch.status ?? null,
+      } as never);
+      ui.refresh();
+    },
+
     teams: {
       async list() {
         need("usage:read");
@@ -290,6 +306,23 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
         ui.refresh();
         return { id: created.id };
       },
+      async list() {
+        need("drafts:write");
+        const drafts = await ListDrafts();
+        return (drafts ?? []).map((d) => ({
+          id: d.id,
+          name: d.name,
+          type: d.type,
+          targetAsset: d.targetAsset ?? "",
+        }));
+      },
+      async updateFiles(id: string, files) {
+        need("drafts:write");
+        const draft = await GetDraft(id);
+        draft.files = files.map((f) => ({ path: f.path, content: f.content })) as never;
+        await UpdateDraft(draft);
+        ui.refresh();
+      },
       async importFromFolder() {
         need("drafts:write");
         const res = await ImportDraftsFromFolder();
@@ -309,6 +342,10 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
     registerDashboardWidget(spec: DashboardWidgetSpec) {
       need("views:dashboard");
       registerSlotEntry("dashboard-widget", id, spec);
+    },
+    registerMainView(spec: MainViewSpec) {
+      need("views:main");
+      registerSlotEntry("main-view", id, spec);
     },
     registerCommand(spec: CommandSpec) {
       need("commands");

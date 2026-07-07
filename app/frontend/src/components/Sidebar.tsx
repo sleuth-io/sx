@@ -8,11 +8,13 @@ export type Scope =
   | { kind: "installed" }
   | { kind: "drafts" }
   | { kind: "dashboard" }
+  | { kind: "plugin-view"; name: string }
   | { kind: "collection"; name: string }
   | { kind: "team"; name: string }
   | { kind: "repo"; name: string };
 
 function scopeKey(s: Scope): string {
+  if (s.kind === "plugin-view") return "plugin-view:" + s.name;
   if (s.kind === "collection") return "collection:" + s.name;
   if (s.kind === "team") return "team:" + s.name;
   if (s.kind === "repo") return "repo:" + s.name;
@@ -100,6 +102,7 @@ export default function Sidebar({
   const active = scopeKey(scope);
   const sidebarPanels = useSlot("sidebar-panel");
   const dashboardWidgets = useSlot("dashboard-widget").length;
+  const mainViews = useSlot("main-view");
   // Collapsed by default; remembering the choice per machine.
   const [toolsOpen, setToolsOpen] = useState(
     () => localStorage.getItem("sx-tools-open") === "1",
@@ -190,6 +193,20 @@ export default function Sidebar({
             onClick={() => onScope({ kind: "dashboard" })}
           />
         )}
+        {/* Extension-contributed full-page views (views:main). */}
+        {mainViews.map((v) => {
+          const key = v.pluginId + ":" + v.spec.id;
+          return (
+            <Row
+              key={key}
+              label={v.spec.title}
+              count={0}
+              active={active === "plugin-view:" + key}
+              onClick={() => onScope({ kind: "plugin-view", name: key })}
+            />
+          );
+        })}
+
         <div className="mt-4 flex items-center justify-between pr-1">
           <SectionLabel>COLLECTIONS</SectionLabel>
           <button

@@ -246,6 +246,10 @@ export function PluginUserStats(arg1) {
   return window['go']['main']['App']['PluginUserStats'](arg1);
 }
 
+export function PluginWriteMetadata(arg1, arg2) {
+  return window['go']['main']['App']['PluginWriteMetadata'](arg1, arg2);
+}
+
 export function PublishDraft(arg1) {
   return window['go']['main']['App']['PublishDraft'](arg1);
 }

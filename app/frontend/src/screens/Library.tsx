@@ -48,6 +48,7 @@ import ShareModal from "../components/ShareModal";
 import Sidebar, { repoLabel, Scope } from "../components/Sidebar";
 import CommandPalette from "../components/CommandPalette";
 import Dashboard from "../components/Dashboard";
+import PluginMount from "../components/PluginMount";
 import { bootExtensions, syncVaultExtensions } from "../plugins/boot";
 import { useSlot } from "../plugins/registry";
 import { emitEvent } from "../plugins/events";
@@ -500,6 +501,7 @@ export default function Library({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const pluginCommands = useSlot("command");
+  const mainViews = useSlot("main-view");
   const newMenuCommands = useMemo(
     () => pluginCommands.map((e) => e.spec).filter((c) => c.menu === "new"),
     [pluginCommands],
@@ -1054,6 +1056,11 @@ export default function Library({
         return "Skills";
       case "dashboard":
         return "Dashboard";
+      case "plugin-view":
+        return (
+          mainViews.find((v) => v.pluginId + ":" + v.spec.id === scope.name)
+            ?.spec.title ?? "View"
+        );
       case "installed":
         return "In your AI tools";
       case "drafts":
@@ -1568,6 +1575,23 @@ export default function Library({
 
           {scope.kind === "dashboard" ? (
             <Dashboard />
+          ) : scope.kind === "plugin-view" ? (
+            (() => {
+              const entry = mainViews.find(
+                (v) => v.pluginId + ":" + v.spec.id === scope.name,
+              );
+              return entry ? (
+                <div className="h-full overflow-y-auto p-5">
+                  <PluginMount
+                    key={scope.name}
+                    pluginId={entry.pluginId}
+                    mount={entry.spec.mount}
+                  />
+                </div>
+              ) : (
+                <EmptyState scope={scope} hasAssets={true} />
+              );
+            })()
           ) : assets === null ? (
             <ListSkeleton />
           ) : nothingToShow ? (

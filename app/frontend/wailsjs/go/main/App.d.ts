@@ -124,6 +124,8 @@ export function PluginUsageEvents(arg1:number):Promise<Array<main.PluginUsageEve
 
 export function PluginUserStats(arg1:number):Promise<main.PluginUserStatsResult>;
 
+export function PluginWriteMetadata(arg1:string,arg2:main.PluginMetadataPatch):Promise<void>;
+
 export function PublishDraft(arg1:string):Promise<main.AssetCard>;
 
 export function Quit():Promise<void>;

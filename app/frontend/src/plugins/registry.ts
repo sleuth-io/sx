@@ -8,6 +8,7 @@ import type {
   AssetTabSpec,
   CommandSpec,
   DashboardWidgetSpec,
+  MainViewSpec,
   SidebarPanelSpec,
 } from "./api";
 
@@ -15,12 +16,14 @@ export type SlotKind =
   | "sidebar-panel"
   | "asset-tab"
   | "dashboard-widget"
+  | "main-view"
   | "command";
 
 type SpecFor = {
   "sidebar-panel": SidebarPanelSpec;
   "asset-tab": AssetTabSpec;
   "dashboard-widget": DashboardWidgetSpec;
+  "main-view": MainViewSpec;
   command: CommandSpec;
 };
 

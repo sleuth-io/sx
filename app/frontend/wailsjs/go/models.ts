@@ -323,6 +323,24 @@ export namespace main {
 	        this.target = source["target"];
 	    }
 	}
+	export class PluginMetadataPatch {
+	    description?: string;
+	    keywords: string[];
+	    owner?: string;
+	    status?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginMetadataPatch(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.description = source["description"];
+	        this.keywords = source["keywords"];
+	        this.owner = source["owner"];
+	        this.status = source["status"];
+	    }
+	}
 	export class PluginPolicy {
 	    mode: string;
 	    allowed: string[];

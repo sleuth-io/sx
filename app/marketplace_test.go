@@ -226,3 +226,35 @@ func TestPluginTeamsDegrades(t *testing.T) {
 		t.Fatalf("PluginTeams = %+v, %v", teams, err)
 	}
 }
+
+// writeMetadata publishes a metadata-only revision: content unchanged,
+// descriptive fields updated, sharing inherited, app-plugins refused.
+func TestPluginWriteMetadata(t *testing.T) {
+	a := searchTestApp(t)
+	desc := "Rewritten description"
+	owner := "alice"
+	if err := a.PluginWriteMetadata("playwright-guide", PluginMetadataPatch{
+		Description: &desc, Owner: &owner, Keywords: []string{"testing"},
+	}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	v, _ := a.currentVault()
+	versions, _ := v.GetVersionList(a.ctx, "playwright-guide")
+	if len(versions) != 2 {
+		t.Fatalf("versions = %v, want a new revision", versions)
+	}
+	meta, err := v.GetMetadata(a.ctx, "playwright-guide", versions[len(versions)-1])
+	if err != nil || meta.Asset.Description != desc {
+		t.Fatalf("meta = %+v, %v", meta, err)
+	}
+	if meta.Custom["owner"] != "alice" || len(meta.Asset.Keywords) != 1 {
+		t.Fatalf("custom fields not written: %+v", meta)
+	}
+	// No-op patch publishes nothing.
+	if err := a.PluginWriteMetadata("playwright-guide", PluginMetadataPatch{Description: &desc}); err != nil {
+		t.Fatal(err)
+	}
+	if vs, _ := v.GetVersionList(a.ctx, "playwright-guide"); len(vs) != 2 {
+		t.Fatalf("no-op created revision: %v", vs)
+	}
+}

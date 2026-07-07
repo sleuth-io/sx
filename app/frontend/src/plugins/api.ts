@@ -3,7 +3,7 @@
 // extension needs something this file doesn't offer, the answer is an API
 // addition, never an escape hatch to app internals.
 
-export const SX_API_VERSION = "1.2.0";
+export const SX_API_VERSION = "1.3.0";
 
 /** Capabilities an extension may declare. Undeclared calls throw. */
 export type Permission =
@@ -13,9 +13,11 @@ export type Permission =
   | "views:sidebar"
   | "views:asset-tab"
   | "views:dashboard"
+  | "views:main"
   | "commands"
   | "events"
-  | "editor";
+  | "editor"
+  | "assets:write-metadata";
 
 /** plugin.json — the extension manifest. */
 export interface PluginManifest {
@@ -109,6 +111,12 @@ export interface AssetTabSpec {
   mount(view: ViewMount, ctx: { assetName: string }): void;
 }
 
+export interface MainViewSpec {
+  id: string;
+  title: string;
+  mount(view: ViewMount): void;
+}
+
 export interface DashboardWidgetSpec {
   id: string;
   title: string;
@@ -186,6 +194,19 @@ export interface SxAPI {
     userStats(sinceDays: number): Promise<UserStats>;
   };
 
+  /** Requires assets:write-metadata (API 1.3.0). Publishes a new
+   * revision with unchanged content and updated DESCRIPTIVE metadata —
+   * never content, type, scoping, or installs. */
+  writeAssetMetadata(
+    name: string,
+    patch: {
+      description?: string;
+      keywords?: string[];
+      owner?: string;
+      status?: string;
+    },
+  ): Promise<void>;
+
   /** Requires usage:read (API 1.2.0). Team names and membership for
    * grouping — team management stays core. */
   readonly teams: {
@@ -207,6 +228,12 @@ export interface SxAPI {
   /** Requires drafts:write. Never publishes — that stays a human action. */
   readonly drafts: {
     create(draft: DraftInput): Promise<{ id: string }>;
+    /** API 1.3.0: enumerate open drafts. */
+    list(): Promise<
+      { id: string; name: string; type: string; targetAsset: string }[]
+    >;
+    /** API 1.3.0: replace a draft's files (create-only before). */
+    updateFiles(id: string, files: AssetFileContent[]): Promise<void>;
     /** Native folder picker → one draft per skill folder / markdown file. */
     importFromFolder(): Promise<{ created: string[]; skipped: number }>;
   };
@@ -217,6 +244,9 @@ export interface SxAPI {
   registerAssetTab(spec: AssetTabSpec): void;
   /** Requires views:dashboard. */
   registerDashboardWidget(spec: DashboardWidgetSpec): void;
+  /** Requires views:main (API 1.3.0): a full-page view, listed in the
+   * sidebar's LIBRARY section. */
+  registerMainView(spec: MainViewSpec): void;
   /** Requires commands. */
   registerCommand(spec: CommandSpec): void;
 

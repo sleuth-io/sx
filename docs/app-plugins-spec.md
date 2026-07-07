@@ -89,6 +89,8 @@ Everything registered through `sx.*` is tracked by the host and torn down automa
 | `views:sidebar` | Register a sidebar panel (icon + React-free mount point: plugin gets a DOM element + lifecycle). |
 | `views:asset-tab` | Register a tab in the asset detail pane (receives the asset context). |
 | `views:dashboard` | Register a widget on a (new) dashboard/home surface. |
+| `views:main` | Register a full-page view listed in the sidebar (1.3.0). |
+| `assets:write-metadata` | Publish metadata-only revisions of assets: description, keywords, owner, status (1.3.0). |
 | `commands` | Register commands in the command palette (new core feature, see below) with optional shortcuts. |
 | `editor` | Character-offset text operations on the draft the user has open (`sx.editor`, 1.2.0): read value/cursor/selection, replace selection/range. Throws when no editor is open. |
 | `events` | Subscribe to lifecycle events: `draft-saved`, `before-publish` (may return warnings shown in the publish sheet — the doctor hook), `asset-published`, `asset-installed`, `vault-synced`. |
@@ -191,6 +193,17 @@ confirm).
   box, not a parallel sidebar search — `SearchAssetContent` in core now
   does it (per-revision markdown cache, AND semantics, heading-weighted,
   excerpt highlighting in result rows).
+
+### API 1.3.0 additions (wave-2, grid & board)
+
+- `views:main` permission + `registerMainView` — full-page views listed
+  in the sidebar's LIBRARY section (scope kind `plugin-view`).
+- `drafts.list()` / `drafts.updateFiles(id, files)` under `drafts:write`.
+- `assets:write-metadata` permission + `writeAssetMetadata(name, patch)`:
+  publishes a NEW REVISION with unchanged content and updated
+  descriptive metadata (description, keywords, owner, status → metadata
+  custom fields). Revisions keep versions immutable and audited;
+  sharing is inherited; app-plugin assets are refused.
 
 ### API 1.2.0 additions (wave-2 milestone)
 
