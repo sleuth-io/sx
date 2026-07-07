@@ -54,6 +54,41 @@ export function setPluginUIHandlers(handlers: UIHandlers): void {
   ui = handlers;
 }
 
+// ---- Editor access ----
+// DraftSheet hands the live CodeMirror view in while a draft editor is
+// mounted; extensions reach it only through the permission-gated
+// sx.editor surface. Null means "no editor open" and every op throws.
+
+export interface EditorHandle {
+  getValue(): string;
+  getCursor(): number;
+  getSelection(): { text: string; from: number; to: number };
+  replaceSelection(text: string): void;
+  replaceRange(from: number, to: number, text: string): void;
+}
+
+let editorHandle: EditorHandle | null = null;
+const editorListeners = new Set<() => void>();
+
+export function setPluginEditor(handle: EditorHandle | null): void {
+  editorHandle = handle;
+  for (const cb of editorListeners) cb();
+}
+
+export function subscribeEditor(cb: () => void): () => void {
+  editorListeners.add(cb);
+  return () => editorListeners.delete(cb);
+}
+
+export function editorOpen(): boolean {
+  return editorHandle !== null;
+}
+
+function needEditor(): EditorHandle {
+  if (!editorHandle) throw new Error("no draft editor is open");
+  return editorHandle;
+}
+
 // ---- Mount tracking ----
 // The UI slot components call mountEntry() when rendering an extension's
 // view; the host calls disposePluginMounts() on disable. Elements and
@@ -201,6 +236,33 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
           knownUsers: res.knownUsers ?? [],
           active: res.active ?? [],
         };
+      },
+    },
+
+    editor: {
+      active: () => {
+        need("editor");
+        return editorHandle !== null;
+      },
+      getValue: () => {
+        need("editor");
+        return needEditor().getValue();
+      },
+      getCursor: () => {
+        need("editor");
+        return needEditor().getCursor();
+      },
+      getSelection: () => {
+        need("editor");
+        return needEditor().getSelection();
+      },
+      replaceSelection: (text) => {
+        need("editor");
+        needEditor().replaceSelection(text);
+      },
+      replaceRange: (from, to, text) => {
+        need("editor");
+        needEditor().replaceRange(from, to, text);
       },
     },
 

@@ -100,6 +100,7 @@ const KNOWN_PERMISSIONS = new Set([
   "views:dashboard",
   "commands",
   "events",
+  "editor",
 ]);
 
 /** Parse and validate a vault extension's plugin.json. Throws with a

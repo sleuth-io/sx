@@ -3,7 +3,7 @@
 // extension needs something this file doesn't offer, the answer is an API
 // addition, never an escape hatch to app internals.
 
-export const SX_API_VERSION = "1.1.0";
+export const SX_API_VERSION = "1.2.0";
 
 /** Capabilities an extension may declare. Undeclared calls throw. */
 export type Permission =
@@ -14,7 +14,8 @@ export type Permission =
   | "views:asset-tab"
   | "views:dashboard"
   | "commands"
-  | "events";
+  | "events"
+  | "editor";
 
 /** plugin.json — the extension manifest. */
 export interface PluginManifest {
@@ -121,6 +122,8 @@ export interface CommandSpec {
   /** Optional placement in core menus besides the palette: "new" adds
    * the command to the “+ New” dropdown (creation-shaped actions only). */
   menu?: "new";
+  /** "editor" commands only appear while a draft editor is open. */
+  context?: "editor";
   /** Short hint line shown in menus (not the palette). */
   hint?: string;
 }
@@ -181,6 +184,18 @@ export interface SxAPI {
     auditEvents(sinceDays: number): Promise<AuditEvent[]>;
     /** Per-user adoption: everyone the vault knows plus who used what. */
     userStats(sinceDays: number): Promise<UserStats>;
+  };
+
+  /** Requires editor (API 1.2.0). Operates on the draft the user has
+   * open; every call throws when no editor is open. Positions are
+   * character offsets into the document. */
+  readonly editor: {
+    active(): boolean;
+    getValue(): string;
+    getCursor(): number;
+    getSelection(): { text: string; from: number; to: number };
+    replaceSelection(text: string): void;
+    replaceRange(from: number, to: number, text: string): void;
   };
 
   /** Requires drafts:write. Never publishes — that stays a human action. */

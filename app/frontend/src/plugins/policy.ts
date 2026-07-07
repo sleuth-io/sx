@@ -82,6 +82,7 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "views:dashboard": "Add widgets to the dashboard",
   commands: "Add commands to the command palette",
   events: "React to library activity (saves, publishes, installs, syncs)",
+  editor: "Read and edit the draft you have open in the editor",
 };
 
 /** Test/dev helper. */

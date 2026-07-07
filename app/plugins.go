@@ -43,7 +43,7 @@ func (a *App) AppVersion() string {
 var knownPluginPermissions = map[string]bool{
 	"assets:read": true, "usage:read": true, "drafts:write": true,
 	"views:sidebar": true, "views:asset-tab": true, "views:dashboard": true,
-	"commands": true, "events": true,
+	"commands": true, "events": true, "editor": true,
 }
 
 func validatePluginID(id string) error {

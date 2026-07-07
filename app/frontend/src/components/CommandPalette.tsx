@@ -1,5 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useSlot } from "../plugins/registry";
+import { editorOpen, subscribeEditor } from "../plugins/sxapi";
 import type { CommandSpec } from "../plugins/api";
 
 /**
@@ -20,11 +27,17 @@ export default function CommandPalette({
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const pluginCommands = useSlot("command");
+  const hasEditor = useSyncExternalStore(subscribeEditor, editorOpen);
+  const usableCommands = pluginCommands.filter(
+    (c) => c.spec.context !== "editor" || hasEditor,
+  );
 
   const commands = useMemo(() => {
     const all: (CommandSpec & { ownerKey: string })[] = [
       ...coreCommands.map((c) => ({ ...c, ownerKey: "core:" + c.id })),
-      ...pluginCommands.map((e) => ({
+      // Editor-scoped commands only surface while a draft editor is
+      // open — running them anywhere else can only throw.
+      ...usableCommands.map((e) => ({
         ...e.spec,
         ownerKey: e.pluginId + ":" + e.spec.id,
       })),
@@ -42,7 +55,7 @@ export default function CommandPalette({
       }
       return true;
     });
-  }, [coreCommands, pluginCommands, query]);
+  }, [coreCommands, usableCommands, query]);
 
   useEffect(() => {
     if (open) {

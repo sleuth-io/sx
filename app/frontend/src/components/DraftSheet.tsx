@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DiscardDraft,
   PublishDraft,
@@ -9,6 +9,8 @@ import { collectPublishWarnings, emitEvent } from "../plugins/events";
 import type { PublishWarning } from "../plugins/api";
 import FileRail from "./FileRail";
 import MarkdownEditor from "./MarkdownEditor";
+import { setPluginEditor } from "../plugins/sxapi";
+import type { EditorView } from "@uiw/react-codemirror";
 
 const TYPE_OPTIONS = [
   { key: "skill", label: "Skill" },
@@ -48,6 +50,40 @@ export default function DraftSheet({
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // The live CodeMirror view, exposed to extensions (sx.editor) while
+  // this sheet is open. Edits made through the view flow back into the
+  // draft via updateFileContent, so extension edits behave exactly like
+  // typing. Cleared on unmount so sx.editor throws instead of writing
+  // into a dead view.
+  const viewRef = useRef<EditorView | null>(null);
+  const activeFileRef = useRef(activeFile);
+  activeFileRef.current = activeFile;
+  function registerEditorView(view: EditorView) {
+    viewRef.current = view;
+    setPluginEditor({
+      getValue: () => view.state.doc.toString(),
+      getCursor: () => view.state.selection.main.head,
+      getSelection: () => {
+        const sel = view.state.selection.main;
+        return {
+          text: view.state.sliceDoc(sel.from, sel.to),
+          from: sel.from,
+          to: sel.to,
+        };
+      },
+      replaceSelection: (text: string) => {
+        const sel = view.state.selection.main;
+        view.dispatch({ changes: { from: sel.from, to: sel.to, insert: text } });
+        updateFileContent(activeFileRef.current, view.state.doc.toString());
+      },
+      replaceRange: (from: number, to: number, text: string) => {
+        view.dispatch({ changes: { from, to, insert: text } });
+        updateFileContent(activeFileRef.current, view.state.doc.toString());
+      },
+    });
+  }
+  useEffect(() => () => setPluginEditor(null), []);
+
   function update(patch: Partial<main.Draft>) {
     setDraft((d) => ({ ...d, ...patch }) as main.Draft);
     setDirty(true);
@@ -57,10 +93,17 @@ export default function DraftSheet({
   }
 
   function updateFileContent(index: number, content: string) {
-    const files = draft.files.map((f, i) =>
-      i === index ? { ...f, content } : f,
+    // Functional update: the extension editor handle calls this from a
+    // closure created renders ago, so it must not read `draft` directly.
+    setDraft(
+      (d) =>
+        ({
+          ...d,
+          files: d.files.map((f, i) => (i === index ? { ...f, content } : f)),
+        }) as main.Draft,
     );
-    update({ files });
+    setDirty(true);
+    setWarnings(null);
   }
 
   async function persist(): Promise<main.Draft | null> {
@@ -217,6 +260,7 @@ export default function DraftSheet({
                 value={draft.files[activeFile].content}
                 onChange={(content) => updateFileContent(activeFile, content)}
                 readOnly={busy}
+                onView={registerEditorView}
               />
             )}
           </div>
