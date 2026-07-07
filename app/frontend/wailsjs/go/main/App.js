@@ -274,6 +274,10 @@ export function RestoreRevision(arg1, arg2) {
   return window['go']['main']['App']['RestoreRevision'](arg1, arg2);
 }
 
+export function SearchAssetContent(arg1) {
+  return window['go']['main']['App']['SearchAssetContent'](arg1);
+}
+
 export function SearchMarketplace(arg1) {
   return window['go']['main']['App']['SearchMarketplace'](arg1);
 }

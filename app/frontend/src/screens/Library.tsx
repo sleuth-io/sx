@@ -20,6 +20,7 @@ import {
   RenameCollection,
   RenameTeam,
   RepoAssets,
+  SearchAssetContent,
   SetAssetTeamSharing,
   SetCollectionMembershipBulk,
   SetCollectionTeamSharing,
@@ -115,6 +116,38 @@ export default function Library({
   const [aiClients, setAiClients] = useState<main.AIClient[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  // Content matches from the vault-side full-text search — the main
+  // search box finds text INSIDE assets, not just names/descriptions.
+  const [contentHits, setContentHits] = useState<Map<
+    string,
+    main.ContentMatch
+  > | null>(null);
+  const [contentSearching, setContentSearching] = useState(false);
+  const contentSeq = useRef(0);
+  useEffect(() => {
+    const q = query.trim();
+    const seq = ++contentSeq.current;
+    if (q.length < 3) {
+      setContentHits(null);
+      setContentSearching(false);
+      return;
+    }
+    setContentSearching(true);
+    const timer = setTimeout(() => {
+      SearchAssetContent(q)
+        .then((matches) => {
+          if (seq !== contentSeq.current) return;
+          setContentHits(new Map((matches ?? []).map((m) => [m.name, m])));
+        })
+        .catch(() => {
+          if (seq === contentSeq.current) setContentHits(null);
+        })
+        .finally(() => {
+          if (seq === contentSeq.current) setContentSearching(false);
+        });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [query]);
   const [scope, setScope] = useState<Scope>({ kind: "all" });
   const [view, setView] = useState<ViewMode>(
     () => (localStorage.getItem("sx-view") as ViewMode) || "list",
@@ -946,7 +979,9 @@ export default function Library({
       if (!q) return true;
       return (
         a.name.toLowerCase().includes(q) ||
-        a.description.toLowerCase().includes(q)
+        a.description.toLowerCase().includes(q) ||
+        // Full-text hits inside the asset's markdown count too.
+        (contentHits?.has(a.name) ?? false)
       );
     });
     return list.sort((a, b) => {
@@ -956,6 +991,7 @@ export default function Library({
   }, [
     assets,
     query,
+    contentHits,
     scope,
     installed,
     activeCollection,
@@ -1177,6 +1213,12 @@ export default function Library({
                     /
                   </kbd>
                 )}
+                {contentSearching && (
+                  <span
+                    className="pointer-events-none absolute right-2.5 top-1/2 h-2 w-2 -translate-y-1/2 animate-pulse rounded-full bg-accent"
+                    title="Searching inside assets…"
+                  />
+                )}
               </div>
 
               <select
@@ -1375,18 +1417,30 @@ export default function Library({
                           </span>
                         </button>
                         {newSubOpen && (
-                          <div className="absolute right-full top-0 z-50 mr-1 w-64 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                          <div className="absolute right-full top-0 z-50 mr-1 w-72 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                            {/* Extension titles run long ("Template:
+                                team conventions…"), so these stack the
+                                hint under the title instead of racing
+                                it for one line. */}
                             {newMenuCommands.map((c) => (
-                              <MenuItem
+                              <button
                                 key={c.id}
-                                label={c.title}
-                                hint={c.hint ?? ""}
                                 onClick={() => {
                                   setNewMenuOpen(false);
                                   setNewSubOpen(false);
                                   void c.run();
                                 }}
-                              />
+                                className="block w-full px-3.5 py-2 text-left transition hover:bg-accent-soft"
+                              >
+                                <span className="block truncate text-sm font-medium">
+                                  {c.title}
+                                </span>
+                                {c.hint && (
+                                  <span className="block truncate text-xs text-ink-faint">
+                                    {c.hint}
+                                  </span>
+                                )}
+                              </button>
                             ))}
                           </div>
                         )}
@@ -1545,6 +1599,7 @@ export default function Library({
                   badgeWidth={badgeWidth}
                   installed={installed.has(a.name)}
                   checked={multiSel.has(a.name)}
+                  excerpt={query.trim() ? contentHits?.get(a.name) : undefined}
                   onClick={(e) =>
                     handleRowClick(
                       a.name,
@@ -1633,7 +1688,11 @@ export default function Library({
                     <TypeBadge type={a.type} label={a.typeLabel} />
                   </div>
                   <div className="mt-1.5 line-clamp-2 min-h-10 text-sm text-ink-soft">
-                    {a.description || "No description yet."}
+                    {query.trim() && contentHits?.get(a.name) ? (
+                      <ContentExcerpt m={contentHits.get(a.name)!} />
+                    ) : (
+                      a.description || "No description yet."
+                    )}
                   </div>
                   <div className="mt-3 flex items-center gap-2 text-xs text-ink-faint">
                     {installed.has(a.name) && (
@@ -2181,11 +2240,28 @@ export default function Library({
   );
 }
 
+/** The highlighted context line for a full-text search hit. */
+function ContentExcerpt({ m }: { m: main.ContentMatch }) {
+  return (
+    <>
+      {m.before}
+      <mark className="rounded-sm bg-accent-soft px-0.5 text-accent">
+        {m.match}
+      </mark>
+      {m.after}
+      {m.matches > 1 && (
+        <span className="ml-1.5 text-xs text-ink-faint">×{m.matches}</span>
+      )}
+    </>
+  );
+}
+
 function AssetRow({
   asset,
   installed,
   badgeWidth,
   checked,
+  excerpt,
   onClick,
   onContextMenu,
   onDragHandle,
@@ -2194,6 +2270,7 @@ function AssetRow({
   installed: boolean;
   badgeWidth: string;
   checked: boolean;
+  excerpt?: main.ContentMatch;
   onClick: (e: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onDragHandle: (name: string, e: React.MouseEvent) => void;
@@ -2216,7 +2293,11 @@ function AssetRow({
         {asset.name}
       </span>
       <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">
-        {asset.description || "No description yet."}
+        {excerpt ? (
+          <ContentExcerpt m={excerpt} />
+        ) : (
+          asset.description || "No description yet."
+        )}
       </span>
       {installed && (
         <span

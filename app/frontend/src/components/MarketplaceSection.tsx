@@ -7,7 +7,9 @@ import {
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import { refreshVaultPlugins } from "../plugins/boot";
-import { currentPolicy } from "../plugins/policy";
+import { enablePlugin, listPlugins } from "../plugins/host";
+import { currentPolicy, policyBlocks, recordConsent } from "../plugins/policy";
+import { SetPluginDecision } from "../../wailsjs/go/main/App";
 
 /**
  * The marketplace browser inside Settings → Extensions: search a shared
@@ -78,9 +80,26 @@ export default function MarketplaceSection() {
     try {
       await InstallMarketplaceExtension(entry.assetName);
       await refreshVaultPlugins();
-      setNotice(
-        `${entry.name} added to this library — enable it above when you're ready.`,
-      );
+      // Install means "I want this running": the permission list was on
+      // the card the user just clicked, so that click is the consent —
+      // enable right away instead of parking it disabled. Org policy
+      // still has the final word.
+      const blocked = policyBlocks(entry.id, false);
+      const manifest = listPlugins().find(
+        (p) => p.manifest.id === entry.id,
+      )?.manifest;
+      if (!blocked && manifest) {
+        await recordConsent(manifest);
+        await enablePlugin(entry.id);
+        await SetPluginDecision(entry.id, true);
+        setNotice(`${entry.name} is installed and running.`);
+      } else {
+        setNotice(
+          blocked
+            ? `${entry.name} was added to the library, but ${blocked}`
+            : `${entry.name} added to this library — enable it above when you're ready.`,
+        );
+      }
       setCatalog(
         (prev) =>
           prev?.map((r) =>
@@ -126,7 +145,7 @@ export default function MarketplaceSection() {
       </div>
       <p className="mb-2 text-xs text-ink-faint">
         Extensions shared in a public repository. Installing copies one into
-        this library; it stays off until you enable it.
+        this library and turns it on — each entry lists what it can access.
       </p>
 
       {opened && (

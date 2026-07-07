@@ -167,6 +167,16 @@ export function registerVaultPlugin(manifest: PluginManifest, source: string): v
   notify();
 }
 
+/** Drop a vault extension from the host entirely (its asset was removed
+ * from the library). Tears down first; built-ins can't be removed. */
+export function unregisterVaultPlugin(id: string): void {
+  const p = plugins.get(id);
+  if (!p || p.builtIn) return;
+  disablePlugin(id);
+  plugins.delete(id);
+  notify();
+}
+
 /** Load an extension's code from source text — the vault-installed path.
  * Blob-URL dynamic import: the only code source is the vault; no eval,
  * no remote scripts. (Verified on WKWebView dev+production 2026-07-07.) */

@@ -187,9 +187,11 @@ func marketplaceEntry(a *App, mkt vaultpkg.Vault, name string) (MarketplaceExten
 
 // InstallMarketplaceExtension copies one extension from the marketplace
 // into the current vault: fetch the bundle, unpack it, and push it through
-// the exact same validate-and-publish path as "Add extension…". The
-// extension arrives DISABLED — enabling it still walks the policy check
-// and the consent sheet like any other vault extension.
+// the exact same validate-and-publish path as "Add extension…". The asset
+// lands disabled at this layer; the frontend then enables it for the
+// installing user (the permission list on the marketplace card is the
+// consent) unless org policy blocks it. For everyone ELSE in the library
+// it appears disabled, gated by their own consent.
 func (a *App) InstallMarketplaceExtension(assetName string) (string, error) {
 	if err := validateAssetRef(assetName, ""); err != nil {
 		return "", err

@@ -31,6 +31,10 @@ type App struct {
 	mu    sync.Mutex
 	vault vaultpkg.Vault
 
+	// searchCache holds each asset's concatenated markdown keyed by
+	// name@version, so content search reads the vault once per revision.
+	searchCache sync.Map
+
 	// loginCancel aborts an in-flight skills.new device sign-in poll
 	// (CancelSleuthLogin). loginGen identifies the sign-in attempt that
 	// owns loginCancel, so a superseded attempt's cleanup can't cancel its

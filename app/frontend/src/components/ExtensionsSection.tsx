@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   AddExtensionFromFolder,
+  DeleteAssets,
   SetPluginDecision,
 } from "../../wailsjs/go/main/App";
 import { refreshVaultPlugins } from "../plugins/boot";
@@ -10,6 +11,7 @@ import {
   listPlugins,
   loaderPreflight,
   subscribeHost,
+  unregisterVaultPlugin,
   type LoaderPreflight,
 } from "../plugins/host";
 import {
@@ -33,6 +35,7 @@ export default function ExtensionsSection() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [consentFor, setConsentFor] = useState<PluginManifest | null>(null);
+  const [removeFor, setRemoveFor] = useState<PluginManifest | null>(null);
   const [preflight, setPreflight] = useState<LoaderPreflight | null>(null);
 
   useEffect(() => {
@@ -88,6 +91,27 @@ export default function ExtensionsSection() {
     try {
       await recordConsent(manifest);
       await reallyEnable(manifest);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function reallyRemove() {
+    if (!removeFor) return;
+    const manifest = removeFor;
+    setRemoveFor(null);
+    setBusy(manifest.id);
+    setError("");
+    try {
+      // Disable first (full teardown), then delete the vault asset —
+      // publish forces asset name = plugin id, so the id addresses it.
+      disablePlugin(manifest.id);
+      await SetPluginDecision(manifest.id, false);
+      await DeleteAssets([manifest.id]);
+      unregisterVaultPlugin(manifest.id);
+      await refreshVaultPlugins();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -161,6 +185,17 @@ export default function ExtensionsSection() {
                   <p className="mt-0.5 text-xs text-danger">{p.error}</p>
                 )}
               </div>
+              {!p.builtIn && (
+                <button
+                  onClick={() => setRemoveFor(p.manifest)}
+                  disabled={busy === p.manifest.id}
+                  title={`Remove ${p.manifest.name} from this library`}
+                  aria-label={`Remove ${p.manifest.name}`}
+                  className="shrink-0 rounded-lg px-1.5 py-1 text-xs text-ink-faint transition hover:text-danger disabled:opacity-50"
+                >
+                  Remove…
+                </button>
+              )}
               <button
                 onClick={() => void toggle(p.manifest, !p.enabled)}
                 disabled={busy === p.manifest.id || !!blocked}
@@ -191,6 +226,42 @@ export default function ExtensionsSection() {
       {error && (
         <div className="mt-2 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">
           {error}
+        </div>
+      )}
+
+      {removeFor && (
+        <div
+          data-remove-sheet
+          className="fixed inset-0 z-[95] flex items-center justify-center bg-black/40 p-6"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setRemoveFor(null);
+          }}
+        >
+          <div className="w-[420px] rounded-2xl border border-line bg-surface p-5 shadow-2xl">
+            <h3 className="text-sm font-semibold">
+              Remove {removeFor.name}?
+            </h3>
+            <p className="mt-2 text-xs text-ink-faint">
+              This disables the extension and deletes it from the library —
+              anyone it's shared with loses it too. You can reinstall it from
+              the marketplace or a folder later.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setRemoveFor(null)}
+                className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink-faint transition hover:text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                autoFocus
+                onClick={() => void reallyRemove()}
+                className="rounded-lg bg-danger px-4 py-1.5 text-sm font-medium text-white transition hover:opacity-90"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

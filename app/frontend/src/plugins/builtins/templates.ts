@@ -17,6 +17,7 @@ export const templatesManifest: PluginManifest = {
 interface Template {
   id: string;
   title: string;
+  hint: string;
   name: string;
   body: string;
 }
@@ -24,7 +25,10 @@ interface Template {
 const TEMPLATES: Template[] = [
   {
     id: "template-task-skill",
-    title: "Template: task skill (when-to-use + steps)",
+    // Menu titles must survive a w-72 flyout: keep them short and put
+    // the specifics in the hint line below.
+    title: "Template: task skill",
+    hint: "When-to-use + steps scaffold",
     name: "new-task-skill",
     body: `---
 name: new-task-skill
@@ -48,6 +52,7 @@ One paragraph of context the AI needs before acting.
   {
     id: "template-conventions",
     title: "Template: team conventions",
+    hint: "Always / never / examples scaffold",
     name: "new-conventions",
     body: `---
 name: new-conventions
@@ -74,6 +79,7 @@ Bad:
   {
     id: "template-runbook",
     title: "Template: runbook",
+    hint: "Procedure + rollback scaffold",
     name: "new-runbook",
     body: `---
 name: new-runbook
@@ -102,7 +108,7 @@ export default class Templates implements SxPlugin {
         id: t.id,
         title: t.title,
         menu: "new",
-        hint: "Start from a scaffold",
+        hint: t.hint,
         run: async () => {
           const draft = await sx.drafts.create({
             name: t.name,

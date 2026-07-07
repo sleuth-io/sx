@@ -138,6 +138,8 @@ export function RepoAssets():Promise<Record<string, Array<string>>>;
 
 export function RestoreRevision(arg1:string,arg2:string):Promise<void>;
 
+export function SearchAssetContent(arg1:string):Promise<Array<main.ContentMatch>>;
+
 export function SearchMarketplace(arg1:string):Promise<Array<main.MarketplaceExtension>>;
 
 export function SetAssetPersonal(arg1:string,arg2:boolean):Promise<string>;

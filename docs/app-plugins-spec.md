@@ -141,8 +141,14 @@ no registry service, no new format. The app browses it read-only and
 "install" republishes the chosen asset into the user's own vault through
 the same validated path as *Add extension…*, so a marketplace install and
 a hand-published extension are indistinguishable afterwards: same policy
-check, same consent sheet, same audit trail, and the extension arrives
-**disabled**.
+check, same consent model, same audit trail. Install **enables the
+extension for the installing user** — the permission chips on the
+marketplace card are the consent surface, so a separate consent sheet
+would ask the same question twice (org policy still has the final word).
+Other members of the library see it disabled and walk the normal consent
+sheet when they enable it. Non-built-in extensions can be **removed**
+from Settings → Extensions (disable + delete the vault asset, behind a
+confirm).
 
 - Default repository: `https://github.com/sleuth-io/sx-extensions`
   (`DefaultMarketplaceURL`); per-profile override stored in
@@ -154,15 +160,19 @@ check, same consent sheet, same audit trail, and the extension arrives
   `InstallMarketplaceExtension(assetName)`, `Get/SetMarketplaceURL`.
 - UI: **Settings → Extensions → Browse marketplace…** — search, permission
   chips per entry, Install / "✓ In library" states, editable source URL.
-- The launch marketplace content is eight extensions mapped from the most
+- The launch marketplace content is seven extensions mapped from the most
   popular relevant Obsidian plugins (research 2026-07-06): Asset Query
-  (Dataview), Library Search (Omnisearch), Related Assets
-  (Smart Connections, via TF-IDF cosine — exact and explainable at
-  library scale, no embedding model needed), Recent Assets (Recent
-  Files), Activity Heatmap (Heatmap Calendar), Library Stats (Vault
-  Statistics), Smart Templates (Templater/QuickAdd — declarative
-  placeholders only, no code execution), Style Linter (Linter —
-  report-only, publish-sheet warnings).
+  (Dataview), Related Assets (Smart Connections, via TF-IDF cosine —
+  exact and explainable at library scale, no embedding model needed),
+  Recent Assets (Recent Files), Activity Heatmap (Heatmap Calendar),
+  Library Stats (Vault Statistics), Smart Templates (Templater/QuickAdd —
+  declarative placeholders only, no code execution), Style Linter
+  (Linter — report-only: publish-sheet warnings plus a per-asset Style
+  tab). An eighth, Library Search (Omnisearch), was retired the same
+  week: ranked full-text content search belongs in the app's MAIN search
+  box, not a parallel sidebar search — `SearchAssetContent` in core now
+  does it (per-revision markdown cache, AND semantics, heading-weighted,
+  excerpt highlighting in result rows).
 
 ### API 1.1.0 additions (marketplace milestone)
 
