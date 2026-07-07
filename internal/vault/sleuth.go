@@ -580,6 +580,8 @@ func sxAssetTypeToGQL(t asset.Type) vaultgql.AssetType {
 		return vaultgql.AssetTypeRule
 	case asset.TypeClaudeCodePlugin.Key:
 		return vaultgql.AssetTypeClaudeCodePlugin
+	case asset.TypeAppPlugin.Key:
+		return vaultgql.AssetTypeAppPlugin
 	}
 	return ""
 }
@@ -603,6 +605,8 @@ func gqlAssetTypeToSX(t vaultgql.AssetType) asset.Type {
 		return asset.TypeRule
 	case vaultgql.AssetTypeClaudeCodePlugin:
 		return asset.TypeClaudeCodePlugin
+	case vaultgql.AssetTypeAppPlugin:
+		return asset.TypeAppPlugin
 	}
 	return asset.Type{Key: string(t)}
 }
@@ -624,6 +628,12 @@ func (s *SleuthVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*
 			}
 			result, err := s.listAssetsByType(ctx, typeOpts)
 			if err != nil {
+				// Servers predating the app-plugin surface reject the
+				// APP_PLUGIN enum value outright; that type can hold
+				// nothing there, so skipping it is complete, not partial.
+				if t.Key == asset.TypeAppPlugin.Key {
+					continue
+				}
 				// A silently partial list reads as "that's everything" —
 				// one transient failure would make skills vanish from every
 				// consumer's view. Callers keep their previous (complete)

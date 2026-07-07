@@ -31,6 +31,11 @@ type App struct {
 	mu    sync.Mutex
 	vault vaultpkg.Vault
 
+	// sleuthPluginSupport caches the per-profile "does this skills.new
+	// server know app-plugins?" probe (VaultSupportsExtensions) so the
+	// capability check costs one query per profile per session.
+	sleuthPluginSupport map[string]bool
+
 	// searchCache holds each asset's concatenated markdown keyed by
 	// name@version, so content search reads the vault once per revision.
 	// searchCacheKeys maps name → current key so republish and delete

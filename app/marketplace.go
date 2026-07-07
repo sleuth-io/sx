@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,21 +28,46 @@ import (
 const DefaultMarketplaceURL = "https://github.com/sleuth-io/sx-extensions"
 
 // VaultSupportsExtensions reports whether the current library can STORE
-// app-plugin assets. skills.new cloud libraries can't until the server
-// side ships the type (the P5 milestone) — without this gate, installing
-// an extension there fails mid-publish with the server's raw
-// "Invalid type" validation error. File-backed vaults have no type
-// registry to disagree with.
+// app-plugin assets. File-backed vaults have no type registry to
+// disagree with; skills.new libraries are probed once per profile per
+// app session (the policy query doubles as the capability check) —
+// servers predating the app-plugin surface (P5) reject the type, and
+// without this gate installing an extension there fails mid-publish
+// with the server's raw "Invalid type" validation error.
 func (a *App) VaultSupportsExtensions() bool {
 	cfg, err := config.Load()
 	if err != nil {
 		return false
 	}
-	return cfg.GetType() != "sleuth"
+	if cfg.GetType() != "sleuth" {
+		return true
+	}
+	key := cfg.ProfileName
+	a.mu.Lock()
+	if a.sleuthPluginSupport == nil {
+		a.sleuthPluginSupport = map[string]bool{}
+	}
+	cached, ok := a.sleuthPluginSupport[key]
+	a.mu.Unlock()
+	if ok {
+		return cached
+	}
+	supported := false
+	if v, err := a.currentVault(); err == nil {
+		if prober, isProber := v.(interface {
+			SupportsAppPlugins(ctx context.Context) bool
+		}); isProber {
+			supported = prober.SupportsAppPlugins(a.ctx)
+		}
+	}
+	a.mu.Lock()
+	a.sleuthPluginSupport[key] = supported
+	a.mu.Unlock()
+	return supported
 }
 
 var errExtensionsUnsupported = errors.New(
-	"this library's server doesn't support extensions yet — extensions need a git or local library (skills.new support is coming)")
+	"this library's server doesn't support extensions yet — update skills.new or use a git or local library")
 
 // MarketplaceExtension is one browsable marketplace entry: the asset name
 // plus the fields of its plugin.json the install/consent UI needs.

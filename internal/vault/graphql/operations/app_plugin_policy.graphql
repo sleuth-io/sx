@@ -1,0 +1,24 @@
+# Extension policy on a sleuth vault — the [app-plugins] manifest twin.
+# Read is open to any member; the server gates the write to org admins
+# and appends the plugin.policy-changed audit event itself.
+
+query GetAppPluginPolicy {
+  vault {
+    appPluginPolicy {
+      mode
+      allowed
+    }
+  }
+}
+
+mutation SetAppPluginPolicy($input: SetAppPluginPolicyInput!) {
+  setAppPluginPolicy(input: $input) {
+    appPluginPolicy {
+      mode
+    }
+    errors {
+      field
+      messages
+    }
+  }
+}

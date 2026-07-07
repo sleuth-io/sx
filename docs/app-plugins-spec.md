@@ -170,7 +170,8 @@ confirm).
   Extensions screen names the library it's showing and re-syncs the
   whole set — vault plugins, policy, enablement — on every library
   switch (`syncVaultExtensions`). Backends that can't store
-  `app-plugin` assets yet (skills.new until P5) are gated:
+  `app-plugin` assets yet (skills.new servers predating the P5
+  backend; the app probes the policy query once per profile) are gated:
   `VaultSupportsExtensions` disables install/add paths with a plain
   explanation instead of surfacing the server's type-validation error.
 - **Updates.** An update is the install path again: republish the
@@ -394,9 +395,9 @@ Per the v2-spec verification bar — nothing is done because it compiles:
    P1–P3 (built-ins only, so the proxy is a discipline boundary). The
    iframe/realm sandbox question is a **formal P4 entry gate** — it must
    be explicitly re-decided before any third-party plugin can be enabled.
-   *P4 gate decision (2026-07-07, pending Dylan's ratification — note
-   the decision now also covers 1.4.0's `net:<host>` egress, where the
-   per-host consent line is declared intent rather than an enforced
+   *P4 gate decision (ratified by Dylan 2026-07-08, releasing as 2.1.0
+   — the decision explicitly covers 1.4.0's `net:<host>` egress, where
+   the per-host consent line is declared intent rather than an enforced
    boundary in main context):* third-party extensions run
    **main-context behind the proxy** in v1.
    Rationale: the webview has no Node/filesystem, network egress exists
@@ -412,3 +413,14 @@ Per the v2-spec verification bar — nothing is done because it compiles:
 4. **skills.new**: not at launch. P4 ships git/path-vault-only; sleuth
    vault support is P5 (its own Pulse PR + release), so all vault types
    converge without coupling the app timeline to a server deploy.
+   *P5 status (2026-07-08):* Pulse backend reviewed and sx client
+   implemented — app-plugin asset type mapped end to end, policy twin
+   via `appPluginPolicy`/`setAppPluginPolicy` (server enforces the
+   org-admin gate and audits), audit-import resolves `plugin` targets,
+   and `VaultSupportsExtensions` probes the server per profile so old
+   deployments still gate cleanly. Known server-side gaps at review:
+   `storage:shared` has no twin (SleuthVault deliberately does not
+   implement `AppPluginSharedStore`, so extensions get the clear
+   unsupported error) and dashboard widget querysets needed the
+   app-plugin exclusion. Extension id must equal the asset slug —
+   sx publishes with name = plugin id, which slugifies identically.
