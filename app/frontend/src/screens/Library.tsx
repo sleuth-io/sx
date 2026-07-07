@@ -1208,6 +1208,11 @@ export default function Library({
               className="ml-auto flex h-9 shrink-0 items-center gap-2"
               style={{ ["--wails-draggable" as never]: "no-drag" }}
             >
+              {/* Search, type filter, sort, and list/grid act on the
+                  asset list — on full-page surfaces (dashboard, plugin
+                  views) they'd be dead controls, so they hide. */}
+              {scope.kind !== "dashboard" && scope.kind !== "plugin-view" && (
+              <>
               <div className="relative h-full">
                 <input
                   ref={searchRef}
@@ -1351,6 +1356,8 @@ export default function Library({
                   </svg>
                 </button>
               </div>
+              </>
+              )}
 
               {/* The library-level `sx install`: deliver everything scoped
                   to this machine into the AI tools, clean up what's stale. */}

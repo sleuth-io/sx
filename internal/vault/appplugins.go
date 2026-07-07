@@ -145,6 +145,11 @@ func commonAppPluginSharedLoad(vaultRoot, pluginID string) (string, error) {
 // shared documents, enforced identically by every vault backend before
 // anything is written (or leaves the machine).
 func validateAppPluginSharedDoc(data string) error {
+	if data == "" {
+		// Empty is the delete sentinel, valid by definition — backends
+		// check it themselves, but validation order must not matter.
+		return nil
+	}
 	if len(data) > maxAppPluginSharedBytes {
 		return fmt.Errorf("shared extension data exceeds %d bytes", maxAppPluginSharedBytes)
 	}

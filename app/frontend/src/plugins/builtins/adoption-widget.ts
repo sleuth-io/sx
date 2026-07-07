@@ -20,7 +20,7 @@ export default class AdoptionWidget implements SxPlugin {
   onload(sx: SxAPI): void {
     sx.registerDashboardWidget({
       id: "user-adoption",
-      title: "User adoption",
+      title: "User adoption · last 30 days",
       mount: (view) => void this.mount(sx, view),
     });
   }

@@ -100,7 +100,7 @@ export default class UsageTrendsWidget implements SxPlugin {
   onload(sx: SxAPI): void {
     sx.registerDashboardWidget({
       id: "top-assets-usage",
-      title: "Top assets by usage",
+      title: "Top assets by usage · last 30 days",
       mount: (view) => void this.mount(sx, view),
     });
   }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -211,7 +212,14 @@ func (a *App) appendPluginAudit(event mgmt.AuditEvent) {
 	if err != nil {
 		return
 	}
-	if err := v.ImportAuditEvents(a.ctx, []mgmt.AuditEvent{event}); err != nil {
+	// a.ctx is set at startup; this fire-and-forget goroutine can run
+	// without it (tests, early boot) and a nil context panics inside
+	// the vault's lock acquisition.
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := v.ImportAuditEvents(ctx, []mgmt.AuditEvent{event}); err != nil {
 		logger.Get().Warn("extension audit append failed", "error", err)
 	}
 }

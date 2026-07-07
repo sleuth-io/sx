@@ -20,7 +20,7 @@ export default class LeaderboardWidget implements SxPlugin {
   onload(sx: SxAPI): void {
     sx.registerDashboardWidget({
       id: "user-leaderboard",
-      title: "User leaderboard",
+      title: "User leaderboard · last 30 days",
       mount: (view) => void this.mount(sx, view),
     });
   }
