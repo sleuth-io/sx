@@ -116,7 +116,7 @@ mode = "allowlist"        # "open" (default) | "allowlist" | "disabled"
 allowed = ["library-dashboard", "publish-doctor"]
 ```
 
-Only org admins can modify it (same RBAC as scope changes, see docs/rbac.md). In `allowlist` mode the app refuses to enable anything else; in `disabled` mode the extensions UI is hidden. Policy changes append audit events.
+Only org admins can modify it (same RBAC as scope changes, see docs/rbac.md). The allowlist governs **third-party (vault-installed) extensions only** — built-ins ship with the app and stay available, so vetting external code never silently disables the Publish Doctor safety net. `disabled` is the total switch: everything extension-shaped turns off, built-ins included, and the extensions UI is hidden. Policy changes append audit events.
 - **Audit.** New audit event types: `plugin.enabled`, `plugin.disabled`, `plugin.policy-changed` (in `internal/mgmt/audit.go`).
 - **No re-review gap** (Obsidian's weakness): plugin updates arrive through normal asset versioning, so pinning, history, restore, and audit all apply. A team can pin a plugin version exactly like any asset.
 

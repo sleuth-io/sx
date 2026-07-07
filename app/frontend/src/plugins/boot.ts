@@ -82,7 +82,7 @@ export async function bootExtensions(): Promise<void> {
   for (const p of listPlugins()) {
     const id = p.manifest.id;
     const intended = decisions[id] ?? p.builtIn; // built-ins default on
-    if (!intended || policyBlocks(id)) continue;
+    if (!intended || policyBlocks(id, p.builtIn)) continue;
     // The consent guarantee holds on EVERY load path, not just the
     // Settings toggle: a vault-installed extension whose permissions
     // changed since consent stays off until the user re-consents (its

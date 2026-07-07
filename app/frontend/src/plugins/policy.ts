@@ -38,12 +38,22 @@ export function currentPolicy(): PluginPolicy {
   return policy;
 }
 
-/** Why an extension can't be enabled, or null when it can. */
-export function policyBlocks(id: string): string | null {
+/** Why an extension can't be enabled, or null when it can.
+ *
+ * The allowlist governs THIRD-PARTY code only: built-ins ship with the
+ * app and are already trusted at install, and an org restricting vault
+ * extensions must not silently lose Publish Doctor's safety net.
+ * `disabled` is the total switch — it turns off everything
+ * extension-shaped, built-ins included, deliberately. */
+export function policyBlocks(id: string, builtIn: boolean): string | null {
   if (policy.mode === "disabled") {
     return "Extensions are disabled by your organization";
   }
-  if (policy.mode === "allowlist" && !policy.allowed.includes(id)) {
+  if (
+    policy.mode === "allowlist" &&
+    !builtIn &&
+    !policy.allowed.includes(id)
+  ) {
     return "Blocked by your organization's extension allowlist";
   }
   return null;

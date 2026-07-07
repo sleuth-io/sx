@@ -22,9 +22,12 @@ export default function CommandPalette({
   const pluginCommands = useSlot("command");
 
   const commands = useMemo(() => {
-    const all: CommandSpec[] = [
-      ...coreCommands,
-      ...pluginCommands.map((e) => e.spec),
+    const all: (CommandSpec & { ownerKey: string })[] = [
+      ...coreCommands.map((c) => ({ ...c, ownerKey: "core:" + c.id })),
+      ...pluginCommands.map((e) => ({
+        ...e.spec,
+        ownerKey: e.pluginId + ":" + e.spec.id,
+      })),
     ];
     const q = query.trim().toLowerCase();
     if (!q) return all;
@@ -95,7 +98,7 @@ export default function CommandPalette({
             </li>
           )}
           {commands.map((c, i) => (
-            <li key={c.id}>
+            <li key={c.ownerKey}>
               <button
                 data-command-id={c.id}
                 onClick={() => run(c)}

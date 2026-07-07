@@ -47,8 +47,15 @@ export function registerSlotEntry<K extends SlotKind>(
 ): void {
   const list = entries.get(kind) ?? [];
   const id = (spec as { id: string }).id;
-  if (list.some((e) => (e.spec as { id: string }).id === id)) {
-    throw new Error(`${kind} "${id}" is already registered`);
+  // Uniqueness is per extension: ids are namespaced by owner everywhere
+  // they're consumed, so one extension picking a popular id must not be
+  // able to block another from loading.
+  if (
+    list.some(
+      (e) => e.pluginId === pluginId && (e.spec as { id: string }).id === id,
+    )
+  ) {
+    throw new Error(`${kind} "${id}" is already registered by ${pluginId}`);
   }
   entries.set(kind, [...list, { pluginId, spec }]);
   notify();

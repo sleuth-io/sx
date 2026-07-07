@@ -224,9 +224,11 @@ deleting direct installs they didn't create.
 ## `[app-plugins]` — desktop-app extension policy
 
 Optional. Gates which extensions the sx desktop app may enable
-(docs/app-plugins-spec.md). Absent means open. Only org-admins may change
-it on a governed vault; writes append a `plugin.policy-changed` audit
-event.
+(docs/app-plugins-spec.md). Absent means open. `allowlist` restricts
+**vault-installed extensions only** (built-ins always stay available);
+`disabled` turns off everything, built-ins included. Only org-admins may
+change it on a governed vault; writes append a `plugin.policy-changed`
+audit event.
 
 ```toml
 [app-plugins]

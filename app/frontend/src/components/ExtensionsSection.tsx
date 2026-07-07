@@ -131,7 +131,7 @@ export default function ExtensionsSection() {
       </p>
       <ul className="space-y-2">
         {plugins.map((p) => {
-          const blocked = policyBlocks(p.manifest.id);
+          const blocked = policyBlocks(p.manifest.id, p.builtIn);
           return (
             <li
               key={p.manifest.id}
