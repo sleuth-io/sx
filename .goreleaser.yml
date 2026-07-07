@@ -4,6 +4,11 @@ project_name: sx
 before:
   hooks:
     - go mod tidy
+    # app/main.go embeds frontend/dist (go:embed all:); a fresh checkout
+    # has no built frontend, so the embed target must exist or the app
+    # package fails to compile. Mirrors the Makefile's ensure-app-embed.
+    - mkdir -p app/frontend/dist
+    - touch app/frontend/dist/.gitkeep
     - go test ./...
 
 builds:
