@@ -22,9 +22,15 @@ import { hasConsent, loadPolicyAndConsents, policyBlocks } from "./policy";
 import PublishDoctor, {
   publishDoctorManifest,
 } from "./builtins/publish-doctor";
-import LibraryDashboard, {
-  libraryDashboardManifest,
-} from "./builtins/library-dashboard";
+import AdoptionWidget, {
+  adoptionWidgetManifest,
+} from "./builtins/adoption-widget";
+import UsageTrendsWidget, {
+  usageTrendsWidgetManifest,
+} from "./builtins/usage-trends-widget";
+import LeaderboardWidget, {
+  leaderboardWidgetManifest,
+} from "./builtins/leaderboard-widget";
 import Templates, { templatesManifest } from "./builtins/templates";
 import Importer, { importerManifest } from "./builtins/importer";
 
@@ -38,9 +44,16 @@ export async function bootExtensions(): Promise<void> {
   // vault-installed extensions; only the code source differs (bundled
   // module vs Blob import — the preflight keeps the Blob path honest).
   registerBuiltIn(publishDoctorManifest, async () => new PublishDoctor());
+  // Each dashboard widget is its OWN extension: teams disable or replace
+  // them individually, and third-party widgets sit beside them as equals.
+  registerBuiltIn(adoptionWidgetManifest, async () => new AdoptionWidget());
   registerBuiltIn(
-    libraryDashboardManifest,
-    async () => new LibraryDashboard(),
+    usageTrendsWidgetManifest,
+    async () => new UsageTrendsWidget(),
+  );
+  registerBuiltIn(
+    leaderboardWidgetManifest,
+    async () => new LeaderboardWidget(),
   );
   registerBuiltIn(templatesManifest, async () => new Templates());
   registerBuiltIn(importerManifest, async () => new Importer());

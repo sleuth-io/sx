@@ -126,6 +126,7 @@ export default function Library({
   const [showAddAsset, setShowAddAsset] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [newSubOpen, setNewSubOpen] = useState(false);
   const newMenuRef = useRef<HTMLDivElement>(null);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const sortMenuRef = useRef<HTMLDivElement>(null);
@@ -437,12 +438,20 @@ export default function Library({
   }, [vault.trackRepos]);
 
   useEffect(load, [load]);
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
 
   // Extension system: boot once, and hand extensions the app's real UI
   // services (toast + confirm) so sx.ui works.
   const [paletteOpen, setPaletteOpen] = useState(false);
   useEffect(() => {
-    setPluginUIHandlers({ notice: setToastMessage, confirm: confirmAction });
+    setPluginUIHandlers({
+      notice: setToastMessage,
+      confirm: confirmAction,
+      refresh: () => loadRef.current(),
+    });
     void bootExtensions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1327,7 +1336,7 @@ export default function Library({
                   <span className="text-[10px] opacity-70">▾</span>
                 </button>
                 {newMenuOpen && (
-                  <div className="absolute right-0 z-40 mt-1.5 w-56 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                  <div className="absolute right-0 z-40 mt-1.5 w-64 overflow-visible rounded-xl border border-line bg-surface py-1 shadow-xl">
                     <MenuItem
                       label="New skill…"
                       hint="Files, zip, or scratch"
@@ -1344,20 +1353,44 @@ export default function Library({
                         setShowCollectionModal(true);
                       }}
                     />
-                    {/* Creation-shaped extension commands (menu: "new") —
-                        how Templates and the Importer surface outside the
-                        palette. */}
-                    {newMenuCommands.map((c) => (
-                      <MenuItem
-                        key={c.id}
-                        label={c.title}
-                        hint={c.hint ?? ""}
-                        onClick={() => {
-                          setNewMenuOpen(false);
-                          void c.run();
-                        }}
-                      />
-                    ))}
+                    {/* Creation-shaped extension commands (menu: "new")
+                        live under ONE flyout so they don't dilute the two
+                        core actions. */}
+                    {newMenuCommands.length > 0 && (
+                      <div
+                        className="relative"
+                        onMouseEnter={() => setNewSubOpen(true)}
+                        onMouseLeave={() => setNewSubOpen(false)}
+                      >
+                        <button
+                          onClick={() => setNewSubOpen((v) => !v)}
+                          className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-sm transition hover:bg-accent-soft"
+                        >
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            From extensions
+                          </span>
+                          <span className="shrink-0 text-xs text-ink-faint">
+                            ▸
+                          </span>
+                        </button>
+                        {newSubOpen && (
+                          <div className="absolute right-full top-0 z-50 mr-1 w-64 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                            {newMenuCommands.map((c) => (
+                              <MenuItem
+                                key={c.id}
+                                label={c.title}
+                                hint={c.hint ?? ""}
+                                onClick={() => {
+                                  setNewMenuOpen(false);
+                                  setNewSubOpen(false);
+                                  void c.run();
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

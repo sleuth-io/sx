@@ -13,6 +13,7 @@ import {
   PluginSaveData,
   PluginUsageEvents,
   PluginAuditEvents,
+  PluginUserStats,
 } from "../../wailsjs/go/main/App";
 import type {
   AssetTabSpec,
@@ -36,11 +37,14 @@ import { subscribeBeforePublish, subscribeEvent } from "./events";
 interface UIHandlers {
   notice(message: string): void;
   confirm(message: string, action: string): Promise<boolean>;
+  /** Reload the app's data views (drafts/assets lists). */
+  refresh(): void;
 }
 
 let ui: UIHandlers = {
   notice: (m) => console.log("extension notice:", m),
   confirm: async () => false,
+  refresh: () => {},
 };
 
 export function setPluginUIHandlers(handlers: UIHandlers): void {
@@ -177,6 +181,14 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
         need("usage:read");
         return (await PluginAuditEvents(sinceDays)) ?? [];
       },
+      async userStats(sinceDays: number) {
+        need("usage:read");
+        const res = await PluginUserStats(sinceDays);
+        return {
+          knownUsers: res.knownUsers ?? [],
+          active: res.active ?? [],
+        };
+      },
     },
 
     drafts: {
@@ -186,11 +198,15 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
           draft.name,
           draft.files.map((f) => ({ path: f.path, content: f.content })),
         );
+        // The library must show the new draft NOW, not on the next
+        // focus-triggered reload.
+        ui.refresh();
         return { id: created.id };
       },
       async importFromFolder() {
         need("drafts:write");
         const res = await ImportDraftsFromFolder();
+        ui.refresh();
         return { created: res.created ?? [], skipped: res.skipped ?? 0 };
       },
     },

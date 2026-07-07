@@ -230,6 +230,10 @@ export function PluginUsageEvents(arg1) {
   return window['go']['main']['App']['PluginUsageEvents'](arg1);
 }
 
+export function PluginUserStats(arg1) {
+  return window['go']['main']['App']['PluginUserStats'](arg1);
+}
+
 export function PublishDraft(arg1) {
   return window['go']['main']['App']['PublishDraft'](arg1);
 }

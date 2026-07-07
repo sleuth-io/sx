@@ -311,6 +311,54 @@ export namespace main {
 	        this.assetType = source["assetType"];
 	    }
 	}
+	export class PluginUserActivity {
+	    actor: string;
+	    events: number;
+	    distinctAssets: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginUserActivity(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.actor = source["actor"];
+	        this.events = source["events"];
+	        this.distinctAssets = source["distinctAssets"];
+	    }
+	}
+	export class PluginUserStatsResult {
+	    knownUsers: string[];
+	    active: PluginUserActivity[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginUserStatsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.knownUsers = source["knownUsers"];
+	        this.active = this.convertValues(source["active"], PluginUserActivity);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ProfileInfo {
 	    name: string;
 	    type: string;

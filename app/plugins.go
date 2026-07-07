@@ -646,6 +646,84 @@ func (a *App) loadVaultPlugin(name string) (VaultPlugin, error) {
 	}, nil
 }
 
+// PluginUserActivity is one user's usage inside the window.
+type PluginUserActivity struct {
+	Actor          string `json:"actor"`
+	Events         int    `json:"events"`
+	DistinctAssets int    `json:"distinctAssets"`
+}
+
+// PluginUserStatsResult feeds adoption/leaderboard widgets: everyone the
+// vault knows about (team members ∪ usage actors ∪ the caller) plus
+// per-user activity within the window.
+type PluginUserStatsResult struct {
+	KnownUsers []string             `json:"knownUsers"`
+	Active     []PluginUserActivity `json:"active"`
+}
+
+// PluginUserStats aggregates usage by user — the usage:read capability.
+func (a *App) PluginUserStats(sinceDays int) (PluginUserStatsResult, error) {
+	res := PluginUserStatsResult{KnownUsers: []string{}, Active: []PluginUserActivity{}}
+	v, err := a.currentVault()
+	if err != nil {
+		return res, err
+	}
+	known := map[string]bool{}
+	if self := strings.TrimSpace(a.GetVaultInfo().Identity); self != "" {
+		known[strings.ToLower(self)] = true
+	}
+	if teams, err := a.ListTeams(); err == nil {
+		for _, team := range teams {
+			for _, m := range team.Members {
+				known[strings.ToLower(m)] = true
+			}
+		}
+	}
+	cutoff := usageCutoff(sinceDays)
+	events, err := v.ReadUsageEvents(a.ctx, mgmt.UsageFilter{Since: cutoff})
+	if err != nil {
+		return res, friendlyVaultError(err)
+	}
+	type agg struct {
+		events int
+		assets map[string]bool
+	}
+	byActor := map[string]*agg{}
+	for _, e := range events {
+		if e.Timestamp.Before(cutoff) {
+			continue
+		}
+		actor := strings.ToLower(strings.TrimSpace(e.Actor))
+		if actor == "" {
+			continue
+		}
+		known[actor] = true
+		entry := byActor[actor]
+		if entry == nil {
+			entry = &agg{assets: map[string]bool{}}
+			byActor[actor] = entry
+		}
+		entry.events++
+		entry.assets[e.AssetName] = true
+	}
+	for actor := range known {
+		res.KnownUsers = append(res.KnownUsers, actor)
+	}
+	sort.Strings(res.KnownUsers)
+	for actor, entry := range byActor {
+		res.Active = append(res.Active, PluginUserActivity{
+			Actor: actor, Events: entry.events, DistinctAssets: len(entry.assets),
+		})
+	}
+	sort.Slice(res.Active, func(i, j int) bool {
+		if res.Active[i].DistinctAssets != res.Active[j].DistinctAssets {
+			return res.Active[i].DistinctAssets > res.Active[j].DistinctAssets
+		}
+		return res.Active[i].Events > res.Active[j].Events
+	})
+	return res, nil
+}
+
 // usageCutoff caps history reads at a year so an extension can't force an
 // unbounded scan; zero/negative means the default 30 days.
 func usageCutoff(sinceDays int) time.Time {

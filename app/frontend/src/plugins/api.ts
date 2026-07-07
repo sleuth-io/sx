@@ -61,6 +61,17 @@ export interface UsageEvent {
   assetType: string;
 }
 
+export interface UserActivity {
+  actor: string;
+  events: number;
+  distinctAssets: number;
+}
+
+export interface UserStats {
+  knownUsers: string[];
+  active: UserActivity[];
+}
+
 export interface AuditEvent {
   timestamp: string;
   actor: string;
@@ -164,6 +175,8 @@ export interface SxAPI {
   readonly usage: {
     events(sinceDays: number): Promise<UsageEvent[]>;
     auditEvents(sinceDays: number): Promise<AuditEvent[]>;
+    /** Per-user adoption: everyone the vault knows plus who used what. */
+    userStats(sinceDays: number): Promise<UserStats>;
   };
 
   /** Requires drafts:write. Never publishes — that stays a human action. */

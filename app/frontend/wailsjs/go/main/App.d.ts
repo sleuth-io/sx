@@ -116,6 +116,8 @@ export function PluginSaveData(arg1:string,arg2:string):Promise<void>;
 
 export function PluginUsageEvents(arg1:number):Promise<Array<main.PluginUsageEventRecord>>;
 
+export function PluginUserStats(arg1:number):Promise<main.PluginUserStatsResult>;
+
 export function PublishDraft(arg1:string):Promise<main.AssetCard>;
 
 export function Quit():Promise<void>;
