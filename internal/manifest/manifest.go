@@ -21,6 +21,7 @@ import (
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/scope"
+	"github.com/sleuth-io/sx/internal/utils"
 )
 
 // FileName is the path, relative to the vault root, where the manifest lives.
@@ -657,31 +658,11 @@ func dedupeSorted(in []string) []string {
 	return out
 }
 
-// writeFileAtomic writes data to path via a tmp file in the same directory
-// plus rename. On POSIX filesystems the rename is atomic — readers never see
-// a partial write.
+// writeFileAtomic writes data to path via the shared temp-file + rename
+// helper — readers never see a partial write.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".tmp-"+filepath.Base(path)+"-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	tmpPath := tmp.Name()
-	defer func() { _ = os.Remove(tmpPath) }()
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("failed to write temp file: %w", err)
-	}
-	if err := tmp.Chmod(perm); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("failed to chmod temp file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("failed to close temp file: %w", err)
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("failed to rename temp file: %w", err)
+	if err := utils.AtomicWriteFile(path, data, perm); err != nil {
+		return fmt.Errorf("failed to write %s atomically: %w", filepath.Base(path), err)
 	}
 	return nil
 }
