@@ -15,6 +15,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to build for and attach to (e.g. v2.0.0); artifacts are clobber-uploaded"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -60,6 +65,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # On a backfill dispatch, build the RELEASE TAG's source — only
+          # the workflow file (this file, from the dispatching branch)
+          # differs. Artifacts attached to a release are always built from
+          # exactly the commit the tag points at.
+          ref: ${{ inputs.release_tag || github.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -82,16 +93,25 @@ jobs:
 
       - name: Build app
         working-directory: app
-        # bash everywhere: the ${GITHUB_REF_NAME#v} suffix strip is bash
-        # syntax — under the Windows runners' default PowerShell it expands
-        # to "" and Windows builds would self-identify as dev builds
-        # (disabling updates entirely).
+        # bash everywhere: the ${TAG#v} suffix strip is bash syntax —
+        # under the Windows runners' default PowerShell it expands to ""
+        # and Windows builds would self-identify as dev builds (disabling
+        # updates entirely).
         shell: bash
-        run: >
-          wails build -platform ${{ matrix.platform }}
-          -ldflags "-X github.com/sleuth-io/sx/internal/buildinfo.Version=${GITHUB_REF_NAME#v}"
+        run: |
+          TAG="${RELEASE_TAG:-$GITHUB_REF_NAME}"
+          EXTRA=""
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            # Ubuntu 24.04 runners ship webkit2gtk 4.1 only; without this
+            # build tag wails pkg-configs the absent webkit2gtk-4.0 and the
+            # compile fails (the deps step installs libwebkit2gtk-4.1-dev).
+            EXTRA="-tags webkit2_41"
+          fi
+          wails build -platform ${{ matrix.platform }} $EXTRA \
+            -ldflags "-X github.com/sleuth-io/sx/internal/buildinfo.Version=${TAG#v}"
         env:
           CGO_ENABLED: 1
+          RELEASE_TAG: ${{ inputs.release_tag }}
 
       # Sign + notarize + staple when the secrets exist (Developer ID),
       # ad-hoc sign with a clear -unsigned suffix when they don't — so
@@ -126,19 +146,22 @@ jobs:
           path: app/build/bin/${{ matrix.artifact }}*
 
       - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         shell: bash
         # The GoReleaser workflow creates the release after its test job;
         # poll for it rather than racing (a missing release here would drop
-        # this platform's artifact).
+        # this platform's artifact). On dispatch, RELEASE_TAG targets an
+        # existing release instead (backfilling failed platforms).
         run: |
+          TAG="${RELEASE_TAG:-$GITHUB_REF_NAME}"
           for i in $(seq 1 60); do
-            if gh release view "${GITHUB_REF_NAME}" > /dev/null 2>&1; then
+            if gh release view "$TAG" > /dev/null 2>&1; then
               break
             fi
-            echo "Waiting for release ${GITHUB_REF_NAME} to exist ($i)..."
+            echo "Waiting for release $TAG to exist ($i)..."
             sleep 30
           done
-          gh release upload "${GITHUB_REF_NAME}" app/build/bin/${{ matrix.artifact }}* --clobber
+          gh release upload "$TAG" app/build/bin/${{ matrix.artifact }}* --clobber
