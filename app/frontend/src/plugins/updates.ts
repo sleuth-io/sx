@@ -43,11 +43,20 @@ export function getCatalog(): main.MarketplaceExtension[] | null {
 
 /** Fetch (or reuse) the marketplace catalog. Concurrent callers share
  * one request; `force` bypasses the TTL (source URL changed). */
-export function loadCatalog(force = false): Promise<main.MarketplaceExtension[]> {
+export async function loadCatalog(
+  force = false,
+): Promise<main.MarketplaceExtension[]> {
   if (!force && catalog && Date.now() - catalogFetchedAt < CATALOG_TTL_MS) {
-    return Promise.resolve(catalog);
+    return catalog;
   }
-  if (catalogInflight) return catalogInflight;
+  // A forced reload must NOT adopt an in-flight request — it may be
+  // running against the source URL the user just changed away from.
+  // Let it settle (its result gets overwritten), then fetch fresh.
+  while (catalogInflight) {
+    const current = catalogInflight;
+    if (!force) return current;
+    await current.catch(() => {});
+  }
   catalogInflight = SearchMarketplace("")
     .then((found) => {
       catalog = found ?? [];
