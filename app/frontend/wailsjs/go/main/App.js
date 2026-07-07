@@ -122,6 +122,10 @@ export function GetDraft(arg1) {
   return window['go']['main']['App']['GetDraft'](arg1);
 }
 
+export function GetMarketplaceURL() {
+  return window['go']['main']['App']['GetMarketplaceURL']();
+}
+
 export function GetPluginPolicy() {
   return window['go']['main']['App']['GetPluginPolicy']();
 }
@@ -152,6 +156,10 @@ export function HideApp() {
 
 export function ImportDraftsFromFolder() {
   return window['go']['main']['App']['ImportDraftsFromFolder']();
+}
+
+export function InstallMarketplaceExtension(arg1) {
+  return window['go']['main']['App']['InstallMarketplaceExtension'](arg1);
 }
 
 export function InstalledAssets() {
@@ -266,6 +274,10 @@ export function RestoreRevision(arg1, arg2) {
   return window['go']['main']['App']['RestoreRevision'](arg1, arg2);
 }
 
+export function SearchMarketplace(arg1) {
+  return window['go']['main']['App']['SearchMarketplace'](arg1);
+}
+
 export function SetAssetPersonal(arg1, arg2) {
   return window['go']['main']['App']['SetAssetPersonal'](arg1, arg2);
 }
@@ -292,6 +304,10 @@ export function SetLibraryActive(arg1, arg2) {
 
 export function SetLibraryRepoTracking(arg1, arg2) {
   return window['go']['main']['App']['SetLibraryRepoTracking'](arg1, arg2);
+}
+
+export function SetMarketplaceURL(arg1) {
+  return window['go']['main']['App']['SetMarketplaceURL'](arg1);
 }
 
 export function SetPluginConsent(arg1, arg2) {

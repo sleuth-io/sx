@@ -490,14 +490,20 @@ func (a *App) latestAssetZip(name string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	versions, err := v.GetVersionList(a.ctx, name)
+	return latestZipFromVault(a.ctx, v, name)
+}
+
+// latestZipFromVault is latestAssetZip against an arbitrary vault — the
+// marketplace browses vaults other than the configured one.
+func latestZipFromVault(ctx context.Context, v vaultpkg.Vault, name string) ([]byte, error) {
+	versions, err := v.GetVersionList(ctx, name)
 	if err != nil {
 		return nil, friendlyVaultError(err)
 	}
 	if len(versions) == 0 {
 		return nil, fmt.Errorf("%s has no versions", name)
 	}
-	zipData, err := v.GetAssetByVersion(a.ctx, name, versions[len(versions)-1])
+	zipData, err := v.GetAssetByVersion(ctx, name, versions[len(versions)-1])
 	if err != nil {
 		return nil, friendlyVaultError(err)
 	}

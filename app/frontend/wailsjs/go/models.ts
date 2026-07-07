@@ -257,6 +257,32 @@ export namespace main {
 	        this.sourceProvider = source["sourceProvider"];
 	    }
 	}
+	export class MarketplaceExtension {
+	    assetName: string;
+	    id: string;
+	    name: string;
+	    version: string;
+	    description: string;
+	    author: string;
+	    permissions: string[];
+	    installed: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MarketplaceExtension(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.assetName = source["assetName"];
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.version = source["version"];
+	        this.description = source["description"];
+	        this.author = source["author"];
+	        this.permissions = source["permissions"];
+	        this.installed = source["installed"];
+	    }
+	}
 	export class PluginAuditEventRecord {
 	    timestamp: string;
 	    actor: string;

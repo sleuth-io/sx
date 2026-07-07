@@ -3,7 +3,7 @@
 // extension needs something this file doesn't offer, the answer is an API
 // addition, never an escape hatch to app internals.
 
-export const SX_API_VERSION = "1.0.0";
+export const SX_API_VERSION = "1.1.0";
 
 /** Capabilities an extension may declare. Undeclared calls throw. */
 export type Permission =
@@ -156,6 +156,10 @@ export interface SxAPI {
   readonly ui: {
     notice(message: string): void;
     confirm(message: string, action: string): Promise<boolean>;
+    /** Open an asset's detail panel — how list-shaped extensions
+     * (search results, related assets) make rows navigable. Added in
+     * API 1.1.0. */
+    openAsset(name: string): void;
   };
 
   /** Always available; per plugin, per profile, stored app-side. */

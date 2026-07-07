@@ -62,6 +62,8 @@ export function GetCollectionSharing(arg1:string):Promise<main.AssetSharing>;
 
 export function GetDraft(arg1:string):Promise<main.Draft>;
 
+export function GetMarketplaceURL():Promise<string>;
+
 export function GetPluginPolicy():Promise<main.PluginPolicy>;
 
 export function GetSettings():Promise<main.Settings>;
@@ -77,6 +79,8 @@ export function HasIdentity():Promise<boolean>;
 export function HideApp():Promise<void>;
 
 export function ImportDraftsFromFolder():Promise<main.ImportResult>;
+
+export function InstallMarketplaceExtension(arg1:string):Promise<string>;
 
 export function InstalledAssets():Promise<Array<main.InstalledAssetInfo>>;
 
@@ -134,6 +138,8 @@ export function RepoAssets():Promise<Record<string, Array<string>>>;
 
 export function RestoreRevision(arg1:string,arg2:string):Promise<void>;
 
+export function SearchMarketplace(arg1:string):Promise<Array<main.MarketplaceExtension>>;
+
 export function SetAssetPersonal(arg1:string,arg2:boolean):Promise<string>;
 
 export function SetAssetTeamSharing(arg1:string,arg2:string,arg3:boolean):Promise<void>;
@@ -147,6 +153,8 @@ export function SetCollectionTeamSharing(arg1:string,arg2:string,arg3:boolean):P
 export function SetLibraryActive(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetLibraryRepoTracking(arg1:string,arg2:boolean):Promise<main.VaultInfo>;
+
+export function SetMarketplaceURL(arg1:string):Promise<void>;
 
 export function SetPluginConsent(arg1:string,arg2:Array<string>):Promise<void>;
 

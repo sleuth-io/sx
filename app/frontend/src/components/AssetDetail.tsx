@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import {
@@ -13,8 +13,11 @@ import {
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import { emitEvent } from "../plugins/events";
+import { useSlot } from "../plugins/registry";
+import type { AssetTabSpec, ViewMount } from "../plugins/api";
 import usePanelSize from "../lib/usePanelSize";
 import FileRail from "./FileRail";
+import PluginMount from "./PluginMount";
 import ShareModal from "./ShareModal";
 import TypeBadge from "./TypeBadge";
 
@@ -52,6 +55,14 @@ export default function AssetDetail({
   const [error, setError] = useState("");
   const [revision, setRevision] = useState("");
   const [activeFile, setActiveFile] = useState(0);
+  // Extension-contributed tabs (views:asset-tab). "" is the built-in
+  // content view; a missing key (extension disabled mid-view) falls back.
+  const assetTabs = useSlot("asset-tab");
+  const [activeTab, setActiveTab] = useState("");
+  useEffect(() => setActiveTab(""), [name]);
+  const currentTab = assetTabs.find(
+    (t) => t.pluginId + ":" + t.spec.id === activeTab,
+  );
   const [sharing, setSharing] = useState<main.AssetSharing | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   // Right-anchored panel: dragging its left edge outward grows it.
@@ -369,31 +380,72 @@ export default function AssetDetail({
           </div>
         )}
 
-        <div className="flex min-h-0 flex-1">
-          {files.length > 1 && (
-            <FileRail
-              files={files}
-              active={activeFile}
-              onSelect={setActiveFile}
-            />
-          )}
-          <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
-            {error && (
-              <div className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
-                {error}
-              </div>
-            )}
-            {!detail && !error && (
-              <div className="space-y-3">
-                <div className="h-4 w-2/3 animate-pulse rounded bg-canvas" />
-                <div className="h-4 w-full animate-pulse rounded bg-canvas" />
-                <div className="h-4 w-5/6 animate-pulse rounded bg-canvas" />
-              </div>
-            )}
-            {detail && files[activeFile] && (
-              <FileView file={files[activeFile]} />
-            )}
+        {assetTabs.length > 0 && (
+          <div
+            className="flex items-center gap-1 border-b border-line px-6 pt-2"
+            data-asset-tabs
+          >
+            {[
+              { key: "", title: "Content" },
+              ...assetTabs.map((t) => ({
+                key: t.pluginId + ":" + t.spec.id,
+                title: t.spec.title,
+              })),
+            ].map((t) => (
+              <button
+                key={t.key}
+                data-asset-tab={t.key || "content"}
+                onClick={() => setActiveTab(t.key)}
+                className={`rounded-t-lg border-b-2 px-3 py-1.5 text-xs font-medium transition ${
+                  (currentTab ? activeTab : "") === t.key
+                    ? "border-accent text-ink"
+                    : "border-transparent text-ink-faint hover:text-ink"
+                }`}
+              >
+                {t.title}
+              </button>
+            ))}
           </div>
+        )}
+
+        <div className="flex min-h-0 flex-1">
+          {currentTab ? (
+            <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
+              <AssetTabMount
+                key={name + ":" + activeTab}
+                pluginId={currentTab.pluginId}
+                spec={currentTab.spec}
+                assetName={name}
+              />
+            </div>
+          ) : (
+            <>
+              {files.length > 1 && (
+                <FileRail
+                  files={files}
+                  active={activeFile}
+                  onSelect={setActiveFile}
+                />
+              )}
+              <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
+                {error && (
+                  <div className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
+                    {error}
+                  </div>
+                )}
+                {!detail && !error && (
+                  <div className="space-y-3">
+                    <div className="h-4 w-2/3 animate-pulse rounded bg-canvas" />
+                    <div className="h-4 w-full animate-pulse rounded bg-canvas" />
+                    <div className="h-4 w-5/6 animate-pulse rounded bg-canvas" />
+                  </div>
+                )}
+                {detail && files[activeFile] && (
+                  <FileView file={files[activeFile]} />
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {shareOpen && (
@@ -417,6 +469,27 @@ export default function AssetDetail({
       </aside>
     </div>
   );
+}
+
+/**
+ * Mount wrapper for one extension asset tab: memoizes the mount closure so
+ * PluginMount doesn't remount on every AssetDetail render, and threads the
+ * asset name through the AssetTabSpec contract.
+ */
+function AssetTabMount({
+  pluginId,
+  spec,
+  assetName,
+}: {
+  pluginId: string;
+  spec: AssetTabSpec;
+  assetName: string;
+}) {
+  const mount = useCallback(
+    (view: ViewMount) => spec.mount(view, { assetName }),
+    [spec, assetName],
+  );
+  return <PluginMount pluginId={pluginId} mount={mount} />;
 }
 
 /**

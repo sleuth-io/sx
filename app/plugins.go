@@ -110,12 +110,38 @@ func (a *App) PluginSaveData(id, data string) error {
 	if err != nil {
 		return err
 	}
-	target := filepath.Join(dir, id+".data.json")
-	tmp := target + ".tmp"
-	if err := os.WriteFile(tmp, []byte(data), 0o644); err != nil {
+	return atomicWriteFile(filepath.Join(dir, id+".data.json"), []byte(data))
+}
+
+// atomicWriteFile writes via a UNIQUE temp file + rename. A fixed temp
+// name races when two callers save concurrently (two mounted views of
+// the same extension, say): both write the one temp file and the loser's
+// rename fails with ENOENT. CreateTemp gives each writer its own file;
+// last rename wins, nobody errors.
+func atomicWriteFile(target string, data []byte) error {
+	dir := filepath.Dir(target)
+	tmp, err := os.CreateTemp(dir, filepath.Base(target)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, target)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Rename(tmp.Name(), target); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	return nil
 }
 
 // PluginDecisions returns the per-profile INTENDED enablement per
@@ -162,12 +188,7 @@ func (a *App) SetPluginDecision(id string, enabled bool) error {
 	if err != nil {
 		return err
 	}
-	target := filepath.Join(dir, "decisions.json")
-	tmp := target + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, target); err != nil {
+	if err := atomicWriteFile(filepath.Join(dir, "decisions.json"), data); err != nil {
 		return err
 	}
 	// Fire-and-forget: on a git vault the audit append is a full
@@ -241,12 +262,7 @@ func (a *App) SetPluginConsent(id string, permissions []string) error {
 	if err != nil {
 		return err
 	}
-	target := filepath.Join(dir, "consents.json")
-	tmp := target + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, target)
+	return atomicWriteFile(filepath.Join(dir, "consents.json"), data)
 }
 
 // PluginPolicy is the extension policy as the frontend consumes it.

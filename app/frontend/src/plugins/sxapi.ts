@@ -39,12 +39,15 @@ interface UIHandlers {
   confirm(message: string, action: string): Promise<boolean>;
   /** Reload the app's data views (drafts/assets lists). */
   refresh(): void;
+  /** Open the named asset's detail panel. */
+  openAsset(name: string): void;
 }
 
 let ui: UIHandlers = {
   notice: (m) => console.log("extension notice:", m),
   confirm: async () => false,
   refresh: () => {},
+  openAsset: () => {},
 };
 
 export function setPluginUIHandlers(handlers: UIHandlers): void {
@@ -125,6 +128,7 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
     ui: {
       notice: (message) => ui.notice(message),
       confirm: (message, action) => ui.confirm(message, action),
+      openAsset: (name) => ui.openAsset(name),
     },
 
     storage: {
@@ -146,12 +150,16 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
       async list() {
         need("assets:read");
         const items = await ListAssets();
-        return (items ?? []).map((a) => ({
-          name: a.name,
-          type: a.type,
-          description: a.description,
-          updatedAt: a.updatedAt,
-        }));
+        return (items ?? [])
+          // Extensions are invisible outside the Extensions screen —
+          // including to other extensions' queries, stats, and search.
+          .filter((a) => a.type !== "app-plugin")
+          .map((a) => ({
+            name: a.name,
+            type: a.type,
+            description: a.description,
+            updatedAt: a.updatedAt,
+          }));
       },
       async listCollections() {
         need("assets:read");

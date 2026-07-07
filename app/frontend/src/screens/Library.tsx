@@ -451,6 +451,7 @@ export default function Library({
       notice: setToastMessage,
       confirm: confirmAction,
       refresh: () => loadRef.current(),
+      openAsset: setSelected,
     });
     void bootExtensions();
     // eslint-disable-next-line react-hooks/exhaustive-deps

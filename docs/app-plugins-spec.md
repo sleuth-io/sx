@@ -134,6 +134,45 @@ Only org admins can modify it (same RBAC as scope changes, see docs/rbac.md). Th
   assets too and are already presented by shape, not storage.)
 - Built-in plugins ship inside the app binary (vendored at build time) but run through the exact same host, API, and permission path as vault-installed ones. They are the API's permanent conformance suite.
 
+### The marketplace
+
+A marketplace is **just another sx vault full of `app-plugin` assets** —
+no registry service, no new format. The app browses it read-only and
+"install" republishes the chosen asset into the user's own vault through
+the same validated path as *Add extension…*, so a marketplace install and
+a hand-published extension are indistinguishable afterwards: same policy
+check, same consent sheet, same audit trail, and the extension arrives
+**disabled**.
+
+- Default repository: `https://github.com/sleuth-io/sx-extensions`
+  (`DefaultMarketplaceURL`); per-profile override stored in
+  `app-plugins/<profile>/marketplace.json` so teams can host their own
+  (a git URL or a local/synced folder both work — the URL opens as a git
+  or path vault respectively).
+- Bridge surface: `SearchMarketplace(query)` (type-filtered list with
+  each entry's `plugin.json` fields and an installed flag),
+  `InstallMarketplaceExtension(assetName)`, `Get/SetMarketplaceURL`.
+- UI: **Settings → Extensions → Browse marketplace…** — search, permission
+  chips per entry, Install / "✓ In library" states, editable source URL.
+- The launch marketplace content is eight extensions mapped from the most
+  popular relevant Obsidian plugins (research 2026-07-06): Asset Query
+  (Dataview), Library Search (Omnisearch), Related Assets
+  (Smart Connections, via TF-IDF cosine — exact and explainable at
+  library scale, no embedding model needed), Recent Assets (Recent
+  Files), Activity Heatmap (Heatmap Calendar), Library Stats (Vault
+  Statistics), Smart Templates (Templater/QuickAdd — declarative
+  placeholders only, no code execution), Style Linter (Linter —
+  report-only, publish-sheet warnings).
+
+### API 1.1.0 additions (marketplace milestone)
+
+- `sx.ui.openAsset(name)` — open an asset's detail panel; how list-shaped
+  extensions (search results, related assets, leaderboards) make rows
+  navigable. No new permission: it can only open what the user can
+  already see.
+- The `views:asset-tab` slot now renders: `AssetDetail` shows a
+  Content tab plus one tab per registered extension asset tab.
+
 ## The Extensions screen
 
 A first-class screen (not a settings pane), reachable from the sidebar.
@@ -169,7 +208,7 @@ Chosen by mapping Obsidian's download-mass categories (measured 2026-07-05 from 
 | **Publish Doctor** | Linter (1.0M) | Pre-publish checks contributing warnings to the publish sheet: frontmatter validity, description quality/length, trigger-phrase presence, broken file references. Converges with the skillpack-doctor idea from the gbrain research. | `events` (`before-publish`), `assets:read` |
 | **Templates** | Templater (4.8M), QuickAdd (1.9M) | Org-blessed scaffolds for new skills/commands/agents with variable substitution; quick-capture from clipboard into a draft. | `commands`, `drafts:write`, `assets:read` |
 | **Importer** | Importer (1.4M) | Import from existing `.claude/` directories, an Obsidian vault folder, or a folder of loose prompts; batch-create drafts. | `commands`, `drafts:write` |
-| **Related Assets** *(P4+, ties to v1.1 dedup)* | Smart Connections (1.1M) | Local-embedding similarity: "this looks 85% like *brand-voice*" at draft time; related-assets panel on detail view. Implementation shared with the v2-spec write-time dedup groundwork. | `views:asset-tab`, `events`, `assets:read` |
+| **Related Assets** *(shipped as a marketplace extension, not a built-in — TF-IDF cosine similarity; the embedding-based upgrade still ties to the v1.1 dedup groundwork)* | Smart Connections (1.1M) | Similar-asset tab on the detail view showing the shared terms that drove each match. | `views:asset-tab`, `assets:read` |
 | **Claude Assist** *(exploratory, last)* | Copilot (1.5M), Claudian (1.2M — fastest riser) | Draft/critique/test a skill against Claude from inside the editor. Needs `net:fetch` + key management; spec addendum before build. | `views:asset-tab`, `commands`, `net:fetch` |
 
 Not translated: sync/git plugins (core product here), canvas/tasks/calendar (wrong domain), theming (deferred).

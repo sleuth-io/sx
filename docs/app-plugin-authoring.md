@@ -74,9 +74,9 @@ event handlers.
 
 | Needs permission | Surface |
 |---|---|
-| — | `sx.ui.notice(msg)`, `sx.ui.confirm(msg, action)`, `sx.storage.loadData()/saveData(data)`, `sx.app.version`, `sx.api.version` |
+| — | `sx.ui.notice(msg)`, `sx.ui.confirm(msg, action)`, `sx.ui.openAsset(name)` (API 1.1.0 — opens an asset's detail panel, for making result rows navigable), `sx.storage.loadData()/saveData(data)`, `sx.app.version`, `sx.api.version` |
 | `assets:read` | `sx.assets.list()`, `sx.assets.listCollections()`, `sx.assets.readFiles(name)` |
-| `usage:read` | `sx.usage.events(days)`, `sx.usage.auditEvents(days)` |
+| `usage:read` | `sx.usage.events(days)`, `sx.usage.auditEvents(days)`, `sx.usage.userStats(days)` |
 | `drafts:write` | `sx.drafts.create({name, files})`, `sx.drafts.importFromFolder()` — drafts only, never publishes |
 | `views:sidebar` / `views:asset-tab` / `views:dashboard` | `sx.registerSidebarPanel/AssetTab/DashboardWidget({id, title, mount})` — `mount(view)` receives a bare DOM element (`view.el`); register cleanup with `view.onDispose(cb)`. No React is exposed. |
 | `commands` | `sx.registerCommand({id, title, run})` — appears in the ⌘K palette |
@@ -112,6 +112,27 @@ sx add ./my-extension --yes
 It appears in the app under Settings → Extensions (never in the skills
 list), disabled. Enabling shows its permission list for consent. Team
 scoping works like any asset: share it with a team and only they see it.
+
+### Styling
+
+Views own a bare DOM element; style it with **inline styles referencing
+the app's design tokens** — `var(--color-ink)`, `var(--color-ink-soft)`,
+`var(--color-ink-faint)`, `var(--color-line)`, `var(--color-canvas)`,
+`var(--color-surface)`, `var(--color-accent)`, `var(--color-accent-soft)`,
+`var(--color-danger)`, `var(--font-mono)`. These track light/dark mode
+automatically and are part of the API contract. Do **not** use the app's
+utility class names — they are build artifacts and can vanish between
+releases. See the extensions in
+[sx-extensions](https://github.com/sleuth-io/sx-extensions) for worked
+examples.
+
+### Sharing beyond your team
+
+To offer an extension in the shared marketplace, open a PR against
+[sx-extensions](https://github.com/sleuth-io/sx-extensions) adding your
+folder under `extensions/` (the repo is itself an sx vault; maintainers
+publish accepted extensions with `sx add`). Users find it under
+Settings → Extensions → Browse marketplace.
 
 ## Trust model (read before publishing broadly)
 

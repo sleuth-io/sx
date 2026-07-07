@@ -138,12 +138,24 @@ export function parseVaultManifest(raw: string): PluginManifest {
  * loads through the Blob importer. Defaults OFF; enabling requires
  * consent and passes the org policy gate like everything else. */
 export function registerVaultPlugin(manifest: PluginManifest, source: string): void {
-  if (plugins.has(manifest.id)) {
-    // Built-ins and earlier registrations win; say so instead of
-    // silently dropping (two vault assets can declare the same id).
+  const existing = plugins.get(manifest.id);
+  if (existing?.builtIn) {
+    // Built-ins win; say so instead of silently dropping (a vault asset
+    // claiming a built-in id is worth noticing).
     console.error(
-      `extension id "${manifest.id}" is already registered — ignoring the duplicate`,
+      `extension id "${manifest.id}" is already a built-in — ignoring the vault copy`,
     );
+    return;
+  }
+  if (existing) {
+    // Re-registration of a vault plugin is the normal refresh path
+    // (marketplace install, publish, sync) — upsert, don't complain. A
+    // running instance keeps its loaded code; the updated manifest and
+    // source apply on the next enable (and a permission change re-prompts
+    // consent there).
+    existing.manifest = manifest;
+    existing.make = () => importFromSource(source);
+    notify();
     return;
   }
   plugins.set(manifest.id, {

@@ -21,6 +21,7 @@ import {
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import type { main } from "../../wailsjs/go/models";
 import ExtensionsSection from "./ExtensionsSection";
+import MarketplaceSection from "./MarketplaceSection";
 import Modal from "./Modal";
 import RepoPicker, { CreateRepoCard, suggestRepoName } from "./RepoPicker";
 
@@ -299,7 +300,10 @@ export default function SettingsModal({
         </nav>
         <div className="min-w-0 flex-1">
       {tab === "extensions" ? (
-        <ExtensionsSection />
+        <>
+          <ExtensionsSection />
+          <MarketplaceSection />
+        </>
       ) : !settings ? (
         <div className="h-20 animate-pulse rounded-lg bg-canvas" />
       ) : (
