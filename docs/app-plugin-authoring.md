@@ -76,10 +76,11 @@ event handlers.
 |---|---|
 | — | `sx.ui.notice(msg)`, `sx.ui.confirm(msg, action)`, `sx.ui.openAsset(name)` (API 1.1.0 — opens an asset's detail panel, for making result rows navigable), `sx.storage.loadData()/saveData(data)`, `sx.app.version`, `sx.api.version` |
 | `assets:read` | `sx.assets.list()`, `sx.assets.listCollections()`, `sx.assets.readFiles(name)` |
-| `usage:read` | `sx.usage.events(days)`, `sx.usage.auditEvents(days)`, `sx.usage.userStats(days)` |
+| `usage:read` | `sx.usage.events(days)`, `sx.usage.auditEvents(days)`, `sx.usage.userStats(days)`, `sx.teams.list()` (names + membership, API 1.2.0) |
 | `drafts:write` | `sx.drafts.create({name, files})`, `sx.drafts.importFromFolder()` — drafts only, never publishes |
 | `views:sidebar` / `views:asset-tab` / `views:dashboard` | `sx.registerSidebarPanel/AssetTab/DashboardWidget({id, title, mount})` — `mount(view)` receives a bare DOM element (`view.el`); register cleanup with `view.onDispose(cb)`. No React is exposed. |
-| `commands` | `sx.registerCommand({id, title, run})` — appears in the ⌘K palette |
+| `commands` | `sx.registerCommand({id, title, run, menu?, hint?, context?})` — appears in the ⌘K palette. `menu: "new"` also places it in the “+ New” dropdown (creation-shaped actions only); `context: "editor"` hides it unless a draft editor is open. |
+| `editor` | `sx.editor.getValue()`, `getCursor()`, `getSelection()` → `{text, from, to}`, `replaceSelection(text)`, `replaceRange(from, to, text)` — operates on the draft the user has open (API 1.2.0). Positions are character offsets. Every call throws when no editor is open; pair editor commands with `context: "editor"`. Edits flow through the draft exactly like typing. |
 | `events` | `sx.on("draft-saved" \| "asset-published" \| "asset-installed" \| "vault-synced", handler)` and `sx.onBeforePublish(ctx => warnings)` — returned warnings render in the publish sheet |
 
 The API is versioned (`sx.api.version`) and changes additively only.

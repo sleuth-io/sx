@@ -118,6 +118,8 @@ export function PluginLoadData(arg1:string):Promise<string>;
 
 export function PluginSaveData(arg1:string,arg2:string):Promise<void>;
 
+export function PluginTeams():Promise<Array<main.PluginTeamRecord>>;
+
 export function PluginUsageEvents(arg1:number):Promise<Array<main.PluginUsageEventRecord>>;
 
 export function PluginUserStats(arg1:number):Promise<main.PluginUserStatsResult>;

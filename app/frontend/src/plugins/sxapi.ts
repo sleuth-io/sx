@@ -5,6 +5,7 @@
 
 import {
   GetAsset,
+  PluginTeams,
   ListAssets,
   ListCollections,
   CreateDraftFromFiles,
@@ -236,6 +237,17 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
           knownUsers: res.knownUsers ?? [],
           active: res.active ?? [],
         };
+      },
+    },
+
+    teams: {
+      async list() {
+        need("usage:read");
+        const teams = await PluginTeams();
+        return (teams ?? []).map((t) => ({
+          name: t.name,
+          members: t.members ?? [],
+        }));
       },
     },
 

@@ -337,6 +337,20 @@ export namespace main {
 	        this.allowed = source["allowed"];
 	    }
 	}
+	export class PluginTeamRecord {
+	    name: string;
+	    members: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginTeamRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.members = source["members"];
+	    }
+	}
 	export class PluginUsageEventRecord {
 	    timestamp: string;
 	    actor: string;

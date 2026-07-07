@@ -191,6 +191,19 @@ confirm).
   does it (per-revision markdown cache, AND semantics, heading-weighted,
   excerpt highlighting in result rows).
 
+### API 1.2.0 additions (wave-2 milestone)
+
+- New `editor` permission: `sx.editor.getValue/getCursor/getSelection/
+  replaceSelection/replaceRange` operate on the draft the user has open
+  (DraftSheet hands the live CodeMirror view to the host while mounted;
+  cleared on unmount so calls throw instead of writing into a dead
+  view). Extension edits flow through draft state exactly like typing.
+- `CommandSpec.context: "editor"` — commands that hide from the palette
+  and menus unless a draft editor is open.
+- `sx.teams.list()` under `usage:read`: team names + membership for
+  metric grouping (mutations stay core; the capability already exposes
+  member emails via userStats).
+
 ### API 1.1.0 additions (marketplace milestone)
 
 - `sx.ui.openAsset(name)` — open an asset's detail panel; how list-shaped

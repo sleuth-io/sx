@@ -186,6 +186,12 @@ export interface SxAPI {
     userStats(sinceDays: number): Promise<UserStats>;
   };
 
+  /** Requires usage:read (API 1.2.0). Team names and membership for
+   * grouping — team management stays core. */
+  readonly teams: {
+    list(): Promise<{ name: string; members: string[] }[]>;
+  };
+
   /** Requires editor (API 1.2.0). Operates on the draft the user has
    * open; every call throws when no editor is open. Positions are
    * character offsets into the document. */

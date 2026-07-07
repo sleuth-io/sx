@@ -762,3 +762,29 @@ func usageCutoff(sinceDays int) time.Time {
 	}
 	return time.Now().AddDate(0, 0, -sinceDays)
 }
+
+// PluginTeamRecord is the extension-facing team shape: names and
+// membership only — team structure for grouping metrics, not team
+// management (mutations stay core).
+type PluginTeamRecord struct {
+	Name    string   `json:"name"`
+	Members []string `json:"members"`
+}
+
+// PluginTeams lists the vault's teams — the usage:read capability (the
+// same capability already exposes member emails via PluginUserStats).
+func (a *App) PluginTeams() ([]PluginTeamRecord, error) {
+	out := []PluginTeamRecord{}
+	teams, err := a.ListTeams()
+	if err != nil {
+		return out, friendlyVaultError(err)
+	}
+	for _, t := range teams {
+		members := t.Members
+		if members == nil {
+			members = []string{}
+		}
+		out = append(out, PluginTeamRecord{Name: t.Name, Members: members})
+	}
+	return out, nil
+}

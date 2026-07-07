@@ -234,6 +234,10 @@ export function PluginSaveData(arg1, arg2) {
   return window['go']['main']['App']['PluginSaveData'](arg1, arg2);
 }
 
+export function PluginTeams() {
+  return window['go']['main']['App']['PluginTeams']();
+}
+
 export function PluginUsageEvents(arg1) {
   return window['go']['main']['App']['PluginUsageEvents'](arg1);
 }
