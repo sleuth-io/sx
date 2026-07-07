@@ -199,6 +199,20 @@ export namespace main {
 	        this.reason = source["reason"];
 	    }
 	}
+	export class ImportResult {
+	    created: string[];
+	    skipped: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImportResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.created = source["created"];
+	        this.skipped = source["skipped"];
+	    }
+	}
 	export class InstalledAssetInfo {
 	    name: string;
 	    version: string;

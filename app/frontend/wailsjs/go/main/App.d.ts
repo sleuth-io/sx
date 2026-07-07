@@ -72,6 +72,8 @@ export function HasIdentity():Promise<boolean>;
 
 export function HideApp():Promise<void>;
 
+export function ImportDraftsFromFolder():Promise<main.ImportResult>;
+
 export function InstalledAssets():Promise<Array<main.InstalledAssetInfo>>;
 
 export function ListAIClients():Promise<Array<main.AIClient>>;

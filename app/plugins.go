@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/logger"
@@ -157,7 +159,10 @@ func (a *App) SetPluginDecision(id string, enabled bool) error {
 	if err := os.Rename(tmp, target); err != nil {
 		return err
 	}
-	a.auditPluginDecision(id, enabled)
+	// Fire-and-forget: on a git vault the audit append is a full
+	// pull+commit+push, and a per-user preference toggle must not block
+	// the UI on network I/O. The decision file above is the durable state.
+	go a.auditPluginDecision(id, enabled)
 	return nil
 }
 
@@ -238,29 +243,71 @@ type PluginPolicy struct {
 }
 
 // GetPluginPolicy reads the vault's [app-plugins] policy. Vaults without
-// policy support (or no policy set) report open.
+// policy support (or no policy set) report open. A read FAILURE must not
+// fail open — a transient git error would silently lift an org's
+// allowlist — so successful reads are cached per profile and an error
+// serves the cache.
 func (a *App) GetPluginPolicy() (PluginPolicy, error) {
 	open := PluginPolicy{Mode: vaultpkg.AppPluginModeOpen, Allowed: []string{}}
 	v, err := a.currentVault()
 	if err != nil {
-		return open, nil
+		return a.cachedPluginPolicy(open), nil
 	}
 	store, ok := v.(vaultpkg.AppPluginPolicyStore)
 	if !ok {
-		return open, nil
+		return open, nil // backend has no policy concept — genuinely open
 	}
 	policy, err := store.AppPluginPolicy(a.ctx)
 	if err != nil {
-		return open, friendlyVaultError(err)
+		return a.cachedPluginPolicy(open), nil
 	}
-	if policy == nil || policy.Mode == "" {
-		return open, nil
+	out := open
+	if policy != nil && policy.Mode != "" {
+		allowed := policy.Allowed
+		if allowed == nil {
+			allowed = []string{}
+		}
+		out = PluginPolicy{Mode: policy.Mode, Allowed: allowed}
 	}
-	allowed := policy.Allowed
-	if allowed == nil {
-		allowed = []string{}
+	a.cachePluginPolicy(out)
+	return out, nil
+}
+
+func (a *App) policyCachePath() (string, error) {
+	dir, err := a.pluginDataDir()
+	if err != nil {
+		return "", err
 	}
-	return PluginPolicy{Mode: policy.Mode, Allowed: allowed}, nil
+	return filepath.Join(dir, "policy-cache.json"), nil
+}
+
+func (a *App) cachePluginPolicy(p PluginPolicy) {
+	path, err := a.policyCachePath()
+	if err != nil {
+		return
+	}
+	if data, err := json.Marshal(p); err == nil {
+		_ = os.WriteFile(path, data, 0o644)
+	}
+}
+
+func (a *App) cachedPluginPolicy(fallback PluginPolicy) PluginPolicy {
+	path, err := a.policyCachePath()
+	if err != nil {
+		return fallback
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fallback
+	}
+	var p PluginPolicy
+	if err := json.Unmarshal(data, &p); err != nil || p.Mode == "" {
+		return fallback
+	}
+	if p.Allowed == nil {
+		p.Allowed = []string{}
+	}
+	return p
 }
 
 // PluginUsageEventRecord is the extension-facing usage event shape.
@@ -337,6 +384,91 @@ func (a *App) PluginAuditEvents(sinceDays int) ([]PluginAuditEventRecord, error)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Timestamp > out[j].Timestamp })
 	return out, nil
+}
+
+// ImportResult reports what a folder import produced.
+type ImportResult struct {
+	Created []string `json:"created"`
+	Skipped int      `json:"skipped"`
+}
+
+// ImportDraftsFromFolder opens a directory picker and batch-creates one
+// draft per skill-shaped entry found: subdirectories containing a
+// SKILL.md (a .claude/skills layout or an sx vault assets dir), plus
+// loose top-level markdown files (a folder of prompts, an Obsidian
+// folder). Everything lands as DRAFTS — the human reviews and publishes.
+// Serves the Importer built-in through the drafts:write capability.
+func (a *App) ImportDraftsFromFolder() (ImportResult, error) {
+	dir, err := wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{
+		Title: "Choose a folder to import (e.g. .claude/skills, or a folder of prompts)",
+	})
+	if err != nil {
+		return ImportResult{Created: []string{}}, err
+	}
+	if dir == "" {
+		return ImportResult{Created: []string{}}, nil // cancelled
+	}
+	return a.importDraftsFrom(dir)
+}
+
+// importDraftsFrom is the dialog-free scan+create core, split out so the
+// import shape is testable without a native picker.
+func (a *App) importDraftsFrom(dir string) (ImportResult, error) {
+	res := ImportResult{Created: []string{}}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return res, err
+	}
+	var candidates []string
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		full := filepath.Join(dir, name)
+		if e.IsDir() {
+			// A skill folder: any dir carrying markdown (SKILL.md or
+			// otherwise). Empty or markdown-less dirs are skipped.
+			if dirHasMarkdown(full) {
+				candidates = append(candidates, full)
+			} else {
+				res.Skipped++
+			}
+			continue
+		}
+		if strings.EqualFold(filepath.Ext(name), ".md") {
+			candidates = append(candidates, full)
+		} else {
+			res.Skipped++
+		}
+	}
+	if len(candidates) == 0 {
+		return res, errors.New("no markdown files or skill folders found in that folder")
+	}
+
+	for _, c := range candidates {
+		draft, err := a.CreateDraftFromPaths([]string{c})
+		if err != nil {
+			res.Skipped++
+			continue
+		}
+		res.Created = append(res.Created, draft.Name)
+	}
+	sort.Strings(res.Created)
+	return res, nil
+}
+
+func dirHasMarkdown(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".md") {
+			return true
+		}
+	}
+	return false
 }
 
 // usageCutoff caps history reads at a year so an extension can't force an

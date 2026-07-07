@@ -112,3 +112,41 @@ func TestUsageCutoffCaps(t *testing.T) {
 		t.Fatalf("cutoff uncapped: %v", now.Sub(c))
 	}
 }
+
+// The Importer's scan: skill folders (dirs carrying markdown) and loose
+// top-level markdown become drafts; dot-entries and markdown-less dirs
+// are skipped.
+func TestImportDraftsFromFolder(t *testing.T) {
+	a := pluginTestApp(t)
+	src := t.TempDir()
+	mustWrite := func(rel, content string) {
+		t.Helper()
+		path := src + "/" + rel
+		if err := os.MkdirAll(path[:strings.LastIndex(path, "/")], 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite("code-review/SKILL.md", "---\nname: code-review\ndescription: Reviews.\n---\n\n# code-review\n")
+	mustWrite("loose-prompt.md", "# A loose prompt\n")
+	mustWrite("no-markdown/data.json", "{}")
+	mustWrite(".hidden/SKILL.md", "# hidden\n")
+
+	res, err := a.importDraftsFrom(src)
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if len(res.Created) != 2 {
+		t.Fatalf("created = %v, want 2 drafts", res.Created)
+	}
+	if res.Skipped != 1 {
+		t.Fatalf("skipped = %d, want 1 (the markdown-less dir)", res.Skipped)
+	}
+
+	drafts, err := a.ListDrafts()
+	if err != nil || len(drafts) != 2 {
+		t.Fatalf("drafts = %v err=%v, want the 2 imports", drafts, err)
+	}
+}

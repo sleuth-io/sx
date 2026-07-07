@@ -142,6 +142,10 @@ export function HideApp() {
   return window['go']['main']['App']['HideApp']();
 }
 
+export function ImportDraftsFromFolder() {
+  return window['go']['main']['App']['ImportDraftsFromFolder']();
+}
+
 export function InstalledAssets() {
   return window['go']['main']['App']['InstalledAssets']();
 }

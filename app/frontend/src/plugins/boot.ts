@@ -8,18 +8,19 @@ import { AppVersion, PluginDecisions } from "../../wailsjs/go/main/App";
 import {
   registerBuiltIn,
   enablePlugin,
+  listPlugins,
   loaderPreflight,
   setAppVersion,
 } from "./host";
-import { loadPolicyAndConsents, policyBlocks } from "./policy";
+import { hasConsent, loadPolicyAndConsents, policyBlocks } from "./policy";
 import PublishDoctor, {
   publishDoctorManifest,
 } from "./builtins/publish-doctor";
 import LibraryDashboard, {
   libraryDashboardManifest,
 } from "./builtins/library-dashboard";
-
-const BUILT_INS = [libraryDashboardManifest.id, publishDoctorManifest.id];
+import Templates, { templatesManifest } from "./builtins/templates";
+import Importer, { importerManifest } from "./builtins/importer";
 
 let booted = false;
 
@@ -35,6 +36,8 @@ export async function bootExtensions(): Promise<void> {
     libraryDashboardManifest,
     async () => new LibraryDashboard(),
   );
+  registerBuiltIn(templatesManifest, async () => new Templates());
+  registerBuiltIn(importerManifest, async () => new Importer());
 
   void loaderPreflight().then((r) => {
     if (!r.blobImport || !r.cssInjection) {
@@ -55,9 +58,16 @@ export async function bootExtensions(): Promise<void> {
   } catch {
     // No profile yet (onboarding) — defaults apply next boot.
   }
-  for (const id of BUILT_INS) {
-    const intended = decisions[id] ?? true; // built-ins default on
+  for (const p of listPlugins()) {
+    const id = p.manifest.id;
+    const intended = decisions[id] ?? p.builtIn; // built-ins default on
     if (!intended || policyBlocks(id)) continue;
+    // The consent guarantee holds on EVERY load path, not just the
+    // Settings toggle: a vault-installed extension whose permissions
+    // changed since consent stays off until the user re-consents (its
+    // row in the Extensions screen shows why). Built-ins ship with the
+    // app and are implicitly consented at their bundled permission set.
+    if (!p.builtIn && !hasConsent(p.manifest)) continue;
     try {
       await enablePlugin(id);
     } catch (e) {

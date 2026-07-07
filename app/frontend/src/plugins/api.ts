@@ -164,6 +164,8 @@ export interface SxAPI {
   /** Requires drafts:write. Never publishes — that stays a human action. */
   readonly drafts: {
     create(draft: DraftInput): Promise<{ id: string }>;
+    /** Native folder picker → one draft per skill folder / markdown file. */
+    importFromFolder(): Promise<{ created: string[]; skipped: number }>;
   };
 
   /** Requires views:sidebar. */

@@ -8,6 +8,7 @@ import {
   ListAssets,
   ListCollections,
   CreateBlankDraft,
+  ImportDraftsFromFolder,
   UpdateDraft,
   PluginLoadData,
   PluginSaveData,
@@ -190,6 +191,11 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
         }));
         const updated = await UpdateDraft(blank);
         return { id: updated.id };
+      },
+      async importFromFolder() {
+        need("drafts:write");
+        const res = await ImportDraftsFromFolder();
+        return { created: res.created ?? [], skipped: res.skipped ?? 0 };
       },
     },
 
