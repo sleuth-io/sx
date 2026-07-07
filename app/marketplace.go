@@ -139,7 +139,11 @@ func (a *App) SearchMarketplace(query string) ([]MarketplaceExtension, error) {
 			logger.Get().Warn("skipping malformed marketplace extension", "asset", summary.Name, "error", err)
 			continue
 		}
-		entry.Installed = installed[summary.Name]
+		// Installed matches on the plugin ID: install republishes under
+		// pm.ID (addExtensionFrom forces the name), so the current vault's
+		// asset names are always ids — the MARKETPLACE's asset name is
+		// whatever its publisher chose and may diverge.
+		entry.Installed = installed[entry.ID]
 		out = append(out, entry)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

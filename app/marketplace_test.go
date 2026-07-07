@@ -154,4 +154,33 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 	if _, err := a.InstallMarketplaceExtension("nope"); err == nil {
 		t.Fatalf("unknown asset accepted")
 	}
+
+	// A marketplace may name an asset independently of its plugin id
+	// (the source URL is user-editable, so foreign conventions happen).
+	// Install republishes under the plugin id, and the installed flag
+	// must match on the id — not the marketplace's asset name — or the
+	// entry never flips to installed.
+	mkt, err := vaultpkg.NewPathVault("file://" + mktDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mkt.RenameAsset(a.ctx, "library-search", "acme-search"); err != nil {
+		t.Fatalf("rename in marketplace: %v", err)
+	}
+	installedName, err := a.InstallMarketplaceExtension("acme-search")
+	if err != nil {
+		t.Fatalf("install renamed entry: %v", err)
+	}
+	if installedName != "library-search" {
+		t.Fatalf("republished name = %q, want the plugin id", installedName)
+	}
+	final, err := a.SearchMarketplace("")
+	if err != nil {
+		t.Fatalf("final search: %v", err)
+	}
+	for _, e := range final {
+		if e.AssetName == "acme-search" && (!e.Installed || e.ID != "library-search") {
+			t.Fatalf("renamed entry not matched by id: %+v", e)
+		}
+	}
 }

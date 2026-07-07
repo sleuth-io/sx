@@ -17,7 +17,10 @@ import { currentPolicy } from "../plugins/policy";
  * policy check and the consent sheet like any other vault extension.
  */
 export default function MarketplaceSection() {
-  const [results, setResults] = useState<main.MarketplaceExtension[] | null>(
+  // The full catalog, fetched ONCE per open (and per source change).
+  // Each backend fetch clones/updates the repo and unpacks every bundle,
+  // so keystrokes must never reach it — filtering is client-side.
+  const [catalog, setCatalog] = useState<main.MarketplaceExtension[] | null>(
     null,
   );
   const [query, setQuery] = useState("");
@@ -28,7 +31,7 @@ export default function MarketplaceSection() {
   const [repoURL, setRepoURL] = useState("");
   const [editingRepo, setEditingRepo] = useState(false);
   const [opened, setOpened] = useState(false);
-  const searchSeq = useRef(0);
+  const fetchSeq = useRef(0);
 
   useEffect(() => {
     GetMarketplaceURL()
@@ -36,42 +39,52 @@ export default function MarketplaceSection() {
       .catch(() => {});
   }, []);
 
-  const search = useCallback(async (q: string) => {
-    const seq = ++searchSeq.current;
+  const fetchCatalog = useCallback(async () => {
+    const seq = ++fetchSeq.current;
     setSearching(true);
     setError("");
     try {
-      const found = await SearchMarketplace(q);
-      if (seq === searchSeq.current) setResults(found);
+      const found = await SearchMarketplace("");
+      if (seq === fetchSeq.current) setCatalog(found);
     } catch (e) {
-      if (seq === searchSeq.current) {
-        setResults([]);
+      if (seq === fetchSeq.current) {
+        setCatalog([]);
         setError(String(e));
       }
     } finally {
-      if (seq === searchSeq.current) setSearching(false);
+      if (seq === fetchSeq.current) setSearching(false);
     }
   }, []);
 
   async function open() {
     setOpened(true);
-    await search("");
+    await fetchCatalog();
   }
+
+  const needle = query.trim().toLowerCase();
+  const results =
+    catalog?.filter(
+      (r) =>
+        !needle ||
+        r.name.toLowerCase().includes(needle) ||
+        r.id.toLowerCase().includes(needle) ||
+        r.description.toLowerCase().includes(needle),
+    ) ?? null;
 
   async function install(entry: main.MarketplaceExtension) {
     setInstalling(entry.assetName);
     setError("");
     setNotice("");
     try {
-      const name = await InstallMarketplaceExtension(entry.assetName);
+      await InstallMarketplaceExtension(entry.assetName);
       await refreshVaultPlugins();
       setNotice(
         `${entry.name} added to this library — enable it above when you're ready.`,
       );
-      setResults(
+      setCatalog(
         (prev) =>
           prev?.map((r) =>
-            r.assetName === name ? { ...r, installed: true } : r,
+            r.assetName === entry.assetName ? { ...r, installed: true } : r,
           ) ?? prev,
       );
     } catch (e) {
@@ -88,7 +101,7 @@ export default function MarketplaceSection() {
       await SetMarketplaceURL(repoURL);
       const effective = await GetMarketplaceURL();
       setRepoURL(effective);
-      if (opened) await search(query);
+      if (opened) await fetchCatalog();
     } catch (e) {
       setError(String(e));
     }
@@ -121,10 +134,7 @@ export default function MarketplaceSection() {
           <div className="mb-2 flex items-center gap-2">
             <input
               value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                void search(e.target.value);
-              }}
+              onChange={(e) => setQuery(e.target.value)}
               placeholder="Search extensions…"
               data-marketplace-search
               className="w-full rounded-lg border border-line bg-canvas px-3 py-1.5 text-sm outline-none transition focus:border-accent"

@@ -173,6 +173,11 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
       async readFiles(name: string) {
         need("assets:read");
         const detail = await GetAsset(name, "");
+        // list() hides extensions; guessing an id must not read one
+        // anyway — hidden from discovery AND from access.
+        if (detail.type === "app-plugin") {
+          throw new Error(`asset ${name} is not readable through the extension API`);
+        }
         return (detail.files ?? []).map((f) => ({
           path: f.path,
           content: f.content,
