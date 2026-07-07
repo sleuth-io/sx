@@ -1,14 +1,7 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
   GetMarketplaceURL,
   InstallMarketplaceExtension,
-  SearchMarketplace,
   SetMarketplaceURL,
   SetPluginDecision,
 } from "../../wailsjs/go/main/App";
@@ -21,7 +14,12 @@ import {
   subscribeHost,
 } from "../plugins/host";
 import { currentPolicy, policyBlocks, recordConsent } from "../plugins/policy";
-import { applyUpdate } from "../plugins/updates";
+import {
+  applyUpdate,
+  getCatalog,
+  loadCatalog,
+  subscribeCatalog,
+} from "../plugins/updates";
 
 /**
  * The marketplace browser inside Settings → Extensions: search a shared
@@ -31,12 +29,11 @@ import { applyUpdate } from "../plugins/updates";
  * policy check and the consent sheet like any other vault extension.
  */
 export default function MarketplaceSection() {
-  // The full catalog, fetched ONCE per open (and per source change).
-  // Each backend fetch clones/updates the repo and unpacks every bundle,
-  // so keystrokes must never reach it — filtering is client-side.
-  const [catalog, setCatalog] = useState<main.MarketplaceExtension[] | null>(
-    null,
-  );
+  // The catalog comes from the shared store (one fetch serves this
+  // panel AND the Extensions list's update check). Each backend fetch
+  // clones/updates the repo and unpacks every bundle, so keystrokes
+  // must never reach it — filtering is client-side.
+  const catalog = useSyncExternalStore(subscribeCatalog, getCatalog);
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [installing, setInstalling] = useState("");
@@ -45,9 +42,8 @@ export default function MarketplaceSection() {
   const [repoURL, setRepoURL] = useState("");
   const [editingRepo, setEditingRepo] = useState(false);
   const [opened, setOpened] = useState(false);
-  const fetchSeq = useRef(0);
-  // Reactive installed-plugin view, so entries can offer Update when
-  // the marketplace is ahead of the installed version.
+  // Reactive installed-plugin view: installed/update states derive from
+  // it, so an install or update from EITHER panel flips this one too.
   const installedPlugins = useSyncExternalStore(subscribeHost, listPlugins);
 
   useEffect(() => {
@@ -56,20 +52,15 @@ export default function MarketplaceSection() {
       .catch(() => {});
   }, []);
 
-  const fetchCatalog = useCallback(async () => {
-    const seq = ++fetchSeq.current;
+  const fetchCatalog = useCallback(async (force = false) => {
     setSearching(true);
     setError("");
     try {
-      const found = await SearchMarketplace("");
-      if (seq === fetchSeq.current) setCatalog(found);
+      await loadCatalog(force);
     } catch (e) {
-      if (seq === fetchSeq.current) {
-        setCatalog([]);
-        setError(String(e));
-      }
+      setError(String(e));
     } finally {
-      if (seq === fetchSeq.current) setSearching(false);
+      setSearching(false);
     }
   }, []);
 
@@ -115,12 +106,6 @@ export default function MarketplaceSection() {
             : `${entry.name} added to this library — enable it above when you're ready.`,
         );
       }
-      setCatalog(
-        (prev) =>
-          prev?.map((r) =>
-            r.assetName === entry.assetName ? { ...r, installed: true } : r,
-          ) ?? prev,
-      );
     } catch (e) {
       setError(String(e));
     } finally {
@@ -153,7 +138,7 @@ export default function MarketplaceSection() {
       await SetMarketplaceURL(repoURL);
       const effective = await GetMarketplaceURL();
       setRepoURL(effective);
-      if (opened) await fetchCatalog();
+      if (opened) await fetchCatalog(true);
     } catch (e) {
       setError(String(e));
     }
@@ -242,8 +227,11 @@ export default function MarketplaceSection() {
                   const mine = installedPlugins.find(
                     (p) => !p.builtIn && p.manifest.id === r.id,
                   );
+                  // Derived reactively (not from the fetched flag), so
+                  // installs/updates flip this card without a refetch.
+                  const installed = r.installed || !!mine;
                   if (
-                    r.installed &&
+                    installed &&
                     mine &&
                     compareVersions(mine.manifest.version, r.version) < 0
                   ) {
@@ -258,7 +246,7 @@ export default function MarketplaceSection() {
                       </button>
                     );
                   }
-                  if (r.installed) {
+                  if (installed) {
                     return (
                       <span className="shrink-0 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                         ✓ In library

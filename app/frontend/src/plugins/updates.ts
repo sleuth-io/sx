@@ -6,6 +6,7 @@
 
 import {
   InstallMarketplaceExtension,
+  SearchMarketplace,
   SetPluginDecision,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
@@ -18,6 +19,47 @@ import {
 } from "./host";
 import { hasConsent } from "./policy";
 import type { PluginManifest } from "./api";
+
+// ---- Shared marketplace catalog ----
+// One fetch serves every consumer: fetching the catalog means a git
+// fetch plus unpacking every bundle, so the Extensions list and the
+// marketplace browser must never each pay it — and both panels must
+// read the SAME data or their Update buttons drift apart.
+
+let catalog: main.MarketplaceExtension[] | null = null;
+let catalogFetchedAt = 0;
+let catalogInflight: Promise<main.MarketplaceExtension[]> | null = null;
+const catalogListeners = new Set<() => void>();
+const CATALOG_TTL_MS = 60_000;
+
+export function subscribeCatalog(cb: () => void): () => void {
+  catalogListeners.add(cb);
+  return () => catalogListeners.delete(cb);
+}
+
+export function getCatalog(): main.MarketplaceExtension[] | null {
+  return catalog;
+}
+
+/** Fetch (or reuse) the marketplace catalog. Concurrent callers share
+ * one request; `force` bypasses the TTL (source URL changed). */
+export function loadCatalog(force = false): Promise<main.MarketplaceExtension[]> {
+  if (!force && catalog && Date.now() - catalogFetchedAt < CATALOG_TTL_MS) {
+    return Promise.resolve(catalog);
+  }
+  if (catalogInflight) return catalogInflight;
+  catalogInflight = SearchMarketplace("")
+    .then((found) => {
+      catalog = found ?? [];
+      catalogFetchedAt = Date.now();
+      for (const cb of catalogListeners) cb();
+      return catalog;
+    })
+    .finally(() => {
+      catalogInflight = null;
+    });
+  return catalogInflight;
+}
 
 export interface UpdateInfo {
   entry: main.MarketplaceExtension;

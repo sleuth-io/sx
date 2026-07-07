@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import type { main } from "../../wailsjs/go/models";
 import { useSlot } from "../plugins/registry";
 import PluginMount from "./PluginMount";
@@ -100,6 +100,10 @@ export default function Sidebar({
   const active = scopeKey(scope);
   const sidebarPanels = useSlot("sidebar-panel");
   const dashboardWidgets = useSlot("dashboard-widget").length;
+  // Collapsed by default; remembering the choice per machine.
+  const [toolsOpen, setToolsOpen] = useState(
+    () => localStorage.getItem("sx-tools-open") === "1",
+  );
 
   return (
     <aside
@@ -186,17 +190,49 @@ export default function Sidebar({
             onClick={() => onScope({ kind: "dashboard" })}
           />
         )}
-        {/* Extension-contributed sidebar panels (views:sidebar). */}
-        {sidebarPanels.map((p) => (
-          <div key={p.pluginId + ":" + p.spec.id} className="mt-2">
-            <SectionLabel>{p.spec.title.toUpperCase()}</SectionLabel>
-            <PluginMount
-              pluginId={p.pluginId}
-              mount={p.spec.mount}
-              className="px-1"
-            />
+        {/* Extension-contributed sidebar panels (views:sidebar) live
+            under ONE collapsed TOOLS section — they're tools that act
+            on the library, not places you navigate, and expanded by
+            default they crowd out collections and teams. */}
+        {sidebarPanels.length > 0 && (
+          <div className="mt-2" data-tools-section>
+            <button
+              onClick={() => {
+                setToolsOpen((v) => {
+                  localStorage.setItem("sx-tools-open", v ? "" : "1");
+                  return !v;
+                });
+              }}
+              className="flex w-full items-center gap-1 rounded px-2 py-0.5 text-left"
+              aria-expanded={toolsOpen}
+            >
+              <span className="text-[11px] font-semibold tracking-wider text-ink-faint">
+                TOOLS
+              </span>
+              <span className="text-[9px] text-ink-faint">
+                {toolsOpen ? "▾" : "▸"}
+              </span>
+              {!toolsOpen && (
+                <span className="ml-auto text-[10px] text-ink-faint">
+                  {sidebarPanels.length}
+                </span>
+              )}
+            </button>
+            {toolsOpen &&
+              sidebarPanels.map((p) => (
+                <div key={p.pluginId + ":" + p.spec.id} className="mt-1">
+                  <div className="px-2 text-[10px] font-semibold tracking-wider text-ink-faint">
+                    {p.spec.title.toUpperCase()}
+                  </div>
+                  <PluginMount
+                    pluginId={p.pluginId}
+                    mount={p.spec.mount}
+                    className="px-1"
+                  />
+                </div>
+              ))}
           </div>
-        ))}
+        )}
 
         <div className="mt-4 flex items-center justify-between pr-1">
           <SectionLabel>COLLECTIONS</SectionLabel>

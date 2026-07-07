@@ -1,8 +1,7 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   AddExtensionFromFolder,
   DeleteAssets,
-  SearchMarketplace,
   SetPluginDecision,
 } from "../../wailsjs/go/main/App";
 import { refreshVaultPlugins } from "../plugins/boot";
@@ -15,7 +14,14 @@ import {
   unregisterVaultPlugin,
   type LoaderPreflight,
 } from "../plugins/host";
-import { applyUpdate, findUpdates, type UpdateInfo } from "../plugins/updates";
+import {
+  applyUpdate,
+  findUpdates,
+  getCatalog,
+  loadCatalog,
+  subscribeCatalog,
+  type UpdateInfo,
+} from "../plugins/updates";
 import {
   currentPolicy,
   hasConsent,
@@ -42,18 +48,31 @@ export default function ExtensionsSection() {
   const consentFor = consentQueue[0] ?? null;
   const [removeFor, setRemoveFor] = useState<PluginManifest | null>(null);
   const [preflight, setPreflight] = useState<LoaderPreflight | null>(null);
-  // Marketplace versions newer than what's installed. Best-effort: an
-  // unreachable marketplace just means no update buttons.
-  const [updates, setUpdates] = useState<UpdateInfo[]>([]);
+  // Update-all progress ("Updating 2/5…").
+  const [batch, setBatch] = useState<{ done: number; total: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     void loaderPreflight().then(setPreflight);
   }, []);
+  // Update availability derives REACTIVELY from the shared catalog and
+  // the live plugin list, so updating from either panel clears the
+  // button in both. The fetch is guarded: with no vault-installed
+  // extensions there is nothing to update, and the catalog fetch (git
+  // fetch + unpack every bundle) would be pure waste.
+  const catalog = useSyncExternalStore(subscribeCatalog, getCatalog);
   useEffect(() => {
-    SearchMarketplace("")
-      .then((catalog) => setUpdates(findUpdates(catalog ?? [])))
-      .catch(() => {});
-  }, []);
+    if (plugins.some((p) => !p.builtIn)) {
+      loadCatalog().catch(() => {});
+    }
+  }, [plugins]);
+  const updates = useMemo(
+    () => findUpdates(catalog ?? []),
+    // plugins is the reactive half of the comparison findUpdates makes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [catalog, plugins],
+  );
 
   if (currentPolicy().mode === "disabled") {
     return (
@@ -119,7 +138,6 @@ export default function ExtensionsSection() {
       if (outcome.state === "needs-consent") {
         setConsentQueue((q) => [...q, outcome.manifest]);
       }
-      setUpdates((u) => u.filter((x) => x.entry.id !== info.entry.id));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -127,21 +145,26 @@ export default function ExtensionsSection() {
     }
   }
 
+  // Sequential on purpose: each update is a vault publish (a commit and
+  // push on git vaults) and concurrent pushes to one remote just fight.
   async function updateAll() {
     setError("");
-    for (const info of [...updates]) {
+    const queue = [...updates];
+    setBatch({ done: 0, total: queue.length });
+    for (const [i, info] of queue.entries()) {
+      setBatch({ done: i, total: queue.length });
       setBusy(info.entry.id);
       try {
         const outcome = await applyUpdate(info.entry);
         if (outcome.state === "needs-consent") {
           setConsentQueue((q) => [...q, outcome.manifest]);
         }
-        setUpdates((u) => u.filter((x) => x.entry.id !== info.entry.id));
       } catch (e) {
         setError(String(e));
         break;
       }
     }
+    setBatch(null);
     setBusy("");
   }
 
@@ -158,7 +181,6 @@ export default function ExtensionsSection() {
       await SetPluginDecision(manifest.id, false);
       await DeleteAssets([manifest.id]);
       unregisterVaultPlugin(manifest.id);
-      setUpdates((u) => u.filter((x) => x.entry.id !== manifest.id));
       await refreshVaultPlugins();
     } catch (e) {
       setError(String(e));
@@ -189,15 +211,15 @@ export default function ExtensionsSection() {
           EXTENSIONS
         </span>
         <span className="flex items-center gap-2">
-          {updates.length > 0 && (
+          {(updates.length > 0 || batch) && (
             <button
               onClick={() => void updateAll()}
               disabled={busy !== ""}
               data-update-all
               className="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
             >
-              {busy !== "" && updates.length > 0
-                ? "Updating…"
+              {batch
+                ? `Updating ${Math.min(batch.done + 1, batch.total)}/${batch.total}…`
                 : `Update all (${updates.length})`}
             </button>
           )}
