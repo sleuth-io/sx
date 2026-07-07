@@ -112,6 +112,8 @@ export function PluginAuditEvents(arg1:number):Promise<Array<main.PluginAuditEve
 
 export function PluginConsents():Promise<Record<string, Array<string>>>;
 
+export function PluginCurrentUser():Promise<string>;
+
 export function PluginDecisions():Promise<Record<string, boolean>>;
 
 export function PluginLoadData(arg1:string):Promise<string>;

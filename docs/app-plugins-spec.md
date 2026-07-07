@@ -207,6 +207,10 @@ confirm).
   — rota state and shared settings, not a concurrent database. Its
   consent line says plainly that state is visible to everyone in the
   library.
+- `sx.app.currentUser()`: the identity vault changes are attributed to
+  ("" when unresolvable). No new permission — it's the extension
+  learning who is running it, not reading other people's data; how
+  team-shaped extensions mark entries "mine".
 
 ### API 1.4.0 additions (wave-2, Claude Assist)
 

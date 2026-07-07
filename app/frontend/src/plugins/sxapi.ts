@@ -22,6 +22,7 @@ import {
   PluginSharedSave,
   PluginUsageEvents,
   PluginAuditEvents,
+  PluginCurrentUser,
   PluginUserStats,
 } from "../../wailsjs/go/main/App";
 import type {
@@ -170,7 +171,10 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
   }
 
   const api: SxAPI = {
-    app: { version: getAppVersion() },
+    app: {
+      version: getAppVersion(),
+      currentUser: async () => (await PluginCurrentUser().catch(() => "")) ?? "",
+    },
     api: { version: SX_API_VERSION },
 
     ui: {

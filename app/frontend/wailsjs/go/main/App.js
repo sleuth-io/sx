@@ -222,6 +222,10 @@ export function PluginConsents() {
   return window['go']['main']['App']['PluginConsents']();
 }
 
+export function PluginCurrentUser() {
+  return window['go']['main']['App']['PluginCurrentUser']();
+}
+
 export function PluginDecisions() {
   return window['go']['main']['App']['PluginDecisions']();
 }

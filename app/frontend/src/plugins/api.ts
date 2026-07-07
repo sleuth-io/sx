@@ -165,7 +165,13 @@ export interface EventMap {
 // ---- The API object handed to onload ----
 
 export interface SxAPI {
-  readonly app: { version: string };
+  readonly app: {
+    version: string;
+    /** The identity vault changes are attributed to — how team-shaped
+     * extensions know which entries are "mine" (API 1.5.0). Resolves
+     * to "" when the vault can't name one. */
+    currentUser(): Promise<string>;
+  };
   readonly api: { version: string };
 
   /** Always available. */

@@ -74,7 +74,7 @@ event handlers.
 
 | Needs permission | Surface |
 |---|---|
-| — | `sx.ui.notice(msg)`, `sx.ui.confirm(msg, action)`, `sx.ui.openAsset(name)` (API 1.1.0 — opens an asset's detail panel, for making result rows navigable), `sx.storage.loadData()/saveData(data)`, `sx.app.version`, `sx.api.version` |
+| — | `sx.ui.notice(msg)`, `sx.ui.confirm(msg, action)`, `sx.ui.openAsset(name)` (API 1.1.0 — opens an asset's detail panel, for making result rows navigable), `sx.storage.loadData()/saveData(data)`, `sx.app.version`, `sx.app.currentUser()` (API 1.5.0 — the identity vault changes are attributed to), `sx.api.version` |
 | `views:main` (also) | `sx.ui.openView(viewId)` (API 1.4.0) — navigate to one of **your own** registered main views, e.g. from a command. |
 | `assets:read` | `sx.assets.list()`, `sx.assets.listCollections()`, `sx.assets.readFiles(name)` |
 | `usage:read` | `sx.usage.events(days)`, `sx.usage.auditEvents(days)`, `sx.usage.userStats(days)`, `sx.teams.list()` (names + membership, API 1.2.0) |

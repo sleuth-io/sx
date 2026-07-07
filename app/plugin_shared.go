@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"errors"
 
+	"github.com/sleuth-io/sx/internal/mgmt"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
@@ -30,6 +32,28 @@ func (a *App) PluginSharedLoad(id string) (string, error) {
 		return "", errSharedStorageUnsupported
 	}
 	return store.AppPluginSharedLoad(a.ctx, id)
+}
+
+// PluginCurrentUser returns the identity vault mutations are attributed
+// to (sx.app.currentUser, API 1.5.0) — how team-shaped extensions know
+// which rota entries, assignments, or verdicts are "mine". "" when the
+// vault can't resolve one.
+func (a *App) PluginCurrentUser() (string, error) {
+	v, err := a.currentVault()
+	if err != nil {
+		return "", err
+	}
+	resolver, ok := v.(interface {
+		CurrentActor(ctx context.Context) (mgmt.Actor, error)
+	})
+	if !ok {
+		return "", nil
+	}
+	actor, err := resolver.CurrentActor(a.ctx)
+	if err != nil {
+		return "", nil
+	}
+	return actor.Email, nil
 }
 
 // PluginSharedSave replaces the extension's shared document (empty
