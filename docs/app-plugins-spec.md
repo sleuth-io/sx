@@ -94,8 +94,10 @@ Everything registered through `sx.*` is tracked by the host and torn down automa
 | `commands` | Register commands in the command palette (new core feature, see below) with optional shortcuts. |
 | `editor` | Character-offset text operations on the draft the user has open (`sx.editor`, 1.2.0): read value/cursor/selection, replace selection/range. Throws when no editor is open. |
 | `events` | Subscribe to lifecycle events: `draft-saved`, `before-publish` (may return warnings shown in the publish sheet — the doctor hook), `asset-published`, `asset-installed`, `vault-synced`. |
-| `net:fetch` | *Reserved (declared but unimplemented until its first consumer, the Claude Assist addendum):* HTTP fetch proxied through Go with per-plugin allowed-origin list surfaced at enable time. |
-| (always) | `sx.ui` kit — modal, notice/toast, confirm, settings panel schema; `sx.storage` — `loadData()`/`saveData()` per plugin per profile (stored app-side, not in the vault); `sx.app.version`, `sx.api.version`. |
+| `net:<host>` | Host-scoped network egress via `sx.net.fetch` (1.4.0): one grant per exact hostname (no wildcards/schemes/ports in the grant), https-only, redirects refused, real streaming `Response`. The consent sheet renders one line per declared host. |
+| `secrets` | Named per-extension secrets in the OS keyring via `sx.secrets.get/set` (1.4.0), keyed `<profile>/<extension-id>/<name>`; 0600-file fallback on headless machines. For API keys that must never land in plugin data files or the vault. |
+| `storage:shared` | One team-shared JSON document per extension via `sx.sharedStorage.load/save` (1.5.0), stored in the vault at `.sx/app-plugins/<id>.json` — syncs to everyone; commits on git vaults; 256 KB cap, whole-document last-writer-wins. |
+| (always) | `sx.ui` kit — modal, notice/toast, confirm, settings panel schema, plus `openView` into the extension's own main views (1.4.0, gated on `views:main`); `sx.storage` — `loadData()`/`saveData()` per plugin per profile (stored app-side, not in the vault); `sx.app.version`, `sx.api.version`. |
 
 **Explicitly excluded from API v1** (deferred, revisit after P6 planning):
 - CodeMirror *extension* exposure — exporting our exact CM6 package instances and freezing them; Obsidian's biggest coupling trap. Defer. (Distinct from the scoped `sx.editor` text facade shipped in 1.2.0, which exposes offsets and strings, never CM objects.)
@@ -194,6 +196,18 @@ confirm).
   does it (per-revision markdown cache, AND semantics, heading-weighted,
   excerpt highlighting in result rows).
 
+### API 1.5.0 additions (wave-2, Review Rota)
+
+- `storage:shared` permission + `sx.sharedStorage.load/save`: one
+  team-shared JSON document per extension, stored in the vault at
+  `.sx/app-plugins/<id>.json` (`AppPluginSharedStore`, git + path
+  vaults). Syncing distributes it; on a git vault every save is a
+  commit, so the API contract tells extensions to write on user
+  actions. 256 KB cap, JSON-validated, whole-document last-writer-wins
+  — rota state and shared settings, not a concurrent database. Its
+  consent line says plainly that state is visible to everyone in the
+  library.
+
 ### API 1.4.0 additions (wave-2, Claude Assist)
 
 - `secrets` permission + `sx.secrets.get(name)/set(name, value)`: named
@@ -288,7 +302,7 @@ Chosen by mapping Obsidian's download-mass categories (measured 2026-07-05 from 
 | **Templates** | Templater (4.8M), QuickAdd (1.9M) | Org-blessed scaffolds for new skills/commands/agents with variable substitution; quick-capture from clipboard into a draft. | `commands`, `drafts:write`, `assets:read` |
 | **Importer** | Importer (1.4M) | Import from existing `.claude/` directories, an Obsidian vault folder, or a folder of loose prompts; batch-create drafts. | `commands`, `drafts:write` |
 | **Related Assets** *(shipped as a marketplace extension, not a built-in — TF-IDF cosine similarity; the embedding-based upgrade still ties to the v1.1 dedup groundwork)* | Smart Connections (1.1M) | Similar-asset tab on the detail view showing the shared terms that drove each match. | `views:asset-tab`, `assets:read` |
-| **Claude Assist** *(exploratory, last)* | Copilot (1.5M), Claudian (1.2M — fastest riser) | Draft/critique/test a skill against Claude from inside the editor. Needs `net:fetch` + key management; spec addendum before build. | `views:asset-tab`, `commands`, `net:fetch` |
+| **Claude Assist** *(shipped 1.4.0 as a marketplace extension)* | Copilot (1.5M), Claudian (1.2M — fastest riser) | Ask-the-library chat with clickable `[[asset]]` citations, critique-the-open-draft-as-a-prompt, new-skill-from-description. Direct streamed calls to the Claude API with the user's own key. | `views:main`, `commands`, `editor`, `drafts:write`, `assets:read`, `secrets`, `net:api.anthropic.com` |
 
 Not translated: sync/git plugins (core product here), canvas/tasks/calendar (wrong domain), theming (deferred).
 
@@ -361,7 +375,7 @@ Per the v2-spec verification bar — nothing is done because it compiles:
   the spike's self-test graduates into a permanent loader preflight in
   the plugin host (run at startup, surfaced in Extensions diagnostics),
   so those platforms verify themselves in CI and on first run.
-- **Security review shortcut culture** (Obsidian's trap). Mitigation: permission model from day one, org allowlist, no-Node-by-construction, plugin updates ride audited asset versioning. Residual risk: a permitted plugin can still misuse what it's granted (e.g. exfiltrate via `net:fetch`) — hence per-origin fetch grants and surfacing origins at consent time.
+- **Security review shortcut culture** (Obsidian's trap). Mitigation: permission model from day one, org allowlist, no-Node-by-construction, plugin updates ride audited asset versioning. Residual risk: a permitted plugin can still misuse what it's granted (e.g. exfiltrate via `sx.net.fetch` to a host it declared) — hence per-host grants (`net:<host>`, 1.4.0) and one consent line per host at enable time.
 - **Slot/registry refactor destabilizes existing UI.** Mitigation: built-in features migrate onto slots one at a time behind the same visual design; screenshot regression pass per the v2-spec quality loop.
 - **Scope creep toward Obsidian's surface area** (editor extensions, themes, renderers). Mitigation: the exclusion list above is normative; additions require a spec addendum, not a PR.
 
@@ -376,8 +390,11 @@ Per the v2-spec verification bar — nothing is done because it compiles:
    P1–P3 (built-ins only, so the proxy is a discipline boundary). The
    iframe/realm sandbox question is a **formal P4 entry gate** — it must
    be explicitly re-decided before any third-party plugin can be enabled.
-   *P4 gate decision (2026-07-07, pending Dylan's ratification):*
-   third-party extensions run **main-context behind the proxy** in v1.
+   *P4 gate decision (2026-07-07, pending Dylan's ratification — note
+   the decision now also covers 1.4.0's `net:<host>` egress, where the
+   per-host consent line is declared intent rather than an enforced
+   boundary in main context):* third-party extensions run
+   **main-context behind the proxy** in v1.
    Rationale: the webview has no Node/filesystem, network egress exists
    only through `sx.net.fetch` to hosts declared per extension and shown
    at consent (API 1.4.0; nothing before that had any network at all),

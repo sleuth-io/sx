@@ -2,8 +2,12 @@ package vault
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 
@@ -83,6 +87,103 @@ func commonSetAppPluginPolicy(vaultRoot string, actor mgmt.Actor, policy *manife
 			Target:     "policy",
 			Data:       data,
 		}, nil
+	})
+}
+
+// ---- Shared extension state (API 1.5.0) ----
+// One JSON document per extension, shared by everyone in the library:
+// .sx/app-plugins/<id>.json. Rides the vault like everything else, so
+// git history is the change log and sync is the distribution. Writes
+// are last-writer-wins whole-document replaces — this is for rota
+// state and shared settings, not a concurrent database.
+
+// AppPluginSharedStore is implemented by vaults that can hold shared
+// extension state.
+type AppPluginSharedStore interface {
+	// AppPluginSharedLoad returns the extension's shared JSON document
+	// ("" when none exists).
+	AppPluginSharedLoad(ctx context.Context, pluginID string) (string, error)
+
+	// AppPluginSharedSave replaces the document. Empty data deletes it.
+	AppPluginSharedSave(ctx context.Context, pluginID, data string) error
+}
+
+// maxAppPluginSharedBytes bounds one extension's shared document.
+const maxAppPluginSharedBytes = 256 << 10
+
+var appPluginIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,63}$`)
+
+func appPluginSharedPath(vaultRoot, pluginID string) (string, error) {
+	if !appPluginIDPattern.MatchString(pluginID) {
+		return "", fmt.Errorf("invalid extension id %q", pluginID)
+	}
+	return filepath.Join(vaultRoot, ".sx", "app-plugins", pluginID+".json"), nil
+}
+
+func commonAppPluginSharedLoad(vaultRoot, pluginID string) (string, error) {
+	path, err := appPluginSharedPath(vaultRoot, pluginID)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- path is under the vault root with a validated id
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func commonAppPluginSharedSave(vaultRoot, pluginID, data string) error {
+	path, err := appPluginSharedPath(vaultRoot, pluginID)
+	if err != nil {
+		return err
+	}
+	if data == "" {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	if len(data) > maxAppPluginSharedBytes {
+		return fmt.Errorf("shared extension data exceeds %d bytes", maxAppPluginSharedBytes)
+	}
+	if !json.Valid([]byte(data)) {
+		return errors.New("shared extension data must be valid JSON")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(data), 0o644)
+}
+
+// AppPluginSharedLoad reads the extension's shared document.
+func (p *PathVault) AppPluginSharedLoad(ctx context.Context, pluginID string) (string, error) {
+	return commonAppPluginSharedLoad(p.repoPath, pluginID)
+}
+
+// AppPluginSharedSave replaces the extension's shared document.
+func (p *PathVault) AppPluginSharedSave(ctx context.Context, pluginID, data string) error {
+	return p.withLock(ctx, func(actor mgmt.Actor) error {
+		return commonAppPluginSharedSave(p.repoPath, pluginID, data)
+	})
+}
+
+// AppPluginSharedLoad reads the extension's shared document from the
+// synced clone.
+func (g *GitVault) AppPluginSharedLoad(ctx context.Context, pluginID string) (string, error) {
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return "", err
+	}
+	return commonAppPluginSharedLoad(g.repoPath, pluginID)
+}
+
+// AppPluginSharedSave replaces the extension's shared document and
+// pushes (the file lives under .sx/, which the vault tx stages).
+func (g *GitVault) AppPluginSharedSave(ctx context.Context, pluginID, data string) error {
+	return g.runInVaultTx(ctx, "Update "+pluginID+" extension shared data", func(root string, actor mgmt.Actor) error {
+		return commonAppPluginSharedSave(root, pluginID, data)
 	})
 }
 

@@ -224,9 +224,7 @@ func (a *App) updateSecretFallback(id, name, value string) error {
 	if err != nil {
 		return err
 	}
-	if err := atomicWriteFile(path, data); err != nil {
-		return err
-	}
-	// atomicWriteFile chmods to 0644; secrets need 0600.
-	return os.Chmod(path, 0o600)
+	// 0600 is applied to the temp file BEFORE the rename: the secrets
+	// file must never exist world-readable, even for one scheduler tick.
+	return atomicWriteFileMode(path, data, 0o600)
 }

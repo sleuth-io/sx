@@ -72,7 +72,11 @@ export async function recordConsent(manifest: PluginManifest): Promise<void> {
   consents[manifest.id] = [...manifest.permissions];
 }
 
-const PERMISSION_DESCRIPTIONS: Record<string, string> = {
+// Every FIXED permission must have a description or the build fails —
+// only the parameterized net:<host> family is described dynamically.
+type FixedPermission = Exclude<Permission, `net:${string}`>;
+
+const PERMISSION_DESCRIPTIONS: Record<FixedPermission, string> = {
   "assets:read": "Read your library's skills, collections, and files",
   "usage:read": "Read your library's usage and change history",
   "drafts:write": "Create and edit drafts (never publishes on its own)",
@@ -86,6 +90,8 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   "assets:write-metadata":
     "Update asset descriptions, keywords, owner, and status (as new revisions)",
   secrets: "Store its own API keys and tokens in your OS keychain",
+  "storage:shared":
+    "Keep shared state in this library, visible to everyone who uses it",
 };
 
 /** Plain-language permission description for the consent sheet. The
@@ -95,7 +101,7 @@ export function describePermission(p: Permission): string {
   if (p.startsWith("net:")) {
     return `Connect to ${p.slice(4)} over the internet`;
   }
-  return PERMISSION_DESCRIPTIONS[p] ?? p;
+  return PERMISSION_DESCRIPTIONS[p as FixedPermission] ?? p;
 }
 
 /** Test/dev helper. */

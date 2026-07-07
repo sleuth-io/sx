@@ -122,6 +122,10 @@ export function PluginSecretGet(arg1:string,arg2:string):Promise<string>;
 
 export function PluginSecretSet(arg1:string,arg2:string,arg3:string):Promise<void>;
 
+export function PluginSharedLoad(arg1:string):Promise<string>;
+
+export function PluginSharedSave(arg1:string,arg2:string):Promise<void>;
+
 export function PluginTeams():Promise<Array<main.PluginTeamRecord>>;
 
 export function PluginUsageEvents(arg1:number):Promise<Array<main.PluginUsageEventRecord>>;

@@ -3,7 +3,7 @@
 // extension needs something this file doesn't offer, the answer is an API
 // addition, never an escape hatch to app internals.
 
-export const SX_API_VERSION = "1.4.0";
+export const SX_API_VERSION = "1.5.0";
 
 /** Capabilities an extension may declare. Undeclared calls throw.
  * `net:<host>` is a parameterized family (API 1.4.0): each declared
@@ -21,6 +21,7 @@ export type Permission =
   | "editor"
   | "assets:write-metadata"
   | "secrets"
+  | "storage:shared"
   | `net:${string}`;
 
 /** plugin.json — the extension manifest. */
@@ -185,6 +186,16 @@ export interface SxAPI {
   readonly storage: {
     loadData<T>(): Promise<T | null>;
     saveData<T>(data: T): Promise<void>;
+  };
+
+  /** Requires storage:shared (API 1.5.0). One JSON document per
+   * extension shared by EVERYONE in the library — it lives in the vault
+   * (.sx/app-plugins/<id>.json), so saves sync to the team (and commit,
+   * on a git vault: keep writes user-action-shaped). Whole-document
+   * last-writer-wins; capped at 256 KB. */
+  readonly sharedStorage: {
+    load<T>(): Promise<T | null>;
+    save<T>(data: T): Promise<void>;
   };
 
   /** Requires assets:read. */

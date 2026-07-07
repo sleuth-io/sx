@@ -242,6 +242,14 @@ export function PluginSecretSet(arg1, arg2, arg3) {
   return window['go']['main']['App']['PluginSecretSet'](arg1, arg2, arg3);
 }
 
+export function PluginSharedLoad(arg1) {
+  return window['go']['main']['App']['PluginSharedLoad'](arg1);
+}
+
+export function PluginSharedSave(arg1, arg2) {
+  return window['go']['main']['App']['PluginSharedSave'](arg1, arg2);
+}
+
 export function PluginTeams() {
   return window['go']['main']['App']['PluginTeams']();
 }

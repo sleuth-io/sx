@@ -45,6 +45,7 @@ var knownPluginPermissions = map[string]bool{
 	"views:sidebar": true, "views:asset-tab": true, "views:dashboard": true,
 	"commands": true, "events": true, "editor": true,
 	"views:main": true, "assets:write-metadata": true, "secrets": true,
+	"storage:shared": true,
 }
 
 // netPermissionPattern matches the host-scoped network permission
@@ -132,6 +133,14 @@ func (a *App) PluginSaveData(id, data string) error {
 // rename fails with ENOENT. CreateTemp gives each writer its own file;
 // last rename wins, nobody errors.
 func atomicWriteFile(target string, data []byte) error {
+	return atomicWriteFileMode(target, data, 0o644)
+}
+
+// atomicWriteFileMode is atomicWriteFile with an explicit final mode.
+// The mode is set on the TEMP file, before the rename, so the target
+// never exists with wider permissions than requested — secrets
+// fallbacks (0600) rely on that ordering.
+func atomicWriteFileMode(target string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(target)
 	tmp, err := os.CreateTemp(dir, filepath.Base(target)+".*.tmp")
 	if err != nil {
@@ -146,7 +155,7 @@ func atomicWriteFile(target string, data []byte) error {
 		os.Remove(tmp.Name())
 		return err
 	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+	if err := os.Chmod(tmp.Name(), mode); err != nil {
 		os.Remove(tmp.Name())
 		return err
 	}

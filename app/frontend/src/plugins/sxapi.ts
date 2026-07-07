@@ -18,6 +18,8 @@ import {
   PluginSaveData,
   PluginSecretGet,
   PluginSecretSet,
+  PluginSharedLoad,
+  PluginSharedSave,
   PluginUsageEvents,
   PluginAuditEvents,
   PluginUserStats,
@@ -195,6 +197,23 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
       },
       async saveData<T>(data: T): Promise<void> {
         await PluginSaveData(id, JSON.stringify(data));
+      },
+    },
+
+    sharedStorage: {
+      async load<T>(): Promise<T | null> {
+        need("storage:shared");
+        const raw = await PluginSharedLoad(id);
+        if (!raw) return null;
+        try {
+          return JSON.parse(raw) as T;
+        } catch {
+          return null;
+        }
+      },
+      async save<T>(data: T): Promise<void> {
+        need("storage:shared");
+        await PluginSharedSave(id, JSON.stringify(data));
       },
     },
 

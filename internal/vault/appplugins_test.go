@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/manifest"
@@ -72,5 +73,49 @@ func TestAppPluginPolicyRBAC(t *testing.T) {
 	err := v.SetAppPluginPolicy(context.Background(), &manifest.AppPluginPolicy{Mode: AppPluginModeDisabled})
 	if err == nil {
 		t.Fatalf("non-admin policy write accepted on governed vault")
+	}
+}
+
+// Shared extension state round-trips through .sx/app-plugins/<id>.json;
+// empty data deletes; junk ids and non-JSON are refused.
+func TestAppPluginSharedRoundTrip(t *testing.T) {
+	v := appPluginTestVault(t, nil)
+	ctx := context.Background()
+
+	if got, err := v.AppPluginSharedLoad(ctx, "review-rota"); err != nil || got != "" {
+		t.Fatalf("initial load = %q, %v; want empty", got, err)
+	}
+	doc := `{"assets":{"a":{"lastReview":"2026-07-01"}}}`
+	if err := v.AppPluginSharedSave(ctx, "review-rota", doc); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if got, err := v.AppPluginSharedLoad(ctx, "review-rota"); err != nil || got != doc {
+		t.Fatalf("load = %q, %v", got, err)
+	}
+
+	// One extension's document is invisible to another id.
+	if got, _ := v.AppPluginSharedLoad(ctx, "other-ext"); got != "" {
+		t.Fatalf("cross-extension read = %q", got)
+	}
+
+	if err := v.AppPluginSharedSave(ctx, "../evil", "{}"); err == nil {
+		t.Fatalf("path-shaped id accepted")
+	}
+	if _, err := v.AppPluginSharedLoad(ctx, "../evil"); err == nil {
+		t.Fatalf("path-shaped id accepted on load")
+	}
+	if err := v.AppPluginSharedSave(ctx, "review-rota", "not json"); err == nil {
+		t.Fatalf("non-JSON accepted")
+	}
+	if err := v.AppPluginSharedSave(ctx, "review-rota", `{"k":"`+strings.Repeat("x", maxAppPluginSharedBytes)+`"}`); err == nil {
+		t.Fatalf("oversized document accepted")
+	}
+
+	// Empty data deletes the document.
+	if err := v.AppPluginSharedSave(ctx, "review-rota", ""); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if got, _ := v.AppPluginSharedLoad(ctx, "review-rota"); got != "" {
+		t.Fatalf("document survives delete: %q", got)
 	}
 }
