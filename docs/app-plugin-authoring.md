@@ -30,7 +30,7 @@ my-extension/
 ```
 
 - `id`: lowercase letters/digits/hyphens, unique in the vault, may not
-  contain `sx`.
+  be `sx` or start with `sx-`.
 - `permissions`: the exhaustive list of capabilities you use. Undeclared
   calls throw at runtime; unknown names are rejected at load.
 - `minAppVersion`: optional; the app refuses to load the extension on

@@ -60,7 +60,7 @@ A plugin is a directory (packaged/published like any asset):
 }
 ```
 
-- `id`: lowercase + hyphens, unique within the vault, may not contain `sx`.
+- `id`: lowercase + hyphens, unique within the vault, may not be `sx` or start with `sx-`.
 - `version`: semver; independent of `minAppVersion`, which gates load.
 - `permissions`: exhaustive list of capabilities the plugin may use (see below). Undeclared calls throw.
 

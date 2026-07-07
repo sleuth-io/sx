@@ -37,6 +37,14 @@ func (a *App) AppVersion() string {
 	return strings.TrimPrefix(buildinfo.Version, "v")
 }
 
+// knownPluginPermissions mirrors the loader's list (host.ts); publish
+// validation and load validation must accept the same universe.
+var knownPluginPermissions = map[string]bool{
+	"assets:read": true, "usage:read": true, "drafts:write": true,
+	"views:sidebar": true, "views:asset-tab": true, "views:dashboard": true,
+	"commands": true, "events": true,
+}
+
 func validatePluginID(id string) error {
 	if !pluginIDPattern.MatchString(id) {
 		return fmt.Errorf("invalid extension id %q", id)
@@ -526,8 +534,25 @@ func (a *App) addExtensionFrom(dir string) (string, error) {
 	if err := json.Unmarshal(manifestBytes, &pm); err != nil {
 		return "", errors.New("plugin.json is not valid JSON")
 	}
+	// Publish-time validation mirrors the loader (host.ts
+	// parseVaultManifest) so nothing can publish successfully and then
+	// silently fail to load.
 	if err := validatePluginID(pm.ID); err != nil {
 		return "", err
+	}
+	if pm.ID == "sx" || strings.HasPrefix(pm.ID, "sx-") {
+		return "", errors.New(`extension ids may not claim the "sx" prefix`)
+	}
+	if pm.Name == "" || pm.Version == "" {
+		return "", errors.New("plugin.json needs name and version")
+	}
+	if pm.Permissions == nil {
+		return "", errors.New("plugin.json needs a permissions array (may be empty)")
+	}
+	for _, perm := range pm.Permissions {
+		if !knownPluginPermissions[perm] {
+			return "", fmt.Errorf("plugin.json declares unknown permission %q", perm)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, "main.js")); err != nil {
 		return "", errors.New("that folder has no main.js — bundle your extension to a single ES module")

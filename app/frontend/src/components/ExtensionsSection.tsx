@@ -217,6 +217,15 @@ export default function ExtensionsSection() {
                 </li>
               ))}
             </ul>
+            {!plugins.find((p) => p.manifest.id === consentFor.id)
+              ?.builtIn && (
+              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                This extension was published to your library and runs inside
+                sx with the app's own access. The list above is what it says
+                it uses — only enable extensions from people you trust, the
+                same way you'd treat their code.
+              </p>
+            )}
             <div className="mt-4 flex justify-end gap-2">
               <button
                 onClick={() => setConsentFor(null)}

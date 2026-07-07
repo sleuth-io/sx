@@ -117,8 +117,8 @@ export function parseVaultManifest(raw: string): PluginManifest {
   if (!m.id || !/^[a-z][a-z0-9-]{1,63}$/.test(m.id)) {
     throw new Error("plugin.json id must be lowercase letters/digits/hyphens");
   }
-  if (m.id.includes("sx")) {
-    throw new Error('plugin.json id may not contain "sx"');
+  if (m.id === "sx" || m.id.startsWith("sx-")) {
+    throw new Error('plugin.json id may not claim the "sx" prefix');
   }
   if (!m.name || !m.version) {
     throw new Error("plugin.json needs name and version");
@@ -138,7 +138,14 @@ export function parseVaultManifest(raw: string): PluginManifest {
  * loads through the Blob importer. Defaults OFF; enabling requires
  * consent and passes the org policy gate like everything else. */
 export function registerVaultPlugin(manifest: PluginManifest, source: string): void {
-  if (plugins.has(manifest.id)) return; // built-ins and earlier wins
+  if (plugins.has(manifest.id)) {
+    // Built-ins and earlier registrations win; say so instead of
+    // silently dropping (two vault assets can declare the same id).
+    console.error(
+      `extension id "${manifest.id}" is already registered — ignoring the duplicate`,
+    );
+    return;
+  }
   plugins.set(manifest.id, {
     manifest,
     builtIn: false,
