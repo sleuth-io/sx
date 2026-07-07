@@ -74,7 +74,7 @@ jobs:
             artifact: sx-app-linux-arm64-portable.tar.gz
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # On a backfill dispatch, build the RELEASE TAG's source — only
           # the workflow file (this file, from the dispatching branch)
