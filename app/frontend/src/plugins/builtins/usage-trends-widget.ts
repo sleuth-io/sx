@@ -128,7 +128,7 @@ export default class UsageTrendsWidget implements SxPlugin {
       console.error("usage trends widget:", e);
       const err = document.createElement("div");
       err.className = "px-3 py-4 text-sm text-ink-faint";
-      err.textContent = "Couldn't load usage data: " + String(e).slice(0, 160);
+      err.textContent = "Couldn't load usage data: " + [...String(e)].slice(0, 160).join("");
       view.el.replaceChildren(err);
     }
   }
