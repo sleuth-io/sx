@@ -537,6 +537,9 @@ func (a *App) AddExtensionFromFolder() (string, error) {
 
 // addExtensionFrom is the dialog-free publish core, split out for tests.
 func (a *App) addExtensionFrom(dir string) (string, error) {
+	if !a.VaultSupportsExtensions() {
+		return "", errExtensionsUnsupported
+	}
 	manifestBytes, err := os.ReadFile(filepath.Join(dir, "plugin.json"))
 	if err != nil {
 		return "", errors.New("that folder has no plugin.json — see docs/app-plugin-authoring.md")

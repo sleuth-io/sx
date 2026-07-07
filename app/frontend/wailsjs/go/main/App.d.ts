@@ -187,3 +187,5 @@ export function SyncAITools():Promise<string>;
 export function TeamAssets():Promise<Record<string, Array<string>>>;
 
 export function UpdateDraft(arg1:main.Draft):Promise<main.Draft>;
+
+export function VaultSupportsExtensions():Promise<boolean>;

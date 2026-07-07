@@ -48,7 +48,7 @@ import ShareModal from "../components/ShareModal";
 import Sidebar, { repoLabel, Scope } from "../components/Sidebar";
 import CommandPalette from "../components/CommandPalette";
 import Dashboard from "../components/Dashboard";
-import { bootExtensions } from "../plugins/boot";
+import { bootExtensions, syncVaultExtensions } from "../plugins/boot";
 import { useSlot } from "../plugins/registry";
 import { emitEvent } from "../plugins/events";
 import { setPluginUIHandlers } from "../plugins/sxapi";
@@ -2225,6 +2225,9 @@ export default function Library({
           onProfileChanged={() => {
             setShowSettings(false);
             setScope({ kind: "all" });
+            // Extensions are per-library: swap in the new library's
+            // extension set, policy, and enablement.
+            void syncVaultExtensions();
             onVaultChanged();
           }}
           onLibrariesChanged={() => onVaultChanged()}

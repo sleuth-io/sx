@@ -13,10 +13,12 @@ import {
   registerBuiltIn,
   registerVaultPlugin,
   parseVaultManifest,
+  disablePlugin,
   enablePlugin,
   listPlugins,
   loaderPreflight,
   setAppVersion,
+  unregisterVaultPlugin,
 } from "./host";
 import { hasConsent, loadPolicyAndConsents, policyBlocks } from "./policy";
 import PublishDoctor, {
@@ -69,6 +71,22 @@ export async function bootExtensions(): Promise<void> {
   } catch {
     // Dev/browser context without the bridge; version stays "".
   }
+  await syncVaultExtensions();
+}
+
+/**
+ * Load the CURRENT library's extension state: policy, decisions, its
+ * app-plugin assets, and the resulting enablement. Extensions are
+ * per-library, so this runs at boot AND on every library switch —
+ * without the re-sync, switching libraries strands the previous
+ * library's extensions (and its policy) in the host until restart.
+ */
+export async function syncVaultExtensions(): Promise<void> {
+  // Drop the previous library's vault extensions entirely; built-ins
+  // stay registered and just re-evaluate against the new policy.
+  for (const p of listPlugins()) {
+    if (!p.builtIn) unregisterVaultPlugin(p.manifest.id);
+  }
   await loadPolicyAndConsents();
 
   // Vault-installed extensions: published like any asset, scoped to this
@@ -95,13 +113,20 @@ export async function bootExtensions(): Promise<void> {
   for (const p of listPlugins()) {
     const id = p.manifest.id;
     const intended = decisions[id] ?? p.builtIn; // built-ins default on
-    if (!intended || policyBlocks(id, p.builtIn)) continue;
+    const allowed = intended && !policyBlocks(id, p.builtIn);
+    if (!allowed) {
+      // A built-in enabled under the previous library's policy may be
+      // blocked under this one — teardown, don't linger.
+      if (p.enabled) disablePlugin(id);
+      continue;
+    }
     // The consent guarantee holds on EVERY load path, not just the
     // Settings toggle: a vault-installed extension whose permissions
     // changed since consent stays off until the user re-consents (its
     // row in the Extensions screen shows why). Built-ins ship with the
     // app and are implicitly consented at their bundled permission set.
     if (!p.builtIn && !hasConsent(p.manifest)) continue;
+    if (p.enabled) continue;
     try {
       await enablePlugin(id);
     } catch (e) {

@@ -4,6 +4,7 @@ import {
   InstallMarketplaceExtension,
   SetMarketplaceURL,
   SetPluginDecision,
+  VaultSupportsExtensions,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import { refreshVaultPlugins } from "../plugins/boot";
@@ -46,9 +47,15 @@ export default function MarketplaceSection() {
   // it, so an install or update from EITHER panel flips this one too.
   const installedPlugins = useSyncExternalStore(subscribeHost, listPlugins);
 
+  // A library whose server can't store app-plugin assets (skills.new
+  // until P5) can browse but not install.
+  const [supported, setSupported] = useState(true);
   useEffect(() => {
     GetMarketplaceURL()
       .then(setRepoURL)
+      .catch(() => {});
+    VaultSupportsExtensions()
+      .then(setSupported)
       .catch(() => {});
   }, []);
 
@@ -256,7 +263,12 @@ export default function MarketplaceSection() {
                   return (
                     <button
                       onClick={() => void install(r)}
-                      disabled={installing !== ""}
+                      disabled={installing !== "" || !supported}
+                      title={
+                        supported
+                          ? undefined
+                          : "This library's server can't store extensions yet — switch to a git or local library to install"
+                      }
                       className="shrink-0 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
                     >
                       {installing === r.assetName ? "Installing…" : "Install"}

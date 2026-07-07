@@ -161,6 +161,13 @@ confirm).
 - UI: **Settings → Extensions → Browse marketplace…** — search, permission
   chips per entry, Install / Update / "✓ In library" states, editable
   source URL.
+- **Per-library, visibly.** Extensions belong to a library, so the
+  Extensions screen names the library it's showing and re-syncs the
+  whole set — vault plugins, policy, enablement — on every library
+  switch (`syncVaultExtensions`). Backends that can't store
+  `app-plugin` assets yet (skills.new until P5) are gated:
+  `VaultSupportsExtensions` disables install/add paths with a plain
+  explanation instead of surfacing the server's type-validation error.
 - **Updates.** An update is the install path again: republish the
   marketplace's latest into the vault, reload the plugin. Availability
   is a client-side version comparison (installed manifests vs the

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/utils"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -24,6 +25,23 @@ import (
 
 // DefaultMarketplaceURL is the canonical shared extensions repository.
 const DefaultMarketplaceURL = "https://github.com/sleuth-io/sx-extensions"
+
+// VaultSupportsExtensions reports whether the current library can STORE
+// app-plugin assets. skills.new cloud libraries can't until the server
+// side ships the type (the P5 milestone) — without this gate, installing
+// an extension there fails mid-publish with the server's raw
+// "Invalid type" validation error. File-backed vaults have no type
+// registry to disagree with.
+func (a *App) VaultSupportsExtensions() bool {
+	cfg, err := config.Load()
+	if err != nil {
+		return false
+	}
+	return cfg.GetType() != "sleuth"
+}
+
+var errExtensionsUnsupported = errors.New(
+	"this library's server doesn't support extensions yet — extensions need a git or local library (skills.new support is coming)")
 
 // MarketplaceExtension is one browsable marketplace entry: the asset name
 // plus the fields of its plugin.json the install/consent UI needs.
@@ -195,6 +213,9 @@ func marketplaceEntry(a *App, mkt vaultpkg.Vault, name string) (MarketplaceExten
 func (a *App) InstallMarketplaceExtension(assetName string) (string, error) {
 	if err := validateAssetRef(assetName, ""); err != nil {
 		return "", err
+	}
+	if !a.VaultSupportsExtensions() {
+		return "", errExtensionsUnsupported
 	}
 	mkt, err := openMarketplaceVault(a.GetMarketplaceURL())
 	if err != nil {

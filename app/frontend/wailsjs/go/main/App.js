@@ -373,3 +373,7 @@ export function TeamAssets() {
 export function UpdateDraft(arg1) {
   return window['go']['main']['App']['UpdateDraft'](arg1);
 }
+
+export function VaultSupportsExtensions() {
+  return window['go']['main']['App']['VaultSupportsExtensions']();
+}

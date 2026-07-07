@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -37,6 +38,35 @@ func newExtensionVault(t *testing.T, a *App, id, name, description string) strin
 	}
 	a.vault = prev
 	return vdir
+}
+
+// A skills.new library can't store app-plugin assets until the server
+// ships the type; every publish path must refuse with the friendly
+// error, not the server's raw type-validation message.
+func TestExtensionsUnsupportedOnSleuth(t *testing.T) {
+	a := pluginTestApp(t)
+	a.ctx = context.Background()
+	if !a.VaultSupportsExtensions() {
+		t.Fatalf("path vault should support extensions")
+	}
+
+	dir := t.TempDir()
+	t.Setenv("SX_CONFIG_DIR", dir)
+	cfg := `{"type":"sleuth","serverUrl":"https://example.test","defaultProfile":"default","activeProfiles":["default"],"profiles":{"default":{"type":"sleuth","serverUrl":"https://example.test"}}}`
+	if err := writeFile(dir+"/config.json", cfg); err != nil {
+		t.Fatal(err)
+	}
+	if a.VaultSupportsExtensions() {
+		t.Fatalf("sleuth vault should not support extensions yet")
+	}
+	if _, err := a.addExtensionFrom(t.TempDir()); err == nil ||
+		!strings.Contains(err.Error(), "doesn't support extensions") {
+		t.Fatalf("addExtensionFrom error = %v", err)
+	}
+	if _, err := a.InstallMarketplaceExtension("anything"); err == nil ||
+		!strings.Contains(err.Error(), "doesn't support extensions") {
+		t.Fatalf("install error = %v", err)
+	}
 }
 
 func TestMarketplaceURLRoundTrip(t *testing.T) {

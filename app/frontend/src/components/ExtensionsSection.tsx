@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   AddExtensionFromFolder,
   DeleteAssets,
+  GetVaultInfo,
   SetPluginDecision,
+  VaultSupportsExtensions,
 } from "../../wailsjs/go/main/App";
 import { refreshVaultPlugins } from "../plugins/boot";
 import {
@@ -52,6 +54,20 @@ export default function ExtensionsSection() {
   const [batch, setBatch] = useState<{ done: number; total: number } | null>(
     null,
   );
+
+  // Extensions are PER-LIBRARY — name the library so the list can't
+  // read as app-wide state, and gate publish paths on backends that
+  // can't store app-plugin assets yet (skills.new until P5).
+  const [libraryName, setLibraryName] = useState("");
+  const [supported, setSupported] = useState(true);
+  useEffect(() => {
+    GetVaultInfo()
+      .then((v) => setLibraryName(v.name || ""))
+      .catch(() => {});
+    VaultSupportsExtensions()
+      .then(setSupported)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     void loaderPreflight().then(setPreflight);
@@ -208,7 +224,7 @@ export default function ExtensionsSection() {
     <>
       <div className="mb-1 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold tracking-wide text-ink-faint">
-          EXTENSIONS
+          EXTENSIONS{libraryName ? ` — ${libraryName.toUpperCase()}` : ""}
         </span>
         <span className="flex items-center gap-2">
           {(updates.length > 0 || batch) && (
@@ -223,20 +239,31 @@ export default function ExtensionsSection() {
                 : `Update all (${updates.length})`}
             </button>
           )}
-          <button
-            onClick={() => void addFromFolder()}
-            disabled={busy === "add"}
-            title="Publish an extension folder (plugin.json + main.js) to this library"
-            className="rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-50"
-          >
-            {busy === "add" ? "Publishing…" : "Add extension…"}
-          </button>
+          {supported && (
+            <button
+              onClick={() => void addFromFolder()}
+              disabled={busy === "add"}
+              title="Publish an extension folder (plugin.json + main.js) to this library"
+              className="rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-50"
+            >
+              {busy === "add" ? "Publishing…" : "Add extension…"}
+            </button>
+          )}
         </span>
       </div>
       <p className="mb-3 text-xs text-ink-faint">
-        Optional features that run inside sx. Disabling one removes
-        everything it added, immediately.
+        Extensions belong to this library
+        {libraryName ? ` (${libraryName})` : ""}: installing one shares it
+        with everyone who uses it; turning it on is each person's own
+        choice. Disabling one removes everything it added, immediately.
       </p>
+      {!supported && (
+        <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          This library's server can't store extensions yet, so built-ins
+          are all that runs here. Installing from the marketplace needs a
+          git or local library — skills.new support is on the way.
+        </p>
+      )}
       <ul className="space-y-2">
         {plugins.map((p) => {
           const blocked = policyBlocks(p.manifest.id, p.builtIn);
