@@ -7,11 +7,11 @@ import (
 	"testing"
 )
 
-func TestAtomicWriteFile(t *testing.T) {
+func TestWriteFileAtomic(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "doc.json")
 
-	if err := AtomicWriteFile(target, []byte(`{"a":1}`), 0o600); err != nil {
+	if err := WriteFileAtomic(target, []byte(`{"a":1}`), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	data, err := os.ReadFile(target)
@@ -26,7 +26,7 @@ func TestAtomicWriteFile(t *testing.T) {
 	}
 
 	// Overwrite replaces content and leaves no temp files behind.
-	if err := AtomicWriteFile(target, []byte(`{"a":2}`), 0o644); err != nil {
+	if err := WriteFileAtomic(target, []byte(`{"a":2}`), 0o644); err != nil {
 		t.Fatalf("overwrite: %v", err)
 	}
 	data, _ = os.ReadFile(target)
@@ -39,7 +39,7 @@ func TestAtomicWriteFile(t *testing.T) {
 	}
 
 	// A missing parent directory errors rather than silently succeeding.
-	if err := AtomicWriteFile(filepath.Join(dir, "nope", "x"), []byte("x"), 0o644); err == nil {
+	if err := WriteFileAtomic(filepath.Join(dir, "nope", "x"), []byte("x"), 0o644); err == nil {
 		t.Fatalf("write into missing dir succeeded")
 	}
 }

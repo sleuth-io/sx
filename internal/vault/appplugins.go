@@ -159,7 +159,7 @@ func commonAppPluginSharedSave(vaultRoot, pluginID, data string) error {
 	// Atomic write: path-vault readers take no lock on Load, and a synced
 	// folder can replicate mid-write — neither may ever observe a
 	// truncated document.
-	return utils.AtomicWriteFile(path, []byte(data), 0o644)
+	return utils.WriteFileAtomic(path, []byte(data), 0o644)
 }
 
 // AppPluginSharedLoad reads the extension's shared document.

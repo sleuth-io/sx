@@ -127,18 +127,18 @@ func (a *App) PluginSaveData(id, data string) error {
 	return atomicWriteFile(filepath.Join(dir, id+".data.json"), []byte(data))
 }
 
-// atomicWriteFile writes via utils.AtomicWriteFile (unique temp file +
+// atomicWriteFile writes via utils.WriteFileAtomic (unique temp file +
 // rename; concurrent savers each get their own temp file, last rename
 // wins, nobody errors).
 func atomicWriteFile(target string, data []byte) error {
-	return utils.AtomicWriteFile(target, data, 0o644)
+	return utils.WriteFileAtomic(target, data, 0o644)
 }
 
 // atomicWriteFileMode is atomicWriteFile with an explicit final mode —
 // secrets fallbacks pass 0600, which the helper applies to the temp
 // file BEFORE the rename so the target is never world-readable.
 func atomicWriteFileMode(target string, data []byte, mode os.FileMode) error {
-	return utils.AtomicWriteFile(target, data, mode)
+	return utils.WriteFileAtomic(target, data, mode)
 }
 
 // PluginDecisions returns the per-profile INTENDED enablement per

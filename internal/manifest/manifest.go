@@ -661,7 +661,7 @@ func dedupeSorted(in []string) []string {
 // writeFileAtomic writes data to path via the shared temp-file + rename
 // helper — readers never see a partial write.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	if err := utils.AtomicWriteFile(path, data, perm); err != nil {
+	if err := utils.WriteFileAtomic(path, data, perm); err != nil {
 		return fmt.Errorf("failed to write %s atomically: %w", filepath.Base(path), err)
 	}
 	return nil
