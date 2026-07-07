@@ -98,10 +98,6 @@ export function DownloadAsset(arg1) {
   return window['go']['main']['App']['DownloadAsset'](arg1);
 }
 
-export function EnabledPlugins() {
-  return window['go']['main']['App']['EnabledPlugins']();
-}
-
 export function GetAsset(arg1, arg2) {
   return window['go']['main']['App']['GetAsset'](arg1, arg2);
 }
@@ -116,6 +112,10 @@ export function GetCollectionSharing(arg1) {
 
 export function GetDraft(arg1) {
   return window['go']['main']['App']['GetDraft'](arg1);
+}
+
+export function GetPluginPolicy() {
+  return window['go']['main']['App']['GetPluginPolicy']();
 }
 
 export function GetSettings() {
@@ -194,6 +194,14 @@ export function PluginAuditEvents(arg1) {
   return window['go']['main']['App']['PluginAuditEvents'](arg1);
 }
 
+export function PluginConsents() {
+  return window['go']['main']['App']['PluginConsents']();
+}
+
+export function PluginDecisions() {
+  return window['go']['main']['App']['PluginDecisions']();
+}
+
 export function PluginLoadData(arg1) {
   return window['go']['main']['App']['PluginLoadData'](arg1);
 }
@@ -258,16 +266,20 @@ export function SetCollectionTeamSharing(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetCollectionTeamSharing'](arg1, arg2, arg3);
 }
 
-export function SetEnabledPlugins(arg1) {
-  return window['go']['main']['App']['SetEnabledPlugins'](arg1);
-}
-
 export function SetLibraryActive(arg1, arg2) {
   return window['go']['main']['App']['SetLibraryActive'](arg1, arg2);
 }
 
 export function SetLibraryRepoTracking(arg1, arg2) {
   return window['go']['main']['App']['SetLibraryRepoTracking'](arg1, arg2);
+}
+
+export function SetPluginConsent(arg1, arg2) {
+  return window['go']['main']['App']['SetPluginConsent'](arg1, arg2);
+}
+
+export function SetPluginDecision(arg1, arg2) {
+  return window['go']['main']['App']['SetPluginDecision'](arg1, arg2);
 }
 
 export function SetTeamAdmin(arg1, arg2, arg3) {

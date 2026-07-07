@@ -102,6 +102,19 @@ type Manifest struct {
 	// vault is "governed": only org-admins may set broad scopes and change
 	// the admin list. Nil/empty = ungoverned. See docs/rbac.md.
 	Org *Org `toml:"org,omitempty"`
+
+	// AppPlugins is the org's desktop-app extension policy
+	// (docs/app-plugins-spec.md). Nil means open.
+	AppPlugins *AppPluginPolicy `toml:"app-plugins,omitempty"`
+}
+
+// AppPluginPolicy gates which extensions the desktop app may enable.
+// Mode: "open" (default when absent), "allowlist" (only Allowed ids can
+// be enabled), or "disabled" (extensions UI hidden entirely). Only
+// org-admins may change it; the app enforces it at enable time.
+type AppPluginPolicy struct {
+	Mode    string   `toml:"mode"`
+	Allowed []string `toml:"allowed,omitempty"`
 }
 
 // Collection is a named list of asset names. Collections organize assets

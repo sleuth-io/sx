@@ -55,29 +55,44 @@ func TestPluginStorageRoundTrip(t *testing.T) {
 	}
 }
 
-func TestPluginEnabledStateTriState(t *testing.T) {
+func TestPluginDecisions(t *testing.T) {
 	a := pluginTestApp(t)
 
-	// Never configured: defaults apply (built-ins on) and Configured=false.
-	state, err := a.EnabledPlugins()
-	if err != nil || state.Configured {
-		t.Fatalf("initial state = %+v, %v; want unconfigured", state, err)
+	// No decisions yet: unknown ids fall back to their default frontend-
+	// side (built-ins on), so the map starts empty rather than seeded.
+	decisions, err := a.PluginDecisions()
+	if err != nil || len(decisions) != 0 {
+		t.Fatalf("initial decisions = %v, %v; want empty", decisions, err)
 	}
 
-	// The frontend host persists its full current state; Go stores it
-	// verbatim and the file's existence flips Configured.
-	if err := a.SetEnabledPlugins([]string{"library-dashboard"}); err != nil {
+	// Intent persists per id; other ids stay undecided (their defaults
+	// keep applying — how a future built-in auto-enables for existing
+	// users).
+	if err := a.SetPluginDecision("publish-doctor", false); err != nil {
 		t.Fatalf("set: %v", err)
 	}
-	state, err = a.EnabledPlugins()
-	if err != nil || !state.Configured {
-		t.Fatalf("state after set = %+v, %v; want configured", state, err)
+	decisions, err = a.PluginDecisions()
+	if err != nil || len(decisions) != 1 || decisions["publish-doctor"] != false {
+		t.Fatalf("decisions = %v, %v; want publish-doctor:false only", decisions, err)
 	}
-	if len(state.Enabled) != 1 || state.Enabled[0] != "library-dashboard" {
-		t.Fatalf("enabled = %v, want [library-dashboard]", state.Enabled)
-	}
-	if err := a.SetEnabledPlugins([]string{"../evil"}); err == nil {
+	if err := a.SetPluginDecision("../evil", true); err == nil {
 		t.Fatalf("invalid id accepted")
+	}
+}
+
+func TestPluginConsents(t *testing.T) {
+	a := pluginTestApp(t)
+	consents, err := a.PluginConsents()
+	if err != nil || len(consents) != 0 {
+		t.Fatalf("initial consents = %v, %v", consents, err)
+	}
+	if err := a.SetPluginConsent("publish-doctor", []string{"events", "assets:read"}); err != nil {
+		t.Fatalf("consent: %v", err)
+	}
+	consents, _ = a.PluginConsents()
+	got := consents["publish-doctor"]
+	if len(got) != 2 || got[0] != "assets:read" {
+		t.Fatalf("consents = %v, want sorted permission set", consents)
 	}
 }
 

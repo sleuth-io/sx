@@ -50,8 +50,6 @@ export function DiscardDraft(arg1:string):Promise<void>;
 
 export function DownloadAsset(arg1:string):Promise<string>;
 
-export function EnabledPlugins():Promise<main.PluginEnabledState>;
-
 export function GetAsset(arg1:string,arg2:string):Promise<main.AssetDetail>;
 
 export function GetAssetSharing(arg1:string):Promise<main.AssetSharing>;
@@ -59,6 +57,8 @@ export function GetAssetSharing(arg1:string):Promise<main.AssetSharing>;
 export function GetCollectionSharing(arg1:string):Promise<main.AssetSharing>;
 
 export function GetDraft(arg1:string):Promise<main.Draft>;
+
+export function GetPluginPolicy():Promise<main.PluginPolicy>;
 
 export function GetSettings():Promise<main.Settings>;
 
@@ -98,6 +98,10 @@ export function PickFolderForDraft():Promise<main.Draft>;
 
 export function PluginAuditEvents(arg1:number):Promise<Array<main.PluginAuditEventRecord>>;
 
+export function PluginConsents():Promise<Record<string, Array<string>>>;
+
+export function PluginDecisions():Promise<Record<string, boolean>>;
+
 export function PluginLoadData(arg1:string):Promise<string>;
 
 export function PluginSaveData(arg1:string,arg2:string):Promise<void>;
@@ -130,11 +134,13 @@ export function SetCollectionMembershipBulk(arg1:string,arg2:Array<string>,arg3:
 
 export function SetCollectionTeamSharing(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
-export function SetEnabledPlugins(arg1:Array<string>):Promise<void>;
-
 export function SetLibraryActive(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetLibraryRepoTracking(arg1:string,arg2:boolean):Promise<main.VaultInfo>;
+
+export function SetPluginConsent(arg1:string,arg2:Array<string>):Promise<void>;
+
+export function SetPluginDecision(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetTeamAdmin(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 

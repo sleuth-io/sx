@@ -51,6 +51,9 @@ export default function DraftSheet({
   function update(patch: Partial<main.Draft>) {
     setDraft((d) => ({ ...d, ...patch }) as main.Draft);
     setDirty(true);
+    // Any edit invalidates shown warnings: the next Publish re-runs the
+    // checks instead of force-publishing stale state.
+    setWarnings(null);
   }
 
   function updateFileContent(index: number, content: string) {

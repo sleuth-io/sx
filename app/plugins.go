@@ -13,8 +13,10 @@ import (
 
 	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/config"
+	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/utils"
+	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
 // App-extension support (docs/app-plugins-spec.md). The webview has no
@@ -103,63 +105,162 @@ func (a *App) PluginSaveData(id, data string) error {
 	return os.Rename(tmp, target)
 }
 
-// PluginEnabledState distinguishes "never configured" (built-ins default
-// on) from "user disabled everything" (respect it).
-type PluginEnabledState struct {
-	Configured bool     `json:"configured"`
-	Enabled    []string `json:"enabled"`
-}
-
-// EnabledPlugins returns the per-profile enabled extension ids.
-func (a *App) EnabledPlugins() (PluginEnabledState, error) {
-	state := PluginEnabledState{Enabled: []string{}}
+// PluginDecisions returns the per-profile INTENDED enablement per
+// extension id. Intent — not live-loaded state — is what persists, so a
+// transient load failure can never demote an extension the user wanted
+// on, and ids with no recorded decision fall back to their default
+// (built-ins on, vault-installed extensions off).
+func (a *App) PluginDecisions() (map[string]bool, error) {
+	out := map[string]bool{}
 	dir, err := a.pluginDataDir()
 	if err != nil {
-		return state, nil // no profile yet — defaults apply
+		return out, nil // no profile yet — defaults apply
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "enabled.json"))
+	data, err := os.ReadFile(filepath.Join(dir, "decisions.json"))
 	if os.IsNotExist(err) {
-		return state, nil
+		return out, nil
 	}
 	if err != nil {
-		return state, err
+		return nil, err
 	}
-	var ids []string
-	if err := json.Unmarshal(data, &ids); err != nil {
-		return state, err
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
 	}
-	sort.Strings(ids)
-	state.Configured = true
-	state.Enabled = ids
-	return state, nil
+	return out, nil
 }
 
-// SetEnabledPlugins persists the complete enabled set. The frontend host
-// is the single owner of the current state (including built-in
-// defaults), so Go stores the list verbatim — no default-materialization
-// logic to drift from the frontend's.
-func (a *App) SetEnabledPlugins(ids []string) error {
-	for _, id := range ids {
-		if err := validatePluginID(id); err != nil {
-			return err
-		}
+// SetPluginDecision records the user's intent for one extension and
+// appends the matching audit event on vaults that record history
+// (best-effort; the local decision file is the durable state).
+func (a *App) SetPluginDecision(id string, enabled bool) error {
+	if err := validatePluginID(id); err != nil {
+		return err
+	}
+	decisions, err := a.PluginDecisions()
+	if err != nil {
+		return err
+	}
+	decisions[id] = enabled
+	dir, err := a.pluginDataDir()
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(decisions)
+	if err != nil {
+		return err
+	}
+	target := filepath.Join(dir, "decisions.json")
+	tmp := target + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, target); err != nil {
+		return err
+	}
+	a.auditPluginDecision(id, enabled)
+	return nil
+}
+
+func (a *App) auditPluginDecision(id string, enabled bool) {
+	v, err := a.currentVault()
+	if err != nil {
+		return
+	}
+	event := mgmt.EventPluginEnabled
+	if !enabled {
+		event = mgmt.EventPluginDisabled
+	}
+	err = v.ImportAuditEvents(a.ctx, []mgmt.AuditEvent{{
+		Timestamp: time.Now(),
+		Actor:     strings.TrimSpace(a.GetVaultInfo().Identity),
+		Event:     event, TargetType: mgmt.TargetTypePlugin, Target: id,
+	}})
+	if err != nil {
+		logger.Get().Warn("extension audit append failed", "error", err)
+	}
+}
+
+// PluginConsents returns the per-profile record of consented permission
+// sets, keyed by extension id. The frontend re-prompts when an
+// extension's declared permissions differ from what was consented.
+func (a *App) PluginConsents() (map[string][]string, error) {
+	out := map[string][]string{}
+	dir, err := a.pluginDataDir()
+	if err != nil {
+		return out, nil
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "consents.json"))
+	if os.IsNotExist(err) {
+		return out, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SetPluginConsent records that the user consented to an extension's
+// permission set.
+func (a *App) SetPluginConsent(id string, permissions []string) error {
+	if err := validatePluginID(id); err != nil {
+		return err
+	}
+	consents, err := a.PluginConsents()
+	if err != nil {
+		return err
 	}
 	dir, err := a.pluginDataDir()
 	if err != nil {
 		return err
 	}
-	sorted := append([]string(nil), ids...)
+	sorted := append([]string(nil), permissions...)
 	sort.Strings(sorted)
-	data, err := json.Marshal(sorted)
+	consents[id] = sorted
+	data, err := json.Marshal(consents)
 	if err != nil {
 		return err
 	}
-	target := filepath.Join(dir, "enabled.json")
+	target := filepath.Join(dir, "consents.json")
 	tmp := target + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, target)
+}
+
+// PluginPolicy is the extension policy as the frontend consumes it.
+type PluginPolicy struct {
+	Mode    string   `json:"mode"`
+	Allowed []string `json:"allowed"`
+}
+
+// GetPluginPolicy reads the vault's [app-plugins] policy. Vaults without
+// policy support (or no policy set) report open.
+func (a *App) GetPluginPolicy() (PluginPolicy, error) {
+	open := PluginPolicy{Mode: vaultpkg.AppPluginModeOpen, Allowed: []string{}}
+	v, err := a.currentVault()
+	if err != nil {
+		return open, nil
+	}
+	store, ok := v.(vaultpkg.AppPluginPolicyStore)
+	if !ok {
+		return open, nil
+	}
+	policy, err := store.AppPluginPolicy(a.ctx)
+	if err != nil {
+		return open, friendlyVaultError(err)
+	}
+	if policy == nil || policy.Mode == "" {
+		return open, nil
+	}
+	allowed := policy.Allowed
+	if allowed == nil {
+		allowed = []string{}
+	}
+	return PluginPolicy{Mode: policy.Mode, Allowed: allowed}, nil
 }
 
 // PluginUsageEventRecord is the extension-facing usage event shape.

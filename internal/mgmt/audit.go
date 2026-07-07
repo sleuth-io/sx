@@ -65,6 +65,12 @@ const (
 	// Data carries the install target, matching EventInstallSet's shape.
 	EventCollectionInstalled   = "collection.installed"
 	EventCollectionUninstalled = "collection.uninstalled"
+
+	// Desktop-app extension events (docs/app-plugins-spec.md): per-user
+	// enable/disable and org policy changes.
+	EventPluginEnabled       = "plugin.enabled"
+	EventPluginDisabled      = "plugin.disabled"
+	EventPluginPolicyChanged = "plugin.policy-changed"
 )
 
 // Audit target type constants.
@@ -76,6 +82,7 @@ const (
 	TargetTypeOrg          = "org"
 	TargetTypeVault        = "vault"
 	TargetTypeCollection   = "collection"
+	TargetTypePlugin       = "plugin"
 )
 
 // AuditEvent is a single row in .sx/audit/YYYY-MM.jsonl.

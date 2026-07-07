@@ -263,18 +263,18 @@ export namespace main {
 	        this.target = source["target"];
 	    }
 	}
-	export class PluginEnabledState {
-	    configured: boolean;
-	    enabled: string[];
+	export class PluginPolicy {
+	    mode: string;
+	    allowed: string[];
 	
 	    static createFrom(source: any = {}) {
-	        return new PluginEnabledState(source);
+	        return new PluginPolicy(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.configured = source["configured"];
-	        this.enabled = source["enabled"];
+	        this.mode = source["mode"];
+	        this.allowed = source["allowed"];
 	    }
 	}
 	export class PluginUsageEventRecord {
