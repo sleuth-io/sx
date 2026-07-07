@@ -3,8 +3,9 @@ import { useSlot } from "../plugins/registry";
 
 /**
  * The dashboard surface: a grid of widgets contributed by extensions
- * through the views:dashboard capability (the Library Dashboard built-in
- * provides the default set). Rendered as a Library scope so it lives
+ * through the views:dashboard capability (the built-in widget
+ * extensions — User Adoption, Top Assets by Usage, User Leaderboard —
+ * provide the default set). Rendered as a Library scope so it lives
  * where users already navigate.
  */
 export default function Dashboard() {

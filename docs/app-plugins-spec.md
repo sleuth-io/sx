@@ -192,7 +192,7 @@ Not translated: sync/git plugins (core product here), canvas/tasks/calendar (wro
 Execution follows the v2-spec desktop-app milestones (this work starts after M4; the dashboard surface can inform M-series UI work earlier).
 
 **P1 — Framework + first built-ins prove the API.**
-Plugin host, permission proxy, slot registry, command palette, `before-publish` hook. Ship **Library Dashboard** and **Publish Doctor** as vendored built-ins running through the host.
+Plugin host, permission proxy, slot registry, command palette, `before-publish` hook. Ship the **dashboard widget extensions** (initially built as one Library Dashboard built-in, later split into User Adoption / Top Assets / Leaderboard) and **Publish Doctor** as vendored built-ins running through the host.
 *Acceptance:* both built-ins fully functional with the host as their only access path; disabling either at runtime removes every trace (panels, commands, listeners); `import()`-loading verified on macOS WKWebView, Windows WebView2, Linux WebKitGTK; `make prepush` green.
 
 **P2 — Consent, policy, storage, Extensions screen.**
