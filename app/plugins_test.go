@@ -64,26 +64,27 @@ func TestPluginEnabledStateTriState(t *testing.T) {
 		t.Fatalf("initial state = %+v, %v; want unconfigured", state, err)
 	}
 
-	// First toggle materializes the built-in defaults so disabling one
-	// doesn't silently disable the rest.
-	if err := a.SetPluginEnabled("publish-doctor", false); err != nil {
-		t.Fatalf("disable: %v", err)
+	// The frontend host persists its full current state; Go stores it
+	// verbatim and the file's existence flips Configured.
+	if err := a.SetEnabledPlugins([]string{"library-dashboard"}); err != nil {
+		t.Fatalf("set: %v", err)
 	}
 	state, err = a.EnabledPlugins()
 	if err != nil || !state.Configured {
-		t.Fatalf("state after toggle = %+v, %v; want configured", state, err)
+		t.Fatalf("state after set = %+v, %v; want configured", state, err)
 	}
 	if len(state.Enabled) != 1 || state.Enabled[0] != "library-dashboard" {
 		t.Fatalf("enabled = %v, want [library-dashboard]", state.Enabled)
 	}
-
-	// Re-enable adds it back.
-	if err := a.SetPluginEnabled("publish-doctor", true); err != nil {
-		t.Fatalf("enable: %v", err)
+	if err := a.SetEnabledPlugins([]string{"../evil"}); err == nil {
+		t.Fatalf("invalid id accepted")
 	}
-	state, _ = a.EnabledPlugins()
-	if len(state.Enabled) != 2 {
-		t.Fatalf("enabled = %v, want both built-ins", state.Enabled)
+}
+
+func TestAppVersionNonEmpty(t *testing.T) {
+	a := &App{}
+	if a.AppVersion() == "" {
+		t.Fatalf("AppVersion must never be empty (sx.app.version contract)")
 	}
 }
 

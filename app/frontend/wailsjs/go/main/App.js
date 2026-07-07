@@ -18,6 +18,10 @@ export function AddTeamMember(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddTeamMember'](arg1, arg2, arg3);
 }
 
+export function AppVersion() {
+  return window['go']['main']['App']['AppVersion']();
+}
+
 export function AvailableRepoName(arg1) {
   return window['go']['main']['App']['AvailableRepoName'](arg1);
 }
@@ -254,16 +258,16 @@ export function SetCollectionTeamSharing(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetCollectionTeamSharing'](arg1, arg2, arg3);
 }
 
+export function SetEnabledPlugins(arg1) {
+  return window['go']['main']['App']['SetEnabledPlugins'](arg1);
+}
+
 export function SetLibraryActive(arg1, arg2) {
   return window['go']['main']['App']['SetLibraryActive'](arg1, arg2);
 }
 
 export function SetLibraryRepoTracking(arg1, arg2) {
   return window['go']['main']['App']['SetLibraryRepoTracking'](arg1, arg2);
-}
-
-export function SetPluginEnabled(arg1, arg2) {
-  return window['go']['main']['App']['SetPluginEnabled'](arg1, arg2);
 }
 
 export function SetTeamAdmin(arg1, arg2, arg3) {

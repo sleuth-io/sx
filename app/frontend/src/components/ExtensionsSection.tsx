@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { SetPluginEnabled } from "../../wailsjs/go/main/App";
+import { SetEnabledPlugins } from "../../wailsjs/go/main/App";
 import {
   disablePlugin,
   enablePlugin,
@@ -29,7 +29,13 @@ export default function ExtensionsSection() {
       } else {
         disablePlugin(id);
       }
-      await SetPluginEnabled(id, enabled);
+      // Persist the host's full current state — the single source of
+      // truth for enabled extensions (no default-list duplication in Go).
+      await SetEnabledPlugins(
+        listPlugins()
+          .filter((p) => p.enabled)
+          .map((p) => p.manifest.id),
+      );
     } catch (e) {
       setError(String(e));
     } finally {

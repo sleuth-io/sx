@@ -25,6 +25,7 @@ import type {
   ViewMount,
 } from "./api";
 import { SX_API_VERSION } from "./api";
+import { getAppVersion } from "./host";
 import { registerSlotEntry } from "./registry";
 import { subscribeBeforePublish, subscribeEvent } from "./events";
 
@@ -114,7 +115,7 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
   }
 
   const api: SxAPI = {
-    app: { version: "" }, // filled by host init when available
+    app: { version: getAppVersion() },
     api: { version: SX_API_VERSION },
 
     ui: {

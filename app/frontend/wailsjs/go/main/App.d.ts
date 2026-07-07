@@ -10,6 +10,8 @@ export function AddLibrary(arg1:string,arg2:string,arg3:string,arg4:string):Prom
 
 export function AddTeamMember(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
+export function AppVersion():Promise<string>;
+
 export function AvailableRepoName(arg1:string):Promise<string>;
 
 export function CancelSleuthLogin():Promise<void>;
@@ -128,11 +130,11 @@ export function SetCollectionMembershipBulk(arg1:string,arg2:Array<string>,arg3:
 
 export function SetCollectionTeamSharing(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
+export function SetEnabledPlugins(arg1:Array<string>):Promise<void>;
+
 export function SetLibraryActive(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetLibraryRepoTracking(arg1:string,arg2:boolean):Promise<main.VaultInfo>;
-
-export function SetPluginEnabled(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetTeamAdmin(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 

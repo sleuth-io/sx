@@ -91,7 +91,7 @@ Everything registered through `sx.*` is tracked by the host and torn down automa
 | `views:dashboard` | Register a widget on a (new) dashboard/home surface. |
 | `commands` | Register commands in the command palette (new core feature, see below) with optional shortcuts. |
 | `events` | Subscribe to lifecycle events: `draft-saved`, `before-publish` (may return warnings shown in the publish sheet — the doctor hook), `asset-published`, `asset-installed`, `vault-synced`. |
-| `net:fetch` | HTTP fetch proxied through Go with per-plugin allowed-origin list surfaced at enable time. |
+| `net:fetch` | *Reserved (declared but unimplemented until its first consumer, the Claude Assist addendum):* HTTP fetch proxied through Go with per-plugin allowed-origin list surfaced at enable time. |
 | (always) | `sx.ui` kit — modal, notice/toast, confirm, settings panel schema; `sx.storage` — `loadData()`/`saveData()` per plugin per profile (stored app-side, not in the vault); `sx.app.version`, `sx.api.version`. |
 
 **Explicitly excluded from API v1** (deferred, revisit after P6 planning):

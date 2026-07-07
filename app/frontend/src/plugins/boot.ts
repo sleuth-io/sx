@@ -2,8 +2,13 @@
 // loader preflight, and enables whatever the per-profile state says
 // (built-ins default on until the user configures otherwise).
 
-import { EnabledPlugins } from "../../wailsjs/go/main/App";
-import { registerBuiltIn, enablePlugin, loaderPreflight } from "./host";
+import { AppVersion, EnabledPlugins } from "../../wailsjs/go/main/App";
+import {
+  registerBuiltIn,
+  enablePlugin,
+  loaderPreflight,
+  setAppVersion,
+} from "./host";
 import PublishDoctor, {
   publishDoctorManifest,
 } from "./builtins/publish-doctor";
@@ -36,6 +41,12 @@ export async function bootExtensions(): Promise<void> {
       console.error("extension loader preflight failed", r);
     }
   });
+
+  try {
+    setAppVersion(await AppVersion());
+  } catch {
+    // Dev/browser context without the bridge; version stays "".
+  }
 
   let enabled = DEFAULT_ENABLED;
   try {

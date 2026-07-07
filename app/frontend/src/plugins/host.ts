@@ -9,6 +9,29 @@ import { buildSxAPI, disposePluginMounts } from "./sxapi";
 import { unregisterPlugin } from "./registry";
 import { unsubscribePlugin } from "./events";
 
+// The running app version, set once at boot (sx.app.version and the
+// minAppVersion load gate both read it).
+let appVersion = "";
+
+export function setAppVersion(v: string): void {
+  appVersion = v;
+}
+
+export function getAppVersion(): string {
+  return appVersion;
+}
+
+/** Dotted-numeric compare: -1/0/1. Non-numeric segments compare as 0. */
+export function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map((s) => parseInt(s, 10) || 0);
+  const pb = b.split(".").map((s) => parseInt(s, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d < 0 ? -1 : 1;
+  }
+  return 0;
+}
+
 export interface LoadedPlugin {
   manifest: PluginManifest;
   builtIn: boolean;
@@ -91,6 +114,15 @@ export async function enablePlugin(id: string): Promise<void> {
   const p = plugins.get(id);
   if (!p) throw new Error(`unknown extension ${id}`);
   if (p.enabled) return;
+  // minAppVersion gates the load: an extension built against a newer API
+  // fails with a clear message instead of half-working. Dev builds
+  // (empty/non-numeric version) are never blocked.
+  const min = p.manifest.minAppVersion;
+  if (min && appVersion && /^\d/.test(appVersion) && compareVersions(appVersion, min) < 0) {
+    p.error = `needs sx ${min}+ (this is ${appVersion})`;
+    notify();
+    throw new Error(p.error);
+  }
   try {
     p.instance = await p.make();
     const api = buildSxAPI(p.manifest);

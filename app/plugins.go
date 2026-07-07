@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/sleuth-io/sx/internal/buildinfo"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/utils"
@@ -23,10 +25,11 @@ import (
 
 var pluginIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,63}$`)
 
-// defaultEnabledBuiltins ship enabled; the frontend host registers them.
-// Kept in Go so first-toggle materialization matches the frontend's boot
-// defaults.
-var defaultEnabledBuiltins = []string{"library-dashboard", "publish-doctor"}
+// AppVersion exposes the build version to extensions (sx.app.version)
+// and to the host's minAppVersion gate.
+func (a *App) AppVersion() string {
+	return strings.TrimPrefix(buildinfo.Version, "v")
+}
 
 func validatePluginID(id string) error {
 	if !pluginIDPattern.MatchString(id) {
@@ -131,40 +134,23 @@ func (a *App) EnabledPlugins() (PluginEnabledState, error) {
 	return state, nil
 }
 
-// SetPluginEnabled persists an extension's enabled state.
-func (a *App) SetPluginEnabled(id string, enabled bool) error {
-	if err := validatePluginID(id); err != nil {
-		return err
+// SetEnabledPlugins persists the complete enabled set. The frontend host
+// is the single owner of the current state (including built-in
+// defaults), so Go stores the list verbatim — no default-materialization
+// logic to drift from the frontend's.
+func (a *App) SetEnabledPlugins(ids []string) error {
+	for _, id := range ids {
+		if err := validatePluginID(id); err != nil {
+			return err
+		}
 	}
 	dir, err := a.pluginDataDir()
 	if err != nil {
 		return err
 	}
-	current, err := a.EnabledPlugins()
-	if err != nil {
-		return err
-	}
-	set := map[string]bool{}
-	for _, existing := range current.Enabled {
-		set[existing] = true
-	}
-	if !current.Configured {
-		// First toggle ever: materialize the defaults (all built-ins on)
-		// so disabling one doesn't silently disable the others.
-		for _, builtin := range defaultEnabledBuiltins {
-			set[builtin] = true
-		}
-	}
-	set[id] = enabled
-	if !enabled {
-		delete(set, id)
-	}
-	ids := make([]string, 0, len(set))
-	for existing := range set {
-		ids = append(ids, existing)
-	}
-	sort.Strings(ids)
-	data, err := json.Marshal(ids)
+	sorted := append([]string(nil), ids...)
+	sort.Strings(sorted)
+	data, err := json.Marshal(sorted)
 	if err != nil {
 		return err
 	}
