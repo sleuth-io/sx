@@ -41,12 +41,23 @@ jobs:
         with:
           go-version: '1.26'
 
+      # Curated release notes: when docs/releases/<tag>.md exists, it is
+      # prepended above the auto-generated commit changelog. Tags without
+      # a notes file release exactly as before.
+      - name: Find curated release notes
+        id: notes
+        run: |
+          if [ -f "docs/releases/${GITHUB_REF_NAME}.md" ]; then
+            echo "Using curated notes docs/releases/${GITHUB_REF_NAME}.md"
+            echo "args=--release-header=docs/releases/${GITHUB_REF_NAME}.md" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean
+          args: release --clean ${{ steps.notes.outputs.args }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
