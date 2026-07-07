@@ -233,7 +233,7 @@ audit event.
 ```toml
 [app-plugins]
 mode    = "allowlist"   # "open" | "allowlist" | "disabled"
-allowed = ["library-dashboard", "publish-doctor"]
+allowed = ["acme-metrics", "team-linter"]
 ```
 
 ## `[org]` — vault governance

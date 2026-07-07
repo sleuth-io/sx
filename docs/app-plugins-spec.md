@@ -113,7 +113,7 @@ Everything registered through `sx.*` is tracked by the host and torn down automa
 ```toml
 [app-plugins]
 mode = "allowlist"        # "open" (default) | "allowlist" | "disabled"
-allowed = ["library-dashboard", "publish-doctor"]
+allowed = ["acme-metrics", "team-linter"]
 ```
 
 Only org admins can modify it (same RBAC as scope changes, see docs/rbac.md). The allowlist governs **third-party (vault-installed) extensions only** — built-ins ship with the app and stay available, so vetting external code never silently disables the Publish Doctor safety net. `disabled` is the total switch: everything extension-shaped turns off, built-ins included, and the extensions UI is hidden. Policy changes append audit events.
