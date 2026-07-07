@@ -53,10 +53,18 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 
 	repository := selfupdate.ParseSlug(fmt.Sprintf("%s/%s", autoupdate.GithubOwner, autoupdate.GithubRepo))
 
+	// Restrict asset selection to the CLI's own release archives; the release
+	// also carries desktop-app archives that would otherwise be picked (see
+	// autoupdate.CLIAssetFilter).
+	updater, err := autoupdate.NewUpdater()
+	if err != nil {
+		return fmt.Errorf("failed to initialize updater: %w", err)
+	}
+
 	if checkOnly {
 		// Just check for latest version without updating
 		status.Start("Checking for updates")
-		latest, found, err := selfupdate.DetectLatest(ctx, repository)
+		latest, found, err := updater.DetectLatest(ctx, repository)
 		if err != nil {
 			status.Fail("Failed to check")
 			return fmt.Errorf("failed to check for updates: %w", err)
@@ -81,7 +89,7 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 
 	// Check if there's actually a newer version available
 	status.Start("Checking for updates")
-	latest, found, err := selfupdate.DetectLatest(ctx, repository)
+	latest, found, err := updater.DetectLatest(ctx, repository)
 	if err != nil {
 		status.Fail("Failed to check")
 		return fmt.Errorf("failed to check for updates: %w", err)
@@ -101,7 +109,7 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 
 	// Perform the update using the library's high-level function
 	status.Start("Downloading and installing update")
-	release, err := selfupdate.UpdateSelf(ctx, currentVersion, repository)
+	release, err := updater.UpdateSelf(ctx, currentVersion, repository)
 	if err != nil {
 		status.Fail("Failed to update")
 		return fmt.Errorf("failed to update: %w", err)

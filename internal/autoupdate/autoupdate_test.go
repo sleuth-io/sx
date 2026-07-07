@@ -4,11 +4,61 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/sleuth-io/sx/internal/buildinfo"
 )
+
+// TestCLIAssetFilter guards the fix for the 2.0.0 auto-update break: the
+// GitHub release carries both the CLI archive (sx_<OS>_<ARCH>.tar.gz) and
+// desktop-app archives (sx-app-<os>-<arch>-portable.tar.gz). The filter must
+// select the former and reject the latter. go-selfupdate lowercases asset
+// names before matching, so the filter is applied to lowercased names here.
+func TestCLIAssetFilter(t *testing.T) {
+	re, err := regexp.Compile(CLIAssetFilter())
+	if err != nil {
+		t.Fatalf("CLIAssetFilter is not a valid regexp: %v", err)
+	}
+
+	// Build the goreleaser CLI archive name for the current platform, mirroring
+	// the name_template in .goreleaser.yml ({{ title .Os }}_<arch>).
+	osTitle := strings.ToUpper(runtime.GOOS[:1]) + runtime.GOOS[1:]
+	arch := runtime.GOARCH
+	switch arch {
+	case "amd64":
+		arch = "x86_64"
+	case "386":
+		arch = "i386"
+	}
+	ext := "tar.gz"
+	if runtime.GOOS == "windows" {
+		ext = "zip"
+	}
+	cliName := "sx_" + osTitle + "_" + arch + "." + ext
+
+	if !re.MatchString(strings.ToLower(cliName)) {
+		t.Errorf("filter %q did not match CLI archive %q", re.String(), cliName)
+	}
+
+	// Every desktop-app archive for this platform must be rejected — these are
+	// the names that broke deployed clients when they matched the default
+	// <os><sep><arch> suffix.
+	appNames := []string{
+		"sx-app-" + runtime.GOOS + "-" + runtime.GOARCH + "-portable." + ext,
+		"sx-app-" + runtime.GOOS + "-" + runtime.GOARCH + "." + ext, // the pre-fix name
+		"sx-app-macos-" + runtime.GOARCH + "-unsigned.zip",
+		"checksums.txt",
+	}
+	for _, name := range appNames {
+		if re.MatchString(strings.ToLower(name)) {
+			t.Errorf("filter %q wrongly matched non-CLI asset %q", re.String(), name)
+		}
+	}
+}
 
 // useTempCache isolates the test from the real cache directory
 func useTempCache(t *testing.T) {

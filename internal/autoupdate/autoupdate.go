@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -25,6 +26,42 @@ const (
 	pendingUpdateFile = "pending-update.json"
 	updateTimeout     = 30 * time.Second
 )
+
+// CLIAssetFilter returns a regexp matching only the GoReleaser CLI archive
+// for the current platform, e.g. "sx_Linux_x86_64.tar.gz". It mirrors the
+// name_template in .goreleaser.yml.
+//
+// The GitHub release also carries desktop-app archives (sx-app-<os>-<arch>…)
+// whose names would otherwise satisfy go-selfupdate's default <os><sep><arch>
+// suffix match and get selected instead of the CLI binary — the app tar has
+// no "sx" executable inside, so the update then fails with "executable not
+// found in tar". Constraining asset selection to "sx_<OS>_<ARCH>" avoids that.
+// go-selfupdate lowercases asset names before matching, so this pattern is
+// lowercase and anchored.
+func CLIAssetFilter() string {
+	arch := runtime.GOARCH
+	switch arch {
+	case "amd64":
+		arch = "x86_64"
+	case "386":
+		arch = "i386"
+	}
+	return fmt.Sprintf(`^sx_%s_%s\.(tar\.gz|zip)$`, runtime.GOOS, arch)
+}
+
+// NewUpdater builds a go-selfupdate Updater restricted to the CLI's own
+// release archives via CLIAssetFilter. Shared by the background auto-updater
+// and the `sx update` command so both select the same asset.
+func NewUpdater() (*selfupdate.Updater, error) {
+	source, err := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})
+	if err != nil {
+		return nil, err
+	}
+	return selfupdate.NewUpdater(selfupdate.Config{
+		Source:  source,
+		Filters: []string{CLIAssetFilter()},
+	})
+}
 
 // pendingUpdate represents a pending update marker file
 type pendingUpdate struct {
@@ -183,11 +220,12 @@ func checkAndUpdate() error {
 	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
 	defer cancel()
 
-	// Use the library's Updater with silent output
-	source, _ := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})
-	updater, _ := selfupdate.NewUpdater(selfupdate.Config{
-		Source: source,
-	})
+	// Use the library's Updater with silent output, restricted to the CLI's
+	// own release archives (see CLIAssetFilter).
+	updater, err := NewUpdater()
+	if err != nil {
+		return err
+	}
 
 	// Detect latest release
 	release, found, err := updater.DetectLatest(ctx, selfupdate.ParseSlug(fmt.Sprintf("%s/%s", GithubOwner, GithubRepo)))

@@ -36,6 +36,16 @@ jobs:
           # the -unsigned suffix at runtime and emits both a zip and a
           # DMG); the other platforms use exact file names. Upload steps
           # glob `artifact*` so both conventions work.
+          #
+          # Linux/Windows names carry a "-portable" qualifier so they do NOT
+          # end in "<os>-<arch>.<ext>". The CLI's self-updater (go-selfupdate)
+          # selects a release asset by that trailing suffix; without the
+          # qualifier a name like "sx-app-linux-amd64.tar.gz" matches the same
+          # pattern as the CLI's own "sx_Linux_x86_64.tar.gz" and, being first
+          # alphabetically, gets picked — then the update fails because the app
+          # tar has no "sx" binary. macOS uses "macos" (not "darwin"), so its
+          # names never collide and keep the prefix the app updater expects
+          # (sx-app-macos-<arch>, see app/update.go).
           - name: macos-arm64
             os: macos-latest
             platform: darwin/arm64
@@ -49,19 +59,19 @@ jobs:
           - name: windows-amd64
             os: windows-latest
             platform: windows/amd64
-            artifact: sx-app-windows-amd64.zip
+            artifact: sx-app-windows-amd64-portable.zip
           - name: windows-arm64
             os: windows-11-arm
             platform: windows/arm64
-            artifact: sx-app-windows-arm64.zip
+            artifact: sx-app-windows-arm64-portable.zip
           - name: linux-amd64
             os: ubuntu-latest
             platform: linux/amd64
-            artifact: sx-app-linux-amd64.tar.gz
+            artifact: sx-app-linux-amd64-portable.tar.gz
           - name: linux-arm64
             os: ubuntu-24.04-arm
             platform: linux/arm64
-            artifact: sx-app-linux-arm64.tar.gz
+            artifact: sx-app-linux-arm64-portable.tar.gz
     steps:
       - name: Checkout
         uses: actions/checkout@v6
