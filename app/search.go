@@ -36,6 +36,26 @@ const (
 	excerptRadius      = 60
 )
 
+// contentMatcher is one query part, precompiled: matching runs per
+// asset, compilation must not (a two-term search over 300 assets would
+// otherwise compile the same regexp 600 times).
+type contentMatcher struct {
+	re     *regexp.Regexp
+	weight float64
+}
+
+func compileMatchers(terms, phrases []string) []contentMatcher {
+	out := make([]contentMatcher, 0, len(terms)+len(phrases))
+	for _, p := range phrases {
+		// QuoteMeta guarantees a valid pattern.
+		out = append(out, contentMatcher{regexp.MustCompile("(?i)" + regexp.QuoteMeta(p)), 4})
+	}
+	for _, t := range terms {
+		out = append(out, contentMatcher{regexp.MustCompile("(?i)" + regexp.QuoteMeta(t)), 1})
+	}
+	return out
+}
+
 // SearchAssetContent scans every asset's markdown for the query and
 // returns ranked matches. Heading hits weigh more than body hits.
 // Unreachable or malformed assets are skipped — search must degrade,
@@ -46,6 +66,7 @@ func (a *App) SearchAssetContent(query string) ([]ContentMatch, error) {
 	if len(terms) == 0 && len(phrases) == 0 {
 		return out, nil
 	}
+	matchers := compileMatchers(terms, phrases)
 	v, err := a.currentVault()
 	if err != nil {
 		return out, err
@@ -65,7 +86,7 @@ func (a *App) SearchAssetContent(query string) ([]ContentMatch, error) {
 				if text == "" {
 					continue
 				}
-				if m, ok := scoreContent(summary.Name, text, terms, phrases); ok {
+				if m, ok := scoreContent(summary.Name, text, matchers); ok {
 					mu.Lock()
 					out = append(out, m)
 					mu.Unlock()
@@ -167,13 +188,12 @@ func parseContentQuery(query string) (terms, phrases []string) {
 	return terms, phrases
 }
 
-// scoreContent scores one asset's markdown: every term and phrase must
-// appear (AND semantics — multi-word queries narrow, like every search
-// box people know), heading lines weigh 4× body. Matching runs on the
-// ORIGINAL text via case-insensitive regexp — offsets from a lowercased
-// copy can misalign (ToLower may change byte length), which would
-// highlight the wrong characters.
-func scoreContent(name, text string, terms, phrases []string) (ContentMatch, bool) {
+// scoreContent scores one asset's markdown: every matcher must hit
+// (AND semantics — multi-word queries narrow, like every search box
+// people know), heading lines weigh 4× body. Matching runs on the
+// ORIGINAL text — offsets from a lowercased copy can misalign (ToLower
+// may change byte length), which would highlight the wrong characters.
+func scoreContent(name, text string, matchers []contentMatcher) (ContentMatch, bool) {
 	var headings []string
 	for line := range strings.SplitSeq(text, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
@@ -186,32 +206,17 @@ func scoreContent(name, text string, terms, phrases []string) (ContentMatch, boo
 	total := 0
 	firstHit := -1
 	firstLen := 0
-	consider := func(needle string, weight float64) bool {
-		re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(needle))
-		if err != nil {
-			return false
-		}
-		locs := re.FindAllStringIndex(text, -1)
+	for _, m := range matchers {
+		locs := m.re.FindAllStringIndex(text, -1)
 		if len(locs) == 0 {
-			return false
+			return ContentMatch{}, false
 		}
 		total += len(locs)
-		score += weight * float64(len(locs))
-		score += 3 * weight * float64(len(re.FindAllStringIndex(headingText, -1)))
+		score += m.weight * float64(len(locs))
+		score += 3 * m.weight * float64(len(m.re.FindAllStringIndex(headingText, -1)))
 		if firstHit < 0 || locs[0][0] < firstHit {
 			firstHit = locs[0][0]
 			firstLen = locs[0][1] - locs[0][0]
-		}
-		return true
-	}
-	for _, p := range phrases {
-		if !consider(p, 4) {
-			return ContentMatch{}, false
-		}
-	}
-	for _, t := range terms {
-		if !consider(t, 1) {
-			return ContentMatch{}, false
 		}
 	}
 	if total == 0 {
