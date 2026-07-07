@@ -73,8 +73,12 @@ export default function SettingsModal({
   const [removeSource, setRemoveSource] = useState(false);
   const [removeError, setRemoveError] = useState("");
 
-  // Which library's ⋯ menu is open.
+  // Which library's ⋯ menu is open, and where its trigger sits. The menu
+  // renders position:fixed (the modal body scrolls and would clip an
+  // absolutely-positioned flyout), so we anchor to the trigger's rect and
+  // close on any scroll rather than drift away from it.
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
   useEffect(() => {
     if (menuFor === null) return;
     const onDown = (e: globalThis.MouseEvent) => {
@@ -83,8 +87,13 @@ export default function SettingsModal({
       );
       if (!root) setMenuFor(null);
     };
+    const onScroll = () => setMenuFor(null);
     window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("scroll", onScroll, true);
+    };
   }, [menuFor]);
 
   const load = () => {
@@ -377,9 +386,10 @@ export default function SettingsModal({
                 )}
                 <div className="relative shrink-0" data-library-menu={p.name}>
                   <button
-                    onClick={() =>
-                      setMenuFor(menuFor === p.name ? null : p.name)
-                    }
+                    onClick={(e) => {
+                      setMenuRect(e.currentTarget.getBoundingClientRect());
+                      setMenuFor(menuFor === p.name ? null : p.name);
+                    }}
                     disabled={busy !== ""}
                     title={`Options for ${p.name}`}
                     aria-label={`Options for ${p.name}`}
@@ -401,8 +411,17 @@ export default function SettingsModal({
                       <circle cx="13" cy="8" r="1.4" />
                     </svg>
                   </button>
-                  {menuFor === p.name && (
-                    <div className="absolute right-0 top-full z-40 mt-1 w-60 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                  {menuFor === p.name && menuRect && (
+                    <div
+                      className="fixed z-[70] w-60 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl"
+                      style={{
+                        right: window.innerWidth - menuRect.right,
+                        // Flip above the trigger when there's no room below.
+                        ...(menuRect.bottom + 230 > window.innerHeight
+                          ? { bottom: window.innerHeight - menuRect.top + 4 }
+                          : { top: menuRect.bottom + 4 }),
+                      }}
+                    >
                       {p.type === "sleuth" ? (
                         <div className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-faint">
                           <span className="w-3.5" />
