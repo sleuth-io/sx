@@ -159,7 +159,17 @@ confirm).
   each entry's `plugin.json` fields and an installed flag),
   `InstallMarketplaceExtension(assetName)`, `Get/SetMarketplaceURL`.
 - UI: **Settings → Extensions → Browse marketplace…** — search, permission
-  chips per entry, Install / "✓ In library" states, editable source URL.
+  chips per entry, Install / Update / "✓ In library" states, editable
+  source URL.
+- **Updates.** An update is the install path again: republish the
+  marketplace's latest into the vault, reload the plugin. Availability
+  is a client-side version comparison (installed manifests vs the
+  marketplace catalog, matched by plugin id). The Extensions list shows
+  each extension's version, a per-row "Update to vX" button, and an
+  "Update all (N)" header button. A running extension comes back up on
+  the new code immediately — unless the update changed its permission
+  set, in which case it stages disabled and the consent sheet re-prompts
+  (queued, one at a time, for Update all).
 - The launch marketplace content is seven extensions mapped from the most
   popular relevant Obsidian plugins (research 2026-07-06): Asset Query
   (Dataview), Related Assets (Smart Connections, via TF-IDF cosine —

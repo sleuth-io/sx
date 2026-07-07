@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   GetMarketplaceURL,
   InstallMarketplaceExtension,
@@ -8,8 +14,14 @@ import {
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import { refreshVaultPlugins } from "../plugins/boot";
-import { enablePlugin, listPlugins } from "../plugins/host";
+import {
+  compareVersions,
+  enablePlugin,
+  listPlugins,
+  subscribeHost,
+} from "../plugins/host";
 import { currentPolicy, policyBlocks, recordConsent } from "../plugins/policy";
+import { applyUpdate } from "../plugins/updates";
 
 /**
  * The marketplace browser inside Settings → Extensions: search a shared
@@ -34,6 +46,9 @@ export default function MarketplaceSection() {
   const [editingRepo, setEditingRepo] = useState(false);
   const [opened, setOpened] = useState(false);
   const fetchSeq = useRef(0);
+  // Reactive installed-plugin view, so entries can offer Update when
+  // the marketplace is ahead of the installed version.
+  const installedPlugins = useSyncExternalStore(subscribeHost, listPlugins);
 
   useEffect(() => {
     GetMarketplaceURL()
@@ -105,6 +120,24 @@ export default function MarketplaceSection() {
           prev?.map((r) =>
             r.assetName === entry.assetName ? { ...r, installed: true } : r,
           ) ?? prev,
+      );
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setInstalling("");
+    }
+  }
+
+  async function update(entry: main.MarketplaceExtension) {
+    setInstalling(entry.assetName);
+    setError("");
+    setNotice("");
+    try {
+      const outcome = await applyUpdate(entry);
+      setNotice(
+        outcome.state === "needs-consent"
+          ? `${entry.name} updated to v${entry.version} — its permissions changed, enable it above to review them.`
+          : `${entry.name} updated to v${entry.version}.`,
       );
     } catch (e) {
       setError(String(e));
@@ -205,19 +238,43 @@ export default function MarketplaceSection() {
                     </p>
                   )}
                 </div>
-                {r.installed ? (
-                  <span className="shrink-0 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                    ✓ In library
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => void install(r)}
-                    disabled={installing !== ""}
-                    className="shrink-0 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-                  >
-                    {installing === r.assetName ? "Installing…" : "Install"}
-                  </button>
-                )}
+                {(() => {
+                  const mine = installedPlugins.find(
+                    (p) => !p.builtIn && p.manifest.id === r.id,
+                  );
+                  if (
+                    r.installed &&
+                    mine &&
+                    compareVersions(mine.manifest.version, r.version) < 0
+                  ) {
+                    return (
+                      <button
+                        onClick={() => void update(r)}
+                        disabled={installing !== ""}
+                        title={`v${mine.manifest.version} → v${r.version}`}
+                        className="shrink-0 rounded-lg border border-accent px-3 py-1.5 text-xs font-medium text-accent transition hover:bg-accent-soft disabled:opacity-50"
+                      >
+                        {installing === r.assetName ? "Updating…" : "Update"}
+                      </button>
+                    );
+                  }
+                  if (r.installed) {
+                    return (
+                      <span className="shrink-0 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                        ✓ In library
+                      </span>
+                    );
+                  }
+                  return (
+                    <button
+                      onClick={() => void install(r)}
+                      disabled={installing !== ""}
+                      className="shrink-0 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                    >
+                      {installing === r.assetName ? "Installing…" : "Install"}
+                    </button>
+                  );
+                })()}
               </li>
             ))}
           </ul>

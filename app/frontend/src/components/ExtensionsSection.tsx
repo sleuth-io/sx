@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   AddExtensionFromFolder,
   DeleteAssets,
+  SearchMarketplace,
   SetPluginDecision,
 } from "../../wailsjs/go/main/App";
 import { refreshVaultPlugins } from "../plugins/boot";
@@ -14,6 +15,7 @@ import {
   unregisterVaultPlugin,
   type LoaderPreflight,
 } from "../plugins/host";
+import { applyUpdate, findUpdates, type UpdateInfo } from "../plugins/updates";
 import {
   currentPolicy,
   hasConsent,
@@ -34,12 +36,23 @@ export default function ExtensionsSection() {
   const plugins = useSyncExternalStore(subscribeHost, listPlugins);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [consentFor, setConsentFor] = useState<PluginManifest | null>(null);
+  // Consent prompts queue: Update all can stage several
+  // permission-changed extensions; they re-prompt one at a time.
+  const [consentQueue, setConsentQueue] = useState<PluginManifest[]>([]);
+  const consentFor = consentQueue[0] ?? null;
   const [removeFor, setRemoveFor] = useState<PluginManifest | null>(null);
   const [preflight, setPreflight] = useState<LoaderPreflight | null>(null);
+  // Marketplace versions newer than what's installed. Best-effort: an
+  // unreachable marketplace just means no update buttons.
+  const [updates, setUpdates] = useState<UpdateInfo[]>([]);
 
   useEffect(() => {
     void loaderPreflight().then(setPreflight);
+  }, []);
+  useEffect(() => {
+    SearchMarketplace("")
+      .then((catalog) => setUpdates(findUpdates(catalog ?? [])))
+      .catch(() => {});
   }, []);
 
   if (currentPolicy().mode === "disabled") {
@@ -68,7 +81,7 @@ export default function ExtensionsSection() {
         // Consent gate: first enable, or permissions changed since the
         // user last agreed.
         if (!hasConsent(manifest)) {
-          setConsentFor(manifest);
+          setConsentQueue((q) => [...q, manifest]);
           return;
         }
         await reallyEnable(manifest);
@@ -86,7 +99,7 @@ export default function ExtensionsSection() {
   async function consentAndEnable() {
     if (!consentFor) return;
     const manifest = consentFor;
-    setConsentFor(null);
+    setConsentQueue((q) => q.slice(1));
     setBusy(manifest.id);
     try {
       await recordConsent(manifest);
@@ -96,6 +109,40 @@ export default function ExtensionsSection() {
     } finally {
       setBusy("");
     }
+  }
+
+  async function updateOne(info: UpdateInfo) {
+    setBusy(info.entry.id);
+    setError("");
+    try {
+      const outcome = await applyUpdate(info.entry);
+      if (outcome.state === "needs-consent") {
+        setConsentQueue((q) => [...q, outcome.manifest]);
+      }
+      setUpdates((u) => u.filter((x) => x.entry.id !== info.entry.id));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function updateAll() {
+    setError("");
+    for (const info of [...updates]) {
+      setBusy(info.entry.id);
+      try {
+        const outcome = await applyUpdate(info.entry);
+        if (outcome.state === "needs-consent") {
+          setConsentQueue((q) => [...q, outcome.manifest]);
+        }
+        setUpdates((u) => u.filter((x) => x.entry.id !== info.entry.id));
+      } catch (e) {
+        setError(String(e));
+        break;
+      }
+    }
+    setBusy("");
   }
 
   async function reallyRemove() {
@@ -111,6 +158,7 @@ export default function ExtensionsSection() {
       await SetPluginDecision(manifest.id, false);
       await DeleteAssets([manifest.id]);
       unregisterVaultPlugin(manifest.id);
+      setUpdates((u) => u.filter((x) => x.entry.id !== manifest.id));
       await refreshVaultPlugins();
     } catch (e) {
       setError(String(e));
@@ -136,18 +184,32 @@ export default function ExtensionsSection() {
 
   return (
     <>
-      <div className="mb-1 flex items-center justify-between">
+      <div className="mb-1 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold tracking-wide text-ink-faint">
           EXTENSIONS
         </span>
-        <button
-          onClick={() => void addFromFolder()}
-          disabled={busy === "add"}
-          title="Publish an extension folder (plugin.json + main.js) to this library"
-          className="rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-50"
-        >
-          {busy === "add" ? "Publishing…" : "Add extension…"}
-        </button>
+        <span className="flex items-center gap-2">
+          {updates.length > 0 && (
+            <button
+              onClick={() => void updateAll()}
+              disabled={busy !== ""}
+              data-update-all
+              className="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {busy !== "" && updates.length > 0
+                ? "Updating…"
+                : `Update all (${updates.length})`}
+            </button>
+          )}
+          <button
+            onClick={() => void addFromFolder()}
+            disabled={busy === "add"}
+            title="Publish an extension folder (plugin.json + main.js) to this library"
+            className="rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-50"
+          >
+            {busy === "add" ? "Publishing…" : "Add extension…"}
+          </button>
+        </span>
       </div>
       <p className="mb-3 text-xs text-ink-faint">
         Optional features that run inside sx. Disabling one removes
@@ -156,6 +218,7 @@ export default function ExtensionsSection() {
       <ul className="space-y-2">
         {plugins.map((p) => {
           const blocked = policyBlocks(p.manifest.id, p.builtIn);
+          const update = updates.find((u) => u.entry.id === p.manifest.id);
           return (
             <li
               key={p.manifest.id}
@@ -165,6 +228,9 @@ export default function ExtensionsSection() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   {p.manifest.name}
+                  <span className="text-[10px] font-normal text-ink-faint">
+                    v{p.manifest.version}
+                  </span>
                   {p.builtIn && (
                     <span className="rounded-full border border-line px-1.5 text-[10px] text-ink-faint">
                       built-in
@@ -185,6 +251,19 @@ export default function ExtensionsSection() {
                   <p className="mt-0.5 text-xs text-danger">{p.error}</p>
                 )}
               </div>
+              {update && (
+                <button
+                  onClick={() => void updateOne(update)}
+                  disabled={busy !== ""}
+                  data-update={p.manifest.id}
+                  title={`Update from v${update.installedVersion} to v${update.entry.version}`}
+                  className="shrink-0 rounded-lg border border-accent px-2.5 py-1 text-xs font-medium text-accent transition hover:bg-accent-soft disabled:opacity-50"
+                >
+                  {busy === p.manifest.id
+                    ? "Updating…"
+                    : `Update to v${update.entry.version}`}
+                </button>
+              )}
               {!p.builtIn && (
                 <button
                   onClick={() => setRemoveFor(p.manifest)}
@@ -270,7 +349,7 @@ export default function ExtensionsSection() {
           data-consent-sheet
           className="fixed inset-0 z-[95] flex items-center justify-center bg-black/40 p-6"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setConsentFor(null);
+            if (e.target === e.currentTarget) setConsentQueue((q) => q.slice(1));
           }}
         >
           <div className="w-[420px] rounded-2xl border border-line bg-surface p-5 shadow-2xl">
@@ -299,7 +378,7 @@ export default function ExtensionsSection() {
             )}
             <div className="mt-4 flex justify-end gap-2">
               <button
-                onClick={() => setConsentFor(null)}
+                onClick={() => setConsentQueue((q) => q.slice(1))}
                 className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink-faint transition hover:text-ink"
               >
                 Cancel
