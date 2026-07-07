@@ -27,6 +27,13 @@ func (p *PathVault) acquirePathLock(ctx context.Context) (*flock.Flock, error) {
 	if !locked {
 		return nil, errors.New("could not acquire path vault lock (timeout)")
 	}
+	// Refuse to write over an unresolved sync conflict: every mgmt write
+	// and migration funnels through this lock, so this one check covers
+	// them all.
+	if err := checkManifestConflicts(p.repoPath); err != nil {
+		_ = fl.Unlock()
+		return nil, err
+	}
 	return fl, nil
 }
 
@@ -295,7 +302,7 @@ func (p *PathVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFilte
 }
 
 // withLock wraps a mutating op: acquire exclusive flock, resolve actor,
-// run fn.
+// migrate the storage format if pending, run fn.
 func (p *PathVault) withLock(ctx context.Context, fn func(actor mgmt.Actor) error) error {
 	fl, err := p.acquirePathLock(ctx)
 	if err != nil {
@@ -305,6 +312,9 @@ func (p *PathVault) withLock(ctx context.Context, fn func(actor mgmt.Actor) erro
 
 	actor, err := p.CurrentActor(ctx)
 	if err != nil {
+		return err
+	}
+	if _, err := migrateStorageToV2(p.repoPath, actor.Email); err != nil && !errors.Is(err, ErrStorageUpToDate) {
 		return err
 	}
 	return fn(actor)

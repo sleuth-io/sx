@@ -147,9 +147,23 @@ See [vault-spec.md](vault-spec.md) for complete vault structure and protocols.
 
 ### Path Source
 
-Used for local development assets on the filesystem.
+Used for assets stored in the vault's own filesystem tree, and for local
+development assets.
 
 ```toml
+# An asset stored in a file-backed vault (git or path): always the
+# immutable archive location, never the mutable assets/{name} root view.
+[[assets]]
+name = "code-reviewer"
+version = "3.0.0"
+type = "skill"
+
+[assets.source-path]
+path = ".sx/versions/code-reviewer/3.0.0"
+```
+
+```toml
+# A local development asset outside the vault.
 [[assets]]
 name = "local-skill"
 version = "0.1.0-dev"
@@ -161,10 +175,14 @@ path = "/absolute/path/to/skill.zip"
 
 **Fields**:
 
-- `path`: Path to asset zip file (required)
+- `path`: Path to the asset (required) — either a packaged `.zip` file or an
+  exploded asset directory (containing `metadata.toml` at its root)
   - Absolute paths: Used as-is
   - `~` prefix: Resolved to user home directory
-  - Relative paths: Resolved from lock file directory
+  - Relative paths: Resolved from lock file directory (the vault root for
+    vault-stored assets)
+- Vault-stored assets always reference `.sx/versions/{name}/{version}` (see
+  vault-spec.md). Vaults on legacy format v1 use `assets/{name}/{version}`.
 
 **Hashes**: Not required for path sources (local filesystem is trusted).
 

@@ -25,6 +25,20 @@ AI assets — skills, MCPs, agents, rules, commands, hooks — usually live insi
 - **Install the right assets, not all of them** — scope to an org, repo, path, team, bot, or user, no context bloat
 - **Version, observe, and govern** — update once; track adoption with `sx stats`; audit access with `sx audit`
 
+## App or command line — your choice
+
+sx has two front doors to the same libraries: a **desktop app** and a **command line**. They share one configuration, so a library added in one shows up in the other — engineers can live in the CLI while everyone else uses the app, and nothing drifts.
+
+**If you're not a command-line person, start with the app.** It covers the whole workflow without a terminal: create and edit skills in a built-in editor (or just drag files in), publish them to your team's library, install them into your AI tools with one click, and organize everything with collections and teams. Technical users can turn on per-library repository views to see exactly which repos each skill is scoped to.
+
+<p align="center"><img src="docs/app-library.png" alt="The sx desktop app — your team's skill library" width="800"></p>
+
+First launch asks one question — how will you use it? — and sets the library up to match:
+
+<p align="center"><img src="docs/app-onboarding.png" alt="First-launch setup" width="560"></p>
+
+Download the app for macOS, Windows, or Linux from [Releases](https://github.com/sleuth-io/sx/releases) (the `sx-app-*` artifacts). Power users: keep reading for the CLI.
+
 ## Quickstart
 
 **Install via Homebrew (macOS/Linux):**
@@ -156,12 +170,22 @@ Perfect for easily sharing personal tools across multiple personal projects
 sx init --type path --path my/vault/path
 ```
 
+### Shared folder (Small teams, zero infrastructure)
+
+Put the vault in a folder your team already syncs — Dropbox, Google Drive,
+OneDrive, or iCloud. No git, no GitHub account, no server. See
+[docs/synced-folders.md](docs/synced-folders.md).
+
+```bash
+sx init --type path --path ~/Dropbox/sx-vault
+```
+
 ### Git vault (Small teams)
 
 Share assets through a shared git vault
 
 ```bash
-sx init --type git --repo git@github.com:yourteam/skills.git
+sx init --type git --repo-url git@github.com:yourteam/skills.git
 ```
 
 ### Skills.new (Large teams and enterprise)
@@ -171,6 +195,28 @@ Centralized management with a UI for discovery, creation, sharing, and usage ana
 ```bash
 sx init --type sleuth
 ```
+
+### Plugin marketplace (no sx required)
+
+Every git or path vault is also a **Claude Code / Codex plugin
+marketplace** — sx generates and maintains `.claude-plugin/marketplace.json`
+and `.codex-plugin/plugin.json` on every publish. Teammates who don't run
+sx can install the library's skills directly from their AI tool:
+
+```
+# Claude Code
+/plugin marketplace add yourteam/skills
+/plugin install skills@skills
+
+# Codex
+codex plugin marketplace add git@github.com:yourteam/skills.git
+```
+
+Each collection in the vault is also exposed as its own Claude Code
+plugin, so people can install just the slice they need. Private repos
+work through normal git credentials. Plugin installs deliver skills only
+(rules and per-team scoping still need `sx install`) — see
+[docs/plugins-spec.md](docs/plugins-spec.md).
 
 ## How it works
 

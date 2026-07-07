@@ -1,4 +1,4 @@
-.PHONY: help build build-darwin build-darwin-amd64 install test lint format clean release demo sx logs gql-generate gql-check
+.PHONY: help ensure-app-embed build build-darwin build-darwin-amd64 install test lint format clean release demo sx logs gql-generate gql-check
 
 # Default target
 help: ## Show this help message
@@ -12,9 +12,16 @@ BUILD_DIR=./dist
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS=-ldflags "-X github.com/sleuth-io/sx/internal/buildinfo.Version=$(VERSION) -X github.com/sleuth-io/sx/internal/buildinfo.Commit=$(COMMIT) -X github.com/sleuth-io/sx/internal/buildinfo.Date=$(DATE)"
+GO_LDFLAGS=-X github.com/sleuth-io/sx/internal/buildinfo.Version=$(VERSION) -X github.com/sleuth-io/sx/internal/buildinfo.Commit=$(COMMIT) -X github.com/sleuth-io/sx/internal/buildinfo.Date=$(DATE)
+LDFLAGS=-ldflags "$(GO_LDFLAGS)"
 
-build: ## Build the binary
+# The app package embeds frontend/dist (go:embed), which frontend builds
+# recreate and fresh checkouts lack. Guarantee at least one file exists so
+# every go build/vet/lint over ./... compiles.
+ensure-app-embed:
+	@mkdir -p app/frontend/dist && touch app/frontend/dist/.gitkeep
+
+build: ensure-app-embed ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
 	@go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
 	@echo "Built: $(BUILD_DIR)/$(BINARY_NAME)"
@@ -42,7 +49,7 @@ install: gql-generate build ## Install binary to ~/.local/bin
 		   echo "  export PATH=\"\$$PATH:\$$HOME/.local/bin\"" ;; \
 	esac
 
-test: ## Run tests
+test: ensure-app-embed ## Run tests
 	@echo "Running tests..."
 	@OUTPUT=$$(go test -race -cover ./... 2>&1 | grep -v 'no such tool "covdata"'); \
 	RESULT=$$?; \
@@ -54,7 +61,7 @@ test: ## Run tests
 		echo "✓ All $$PASSED packages passed"; \
 	fi
 
-lint: ## Run linters
+lint: ensure-app-embed ## Run linters
 	@echo "Running linters..."
 	@go tool golangci-lint run
 
@@ -167,3 +174,20 @@ demo: build ## Generate demo GIF (requires vhs)
 
 logs: ## Follow sx logs with colors (-f FILTER to filter, -n NUM for lines)
 	@go run ./tools/logs $(LOGS_ARGS)
+
+# The wails CLI installs into GOPATH/bin, which isn't necessarily on PATH —
+# resolve it explicitly so the app targets work either way. Version pinned to
+# match .github/workflows/app-release.yml.
+WAILS_VERSION=v2.12.0
+WAILS=$(shell command -v wails 2> /dev/null || echo "$(shell go env GOPATH)/bin/wails")
+
+app-deps: ## Install desktop app build tools (wails; checks npm)
+	@test -x "$(WAILS)" || (echo "Installing wails $(WAILS_VERSION)..." && go install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION))
+	@which npm > /dev/null || (echo "npm not found — the app frontend needs Node.js (e.g. 'brew install node')" && exit 1)
+
+app-dev: app-deps ## Run the desktop app in dev mode (hot reload)
+	cd app && "$(WAILS)" dev
+
+app-build: app-deps ## Build the desktop app for this platform
+	cd app && "$(WAILS)" build -ldflags "$(GO_LDFLAGS)"
+	@echo "Built: app/build/bin/"

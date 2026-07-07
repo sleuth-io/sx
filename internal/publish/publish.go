@@ -1,0 +1,121 @@
+// Package publish holds the UI-free core of the asset publish pipeline:
+// detecting what a bundle of files is, suggesting the next version, and
+// stamping metadata into the uploadable zip. Both `sx add` and the desktop
+// app route through these functions so the two front ends cannot drift.
+package publish
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/assets/detectors"
+	"github.com/sleuth-io/sx/internal/metadata"
+	"github.com/sleuth-io/sx/internal/utils"
+	"github.com/sleuth-io/sx/internal/version"
+)
+
+// VersionReader is the slice of the vault interface SuggestVersion needs.
+type VersionReader interface {
+	GetVersionList(ctx context.Context, name string) ([]string, error)
+	GetAssetByVersion(ctx context.Context, name, version string) ([]byte, error)
+}
+
+// DetectNameAndType inspects a zipped asset: if it carries a metadata.toml,
+// the declared name and type win; otherwise the type is auto-detected from
+// the file listing and fallbackName is used. hasMetadata reports whether a
+// parseable metadata.toml was present.
+func DetectNameAndType(zipData []byte, fallbackName string) (name string, t asset.Type, hasMetadata bool, err error) {
+	if metadataBytes, readErr := utils.ReadZipFile(zipData, "metadata.toml"); readErr == nil {
+		meta, parseErr := metadata.Parse(metadataBytes)
+		if parseErr != nil {
+			return "", asset.Type{}, false, fmt.Errorf("failed to parse metadata: %w", parseErr)
+		}
+		return meta.Asset.Name, meta.Asset.Type, true, nil
+	}
+
+	files, listErr := utils.ListZipFiles(zipData)
+	if listErr != nil {
+		return "", asset.Type{}, false, fmt.Errorf("failed to list zip files: %w", listErr)
+	}
+	detected := detectors.DetectAssetType(files, fallbackName, "")
+	return fallbackName, detected.Asset.Type, false, nil
+}
+
+// SuggestVersion returns the version a new publish of zipData should get:
+// "1" for a brand-new asset, the incremented latest otherwise. identical is
+// true when zipData matches the latest stored version byte-for-byte
+// (publishing would be a no-op).
+func SuggestVersion(ctx context.Context, vault VersionReader, name string, zipData []byte) (suggested string, identical bool, err error) {
+	versions, err := vault.GetVersionList(ctx, name)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to get version list: %w", err)
+	}
+	return SuggestVersionFromList(ctx, vault, name, versions, zipData)
+}
+
+// SuggestVersionFromList is SuggestVersion for callers that already hold the
+// version list.
+func SuggestVersionFromList(ctx context.Context, vault VersionReader, name string, versions []string, zipData []byte) (suggested string, identical bool, err error) {
+	if len(versions) == 0 {
+		return "1", false, nil
+	}
+	latest := versions[len(versions)-1]
+
+	existing, err := vault.GetAssetByVersion(ctx, name, latest)
+	if err != nil {
+		// Can't fetch the previous version for comparison — suggest the
+		// increment and let the publish proceed.
+		return version.IncrementMajor(latest), false, nil
+	}
+	same, err := utils.CompareZipContents(zipData, existing)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to compare contents: %w", err)
+	}
+	if same {
+		return latest, true, nil
+	}
+	return version.IncrementMajor(latest), false, nil
+}
+
+// BuildMetadata produces the metadata to stamp into a publish: existing
+// metadata from the zip (with name/version/type overridden) when present,
+// or freshly detected metadata otherwise.
+func BuildMetadata(name, ver string, assetType asset.Type, zipData []byte) *metadata.Metadata {
+	if metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml"); err == nil {
+		if existing, err := metadata.Parse(metadataBytes); err == nil {
+			existing.Asset.Name = name
+			existing.Asset.Version = ver
+			existing.Asset.Type = assetType
+			return existing
+		}
+	}
+
+	files, _ := utils.ListZipFiles(zipData)
+	meta := detectors.DetectAssetType(files, name, ver)
+	meta.Asset.Name = name
+	meta.Asset.Version = ver
+	meta.Asset.Type = assetType
+	return meta
+}
+
+// ApplyMetadata writes meta into the zip as metadata.toml, replacing an
+// existing entry or adding one.
+func ApplyMetadata(meta *metadata.Metadata, zipData []byte, hasMetadata bool) ([]byte, error) {
+	metadataBytes, err := metadata.Marshal(meta)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+	if hasMetadata {
+		out, err := utils.ReplaceFileInZip(zipData, "metadata.toml", metadataBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to replace metadata in zip: %w", err)
+		}
+		return out, nil
+	}
+	out, err := utils.AddFileToZip(zipData, "metadata.toml", metadataBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add metadata to zip: %w", err)
+	}
+	return out, nil
+}

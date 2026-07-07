@@ -729,8 +729,11 @@ func TestPathVault_SetAssetInstallationRepairsOrphanedStoredAsset(t *testing.T) 
 	runGit(t, dir, "config", "user.email", "alice@example.com")
 	runGit(t, dir, "config", "user.name", "Alice Admin")
 
+	// Seeded as v1 (matching the v1-shaped orphan storage below): the write
+	// triggers the storage migration first, then the repair must find the
+	// orphan in its migrated (v2) location.
 	if err := manifest.Save(dir, &manifest.Manifest{
-		SchemaVersion: manifest.CurrentSchemaVersion,
+		SchemaVersion: 1,
 		Bots: []manifest.Bot{
 			{Name: "testy", Description: "Test bot"},
 		},
@@ -783,8 +786,8 @@ func TestPathVault_SetAssetInstallationRepairsOrphanedStoredAsset(t *testing.T) 
 	if got.Version != "1" || got.Type != asset.TypeSkill {
 		t.Fatalf("manifest asset = %+v, want skill version 1", got)
 	}
-	if got.SourcePath == nil || got.SourcePath.Path != "assets/e2e-git-vault-skill-5524/1" {
-		t.Fatalf("source path = %+v, want stored asset path", got.SourcePath)
+	if got.SourcePath == nil || got.SourcePath.Path != ".sx/versions/e2e-git-vault-skill-5524/1" {
+		t.Fatalf("source path = %+v, want migrated stored asset path", got.SourcePath)
 	}
 	if len(got.Scopes) != 1 || got.Scopes[0].Kind != manifest.ScopeKindBot || got.Scopes[0].Bot != "testy" {
 		t.Fatalf("scopes = %+v, want bot testy", got.Scopes)

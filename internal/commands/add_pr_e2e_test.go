@@ -35,7 +35,10 @@ func seedTeamScopedGitVault(t *testing.T, env *TestEnv) string {
 	env.WriteFile(seed+"/assets/my-skill/1.0.0/SKILL.md", "You are my-skill v1")
 	env.WriteFile(seed+"/assets/my-skill/list.txt", "1.0.0\n")
 	if err := manifest.Save(seed, &manifest.Manifest{
-		SchemaVersion: manifest.CurrentSchemaVersion,
+		// Seeded as a v1 vault (matching the v1-shaped storage written
+		// above): PR-branch writes must stay in the vault's existing
+		// format rather than migrating, so the branch remains mergeable.
+		SchemaVersion: 1,
 		// platform team does NOT include the actor → edit gate denies them.
 		Teams: []manifest.Team{{
 			Name:    "platform",

@@ -29,6 +29,10 @@ jobs:
             exit 1
           fi
 
+      # app embeds frontend/dist (go:embed); fresh checkouts need the dir
+      - name: Ensure app embed target
+        run: make ensure-app-embed
+
       - name: Lint
         run: go tool golangci-lint run
 

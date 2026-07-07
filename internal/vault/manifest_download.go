@@ -70,7 +70,11 @@ func assetFromStorage(vaultRoot, name string) (*lockfile.Asset, bool, error) {
 	if name == "" {
 		return nil, false, nil
 	}
-	listPath := filepath.Join(vaultRoot, "assets", name, "list.txt")
+	l, err := detectLayout(vaultRoot)
+	if err != nil {
+		return nil, false, err
+	}
+	listPath := filepath.Join(vaultRoot, l.VersionListPath(name))
 	data, err := os.ReadFile(listPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -85,7 +89,7 @@ func assetFromStorage(vaultRoot, name string) (*lockfile.Asset, bool, error) {
 	// The install repair call site has no version in scope, so storage
 	// recovery picks the highest semver stored on disk.
 	latest := versions[len(versions)-1]
-	metaPath := filepath.Join(vaultRoot, "assets", name, latest, "metadata.toml")
+	metaPath := filepath.Join(vaultRoot, l.MetadataPath(name, latest))
 	metaBytes, err := os.ReadFile(metaPath)
 	if err != nil {
 		return nil, false, fmt.Errorf("read metadata for %q@%s: %w", name, latest, err)
@@ -105,7 +109,7 @@ func assetFromStorage(vaultRoot, name string) (*lockfile.Asset, bool, error) {
 	}
 	// Storage recovery is intentionally lossy: the original source kind and
 	// manifest-only fields are gone, so the recovered row points at the bytes
-	// currently present under assets/<name>/<version>.
+	// currently stored for this version (layout-dependent location).
 	return &lockfile.Asset{
 		Name:         name,
 		Version:      latest,
@@ -113,7 +117,7 @@ func assetFromStorage(vaultRoot, name string) (*lockfile.Asset, bool, error) {
 		Clients:      append([]string(nil), meta.Asset.Clients...),
 		Dependencies: deps,
 		SourcePath: &lockfile.SourcePath{
-			Path: filepath.ToSlash(filepath.Join("assets", name, latest)),
+			Path: l.SourcePathRel(name, latest),
 		},
 	}, true, nil
 }

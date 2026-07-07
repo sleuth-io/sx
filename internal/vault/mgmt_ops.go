@@ -23,8 +23,14 @@ func ensureSxDir(vaultRoot string) error {
 }
 
 // loadManifest reads sx.toml at vaultRoot. If only legacy files exist it
-// migrates them once, writes sx.toml, and returns the result.
+// migrates them once, writes sx.toml, and returns the result. Every
+// manifest read — and therefore every read-modify-write — funnels
+// through here, so this is also where an unresolved cloud-sync conflict
+// on the manifest halts the operation.
 func loadManifest(vaultRoot string) (*manifest.Manifest, error) {
+	if err := checkManifestConflicts(vaultRoot); err != nil {
+		return nil, err
+	}
 	m, _, err := manifest.LoadOrMigrate(vaultRoot)
 	return m, err
 }
@@ -217,6 +223,7 @@ func commonUpdateTeam(vaultRoot string, actor mgmt.Actor, team mgmt.Team) error 
 // here, but ordering is kept for defense in depth.
 func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 	var clearedAssets []string
+	var clearedCollections []string
 	var unlinkedBots []string
 	if err := withManifest(vaultRoot, actor, func(m *manifest.Manifest) (*mgmt.AuditEvent, error) {
 		if _, err := requireTeamAdminInTx(m, name, actor); err != nil {
@@ -236,6 +243,25 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 			if removed {
 				asset.Scopes = kept
 				clearedAssets = append(clearedAssets, asset.Name)
+			}
+		}
+		// Collections carry their own team scope rows; strip them the
+		// same way as asset scopes, or a re-created team would silently
+		// re-inherit the collection installs.
+		for i := range m.Collections {
+			c := &m.Collections[i]
+			kept := c.Scopes[:0]
+			removed := false
+			for _, s := range c.Scopes {
+				if s.Kind == manifest.ScopeKindTeam && s.Team == name {
+					removed = true
+					continue
+				}
+				kept = append(kept, s)
+			}
+			if removed {
+				c.Scopes = kept
+				clearedCollections = append(clearedCollections, c.Name)
 			}
 		}
 		// Cascade to bot team memberships: every bot that referenced
@@ -300,6 +326,25 @@ func commonDeleteTeam(vaultRoot string, actor mgmt.Actor, name string) error {
 			},
 		}); err != nil {
 			auditErrs = append(auditErrs, fmt.Errorf("asset %s: %w", assetName, err))
+		}
+	}
+
+	// Same trail for collections whose team row the cascade stripped —
+	// without it, a collection silently stops installing for the deleted
+	// team's members with no audit row explaining why.
+	for _, collectionName := range clearedCollections {
+		if err := mgmt.AppendAuditEvent(vaultRoot, mgmt.AuditEvent{
+			Actor:      actor.Email,
+			Event:      mgmt.EventCollectionUninstalled,
+			TargetType: mgmt.TargetTypeCollection,
+			Target:     collectionName,
+			Data: map[string]any{
+				"kind":   string(manifest.ScopeKindTeam),
+				"team":   name,
+				"reason": "team_deleted",
+			},
+		}); err != nil {
+			auditErrs = append(auditErrs, fmt.Errorf("collection %s: %w", collectionName, err))
 		}
 	}
 	return errors.Join(auditErrs...)
@@ -844,7 +889,7 @@ func commonSetAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName st
 				"version":                recovered.Version,
 				"type":                   recovered.Type.Key,
 				"source":                 "path",
-				"path":                   filepath.ToSlash(filepath.Join("assets", recovered.Name, recovered.Version)),
+				"path":                   recovered.SourcePath.Path,
 			}
 			m.Assets = append(m.Assets, lockfileAssetToManifest(*recovered))
 			asset = m.FindAsset(assetName)
@@ -1048,7 +1093,7 @@ func commonSetAssetInstallations(ctx context.Context, vaultRoot string, actor mg
 				"version":                recovered.Version,
 				"type":                   recovered.Type.Key,
 				"source":                 "path",
-				"path":                   filepath.ToSlash(filepath.Join("assets", recovered.Name, recovered.Version)),
+				"path":                   recovered.SourcePath.Path,
 			}
 			m.Assets = append(m.Assets, lockfileAssetToManifest(*recovered))
 			asset = m.FindAsset(assetName)

@@ -1,0 +1,495 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  AvailableRepoName,
+  CancelSleuthLogin,
+  CompleteSleuthLogin,
+  CreateGitRepo,
+  GitHubAccount,
+  GitStatus,
+  HasIdentity,
+  ListSyncFolders,
+  PickDirectory,
+  SetLibraryRepoTracking,
+  SetupGitVault,
+  SetupLocalVault,
+  SetupSharedFolderVault,
+  StartSleuthLogin,
+} from "../../wailsjs/go/main/App";
+import type { main } from "../../wailsjs/go/models";
+import RepoPicker, {
+  CreateRepoCard,
+  suggestRepoName,
+} from "../components/RepoPicker";
+
+type Choice = "solo" | "folder" | "team" | "sleuth";
+type Audience = "technical" | "simple";
+
+const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/**
+ * First-launch screen. One decision, framed in plain language: where does
+ * your library live? No vault/manifest/scope vocabulary. When the machine
+ * has no git identity, a single email field appears — changes to a shared
+ * library need a name on them.
+ */
+export default function Onboarding({ onDone }: { onDone: () => void }) {
+  // First question: who is this for? Technical users get repository
+  // views on their new library; everyone else never sees the concept.
+  const [audience, setAudience] = useState<Audience | null>(null);
+  const [choice, setChoice] = useState<Choice | null>(null);
+  const [gitUrl, setGitUrl] = useState("");
+  const [email, setEmail] = useState("");
+  const [needsEmail, setNeedsEmail] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  // Shared-folder path.
+  const [syncFolders, setSyncFolders] = useState<main.SyncFolderOption[]>([]);
+  const [folderPath, setFolderPath] = useState("");
+
+  // skills.new sign-in.
+  const [signIn, setSignIn] = useState<main.SleuthLoginStart | null>(null);
+  const signInCancelled = useRef(false);
+
+  // Whether this machine can run git at all (some won't — no developer
+  // tools installed). Optimistic default avoids a flash of the warning.
+  const [gitStatus, setGitStatus] = useState<main.GitStatusInfo | null>(null);
+  // GitHub login for the create-a-repo offer: null = not looked up yet.
+  const [ghLogin, setGhLogin] = useState<string | null>(null);
+  // Repo name the create offer will actually use — pre-checked against the
+  // account so the one-click flow can't promise a name that collides
+  // (e.g. re-running onboarding on a second machine).
+  const [repoName, setRepoName] = useState("");
+
+  useEffect(() => {
+    HasIdentity()
+      .then((has) => setNeedsEmail(!has))
+      // If the check itself fails, asking for an email is the safe default.
+      .catch(() => setNeedsEmail(true));
+    ListSyncFolders()
+      .then((folders) => setSyncFolders(folders ?? []))
+      .catch(() => setSyncFolders([]));
+    GitStatus()
+      .then(setGitStatus)
+      .catch(() => setGitStatus(null));
+  }, []);
+
+  const gitUsable = gitStatus === null || gitStatus.available;
+
+  const emailOK = !needsEmail || EMAIL_SHAPE.test(email.trim());
+
+  // Apply the audience choice to the just-created library, then hand off.
+  // A failure to set the flag is not worth blocking a finished setup.
+  async function finishSetup() {
+    if (audience === "technical") {
+      try {
+        await SetLibraryRepoTracking("", true);
+      } catch {
+        // Repos can be toggled per library in Settings later.
+      }
+    }
+    onDone();
+  }
+
+  async function pickSolo() {
+    if (!emailOK) return;
+    setBusy(true);
+    setError("");
+    try {
+      await SetupLocalVault(email.trim());
+      await finishSetup();
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  }
+
+  async function connectTeam() {
+    if (!gitUrl.trim() || !emailOK) return;
+    setBusy(true);
+    setError("");
+    try {
+      await SetupGitVault(gitUrl.trim(), email.trim());
+      await finishSetup();
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  }
+
+  function pickTeam() {
+    setChoice("team");
+    if (ghLogin === null) {
+      GitHubAccount()
+        .then((login) => {
+          setGhLogin(login);
+          if (!login) return;
+          AvailableRepoName(suggestRepoName(""))
+            .then(setRepoName)
+            .catch(() => setRepoName(suggestRepoName("")));
+        })
+        .catch(() => setGhLogin(""));
+    }
+  }
+
+  // Create a fresh private repo under the user's GitHub account and
+  // connect it as the team library in one step.
+  async function createRepoAndConnect() {
+    if (!emailOK || !repoName) return;
+    setBusy(true);
+    setError("");
+    try {
+      const repo = await CreateGitRepo(repoName);
+      await SetupGitVault(repo.url, email.trim());
+      await finishSetup();
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  }
+
+  async function connectSharedFolder() {
+    if (!folderPath.trim() || !emailOK) return;
+    setBusy(true);
+    setError("");
+    try {
+      await SetupSharedFolderVault(folderPath.trim(), email.trim());
+      await finishSetup();
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  }
+
+  async function browseForFolder() {
+    try {
+      const dir = await PickDirectory();
+      if (dir) setFolderPath(dir);
+    } catch {
+      // Cancelled picker is not an error.
+    }
+  }
+
+  async function signInToSleuth() {
+    setChoice("sleuth");
+    setBusy(true);
+    setError("");
+    setSignIn(null);
+    signInCancelled.current = false;
+    try {
+      const start = await StartSleuthLogin("");
+      setSignIn(start);
+      // Waits for the user to approve in the browser.
+      await CompleteSleuthLogin("", start.deviceCode, "skills-new");
+      await finishSetup();
+    } catch (e) {
+      // A user-initiated cancel is not an error worth showing.
+      if (!signInCancelled.current) setError(String(e));
+      setSignIn(null);
+      setBusy(false);
+    }
+  }
+
+  function cancelSleuthSignIn() {
+    signInCancelled.current = true;
+    void CancelSleuthLogin();
+    setSignIn(null);
+    setChoice(null);
+    setBusy(false);
+    setError("");
+  }
+
+  return (
+    <div className="h-full flex flex-col bg-canvas">
+      <div className="titlebar-drag h-10 shrink-0" />
+      <div className="flex-1 flex items-center justify-center px-8">
+        <div className="w-full max-w-md">
+          <div className="mb-8 text-center">
+            <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-accent text-xl font-semibold text-white">
+              sx
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Your library for AI&nbsp;assets
+            </h1>
+            <p className="mt-2 text-sm text-ink-soft">
+              Skills, rules, and commands your AI tools can use — kept in one
+              place, shared with the people who need them.
+            </p>
+          </div>
+
+          {audience === null && (
+            <div className="space-y-3">
+              <p className="text-center text-xs font-medium uppercase tracking-wide text-ink-faint">
+                How will you use it?
+              </p>
+              <button
+                onClick={() => setAudience("simple")}
+                className="w-full rounded-xl border border-line bg-surface p-4 text-left transition hover:border-accent"
+              >
+                <div className="text-sm font-semibold">Keep it simple</div>
+                <div className="mt-0.5 text-sm text-ink-soft">
+                  Skills and know-how for your AI tools — no technical
+                  machinery. Great for marketing, ops, and everyone else.
+                </div>
+              </button>
+              <button
+                onClick={() => setAudience("technical")}
+                className="w-full rounded-xl border border-line bg-surface p-4 text-left transition hover:border-accent"
+              >
+                <div className="text-sm font-semibold">I work with code</div>
+                <div className="mt-0.5 text-sm text-ink-soft">
+                  Everything above, plus repository views: see and manage which
+                  repos your skills are scoped to.
+                </div>
+              </button>
+            </div>
+          )}
+
+          {audience !== null && needsEmail && (
+            <label className="mb-4 block">
+              <span className="mb-1 block text-xs font-medium text-ink-soft">
+                Your email
+              </span>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                disabled={busy}
+                className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+              />
+              <span className="mt-1 block text-xs text-ink-faint">
+                Changes you publish are signed with it.
+              </span>
+            </label>
+          )}
+
+          <div className={audience === null ? "hidden" : "space-y-3"}>
+            <button
+              onClick={() => {
+                setChoice("solo");
+                void pickSolo();
+              }}
+              disabled={busy || !emailOK}
+              className="group w-full rounded-xl border border-line bg-surface p-4 text-left transition hover:border-accent disabled:opacity-60"
+            >
+              <div className="text-sm font-semibold">Just me</div>
+              <div className="mt-0.5 text-sm text-ink-soft">
+                Keep a private library on this computer. You can share it later.
+              </div>
+            </button>
+
+            <div
+              className={`rounded-xl border bg-surface p-4 transition ${
+                choice === "folder" ? "border-accent" : "border-line"
+              }`}
+            >
+              <button
+                onClick={() => setChoice("folder")}
+                disabled={busy}
+                className="w-full text-left"
+              >
+                <div className="text-sm font-semibold">
+                  My team — shared folder
+                </div>
+                <div className="mt-0.5 text-sm text-ink-soft">
+                  Share through a folder you already sync — Dropbox, Google
+                  Drive, OneDrive, iCloud. No accounts, no setup.
+                </div>
+              </button>
+              {choice === "folder" && (
+                <div className="mt-3 space-y-2">
+                  {syncFolders.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {syncFolders.map((f) => (
+                        <button
+                          key={f.path}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setFolderPath(f.suggested)}
+                          className={`rounded-lg border px-3 py-1.5 text-xs transition hover:border-accent ${
+                            folderPath === f.suggested
+                              ? "border-accent text-ink"
+                              : "border-line text-ink-soft"
+                          }`}
+                        >
+                          {f.provider}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <form
+                    className="flex gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void connectSharedFolder();
+                    }}
+                  >
+                    <input
+                      autoFocus
+                      value={folderPath}
+                      onChange={(e) => setFolderPath(e.target.value)}
+                      placeholder="Pick a synced folder…"
+                      className="min-w-0 flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+                      disabled={busy}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void browseForFolder()}
+                      disabled={busy}
+                      className="rounded-lg border border-line px-3 py-2 text-sm text-ink-soft transition hover:border-accent"
+                    >
+                      Browse…
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={busy || !folderPath.trim() || !emailOK}
+                      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                    >
+                      {busy ? "Connecting…" : "Connect"}
+                    </button>
+                  </form>
+                  <p className="text-xs text-ink-faint">
+                    Teammates connect by pointing sx at the same folder once it
+                    syncs to their computer.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div
+              className={`rounded-xl border bg-surface p-4 transition ${
+                choice === "team" ? "border-accent" : "border-line"
+              }`}
+            >
+              <button
+                onClick={pickTeam}
+                disabled={busy}
+                className="w-full text-left"
+              >
+                <div className="text-sm font-semibold">
+                  My team — git repository
+                </div>
+                <div className="mt-0.5 text-sm text-ink-soft">
+                  Connect to the library your team already shares in a git
+                  repository.
+                </div>
+              </button>
+              {choice === "team" && !gitUsable && (
+                <div className="mt-3 rounded-lg bg-canvas px-4 py-3 text-sm text-ink-soft">
+                  {gitStatus?.reason} A shared folder or skills.new library
+                  works without git.
+                </div>
+              )}
+              {choice === "team" && gitUsable && (
+                <div className="mt-3 space-y-2.5">
+                  {ghLogin && repoName && (
+                    <>
+                      <CreateRepoCard
+                        title={
+                          busy
+                            ? "Creating repository…"
+                            : `Create ${ghLogin}/${repoName}`
+                        }
+                        subtitle="New private GitHub repository for your team's library"
+                        disabled={busy || !emailOK}
+                        onCreate={() => void createRepoAndConnect()}
+                      />
+                      <div className="text-center text-[11px] text-ink-faint">
+                        or connect an existing repository
+                      </div>
+                    </>
+                  )}
+                  <form
+                    className="flex gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void connectTeam();
+                    }}
+                  >
+                    <RepoPicker
+                      autoFocus
+                      value={gitUrl}
+                      onChange={setGitUrl}
+                      disabled={busy}
+                    />
+                    <button
+                      type="submit"
+                      disabled={busy || !gitUrl.trim() || !emailOK}
+                      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                    >
+                      {busy ? "Connecting…" : "Connect"}
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
+
+            <div
+              className={`rounded-xl border bg-surface p-4 transition ${
+                choice === "sleuth" ? "border-accent" : "border-line"
+              }`}
+            >
+              <button
+                onClick={() => void signInToSleuth()}
+                disabled={busy}
+                className="w-full text-left"
+              >
+                <div className="text-sm font-semibold">skills.new</div>
+                <div className="mt-0.5 text-sm text-ink-soft">
+                  Company-managed libraries with sign-in, teams, and usage
+                  insights.
+                </div>
+              </button>
+              {choice === "sleuth" && signIn && (
+                <div className="mt-3 rounded-lg bg-canvas px-4 py-3">
+                  <div className="text-sm text-ink-soft">
+                    {signIn.browserOpened
+                      ? "We opened your browser — approve the sign-in there."
+                      : `Open ${signIn.verificationUri} and enter this code:`}
+                  </div>
+                  <div className="mt-2 font-mono text-lg font-semibold tracking-widest">
+                    {signIn.userCode}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs text-ink-faint">
+                      <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" />
+                      Waiting for approval…
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cancelSleuthSignIn}
+                      className="rounded-lg px-3 py-1 text-xs font-medium text-ink-faint transition hover:text-ink"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {audience !== null && (
+            <div className="mt-4 text-center">
+              <button
+                onClick={() => {
+                  if (!busy) setAudience(null);
+                }}
+                disabled={busy}
+                className="text-xs text-ink-faint transition hover:text-ink disabled:opacity-50"
+              >
+                ← Back
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-4 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

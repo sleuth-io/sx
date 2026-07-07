@@ -50,6 +50,21 @@ const (
 
 	EventOrgAdminAdded   = "org.admin_added"
 	EventOrgAdminRemoved = "org.admin_removed"
+
+	// EventVaultMigrated records a vault storage-format migration (e.g.
+	// v1 → v2 layout). Emitted once per migration with from/to versions
+	// and the number of migrated assets in Data.
+	EventVaultMigrated = "vault.migrated"
+
+	EventCollectionCreated = "collection.created"
+	EventCollectionUpdated = "collection.updated"
+	EventCollectionDeleted = "collection.deleted"
+
+	// Collection install events mirror skills.new's COLLECTION_INSTALLED /
+	// COLLECTION_UNINSTALLED audit rows: the target is the collection and
+	// Data carries the install target, matching EventInstallSet's shape.
+	EventCollectionInstalled   = "collection.installed"
+	EventCollectionUninstalled = "collection.uninstalled"
 )
 
 // Audit target type constants.
@@ -59,6 +74,8 @@ const (
 	TargetTypeAsset        = "asset"
 	TargetTypeInstallation = "installation"
 	TargetTypeOrg          = "org"
+	TargetTypeVault        = "vault"
+	TargetTypeCollection   = "collection"
 )
 
 // AuditEvent is a single row in .sx/audit/YYYY-MM.jsonl.

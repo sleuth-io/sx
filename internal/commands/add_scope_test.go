@@ -385,8 +385,8 @@ prompt-file = "SKILL.md"
 	}
 	t.Log("✓ Asset removed from lock file")
 
-	// Verify asset still exists in repository
-	assetDir := filepath.Join(repoDir, "assets", "test-skill", "1.0.0")
+	// Verify asset still exists in repository (v2 layout: archive + root view)
+	assetDir := filepath.Join(repoDir, ".sx", "versions", "test-skill", "1.0.0")
 	if _, err := os.Stat(assetDir); os.IsNotExist(err) {
 		t.Fatalf("Asset should still exist in repository: %s", assetDir)
 	}
@@ -483,10 +483,13 @@ prompt-file = "SKILL.md"
 	}
 	t.Log("✓ Asset not added to lock file (as expected)")
 
-	// Verify asset exists in repository
-	assetDir := filepath.Join(repoDir, "assets", "test-skill", "1.0.0")
+	// Verify asset exists in repository (v2 layout: archive + root view)
+	assetDir := filepath.Join(repoDir, ".sx", "versions", "test-skill", "1.0.0")
 	if _, err := os.Stat(assetDir); os.IsNotExist(err) {
 		t.Fatalf("Asset should exist in repository: %s", assetDir)
+	}
+	if _, err := os.Stat(filepath.Join(repoDir, "assets", "test-skill", "metadata.toml")); os.IsNotExist(err) {
+		t.Fatalf("Asset root view should exist in repository")
 	}
 	t.Log("✓ Asset available in repository only")
 

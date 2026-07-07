@@ -442,14 +442,15 @@ func TestFilterUninstallPlanByClients(t *testing.T) {
 }
 
 func TestUpdateTrackerPartialClientRemoval(t *testing.T) {
-	// Set up temp cache directory for tracker
+	// Set up temp cache directory for tracker. SX_CACHE_DIR is the portable
+	// override — XDG_CACHE_HOME alone is IGNORED by os.UserCacheDir on
+	// macOS, which made this test write skill-1 junk over the developer's
+	// REAL ~/Library/Caches/sx/installed.json on every run.
 	tempDir := t.TempDir()
-	originalXDG := os.Getenv("XDG_CACHE_HOME")
-	os.Setenv("XDG_CACHE_HOME", tempDir)
-	defer os.Setenv("XDG_CACHE_HOME", originalXDG)
-
-	// Ensure the sx subdirectory exists
 	sxCacheDir := filepath.Join(tempDir, "sx")
+	t.Setenv("XDG_CACHE_HOME", tempDir)
+	t.Setenv("SX_CACHE_DIR", sxCacheDir)
+
 	if err := os.MkdirAll(sxCacheDir, 0755); err != nil {
 		t.Fatalf("failed to create cache dir: %v", err)
 	}

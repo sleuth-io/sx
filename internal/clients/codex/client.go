@@ -97,6 +97,9 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 		case asset.TypeSkill:
 			handler := handlers.NewSkillHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
+			if installErr == nil {
+				c.removeLegacyGlobalSkill(ctx, req.Scope, bundle.Metadata.Asset.Name)
+			}
 		case asset.TypeCommand:
 			handler := handlers.NewCommandHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
@@ -215,15 +218,38 @@ func isCodexAgentMetadata(meta *metadata.Metadata) bool {
 	return strings.EqualFold(filepath.Ext(meta.Agent.PromptFile), ".toml")
 }
 
+// removeLegacyGlobalSkill deletes a skill copy left at the legacy
+// ~/.codex/skills/<name> location. Current Codex releases discover
+// user-scope skills in ~/.agents/skills only, and tools that read both
+// locations would otherwise see the skill twice.
+func (c *Client) removeLegacyGlobalSkill(ctx context.Context, scope *clients.InstallScope, name string) {
+	if scope == nil || scope.Type != clients.ScopeGlobal {
+		return
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	legacy := filepath.Join(home, handlers.ConfigDir)
+	_ = handlers.SkillOps.Remove(ctx, legacy, name)
+}
+
 // determineTargetBase returns the installation directory based on scope and asset type.
-// For skills in repo/path scope, uses .agents/ (Codex convention).
-// For other assets or global scope, uses .codex/.
+// Skills use .agents/ at every scope (the vendor-neutral Agent Skills
+// convention Codex, Gemini, and Copilot discover); other assets use .codex/.
 func (c *Client) determineTargetBase(scope *clients.InstallScope, assetType asset.Type) (string, error) {
-	home, _ := os.UserHomeDir()
+	home, homeErr := os.UserHomeDir()
 
 	switch scope.Type {
 	case clients.ScopeGlobal:
-		// Global scope always uses ~/.codex/
+		if homeErr != nil {
+			return "", fmt.Errorf("cannot resolve home directory: %w", homeErr)
+		}
+		// Skills: ~/.agents/ — current Codex no longer lists
+		// ~/.codex/skills in user-scope discovery.
+		if assetType == asset.TypeSkill {
+			return filepath.Join(home, handlers.AgentsDir), nil
+		}
 		return filepath.Join(home, handlers.ConfigDir), nil
 
 	case clients.ScopeRepository:
@@ -248,6 +274,9 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope, assetType asse
 		return filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir), nil
 
 	default:
+		if homeErr != nil {
+			return "", fmt.Errorf("cannot resolve home directory: %w", homeErr)
+		}
 		return filepath.Join(home, handlers.ConfigDir), nil
 	}
 }

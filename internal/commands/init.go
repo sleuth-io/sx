@@ -17,6 +17,7 @@ import (
 	"github.com/sleuth-io/sx/internal/clients"
 	"github.com/sleuth-io/sx/internal/config"
 	"github.com/sleuth-io/sx/internal/git"
+	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/ui"
 	"github.com/sleuth-io/sx/internal/ui/components"
 	"github.com/sleuth-io/sx/internal/utils"
@@ -61,6 +62,7 @@ func NewInitCommand() *cobra.Command {
 		repoType    string
 		serverURL   string
 		repoURL     string
+		pathFlag    string
 		clientsFlag string
 	)
 
@@ -73,20 +75,21 @@ or Skills.new as the asset source.
 By default, runs in interactive mode with local path as the default option.
 Use flags for non-interactive mode.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInit(cmd, args, repoType, serverURL, repoURL, clientsFlag)
+			return runInit(cmd, args, repoType, serverURL, repoURL, pathFlag, clientsFlag)
 		},
 	}
 
 	cmd.Flags().StringVar(&repoType, "type", "", "Repository type: 'path', 'git', or 'sleuth'")
 	cmd.Flags().StringVar(&serverURL, "server-url", "", "Skills.new server URL (for type=sleuth)")
 	cmd.Flags().StringVar(&repoURL, "repo-url", "", "Repository URL (git URL, file:// URL, or directory path)")
+	cmd.Flags().StringVar(&pathFlag, "path", "", "Vault directory (for type=path)")
 	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Comma-separated client IDs (e.g., 'claude-code,cursor') or 'all'")
 
 	return cmd
 }
 
 // runInit executes the init command
-func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL, clientsFlag string) error {
+func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL, pathFlag, clientsFlag string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -122,7 +125,7 @@ func runInit(cmd *cobra.Command, args []string, repoType, serverURL, repoURL, cl
 
 	if nonInteractive {
 		enabledClients = flagClients
-		err = runInitNonInteractive(cmd, ctx, repoType, serverURL, repoURL, enabledClients)
+		err = runInitNonInteractive(cmd, ctx, repoType, serverURL, repoURL, pathFlag, enabledClients)
 	} else {
 		enabledClients, err = runInitInteractive(cmd, ctx, existingCfg, flagClients)
 	}
@@ -184,12 +187,12 @@ func runInitInteractive(cmd *cobra.Command, ctx context.Context, existingCfg *co
 
 	options := []components.Option{
 		{Label: "Just for myself", Value: "personal", Description: "Local vault"},
-		{Label: "Share with my team", Value: "team", Description: "Git or Skills.new"},
+		{Label: "Share with my team", Value: "team", Description: "Git, Skills.new, or a shared folder"},
 	}
 
 	// Pre-select based on existing config
 	defaultIndex := 0
-	if existingCfg != nil && (existingCfg.Type == config.RepositoryTypeGit || existingCfg.Type == config.RepositoryTypeSleuth) {
+	if existingCfg != nil && (existingCfg.Type == config.RepositoryTypeGit || existingCfg.Type == config.RepositoryTypeSleuth || isSharedFolderConfig(existingCfg)) {
 		defaultIndex = 1 // "Share with my team"
 	}
 
@@ -244,17 +247,22 @@ func initPersonalRepository(cmd *cobra.Command, ctx context.Context, enabledClie
 	return configurePathRepo(cmd, ctx, vaultPath, enabledClients)
 }
 
-// initTeamRepository prompts for team repository options (git or sleuth)
+// initTeamRepository prompts for team repository options (sleuth, git,
+// or a cloud-synced shared folder)
 func initTeamRepository(cmd *cobra.Command, ctx context.Context, enabledClients []string, existingCfg *config.Config) error {
 	options := []components.Option{
 		{Label: "Skills.new", Value: "sleuth", Description: "Managed assets platform"},
 		{Label: "Git repository", Value: "git", Description: "Self-hosted Git repo"},
+		{Label: "Shared folder", Value: "folder", Description: "Dropbox, Google Drive, OneDrive, iCloud"},
 	}
 
 	// Pre-select based on existing config
 	defaultIndex := 0
 	if existingCfg != nil && existingCfg.Type == config.RepositoryTypeGit {
 		defaultIndex = 1 // "Git repository"
+	}
+	if isSharedFolderConfig(existingCfg) {
+		defaultIndex = 2 // "Shared folder"
 	}
 
 	selected, err := components.SelectWithDefault("Choose how to share with your team:", options, defaultIndex)
@@ -267,13 +275,126 @@ func initTeamRepository(cmd *cobra.Command, ctx context.Context, enabledClients 
 		return initSleuthServer(cmd, ctx, enabledClients, existingCfg)
 	case "git":
 		return initGitRepository(cmd, ctx, enabledClients, existingCfg)
+	case "folder":
+		return initSharedFolder(cmd, ctx, enabledClients)
 	default:
 		return fmt.Errorf("invalid choice: %s", selected.Value)
 	}
 }
 
+// isSharedFolderConfig reports whether cfg points at a path vault other
+// than the personal default (<config-dir>/vault) — i.e. a shared folder.
+func isSharedFolderConfig(cfg *config.Config) bool {
+	if cfg == nil || cfg.Type != config.RepositoryTypePath {
+		return false
+	}
+	configDir, err := utils.GetConfigDir()
+	if err != nil {
+		return false
+	}
+	current := strings.TrimPrefix(cfg.RepositoryURL, "file://")
+	return filepath.Clean(current) != filepath.Join(configDir, "vault")
+}
+
+// initSharedFolder configures a plain path vault living inside a
+// cloud-synced folder (Dropbox, Google Drive, OneDrive, iCloud). The
+// vault format is identical to any other path vault; the sync client
+// does the sharing.
+func initSharedFolder(cmd *cobra.Command, ctx context.Context, enabledClients []string) error {
+	styledOut := ui.NewOutput(cmd.OutOrStdout(), cmd.ErrOrStderr())
+
+	detected := utils.DetectSyncFolders()
+	raw, err := promptForSharedFolderPath(detected, "", cmd.InOrStdin(), cmd.OutOrStdout())
+	if err != nil {
+		return err
+	}
+	absPath, err := expandPath(raw)
+	if err != nil {
+		return fmt.Errorf("invalid path: %w", err)
+	}
+
+	// A teammate pointing at an already-shared vault joins it; nothing
+	// needs creating.
+	joining := utils.FileExists(filepath.Join(absPath, manifest.FileName))
+	if joining {
+		if m, ok, err := manifest.Load(absPath); err == nil && ok {
+			styledOut.SuccessItem(fmt.Sprintf("Found existing vault with %d assets — joining it.", len(m.Assets)))
+		} else {
+			styledOut.SuccessItem("Found existing vault — joining it.")
+		}
+	}
+
+	if err := configurePathRepo(cmd, ctx, absPath, enabledClients); err != nil {
+		return err
+	}
+
+	printSharedFolderNextSteps(styledOut, utils.ProviderForPath(absPath, detected), absPath, joining)
+	return nil
+}
+
+// promptForSharedFolderPath asks where the shared vault lives, offering
+// detected cloud-sync roots as suggestions. IO-injected seam so the flow
+// is testable without a TTY.
+func promptForSharedFolderPath(detected []utils.SyncFolder, defaultPath string, in io.Reader, out io.Writer) (string, error) {
+	if len(detected) > 0 {
+		options := make([]components.Option, 0, len(detected)+1)
+		for _, f := range detected {
+			options = append(options, components.Option{
+				Label:       f.Provider,
+				Value:       f.Path,
+				Description: utils.Portabilize(f.Path),
+			})
+		}
+		options = append(options, components.Option{Label: "Somewhere else", Value: "", Description: "Enter a path"})
+
+		selected, err := components.SelectWithDefaultAndIO("Where is your shared folder?", options, 0, in, out)
+		if err != nil {
+			return "", err
+		}
+		if selected.Value != "" {
+			path, err := components.InputWithIO("Folder for the shared vault", "", filepath.Join(selected.Value, "sx-vault"), in, out)
+			if err != nil {
+				return "", err
+			}
+			if path == "" {
+				return "", errors.New("shared folder path is required")
+			}
+			return path, nil
+		}
+	}
+
+	path, err := components.InputWithIO("Enter the shared folder path", "~/Dropbox/sx-vault", defaultPath, in, out)
+	if err != nil {
+		return "", err
+	}
+	if path == "" {
+		return "", errors.New("shared folder path is required")
+	}
+	return path, nil
+}
+
+// printSharedFolderNextSteps explains how teammates connect to the
+// shared vault, in sync-app vocabulary rather than git vocabulary.
+func printSharedFolderNextSteps(styledOut *ui.Output, provider, absPath string, joining bool) {
+	styledOut.Newline()
+	if joining {
+		styledOut.Muted("You're connected to the shared vault. Changes are attributed to your git email (git config user.email).")
+		return
+	}
+	if provider == "" {
+		provider = "your sync app"
+	}
+	styledOut.Info("Next steps to share with your team:")
+	styledOut.Printf("  1. In %s, share the folder %s with your teammates.\n", provider, absPath)
+	styledOut.Printf("  2. Each teammate runs:  sx init --type path --path %q\n", absPath)
+	styledOut.Printf("  3. Let the folder finish syncing before running sx install.\n")
+	styledOut.Newline()
+	styledOut.Muted("Changes are attributed to your git email (git config user.email).")
+	styledOut.Muted("If two people publish at once your sync app may create a conflicted copy — see docs/synced-folders.md if sx reports one.")
+}
+
 // runInitNonInteractive runs the init command in non-interactive mode
-func runInitNonInteractive(cmd *cobra.Command, ctx context.Context, repoType, serverURL, repoURL string, enabledClients []string) error {
+func runInitNonInteractive(cmd *cobra.Command, ctx context.Context, repoType, serverURL, repoURL, pathFlag string, enabledClients []string) error {
 	switch repoType {
 	case "sleuth":
 		if serverURL == "" {
@@ -288,10 +409,16 @@ func runInitNonInteractive(cmd *cobra.Command, ctx context.Context, repoType, se
 		return configureGitRepo(cmd, ctx, repoURL, enabledClients)
 
 	case "path":
-		if repoURL == "" {
-			return errors.New("--repo-url is required for type=path")
+		target := pathFlag
+		if target == "" {
+			// --repo-url with a file:// URL or plain directory predates
+			// --path; keep accepting it.
+			target = repoURL
 		}
-		return configurePathRepo(cmd, ctx, repoURL, enabledClients)
+		if target == "" {
+			return errors.New("--path is required for type=path")
+		}
+		return configurePathRepo(cmd, ctx, target, enabledClients)
 
 	default:
 		return fmt.Errorf("invalid repository type: %s (must be 'path', 'git', or 'sleuth')", repoType)

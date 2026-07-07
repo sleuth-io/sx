@@ -170,7 +170,17 @@ func (o *OAuthClient) requestToken(ctx context.Context, endpoint, deviceCode str
 	return &tokenResp, nil
 }
 
-// OpenBrowser opens the verification URI in the user's default browser
+// OpenBrowser opens the verification URI in the user's default browser.
+// Only http(s) URLs are opened: the URI comes from the (user-supplied)
+// server's device-flow response, and a hostile server must not be able to
+// launch arbitrary protocol handlers on the user's machine.
 func OpenBrowser(verificationURI string) error {
+	u, err := url.Parse(verificationURI)
+	if err != nil {
+		return fmt.Errorf("invalid verification URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("refusing to open non-http verification URL %q", verificationURI)
+	}
 	return browser.OpenURL(verificationURI)
 }

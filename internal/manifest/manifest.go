@@ -26,11 +26,16 @@ import (
 // FileName is the path, relative to the vault root, where the manifest lives.
 const FileName = "sx.toml"
 
-// CurrentSchemaVersion is the schema version written by this build. A
-// future build that bumps the version will migrate v1 files forward on
-// first write; this build rejects files whose version exceeds the one it
-// understands.
-const CurrentSchemaVersion = 1
+// CurrentSchemaVersion is the schema version written by this build for
+// newly created vaults. This build rejects files whose version exceeds the
+// one it understands.
+//
+// Version 2 changes the vault's storage layout (latest asset version
+// materialized at assets/{name}, archive under .sx/versions — see
+// internal/vault/layout) and adds collections. Existing v1 vaults are
+// migrated by the vault layer on their first write; loading and saving a v1
+// manifest preserves its version until that migration runs.
+const CurrentSchemaVersion = 2
 
 // Errors returned by the parser and mutators.
 var (
@@ -89,10 +94,33 @@ type Manifest struct {
 	// ScopeKindBot.
 	Bots []Bot `toml:"bots,omitempty"`
 
+	// Collections are named, curated asset groupings (schema v2+) — an
+	// organizational and bulk-install unit with no ACL semantics.
+	Collections []Collection `toml:"collections,omitempty"`
+
 	// Org holds vault-level governance. When Org.Admins is non-empty the
 	// vault is "governed": only org-admins may set broad scopes and change
 	// the admin list. Nil/empty = ungoverned. See docs/rbac.md.
 	Org *Org `toml:"org,omitempty"`
+}
+
+// Collection is a named list of asset names. Collections organize assets
+// for browsing and bulk install.
+//
+// Scopes are the collection's OWN install targets, dereferenced at
+// resolve time: every member asset additionally reaches everyone a
+// collection scope reaches, without the member's own scope rows being
+// touched. Unlike assets — where an empty scope list means org-wide — a
+// collection with no scopes grants nothing; org-wide is an explicit
+// kind=org row. This keeps existing (scope-less) collections purely
+// organizational and makes install/uninstall symmetric: removing a
+// collection scope never disturbs a member's direct installs.
+type Collection struct {
+	Name        string   `toml:"name"`
+	Description string   `toml:"description,omitempty"`
+	Assets      []string `toml:"assets,omitempty"`
+	Scopes      []Scope  `toml:"scopes,omitempty"`
+	CreatedBy   string   `toml:"created_by,omitempty"`
 }
 
 // Org is vault-level governance configuration.
@@ -359,6 +387,77 @@ func (m *Manifest) DeleteBot(name string) error {
 	return ErrBotNotFound
 }
 
+// ErrCollectionNotFound is returned when a collection lookup fails.
+var ErrCollectionNotFound = errors.New("collection not found")
+
+// FindCollection returns the collection with the given name, or
+// ErrCollectionNotFound.
+func (m *Manifest) FindCollection(name string) (*Collection, error) {
+	for i := range m.Collections {
+		if m.Collections[i].Name == name {
+			return &m.Collections[i], nil
+		}
+	}
+	return nil, ErrCollectionNotFound
+}
+
+// UpsertCollection inserts or replaces a collection keyed by name. Returns
+// the pointer into the manifest's own slice, or an error if the normalized
+// name is blank.
+func (m *Manifest) UpsertCollection(c Collection) (*Collection, error) {
+	normalizeCollectionInPlace(&c)
+	if c.Name == "" {
+		return nil, errors.New("collection name cannot be empty")
+	}
+	for i := range m.Collections {
+		if m.Collections[i].Name == c.Name {
+			m.Collections[i] = c
+			return &m.Collections[i], nil
+		}
+	}
+	m.Collections = append(m.Collections, c)
+	return &m.Collections[len(m.Collections)-1], nil
+}
+
+// DeleteCollection removes the collection by name, returning
+// ErrCollectionNotFound if missing.
+func (m *Manifest) DeleteCollection(name string) error {
+	for i := range m.Collections {
+		if m.Collections[i].Name == name {
+			m.Collections = append(m.Collections[:i], m.Collections[i+1:]...)
+			return nil
+		}
+	}
+	return ErrCollectionNotFound
+}
+
+// normalizeCollectionInPlace trims a collection's fields and normalizes its
+// asset list (trimmed, deduped, sorted) for deterministic serialization.
+// NormalizeCollection returns the collection with its fields trimmed and
+// its asset list deduped/sorted — the same normalization UpsertCollection
+// applies, exported so non-manifest collection stores (the Sleuth vault)
+// keep identical semantics. Blank names are an error.
+func NormalizeCollection(c Collection) (Collection, error) {
+	normalizeCollectionInPlace(&c)
+	if c.Name == "" {
+		return Collection{}, errors.New("collection name cannot be empty")
+	}
+	return c, nil
+}
+
+func normalizeCollectionInPlace(c *Collection) {
+	c.Name = strings.TrimSpace(c.Name)
+	c.Description = strings.TrimSpace(c.Description)
+	c.CreatedBy = NormalizeEmail(c.CreatedBy)
+	assets := make([]string, 0, len(c.Assets))
+	for _, a := range c.Assets {
+		if a = strings.TrimSpace(a); a != "" {
+			assets = append(assets, a)
+		}
+	}
+	c.Assets = dedupeSorted(assets)
+}
+
 // FindAsset returns the first asset with the given name, or nil.
 func (m *Manifest) FindAsset(name string) *Asset {
 	for i := range m.Assets {
@@ -581,13 +680,14 @@ func Parse(data []byte) (*Manifest, error) {
 		return nil, fmt.Errorf("failed to parse manifest: %w", err)
 	}
 	if m.SchemaVersion == 0 {
-		// Treat an unspecified version as v1 for forgiving reads. Newer
-		// files without a version will still produce warnings in
-		// validation, but parse succeeds.
-		m.SchemaVersion = CurrentSchemaVersion
+		// Treat an unspecified version as v1 for forgiving reads: every
+		// file that predates the schema_version field is v1, and defaulting
+		// to the current version would misclassify a legacy vault's storage
+		// layout.
+		m.SchemaVersion = 1
 	}
 	if m.SchemaVersion > CurrentSchemaVersion {
-		return nil, fmt.Errorf("%w: file uses schema %d, this build understands up to %d", ErrUnsupportedSchema, m.SchemaVersion, CurrentSchemaVersion)
+		return nil, fmt.Errorf("%w: this vault uses schema %d but this sx build only understands up to %d — run 'sx update' (sx also self-updates in the background, so simply retrying later usually works)", ErrUnsupportedSchema, m.SchemaVersion, CurrentSchemaVersion)
 	}
 	return &m, nil
 }
@@ -643,14 +743,18 @@ func Write(m *Manifest, path string) error {
 	return writeFileAtomic(path, data, 0644)
 }
 
-// Save writes the manifest to vaultRoot/sx.toml atomically. Creates the
-// vault root directory if needed.
+// Save writes the manifest to vaultRoot/sx.toml atomically, then
+// regenerates the derived plugin-marketplace manifests next to it.
+// Creates the vault root directory if needed.
 func Save(vaultRoot string, m *Manifest) error {
 	path := filepath.Join(vaultRoot, FileName)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("failed to create vault root: %w", err)
 	}
-	return Write(m, path)
+	if err := Write(m, path); err != nil {
+		return err
+	}
+	return writePluginManifests(vaultRoot, m)
 }
 
 // normalized returns a copy of m with every field normalized for stable
@@ -682,6 +786,14 @@ func normalized(m *Manifest) *Manifest {
 		copy(out.Bots, m.Bots)
 		for i := range out.Bots {
 			normalizeBotInPlace(&out.Bots[i])
+		}
+	}
+
+	if len(m.Collections) > 0 {
+		out.Collections = make([]Collection, len(m.Collections))
+		copy(out.Collections, m.Collections)
+		for i := range out.Collections {
+			normalizeCollectionInPlace(&out.Collections[i])
 		}
 	}
 

@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,6 +38,14 @@ const (
 	// installScriptTemplateVersion is the current version of the install.sh template
 	// Increment this when making changes to the template
 	installScriptTemplateVersion = "1"
+
+	// gitSyncTTL is how long cloneOrUpdate trusts the local clone before
+	// pulling again. Within the window every read short-circuits to the
+	// clone (rapid UI interactions stay fast); the first read after it
+	// re-pulls, so a long-lived desktop session picks up teammates'
+	// pushes. Mutations are unaffected — push conflicts already
+	// pull-rebase — and the CLI never notices (one vault per invocation).
+	gitSyncTTL = 2 * time.Minute
 )
 
 // GitVault implements Vault for Git vaults
@@ -50,16 +57,18 @@ type GitVault struct {
 	pathHandler *PathSourceHandler
 	gitHandler  *GitSourceHandler
 
-	// hasSynced + syncMu guard cloneOrUpdate against concurrent MCP tool
+	// lastSynced + syncMu guard cloneOrUpdate against concurrent MCP tool
 	// goroutines (one per inbound JSON-RPC frame in cloud serve). A plain
-	// bool was a data race that ``go test -race`` would catch and that
+	// field would be a data race that ``go test -race`` catches and that
 	// could manifest as duplicate ``git pull`` invocations in production.
-	// Using a mutex + bool (instead of ``sync.Once``) preserves the
-	// original "retry on next call after a cancelled clone" semantics —
-	// ``sync.Once`` would permanently latch the cancellation error onto
-	// every subsequent caller.
-	syncMu    sync.Mutex
-	hasSynced bool
+	// Using a mutex + timestamp (instead of ``sync.Once``) preserves the
+	// "retry on next call after a cancelled clone" semantics — and, unlike
+	// the boolean it replaced, lets a long-lived process (the desktop app
+	// holds ONE GitVault for its whole session) see remote changes: reads
+	// within gitSyncTTL of the last sync serve the local clone, the first
+	// read after expiry pulls again.
+	syncMu     sync.Mutex
+	lastSynced time.Time
 
 	// prBranch is set by StartPRBranch when the caller lacks RBAC permission to
 	// publish directly and has opted to open a pull request instead. While it is
@@ -210,23 +219,24 @@ func (g *GitVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipData 
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
-
-	// Create assets directory structure: assets/{name}/{version}/
-	assetDir := filepath.Join(g.repoPath, "assets", asset.Name, asset.Version)
-	if err := os.MkdirAll(assetDir, 0755); err != nil {
-		return fmt.Errorf("failed to create asset directory: %w", err)
+	if err := g.ensureMigratedLocked(ctx); err != nil {
+		return err
 	}
 
-	// For Git repositories, store assets exploded (not as zip)
-	// This makes them easier to browse and diff in Git
-	if err := extractZipToDir(zipData, assetDir); err != nil {
-		return fmt.Errorf("failed to extract zip to directory: %w", err)
+	// Store assets exploded (not as zip) so they are easy to browse and
+	// diff in Git. The layout decides where versions and list.txt live.
+	l, err := detectLayout(g.repoPath)
+	if err != nil {
+		return err
+	}
+	if err := storeAssetVersion(g.repoPath, l, asset.Name, asset.Version, zipData); err != nil {
+		return err
 	}
 
-	// Update list.txt with this version
-	listPath := filepath.Join(g.repoPath, "assets", asset.Name, "list.txt")
-	if err := g.updateVersionList(listPath, asset.Version); err != nil {
-		return fmt.Errorf("failed to update version list: %w", err)
+	// Point the asset at the stored (immutable) version directory so the
+	// manifest records a layout-correct source path.
+	asset.SourcePath = &lockfile.SourcePath{
+		Path: l.SourcePathRel(asset.Name, asset.Version),
 	}
 
 	// Commit and push the asset to the repository
@@ -257,19 +267,11 @@ func (g *GitVault) GetVersionList(ctx context.Context, name string) ([]string, e
 		return nil, fmt.Errorf("failed to clone/update repository: %w", err)
 	}
 
-	// Read list.txt for this asset
-	listPath := filepath.Join(g.repoPath, "assets", name, "list.txt")
-	if _, err := os.Stat(listPath); os.IsNotExist(err) {
-		return manifestAssetVersions(g.repoPath, name)
-	}
-
-	data, err := os.ReadFile(listPath)
+	l, err := detectLayout(g.repoPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read version list: %w", err)
+		return nil, err
 	}
-
-	// Parse versions from file using common parser
-	return parseVersionList(data), nil
+	return versionListForAsset(g.repoPath, l, name)
 }
 
 // GetAssetByVersion retrieves an asset by name and version from the git repository
@@ -280,8 +282,13 @@ func (g *GitVault) GetAssetByVersion(ctx context.Context, name, version string) 
 		return nil, fmt.Errorf("failed to clone/update repository: %w", err)
 	}
 
-	// Check if asset directory exists
-	assetDir := filepath.Join(g.repoPath, "assets", name, version)
+	l, err := detectLayout(g.repoPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if the stored version directory exists
+	assetDir := filepath.Join(g.repoPath, l.VersionDir(name, version))
 	if _, err := os.Stat(assetDir); os.IsNotExist(err) {
 		asset, ok, manifestErr := findAssetVersionInManifest(g.repoPath, name, version)
 		if manifestErr != nil {
@@ -309,8 +316,11 @@ func (g *GitVault) GetMetadata(ctx context.Context, name, version string) (*meta
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return nil, fmt.Errorf("failed to clone/update repository: %w", err)
 	}
-	metadataPath := filepath.Join(g.repoPath, "assets", name, version, "metadata.toml")
-	data, err := os.ReadFile(metadataPath)
+	l, err := detectLayout(g.repoPath)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Join(g.repoPath, l.MetadataPath(name, version)))
 	if err != nil {
 		if os.IsNotExist(err) {
 			asset, ok, manifestErr := findAssetVersionInManifest(g.repoPath, name, version)
@@ -341,7 +351,7 @@ func (g *GitVault) VerifyIntegrity(data []byte, hashes map[string]string, size i
 func (g *GitVault) cloneOrUpdate(ctx context.Context) error {
 	g.syncMu.Lock()
 	defer g.syncMu.Unlock()
-	if g.hasSynced {
+	if !g.lastSynced.IsZero() && time.Since(g.lastSynced) < gitSyncTTL {
 		return nil
 	}
 
@@ -374,7 +384,7 @@ func (g *GitVault) cloneOrUpdate(ctx context.Context) error {
 		}
 	}
 
-	g.hasSynced = true
+	g.lastSynced = time.Now()
 	return nil
 }
 
@@ -758,39 +768,6 @@ func extractZipToDir(zipData []byte, targetDir string) error {
 	return nil
 }
 
-// updateVersionList updates the list.txt file with a new version
-func (g *GitVault) updateVersionList(listPath, newVersion string) error {
-	var versions []string
-
-	// Read existing versions if file exists
-	if data, err := os.ReadFile(listPath); err == nil {
-		for line := range bytes.SplitSeq(data, []byte("\n")) {
-			version := string(bytes.TrimSpace(line))
-			if version != "" {
-				versions = append(versions, version)
-			}
-		}
-	}
-
-	// Check if version already exists
-	if slices.Contains(versions, newVersion) {
-		return nil // Version already in list
-	}
-
-	// Add new version
-	versions = append(versions, newVersion)
-
-	// Write back to file atomically so a concurrent reader never
-	// observes a truncated or partially-written list.
-	var buf bytes.Buffer
-	for _, v := range versions {
-		buf.WriteString(v)
-		buf.WriteByte('\n')
-	}
-
-	return utils.WriteFileAtomic(listPath, buf.Bytes(), 0644)
-}
-
 // PostUsageStats parses the JSONL payload produced by stats.FlushQueue and
 // persists it to .sx/usage/YYYY-MM.jsonl via RecordUsageEvents. This keeps
 // wire compatibility with the existing queue flush pipeline while moving
@@ -816,6 +793,9 @@ func (g *GitVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, 
 
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+	if err := g.ensureMigratedLocked(ctx); err != nil {
+		return err
 	}
 
 	actor, err := g.CurrentActor(ctx)
@@ -846,6 +826,9 @@ func (g *GitVault) InheritInstallations(ctx context.Context, asset *lockfile.Ass
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
+	if err := g.ensureMigratedLocked(ctx); err != nil {
+		return err
+	}
 
 	if err := inheritAssetScopesFromManifest(g.repoPath, asset); err != nil {
 		return fmt.Errorf("failed to inherit scopes: %w", err)
@@ -874,6 +857,9 @@ func (g *GitVault) RemoveAsset(ctx context.Context, assetName, version string, d
 	// Clone or update repository
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+	if err := g.ensureMigratedLocked(ctx); err != nil {
+		return err
 	}
 
 	removed, err := removeAssetFromManifest(g.repoPath, assetName, version)
@@ -928,62 +914,11 @@ func (g *GitVault) RemoveAsset(ctx context.Context, assetName, version string, d
 // If version is specified, removes only that version directory and updates list.txt.
 // If version is empty, removes the entire asset directory.
 func (g *GitVault) deleteAssetFiles(assetName, version string) error {
-	assetBaseDir := filepath.Join(g.repoPath, "assets", assetName)
-
-	if version == "" {
-		// Remove entire asset directory
-		return os.RemoveAll(assetBaseDir)
-	}
-
-	// Remove specific version directory
-	versionDir := filepath.Join(assetBaseDir, version)
-	if err := os.RemoveAll(versionDir); err != nil {
-		return err
-	}
-
-	// Update list.txt
-	listPath := filepath.Join(assetBaseDir, "list.txt")
-	if err := g.removeFromVersionList(listPath, version); err != nil {
-		return err
-	}
-
-	// If list.txt is now empty, remove entire asset directory
-	data, err := os.ReadFile(listPath)
-	if err == nil && len(parseVersionList(data)) == 0 {
-		return os.RemoveAll(assetBaseDir)
-	}
-
-	return nil
-}
-
-// removeFromVersionList removes a version from the list.txt file
-func (g *GitVault) removeFromVersionList(listPath, version string) error {
-	data, err := os.ReadFile(listPath)
+	l, err := detectLayout(g.repoPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
-
-	versions := parseVersionList(data)
-	var filtered []string
-	for _, v := range versions {
-		if v != version {
-			filtered = append(filtered, v)
-		}
-	}
-
-	if len(filtered) == 0 {
-		return utils.WriteFileAtomic(listPath, []byte(""), 0644)
-	}
-
-	var buf bytes.Buffer
-	for _, v := range filtered {
-		buf.WriteString(v)
-		buf.WriteByte('\n')
-	}
-	return utils.WriteFileAtomic(listPath, buf.Bytes(), 0644)
+	return deleteAssetStorage(g.repoPath, l, assetName, version)
 }
 
 // RenameAsset renames an asset in the vault.
@@ -1000,30 +935,20 @@ func (g *GitVault) RenameAsset(ctx context.Context, oldName, newName string) err
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
-
-	// Rename asset directory
-	oldDir := filepath.Join(g.repoPath, "assets", oldName)
-	newDir := filepath.Join(g.repoPath, "assets", newName)
-	if _, err := os.Stat(newDir); err == nil {
-		return fmt.Errorf("target asset directory already exists: %s", newName)
-	}
-	if err := os.Rename(oldDir, newDir); err != nil {
-		return fmt.Errorf("failed to rename asset directory: %w", err)
+	if err := g.ensureMigratedLocked(ctx); err != nil {
+		return err
 	}
 
-	// Update metadata.toml in each version dir
-	versions, err := g.GetVersionList(ctx, newName)
-	if err == nil {
-		for _, v := range versions {
-			metadataPath := filepath.Join(newDir, v, "metadata.toml")
-			if err := metadata.UpdateName(metadataPath, newName); err != nil {
-				// Log warning but continue - metadata update is best-effort
-				fmt.Fprintf(os.Stderr, "Warning: could not update metadata for %s@%s: %v\n", newName, v, err)
-			}
-		}
+	l, err := detectLayout(g.repoPath)
+	if err != nil {
+		return err
 	}
+	if err := renameAssetStorage(g.repoPath, l, oldName, newName); err != nil {
+		return err
+	}
+	updateRenamedAssetMetadata(g.repoPath, l, newName)
 
-	if err := renameAssetInManifest(g.repoPath, oldName, newName); err != nil {
+	if err := renameAssetInManifest(g.repoPath, l, oldName, newName); err != nil {
 		return fmt.Errorf("failed to update manifest: %w", err)
 	}
 
@@ -1062,8 +987,13 @@ func (g *GitVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Lis
 	log := logger.Get()
 	log.Debug("cloneOrUpdate completed", "duration", time.Since(start))
 
+	l, err := detectLayout(g.repoPath)
+	if err != nil {
+		return nil, err
+	}
+
 	// Read assets/ directory
-	assetsDir := filepath.Join(g.repoPath, "assets")
+	assetsDir := filepath.Join(g.repoPath, l.AssetsRoot())
 	entries, err := os.ReadDir(assetsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -1074,7 +1004,7 @@ func (g *GitVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Lis
 	}
 
 	var assets []AssetSummary
-	for _, entry := range entries {
+	for _, entry := range filterScanEntries(entries) {
 		if !entry.IsDir() {
 			continue
 		}
@@ -1087,7 +1017,7 @@ func (g *GitVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Lis
 
 		// Get metadata for latest version
 		latestVersion := versions[len(versions)-1]
-		metadataPath := filepath.Join(g.repoPath, "assets", entry.Name(), latestVersion, "metadata.toml")
+		metadataPath := filepath.Join(g.repoPath, l.MetadataPath(entry.Name(), latestVersion))
 
 		assetSummary := AssetSummary{
 			Name:          entry.Name(),
@@ -1137,8 +1067,13 @@ func (g *GitVault) GetAssetDetails(ctx context.Context, name string) (*AssetDeta
 		return nil, fmt.Errorf("failed to clone/update repository: %w", err)
 	}
 
+	l, err := detectLayout(g.repoPath)
+	if err != nil {
+		return nil, err
+	}
+
 	// Check if asset directory exists
-	assetDir := filepath.Join(g.repoPath, "assets", name)
+	assetDir := filepath.Join(g.repoPath, l.AssetDir(name))
 	if _, err := os.Stat(assetDir); os.IsNotExist(err) {
 		return nil, fmt.Errorf("asset '%s' not found", name)
 	}
@@ -1156,7 +1091,7 @@ func (g *GitVault) GetAssetDetails(ctx context.Context, name string) (*AssetDeta
 	// Build version list with file info
 	var versionList []AssetVersion
 	for _, v := range versions {
-		versionDir := filepath.Join(assetDir, v)
+		versionDir := filepath.Join(g.repoPath, l.VersionDir(name, v))
 		versionInfo, err := os.Stat(versionDir)
 
 		versionEntry := AssetVersion{Version: v}
@@ -1180,7 +1115,7 @@ func (g *GitVault) GetAssetDetails(ctx context.Context, name string) (*AssetDeta
 
 	// Get metadata for latest version
 	latestVersion := versions[len(versions)-1]
-	metadataPath := filepath.Join(assetDir, latestVersion, "metadata.toml")
+	metadataPath := filepath.Join(g.repoPath, l.MetadataPath(name, latestVersion))
 
 	details := &AssetDetails{
 		Name:     name,
@@ -1216,4 +1151,13 @@ func (g *GitVault) GetMCPTools() any {
 // GetBootstrapOptions returns no bootstrap options for GitVault
 func (g *GitVault) GetBootstrapOptions(ctx context.Context) []bootstrap.Option {
 	return nil
+}
+
+// markSynced records a just-completed remote sync performed outside
+// cloneOrUpdate (repair, PR-branch flows), restarting the gitSyncTTL
+// window under the same mutex cloneOrUpdate uses.
+func (g *GitVault) markSynced() {
+	g.syncMu.Lock()
+	g.lastSynced = time.Now()
+	g.syncMu.Unlock()
 }

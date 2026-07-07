@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/sleuth-io/sx/internal/bootstrap"
@@ -77,6 +76,23 @@ func (p *PathVault) Authenticate(ctx context.Context) (string, error) {
 	return "", nil
 }
 
+// checkManifestConflicts fails when a cloud-sync client (Dropbox,
+// Google Drive, OneDrive, iCloud) has saved a conflicted copy of the
+// manifest next to sx.toml. Proceeding would silently ignore whichever
+// side of the conflict lost, so this is an error until a human merges.
+func checkManifestConflicts(vaultRoot string) error {
+	copies, err := utils.FindConflictCopies(filepath.Join(vaultRoot, manifest.FileName))
+	if err != nil || len(copies) == 0 {
+		// A scan failure here must not mask the real operation; the
+		// manifest read that follows will surface any genuine IO error.
+		return nil
+	}
+	return fmt.Errorf(`vault manifest has a sync conflict: found %q next to %s
+Your cloud-sync client saved a conflicting copy of the vault manifest.
+To fix: compare the files, merge any missing entries into %s, delete the conflicted copy, and wait for the folder to finish syncing. See docs/synced-folders.md`,
+		copies[0], manifest.FileName, manifest.FileName)
+}
+
 // GetLockFile loads the vault's manifest and returns a lock file resolved
 // for the caller's identity. Team/user scopes in the manifest are
 // flattened to repo-scoped entries based on team membership and the
@@ -119,28 +135,21 @@ func (p *PathVault) GetAsset(ctx context.Context, asset *lockfile.Asset) ([]byte
 // AddAsset adds an asset to the local repository
 // Follows the same pattern as GitRepository: exploded storage + list.txt
 func (p *PathVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipData []byte) error {
-	// Create assets directory structure: assets/{name}/{version}/
-	assetDir := filepath.Join(p.repoPath, "assets", asset.Name, asset.Version)
-	if err := os.MkdirAll(assetDir, 0755); err != nil {
-		return fmt.Errorf("failed to create asset directory: %w", err)
+	if err := p.ensureMigrated(ctx); err != nil {
+		return err
+	}
+	l, err := detectLayout(p.repoPath)
+	if err != nil {
+		return err
+	}
+	if err := storeAssetVersion(p.repoPath, l, asset.Name, asset.Version, zipData); err != nil {
+		return err
 	}
 
-	// Store assets exploded (not as zip) for easier browsing
-	// Reuse extractZipToDir from GitRepository
-	if err := extractZipToDir(zipData, assetDir); err != nil {
-		return fmt.Errorf("failed to extract zip to directory: %w", err)
-	}
-
-	// Update list.txt with this version
-	listPath := filepath.Join(p.repoPath, "assets", asset.Name, "list.txt")
-	if err := p.updateVersionList(listPath, asset.Version); err != nil {
-		return fmt.Errorf("failed to update version list: %w", err)
-	}
-
-	// Update asset with path source pointing to the extracted directory
-	relPath := filepath.Join("assets", asset.Name, asset.Version)
+	// Point the asset at the stored (immutable) version directory so the
+	// manifest records a layout-correct source path.
 	asset.SourcePath = &lockfile.SourcePath{
-		Path: relPath,
+		Path: l.SourcePathRel(asset.Name, asset.Version),
 	}
 
 	return nil
@@ -149,24 +158,20 @@ func (p *PathVault) AddAsset(ctx context.Context, asset *lockfile.Asset, zipData
 // GetVersionList retrieves available versions for an asset from list.txt
 // Reuses the same pattern as GitRepository
 func (p *PathVault) GetVersionList(ctx context.Context, name string) ([]string, error) {
-	listPath := filepath.Join(p.repoPath, "assets", name, "list.txt")
-	if _, err := os.Stat(listPath); os.IsNotExist(err) {
-		return manifestAssetVersions(p.repoPath, name)
-	}
-
-	data, err := os.ReadFile(listPath)
+	l, err := detectLayout(p.repoPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read version list: %w", err)
+		return nil, err
 	}
-
-	// Parse versions from file using common parser (shared with GitRepository and SleuthRepository)
-	return parseVersionList(data), nil
+	return versionListForAsset(p.repoPath, l, name)
 }
 
 // GetMetadata retrieves metadata for a specific asset version
 func (p *PathVault) GetMetadata(ctx context.Context, name, version string) (*metadata.Metadata, error) {
-	metadataPath := filepath.Join(p.repoPath, "assets", name, version, "metadata.toml")
-	data, err := os.ReadFile(metadataPath)
+	l, err := detectLayout(p.repoPath)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Join(p.repoPath, l.MetadataPath(name, version)))
 	if err != nil {
 		if os.IsNotExist(err) {
 			asset, ok, manifestErr := findAssetVersionInManifest(p.repoPath, name, version)
@@ -185,7 +190,11 @@ func (p *PathVault) GetMetadata(ctx context.Context, name, version string) (*met
 // GetAssetByVersion retrieves an asset by name and version
 // Creates a zip from the exploded directory
 func (p *PathVault) GetAssetByVersion(ctx context.Context, name, version string) ([]byte, error) {
-	assetDir := filepath.Join(p.repoPath, "assets", name, version)
+	l, err := detectLayout(p.repoPath)
+	if err != nil {
+		return nil, err
+	}
+	assetDir := filepath.Join(p.repoPath, l.VersionDir(name, version))
 	if _, err := os.Stat(assetDir); os.IsNotExist(err) {
 		asset, ok, manifestErr := findAssetVersionInManifest(p.repoPath, name, version)
 		if manifestErr != nil {
@@ -229,6 +238,9 @@ func (p *PathVault) ManifestPath() string {
 // isn't allowed to remove (e.g. a team they don't admin), which are carried
 // through — see commonSetInstallations and docs/rbac.md.
 func (p *PathVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, scopeEntity string) error {
+	if err := p.ensureMigrated(ctx); err != nil {
+		return err
+	}
 	actor, err := p.CurrentActor(ctx)
 	if err != nil {
 		return err
@@ -240,6 +252,9 @@ func (p *PathVault) SetInstallations(ctx context.Context, asset *lockfile.Asset,
 // asset in the manifest, then upserts. Used when adding a new version of
 // an asset so its install scopes are preserved.
 func (p *PathVault) InheritInstallations(ctx context.Context, asset *lockfile.Asset) error {
+	if err := p.ensureMigrated(ctx); err != nil {
+		return err
+	}
 	if err := inheritAssetScopesFromManifest(p.repoPath, asset); err != nil {
 		return err
 	}
@@ -249,6 +264,9 @@ func (p *PathVault) InheritInstallations(ctx context.Context, asset *lockfile.As
 // RemoveAsset removes an asset from the manifest. If delete is true, the
 // asset's files are also removed from the vault's storage directory.
 func (p *PathVault) RemoveAsset(ctx context.Context, assetName, version string, delete bool) error {
+	if err := p.ensureMigrated(ctx); err != nil {
+		return err
+	}
 	removed, err := removeAssetFromManifest(p.repoPath, assetName, version)
 	if err != nil {
 		return err
@@ -268,111 +286,39 @@ func (p *PathVault) RemoveAsset(ctx context.Context, assetName, version string, 
 
 // deleteAssetFiles removes asset files from the vault storage.
 func (p *PathVault) deleteAssetFiles(assetName, version string) error {
-	assetBaseDir := filepath.Join(p.repoPath, "assets", assetName)
-
-	if version == "" {
-		return os.RemoveAll(assetBaseDir)
-	}
-
-	// Remove specific version directory
-	versionDir := filepath.Join(assetBaseDir, version)
-	if err := os.RemoveAll(versionDir); err != nil {
-		return err
-	}
-
-	// Update list.txt
-	listPath := filepath.Join(assetBaseDir, "list.txt")
-	if err := p.removeFromVersionList(listPath, version); err != nil {
-		return err
-	}
-
-	// If list.txt is now empty, remove entire asset directory
-	data, err := os.ReadFile(listPath)
-	if err == nil && len(parseVersionList(data)) == 0 {
-		return os.RemoveAll(assetBaseDir)
-	}
-
-	return nil
-}
-
-// removeFromVersionList removes a version from the list.txt file
-func (p *PathVault) removeFromVersionList(listPath, version string) error {
-	data, err := os.ReadFile(listPath)
+	l, err := detectLayout(p.repoPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
-
-	versions := parseVersionList(data)
-	var filtered []string
-	for _, v := range versions {
-		if v != version {
-			filtered = append(filtered, v)
-		}
-	}
-
-	if len(filtered) == 0 {
-		return utils.WriteFileAtomic(listPath, []byte(""), 0644)
-	}
-
-	content := strings.Join(filtered, "\n") + "\n"
-	return utils.WriteFileAtomic(listPath, []byte(content), 0644)
+	return deleteAssetStorage(p.repoPath, l, assetName, version)
 }
 
 // RenameAsset renames an asset in the vault.
 func (p *PathVault) RenameAsset(ctx context.Context, oldName, newName string) error {
-	oldDir := filepath.Join(p.repoPath, "assets", oldName)
-	newDir := filepath.Join(p.repoPath, "assets", newName)
-	if _, err := os.Stat(newDir); err == nil {
-		return fmt.Errorf("target asset directory already exists: %s", newName)
+	if err := p.ensureMigrated(ctx); err != nil {
+		return err
 	}
-	if err := os.Rename(oldDir, newDir); err != nil {
-		return fmt.Errorf("failed to rename asset directory: %w", err)
+	l, err := detectLayout(p.repoPath)
+	if err != nil {
+		return err
 	}
-
-	versions, err := p.GetVersionList(ctx, newName)
-	if err == nil {
-		for _, v := range versions {
-			metadataPath := filepath.Join(newDir, v, "metadata.toml")
-			if err := metadata.UpdateName(metadataPath, newName); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: could not update metadata for %s@%s: %v\n", newName, v, err)
-			}
-		}
+	if err := renameAssetStorage(p.repoPath, l, oldName, newName); err != nil {
+		return err
 	}
+	updateRenamedAssetMetadata(p.repoPath, l, newName)
 
-	return renameAssetInManifest(p.repoPath, oldName, newName)
-}
-
-// updateVersionList updates the list.txt file with a new version
-// Reuses the same logic as GitRepository
-func (p *PathVault) updateVersionList(listPath, newVersion string) error {
-	var versions []string
-
-	// Read existing versions if file exists
-	if data, err := os.ReadFile(listPath); err == nil {
-		versions = parseVersionList(data)
-	}
-
-	// Check if version already exists
-	if slices.Contains(versions, newVersion) {
-		return nil // Version already in list
-	}
-
-	// Add new version
-	versions = append(versions, newVersion)
-
-	// Write back to file atomically so concurrent readers never observe a
-	// truncated or partially-written list.
-	content := strings.Join(versions, "\n") + "\n"
-	return utils.WriteFileAtomic(listPath, []byte(content), 0644)
+	return renameAssetInManifest(p.repoPath, l, oldName, newName)
 }
 
 // ListAssets returns a list of all assets in the vault by reading the assets/ directory
 func (p *PathVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*ListAssetsResult, error) {
+	l, err := detectLayout(p.repoPath)
+	if err != nil {
+		return nil, err
+	}
+
 	// Read assets/ directory
-	assetsDir := filepath.Join(p.repoPath, "assets")
+	assetsDir := filepath.Join(p.repoPath, l.AssetsRoot())
 	entries, err := os.ReadDir(assetsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -383,7 +329,7 @@ func (p *PathVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Li
 	}
 
 	var assets []AssetSummary
-	for _, entry := range entries {
+	for _, entry := range filterScanEntries(entries) {
 		if !entry.IsDir() {
 			continue
 		}
@@ -396,7 +342,7 @@ func (p *PathVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Li
 
 		// Get metadata for latest version
 		latestVersion := versions[len(versions)-1]
-		metadataPath := filepath.Join(p.repoPath, "assets", entry.Name(), latestVersion, "metadata.toml")
+		metadataPath := filepath.Join(p.repoPath, l.MetadataPath(entry.Name(), latestVersion))
 
 		assetSummary := AssetSummary{
 			Name:          entry.Name(),
@@ -441,8 +387,13 @@ func (p *PathVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Li
 
 // GetAssetDetails returns detailed information about a specific asset
 func (p *PathVault) GetAssetDetails(ctx context.Context, name string) (*AssetDetails, error) {
+	l, err := detectLayout(p.repoPath)
+	if err != nil {
+		return nil, err
+	}
+
 	// Check if asset directory exists
-	assetDir := filepath.Join(p.repoPath, "assets", name)
+	assetDir := filepath.Join(p.repoPath, l.AssetDir(name))
 	if _, err := os.Stat(assetDir); os.IsNotExist(err) {
 		return nil, fmt.Errorf("asset '%s' not found", name)
 	}
@@ -460,7 +411,7 @@ func (p *PathVault) GetAssetDetails(ctx context.Context, name string) (*AssetDet
 	// Build version list with file info
 	var versionList []AssetVersion
 	for _, v := range versions {
-		versionDir := filepath.Join(assetDir, v)
+		versionDir := filepath.Join(p.repoPath, l.VersionDir(name, v))
 		versionInfo, err := os.Stat(versionDir)
 
 		versionEntry := AssetVersion{Version: v}
@@ -471,7 +422,7 @@ func (p *PathVault) GetAssetDetails(ctx context.Context, name string) (*AssetDet
 			if entries, err := os.ReadDir(versionDir); err == nil {
 				fileCount := 0
 				for _, e := range entries {
-					if !e.IsDir() {
+					if !e.IsDir() && !utils.IsSyncArtifact(e.Name()) {
 						fileCount++
 					}
 				}
@@ -484,7 +435,7 @@ func (p *PathVault) GetAssetDetails(ctx context.Context, name string) (*AssetDet
 
 	// Get metadata for latest version
 	latestVersion := versions[len(versions)-1]
-	metadataPath := filepath.Join(assetDir, latestVersion, "metadata.toml")
+	metadataPath := filepath.Join(p.repoPath, l.MetadataPath(name, latestVersion))
 
 	details := &AssetDetails{
 		Name:     name,

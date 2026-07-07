@@ -13,8 +13,9 @@ that mutate vault state read and write this file transactionally.
   .sx/
     audit/YYYY-MM.jsonl   ← audit event stream (append-only)
     usage/YYYY-MM.jsonl   ← usage event stream (append-only)
+    versions/<name>/ …    ← immutable version archive (see vault-spec.md)
   assets/
-    <name>/<version>/ …   ← asset file storage (vault-specific)
+    <name>/ …             ← latest version of each asset, usable in place
 ```
 
 The per-user resolved lock file is not stored in the vault. See
@@ -23,21 +24,25 @@ The per-user resolved lock file is not stored in the vault. See
 ## Top-level fields
 
 ```toml
-schema_version = 1
+schema_version = 2
 created_by     = "sx 0.1.0"       # informational
 ```
 
 | Field            | Type    | Required | Notes                                         |
 |------------------|---------|----------|-----------------------------------------------|
-| `schema_version` | integer | yes      | Gates on-disk compatibility. Current value: 1 |
+| `schema_version` | integer | yes      | Gates on-disk compatibility AND selects the storage layout. Current value: 2 |
 | `created_by`     | string  | no       | Build/version that last wrote the file        |
 | `assets`         | array   | no       | Managed assets; may be empty                  |
 | `teams`          | array   | no       | Team definitions; may be empty                |
 | `bots`           | array   | no       | Bot definitions; may be empty                 |
+| `collections`    | array   | no       | Named asset groupings; may be empty           |
 
 A build that encounters a `schema_version` higher than it understands
-refuses to read the file. When the field is absent it defaults to the
-current version for forward compatibility.
+refuses to read the file. When the field is absent it defaults to `1` —
+every file that predates the field is v1, and the value selects the
+vault's storage layout (see [vault-spec.md](vault-spec.md)), so defaulting
+to the current version would misclassify legacy vaults. Version 1 vaults
+are migrated to 2 automatically on their first write.
 
 ## `[[assets]]` — managed assets
 
@@ -95,13 +100,18 @@ hashes = { sha256 = "…" }
 size   = 12345
 
 [assets.source-path]
-path   = "./assets/code-reviewer/1.2.3"
+path   = ".sx/versions/code-reviewer/1.2.3"   # immutable archive location
 
 [assets.source-git]
 url          = "https://github.com/acme/tools.git"
 ref          = "abc1234…"   # exact commit SHA
 subdirectory = "skills/reviewer"
 ```
+
+Assets stored in the vault itself always use a `source-path` pointing at
+the immutable archive (`.sx/versions/{name}/{version}`), never the mutable
+`assets/{name}` root view. Vaults still on legacy format v1 use
+`assets/{name}/{version}` until migrated.
 
 ## `[[assets.scopes]]` — install targets
 
@@ -164,6 +174,53 @@ resolution rules. File-based vaults (path/git) treat bots as
 identity-only — there are no API keys stored in the manifest. Sleuth
 vaults issue real OAuth tokens via `sx bot key create`.
 
+## `[[collections]]` — named asset groupings
+
+Introduced in schema version 2. A collection is a curated, named list of
+asset names — an organizational and bulk-install unit.
+
+```toml
+[[collections]]
+name        = "onboarding"
+description = "Everything a new marketer needs"
+assets      = ["brand-voice", "campaign-checklist"]
+created_by  = "alice@acme.com"
+
+  [[collections.scopes]]
+  kind = "team"
+  team = "marketing"
+```
+
+| Field         | Type            | Notes                                          |
+|---------------|-----------------|------------------------------------------------|
+| `name`        | string          | Required. Primary key                          |
+| `description` | string          | Optional                                       |
+| `assets`      | array of string | Asset names; deduplicated, sorted. Entries naming assets missing from the manifest are tolerated (dangling references are pruned opportunistically on write) |
+| `scopes`      | array of table  | Optional. The collection's own install targets, same row shape as asset scopes |
+| `created_by`  | string          | Optional. Email of the creator                 |
+
+### Collection scopes — runtime dereference, never fan-out
+
+`collections.scopes` rows are the collection's **own** install targets,
+dereferenced at lock-resolution time: every member asset additionally
+reaches everyone a collection scope reaches, while the member's own
+`assets.scopes` rows are never rewritten. Consequences:
+
+* Adding an asset to an installed collection grants it the collection's
+  targets immediately — no re-install step.
+* Removing a collection scope removes only that grant; a member's direct
+  install (made before or after the collection's) always survives.
+* One deliberate difference from assets: an **empty scope list grants
+  nothing** (a scope-less collection is purely organizational), so
+  org-wide is an explicit `kind = "org"` row — addable and removable like
+  any other. On assets, org-wide is the *empty* scope set.
+
+This mirrors skills.new's collection installations (one
+`AssetCollectionInstallation` row per target, resolved at read time) and
+exists to avoid fan-out drift: partial installs from per-asset failures,
+members added later not inheriting targets, and collection uninstalls
+deleting direct installs they didn't create.
+
 ## `[org]` — vault governance
 
 Optional. Holds the **org-admins** list — the file-vault stand-in for an org
@@ -191,7 +248,7 @@ Manage it with `sx org admin add|list|remove`.
 ## Example manifest
 
 ```toml
-schema_version = 1
+schema_version = 2
 created_by     = "sx 0.1.0"
 
 [[assets]]

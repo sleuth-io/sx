@@ -36,9 +36,9 @@ prompt-file = "SKILL.md"
 			t.Fatalf("Failed to add skill: %v", err)
 		}
 
-		// Verify asset added to vault
-		assetsDir := filepath.Join(vaultDir, "assets", "test-skill", "1")
-		env.AssertFileExists(assetsDir)
+		// Verify asset added to vault (v2 layout: archive + root view)
+		env.AssertFileExists(filepath.Join(vaultDir, ".sx", "versions", "test-skill", "1"))
+		env.AssertFileExists(filepath.Join(vaultDir, "assets", "test-skill", "metadata.toml"))
 
 		// Verify lock file has global scope (empty scopes)
 		lf, ok := env.ReadVaultAssets(vaultDir)
@@ -340,9 +340,10 @@ prompt-file = "SKILL.md"
 	})
 
 	t.Run("add with explicit --name and --type overrides", func(t *testing.T) {
-		// Clean up previous lock file and assets
+		// Clean up previous lock file and assets (root view + archive)
 		env.ResetVaultAssets(vaultDir)
 		os.RemoveAll(filepath.Join(vaultDir, "assets", "custom-name"))
+		os.RemoveAll(filepath.Join(vaultDir, ".sx", "versions", "custom-name"))
 
 		// Type override changes the asset's schema requirements, so the
 		// source must satisfy the *target* type's contract — a rule
@@ -366,8 +367,8 @@ prompt-file = "RULE.md"
 			t.Fatalf("Failed to add skill: %v", err)
 		}
 
-		// Verify asset added with custom name
-		assetsDir := filepath.Join(vaultDir, "assets", "custom-name", "1")
+		// Verify asset added with custom name (v2 layout: archived version)
+		assetsDir := filepath.Join(vaultDir, ".sx", "versions", "custom-name", "1")
 		env.AssertFileExists(assetsDir)
 
 		// Verify lock file has custom name and type

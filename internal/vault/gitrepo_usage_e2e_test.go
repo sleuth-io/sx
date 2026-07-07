@@ -123,7 +123,7 @@ func TestGitVault_RecordUsageEvents_PushesToRemote(t *testing.T) {
 //   - A concurrent writer pushes commit B touching the same monthly
 //     file before we run record-usage again.
 //   - We then call RecordUsageEvents in a fresh-process state
-//     (hasSynced=false) so a pull is required.
+//     (zeroed lastSynced) so a pull is required.
 //
 // Pre-fix ordering: append → pull. The pull would refuse to merge B
 // because our local monthly file is dirty, RecordUsageEvents would
@@ -195,7 +195,7 @@ func TestGitVault_RecordUsageEvents_ConcurrentWriterRemoteAhead(t *testing.T) {
 
 	// Fresh-process semantics: drop the sync latch so RecordUsageEvents
 	// must actually pull commit B.
-	v.hasSynced = false
+	v.lastSynced = time.Time{}
 
 	events := []mgmt.UsageEvent{
 		{Actor: "alice@example.com", AssetName: "my-skill", AssetVersion: "1.0.0", AssetType: "skill"},
@@ -286,7 +286,7 @@ func TestGitVault_RecordUsageEvents_ThrottledThenConcurrentWriter(t *testing.T) 
 	// Step 2: simulate a fresh process inside the throttle window.
 	// Sentinel is fresh, so push is suppressed; the commit must still
 	// happen so the tree stays clean.
-	v.hasSynced = false
+	v.lastSynced = time.Time{}
 	if err := v.RecordUsageEvents(ctx, []mgmt.UsageEvent{
 		{Actor: "alice@example.com", AssetName: "skill-b", AssetVersion: "1.0.0", AssetType: "skill"},
 	}); err != nil {
@@ -318,7 +318,7 @@ func TestGitVault_RecordUsageEvents_ThrottledThenConcurrentWriter(t *testing.T) 
 	gitRun(t, seedDir, "push", "origin", "main")
 
 	// Step 4: rewind the sentinel past the throttle window AND drop
-	// hasSynced so the next call must pull. Pre-fix the dirty tree
+	// lastSynced so the next call must pull. Pre-fix the dirty tree
 	// from step 2 would now wedge cloneOrUpdate; post-fix the tree
 	// is clean and the pull succeeds.
 	sentinel, err := v.usagePushSentinelPath()
@@ -329,7 +329,7 @@ func TestGitVault_RecordUsageEvents_ThrottledThenConcurrentWriter(t *testing.T) 
 	if err := os.Chtimes(sentinel, old, old); err != nil {
 		t.Fatalf("rewind sentinel mtime: %v", err)
 	}
-	v.hasSynced = false
+	v.lastSynced = time.Time{}
 
 	if err := v.RecordUsageEvents(ctx, []mgmt.UsageEvent{
 		{Actor: "alice@example.com", AssetName: "skill-d", AssetVersion: "1.0.0", AssetType: "skill"},

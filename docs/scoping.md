@@ -30,6 +30,18 @@ The first three are structural and apply to every caller. `team`, `user`, and `b
 * [manifest-spec.md](manifest-spec.md#assetsscopes--install-targets) —
   on-disk format for every scope kind
 
+### Collections scope as a unit
+
+A collection can carry its own scope rows
+([manifest-spec.md](manifest-spec.md#collection-scopes--runtime-dereference-never-fan-out)).
+They are dereferenced at lock-resolution time — member assets reach
+everyone the collection reaches, on top of their own scopes, which are
+never rewritten. Sharing a collection with a team is therefore one row on
+the collection (one `installCollection` call on skills.new vaults), not a
+per-asset fan-out; assets added later inherit the collection's targets
+automatically, and un-sharing the collection never removes a member's
+direct install.
+
 ## Setting scope with `sx add` / `sx install`
 
 `sx add` configures scope at the time an asset is published. `sx

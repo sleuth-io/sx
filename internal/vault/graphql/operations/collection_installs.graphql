@@ -1,0 +1,35 @@
+query CollectionInstallations($id: ID!) {
+  collection(id: $id) {
+    installations {
+      entityType
+      entityName
+      entityRef
+      entityId
+      monoRepoConfigId
+    }
+  }
+}
+
+mutation InstallCollection($input: InstallCollectionInput!) {
+  installCollection(input: $input) {
+    collection {
+      id
+    }
+    errors {
+      field
+      messages
+    }
+  }
+}
+
+mutation UninstallCollection($input: UninstallCollectionInput!) {
+  uninstallCollection(input: $input) {
+    collection {
+      id
+    }
+    errors {
+      field
+      messages
+    }
+  }
+}

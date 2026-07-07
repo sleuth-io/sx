@@ -7,3 +7,26 @@ This vault contains assets (skills, agents, MCP servers, etc.) for use with sx.
 ```bash
 curl -fsSL {{.INSTALL_URL}} | bash
 ```
+
+## Use as a plugin (no sx required)
+
+This vault doubles as a plugin marketplace — sx keeps `.claude-plugin/`
+and `.codex-plugin/` manifests up to date on every publish. Install the
+library's skills straight from your AI tool:
+
+**Claude Code**
+
+```
+/plugin marketplace add <this repo's URL or org/repo>
+/plugin install <library>@<library>
+```
+
+**Codex**
+
+```
+codex plugin marketplace add <this repo's URL>
+```
+
+Private repos work through your normal git credentials. Note that plugin
+installs deliver the whole library without sx's team scoping, and rule
+assets only flow through `sx install`.

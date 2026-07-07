@@ -197,6 +197,18 @@ func (c *Client) Reset(ctx context.Context, repoPath, mode, ref string) error {
 	return nil
 }
 
+// RebaseAbort aborts an in-progress rebase, restoring the pre-rebase branch
+// state. Returns an error when no rebase is in progress; callers recovering
+// from a possibly-failed rebase should treat that as a no-op.
+func (c *Client) RebaseAbort(ctx context.Context, repoPath string) error {
+	cmd := c.command(ctx, "rebase", "--abort")
+	cmd.Dir = repoPath
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git rebase --abort failed: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
 // RestoreExcept restores all tracked files in both the index and worktree to
 // HEAD, except those under excludeDir. Used by vault-clone repair to discard
 // local manifest/asset divergence while leaving the queued usage appends under

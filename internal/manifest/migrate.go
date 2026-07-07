@@ -49,11 +49,28 @@ func LoadOrMigrate(vaultRoot string) (*Manifest, bool, error) {
 	return m, migrated, nil
 }
 
+// DetectShapeVersion classifies a vault root's storage format by directory
+// shape, for vaults without a readable manifest. An existing .sx/versions
+// tree means v2, an existing assets tree means v1 (legacy vaults predate the
+// schema_version field), and an empty root gets the current default for
+// newly created vaults.
+func DetectShapeVersion(vaultRoot string) int {
+	if _, err := os.Stat(filepath.Join(vaultRoot, ".sx", "versions")); err == nil {
+		return 2
+	}
+	if _, err := os.Stat(filepath.Join(vaultRoot, "assets")); err == nil {
+		return 1
+	}
+	return CurrentSchemaVersion
+}
+
 // buildFromLegacy synthesizes a Manifest by reading an on-disk sx.lock if
 // present. Returns the new manifest and a flag set when the lock file
-// contributed data.
+// contributed data. The schema version is derived from the vault's storage
+// shape — stamping the current version onto a vault whose files still use
+// the v1 layout would misroute every subsequent read.
 func buildFromLegacy(vaultRoot string) (*Manifest, bool, error) {
-	m := &Manifest{SchemaVersion: CurrentSchemaVersion}
+	m := &Manifest{SchemaVersion: DetectShapeVersion(vaultRoot)}
 
 	lockPath := filepath.Join(vaultRoot, legacyLockFileName)
 	lf, lfExists, err := readLockFileIfExists(lockPath)

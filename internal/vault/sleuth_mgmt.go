@@ -541,11 +541,23 @@ func (s *SleuthVault) CurrentInstallTargets(ctx context.Context, name string) ([
 	if node == nil {
 		return nil, false, nil
 	}
-	insts := (*node).GetInstallations()
+	// The server resolves collection installs into every member asset's
+	// installations at read time, marked with viaCollectionId. Those rows
+	// aren't the asset's own: this method feeds the per-asset scope
+	// editors, and treating a collection-derived row as directly-editable
+	// would re-materialize it as a direct install (the fan-out drift this
+	// model exists to prevent). Direct rows only.
+	insts := (*node).GetInstallations()[:0:0]
+	for _, inst := range (*node).GetInstallations() {
+		if inst.ViaCollectionId == nil {
+			insts = append(insts, inst)
+		}
+	}
 	if len(insts) == 0 {
-		// The asset exists on the server but is not installed anywhere. That is
-		// NOT org-wide — report it as not-present (only an explicit ORGANIZATION
-		// install is org-wide; see below).
+		// The asset exists on the server but has no direct install of its
+		// own (possibly collection-derived reach only). That is NOT
+		// org-wide — report it as not-present (only an explicit
+		// ORGANIZATION install is org-wide; see below).
 		return nil, false, nil
 	}
 	// Cache a repo's mono-repo configs across this asset's installs so multiple

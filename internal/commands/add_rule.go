@@ -393,7 +393,7 @@ func uploadRuleZip(ctx context.Context, status *components.Status, vault vaultpk
 		Type:    asset.TypeRule,
 		Clients: append([]string(nil), meta.Asset.Clients...),
 		SourcePath: &lockfile.SourcePath{
-			Path: fmt.Sprintf("./assets/%s/%s", name, version),
+			Path: assetSourcePath(vault, name, version),
 		},
 	}
 
@@ -422,7 +422,7 @@ func configureRuleScopes(ctx context.Context, out *outputHelper, vault vaultpkg.
 			Type:    asset.TypeRule,
 			Scopes:  result.Scopes,
 			SourcePath: &lockfile.SourcePath{
-				Path: fmt.Sprintf("./assets/%s/%s", name, version),
+				Path: assetSourcePath(vault, name, version),
 			},
 		}
 		if err := updateLockFile(ctx, out, vault, lockAsset, result); err != nil {

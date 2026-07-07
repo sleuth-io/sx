@@ -5,8 +5,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+
+	"github.com/sleuth-io/sx/internal/config"
+	"github.com/sleuth-io/sx/internal/utils"
 )
 
 // TestPromptForValidGitURL covers the init-time URL validation loop.
@@ -104,6 +110,121 @@ func TestPromptForValidGitURL(t *testing.T) {
 		}
 		if called {
 			t.Error("verifier should not be called for empty URL")
+		}
+	})
+}
+
+// TestPromptForSharedFolderPath covers the shared-folder location prompt:
+// detected sync roots are offered as a menu (with a default vault
+// subfolder), "Somewhere else" and no-detection fall back to free-form
+// path entry. Components run in non-TTY numbered/readline mode here, so
+// input lines are menu numbers and typed paths.
+func TestPromptForSharedFolderPath(t *testing.T) {
+	detected := []utils.SyncFolder{
+		{Provider: "Dropbox", Path: "/home/u/Dropbox"},
+		{Provider: "Google Drive", Path: "/home/u/gd/My Drive"},
+	}
+
+	t.Run("detected root with default subfolder", func(t *testing.T) {
+		// Choose option 1 (Dropbox), accept the suggested subfolder.
+		in := bufio.NewReader(strings.NewReader("1\n\n"))
+		out := &bytes.Buffer{}
+		got, err := promptForSharedFolderPath(detected, "", in, out)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if want := filepath.Join("/home/u/Dropbox", "sx-vault"); got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+		if !strings.Contains(out.String(), "Dropbox") || !strings.Contains(out.String(), "Google Drive") {
+			t.Error("menu should list detected providers")
+		}
+	})
+
+	t.Run("somewhere else falls through to typed path", func(t *testing.T) {
+		// Option 3 is "Somewhere else", then a typed path.
+		in := bufio.NewReader(strings.NewReader("3\n/srv/shared/vault\n"))
+		out := &bytes.Buffer{}
+		got, err := promptForSharedFolderPath(detected, "", in, out)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "/srv/shared/vault" {
+			t.Errorf("got %q, want typed path", got)
+		}
+	})
+
+	t.Run("no detection goes straight to input", func(t *testing.T) {
+		in := bufio.NewReader(strings.NewReader("/srv/shared/vault\n"))
+		out := &bytes.Buffer{}
+		got, err := promptForSharedFolderPath(nil, "", in, out)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "/srv/shared/vault" {
+			t.Errorf("got %q, want typed path", got)
+		}
+	})
+
+	t.Run("empty path is an error", func(t *testing.T) {
+		in := bufio.NewReader(strings.NewReader("\n"))
+		out := &bytes.Buffer{}
+		if _, err := promptForSharedFolderPath(nil, "", in, out); err == nil {
+			t.Fatal("empty path should error")
+		}
+	})
+}
+
+// TestInitNonInteractivePathFlag proves `sx init --type path --path X`
+// works (README documented the flag before it existed) and that
+// --repo-url is still accepted for back-compat.
+func TestInitNonInteractivePathFlag(t *testing.T) {
+	ctx := context.Background()
+	newCmd := func() *cobra.Command {
+		cmd := &cobra.Command{}
+		cmd.SetOut(&bytes.Buffer{})
+		cmd.SetErr(&bytes.Buffer{})
+		return cmd
+	}
+
+	t.Run("path flag", func(t *testing.T) {
+		t.Setenv("SX_CONFIG_DIR", t.TempDir())
+		vaultDir := filepath.Join(t.TempDir(), "team-vault")
+		if err := runInitNonInteractive(newCmd(), ctx, "path", "", "", vaultDir, nil); err != nil {
+			t.Fatalf("init --type path --path: %v", err)
+		}
+		cfg, err := config.Load()
+		if err != nil {
+			t.Fatalf("load config: %v", err)
+		}
+		if cfg.Type != config.RepositoryTypePath || cfg.RepositoryURL != "file://"+vaultDir {
+			t.Errorf("config = %s %s, want path vault at %s", cfg.Type, cfg.RepositoryURL, vaultDir)
+		}
+		if !utils.IsDirectory(vaultDir) {
+			t.Error("vault directory should have been created")
+		}
+	})
+
+	t.Run("repo-url back-compat", func(t *testing.T) {
+		t.Setenv("SX_CONFIG_DIR", t.TempDir())
+		vaultDir := filepath.Join(t.TempDir(), "compat-vault")
+		if err := runInitNonInteractive(newCmd(), ctx, "path", "", vaultDir, "", nil); err != nil {
+			t.Fatalf("init --type path --repo-url: %v", err)
+		}
+		cfg, err := config.Load()
+		if err != nil {
+			t.Fatalf("load config: %v", err)
+		}
+		if cfg.RepositoryURL != "file://"+vaultDir {
+			t.Errorf("config url = %s, want file://%s", cfg.RepositoryURL, vaultDir)
+		}
+	})
+
+	t.Run("neither flag errors", func(t *testing.T) {
+		t.Setenv("SX_CONFIG_DIR", t.TempDir())
+		err := runInitNonInteractive(newCmd(), ctx, "path", "", "", "", nil)
+		if err == nil || !strings.Contains(err.Error(), "--path") {
+			t.Errorf("err = %v, want mention of --path", err)
 		}
 	})
 }

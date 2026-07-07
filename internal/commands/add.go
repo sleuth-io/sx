@@ -496,6 +496,21 @@ func checkVersionAndContents(ctx context.Context, status *components.Status, vau
 	return version, identical, nil
 }
 
+// assetSourcePath returns the vault-relative source path to record for a
+// stored asset version. File-backed vaults compute it from their storage
+// layout (v1 or v2); other vaults get the legacy shape, which they replace
+// with their own source (e.g. source-http) during AddAsset.
+func assetSourcePath(v vaultpkg.Vault, name, version string) string {
+	if sp, ok := v.(interface {
+		StorageSourcePath(name, version string) (string, error)
+	}); ok {
+		if p, err := sp.StorageSourcePath(name, version); err == nil {
+			return p
+		}
+	}
+	return fmt.Sprintf("./assets/%s/%s", name, version)
+}
+
 // handleIdenticalAsset handles the case when content is identical to existing version
 func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *components.Status, vault vaultpkg.Vault, name, version string, assetType asset.Type, opts addOptions) error {
 	_ = status // status not needed for identical assets (no git operations)
@@ -508,7 +523,7 @@ func handleIdenticalAsset(ctx context.Context, out *outputHelper, status *compon
 		Version: version,
 		Type:    assetType,
 		SourcePath: &lockfile.SourcePath{
-			Path: fmt.Sprintf("./assets/%s/%s", name, version),
+			Path: assetSourcePath(vault, name, version),
 		},
 	}
 
@@ -611,7 +626,7 @@ func addNewAsset(ctx context.Context, out *outputHelper, status *components.Stat
 		Type:    meta.Asset.Type,
 		Clients: append([]string(nil), meta.Asset.Clients...),
 		SourcePath: &lockfile.SourcePath{
-			Path: fmt.Sprintf("./assets/%s/%s", meta.Asset.Name, meta.Asset.Version),
+			Path: assetSourcePath(vault, meta.Asset.Name, meta.Asset.Version),
 		},
 	}
 

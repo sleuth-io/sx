@@ -51,6 +51,9 @@ func (g *GitVault) runInVaultTx(ctx context.Context, commitMsg string, fn func(v
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return fmt.Errorf("failed to clone/update repository: %w", err)
 	}
+	if err := g.ensureMigratedLocked(ctx); err != nil {
+		return err
+	}
 	if err := ensureSxDir(g.repoPath); err != nil {
 		return err
 	}
@@ -147,7 +150,7 @@ func (g *GitVault) RepairVaultClone(ctx context.Context) (discardedTip string, e
 		if cerr := g.clone(ctx); cerr != nil {
 			return "", fmt.Errorf("failed to clone vault: %w", cerr)
 		}
-		g.hasSynced = true
+		g.markSynced()
 		return "", nil
 	}
 
@@ -164,7 +167,7 @@ func (g *GitVault) RepairVaultClone(ctx context.Context) (discardedTip string, e
 		return "", fmt.Errorf("failed to resolve %s: %w", remoteRef, err)
 	}
 	if headSHA == remoteSHA {
-		g.hasSynced = true
+		g.markSynced()
 		return "", nil // already in sync — nothing to repair
 	}
 
@@ -190,7 +193,7 @@ func (g *GitVault) RepairVaultClone(ctx context.Context) (discardedTip string, e
 		}
 	}
 
-	g.hasSynced = true
+	g.markSynced()
 	if len(headSHA) > 8 {
 		return headSHA[:8], nil
 	}
