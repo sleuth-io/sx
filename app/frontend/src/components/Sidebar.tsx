@@ -190,50 +190,6 @@ export default function Sidebar({
             onClick={() => onScope({ kind: "dashboard" })}
           />
         )}
-        {/* Extension-contributed sidebar panels (views:sidebar) live
-            under ONE collapsed TOOLS section — they're tools that act
-            on the library, not places you navigate, and expanded by
-            default they crowd out collections and teams. */}
-        {sidebarPanels.length > 0 && (
-          <div className="mt-2" data-tools-section>
-            <button
-              onClick={() => {
-                setToolsOpen((v) => {
-                  localStorage.setItem("sx-tools-open", v ? "" : "1");
-                  return !v;
-                });
-              }}
-              className="flex w-full items-center gap-1 rounded px-2 py-0.5 text-left"
-              aria-expanded={toolsOpen}
-            >
-              <span className="text-[11px] font-semibold tracking-wider text-ink-faint">
-                TOOLS
-              </span>
-              <span className="text-[9px] text-ink-faint">
-                {toolsOpen ? "▾" : "▸"}
-              </span>
-              {!toolsOpen && (
-                <span className="ml-auto text-[10px] text-ink-faint">
-                  {sidebarPanels.length}
-                </span>
-              )}
-            </button>
-            {toolsOpen &&
-              sidebarPanels.map((p) => (
-                <div key={p.pluginId + ":" + p.spec.id} className="mt-1">
-                  <div className="px-2 text-[10px] font-semibold tracking-wider text-ink-faint">
-                    {p.spec.title.toUpperCase()}
-                  </div>
-                  <PluginMount
-                    pluginId={p.pluginId}
-                    mount={p.spec.mount}
-                    className="px-1"
-                  />
-                </div>
-              ))}
-          </div>
-        )}
-
         <div className="mt-4 flex items-center justify-between pr-1">
           <SectionLabel>COLLECTIONS</SectionLabel>
           <button
@@ -374,6 +330,55 @@ export default function Sidebar({
               </>
             )}
           </>
+        )}
+
+        {/* Extension-contributed sidebar panels (views:sidebar) live
+            under ONE collapsed TOOLS section at the BOTTOM — they're
+            tools that act on the library, not core navigation, and
+            expanded by default they crowd out collections and teams.
+            Collapsed, the tool names still show so the section never
+            reads as an empty header. */}
+        {sidebarPanels.length > 0 && (
+          <div className="mt-4" data-tools-section>
+            <button
+              onClick={() => {
+                setToolsOpen((v) => {
+                  localStorage.setItem("sx-tools-open", v ? "" : "1");
+                  return !v;
+                });
+              }}
+              className="w-full rounded-lg px-2 pb-1 pt-2 text-left transition hover:bg-canvas"
+              aria-expanded={toolsOpen}
+              title={toolsOpen ? "Collapse tools" : "Expand tools"}
+            >
+              <span className="flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold tracking-wide text-ink-faint">
+                  TOOLS
+                </span>
+                <span className="text-xs leading-none text-ink-faint">
+                  {toolsOpen ? "▾" : "▸"}
+                </span>
+              </span>
+              {!toolsOpen && (
+                <span className="mt-0.5 block truncate text-xs text-ink-faint">
+                  {sidebarPanels.map((p) => p.spec.title).join(" · ")}
+                </span>
+              )}
+            </button>
+            {toolsOpen &&
+              sidebarPanels.map((p) => (
+                <div key={p.pluginId + ":" + p.spec.id} className="mt-1">
+                  <div className="px-2 text-[10px] font-semibold tracking-wider text-ink-faint">
+                    {p.spec.title.toUpperCase()}
+                  </div>
+                  <PluginMount
+                    pluginId={p.pluginId}
+                    mount={p.spec.mount}
+                    className="px-1"
+                  />
+                </div>
+              ))}
+          </div>
         )}
       </nav>
 
