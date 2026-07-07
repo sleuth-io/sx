@@ -30,7 +30,7 @@ Obsidian is the proof that this shape works: a proprietary core app with a small
 ## Design principles
 
 1. **Plugins are sx assets.** Distribution, versioning, scoping, and audit come from the existing vault machinery. No new registry, no new delivery mechanism.
-2. **Capability-gated API, never raw access.** Plugins talk to a versioned `sx` API object, not the Wails bridge. Every capability is declared in the manifest and enforced by a proxy. The webview has no filesystem or Node, so the API surface *is* the blast radius.
+2. **Capability-gated API, never raw access.** Plugins talk to a versioned `sx` API object, not the Wails bridge. Every capability is declared in the manifest and enforced by a proxy. The webview has no filesystem or Node, so the API surface is the *intended* blast radius — fully true only once the P4 isolation gate lands (see resolved question 3: in P1–P3 built-ins run in the main webview context, where the proxy is a discipline boundary, not a security one).
 3. **Small, versioned, documented API — internals never exposed.** If a plugin needs something the API doesn't offer, the answer is an API addition, not an escape hatch.
 4. **Built-ins validate the API before it becomes a contract.** No third-party plugins until our own built-ins have exercised every extension slot through at least one release cycle.
 
@@ -77,7 +77,7 @@ Everything registered through `sx.*` is tracked by the host and torn down automa
 
 ## Runtime architecture
 
-**Loading.** The plugin host (frontend) fetches enabled plugins' `main.js` through a new bridge method and loads each via dynamic `import()` of a Blob URL. No `eval`, no remote script tags; the only code source is vault-installed assets. Works identically in WKWebView and WebView2 (verify in P1 — see Risks).
+**Loading.** The plugin host (frontend) fetches enabled plugins' `main.js` through a new bridge method and loads each via dynamic `import()` of a Blob URL. No `eval`, no remote script tags; the only code source is vault-installed assets. Verified in WKWebView (P1 spike, dev + production builds); WebView2 and WebKitGTK verify themselves through the loader preflight (see Risks).
 
 **The `sx` API object.** Each plugin receives its own proxy instance, permission-filtered at construction. API v1 surface, grouped by permission:
 
@@ -155,6 +155,9 @@ Final placement is a P1 design-pass decision; the content is normative:
 - **Policy visibility** — in allowlist mode, unlisted extensions render as
   "blocked by your organization" rather than silently missing; disabled
   mode hides the screen per the policy table above.
+- **Diagnostics** — the loader preflight result (Blob import + CSS
+  injection per platform) and each extension's last load error, so a
+  broken platform or plugin is visible instead of silently absent.
 
 ## Built-in plugins (the v1 set)
 
@@ -176,7 +179,7 @@ Not translated: sync/git plugins (core product here), canvas/tasks/calendar (wro
 | Area | Change |
 |---|---|
 | `app/frontend/src/plugins/` (new) | Plugin host: loader, lifecycle, permission proxy, registration tracking/teardown, `SxAPI` v1 implementation + published `.d.ts`. |
-| `app/frontend/src/` | Slot registry (sidebar/asset-tab/dashboard); command palette; publish-sheet warning section; Extensions settings pane (list, enable/disable, permission display). |
+| `app/frontend/src/` | Slot registry (sidebar/asset-tab/dashboard); command palette; publish-sheet warning section; Extensions screen (see "The Extensions screen"; P1 ships list + enable/disable, P2 completes it). |
 | `app/bridge.go` (or `app/plugins.go`) | Bridge methods: `ListAppPlugins`, `GetPluginBundle(id)`, `SetPluginEnabled(id, bool)`, `PluginLoadData/SaveData`, `PluginFetch` (origin-checked proxy), `GetPluginPolicy`. |
 | `internal/asset/types.go`, `internal/metadata/` | `app-plugin` asset type + `[app-plugin]` metadata section. |
 | `internal/manifest/` | `[app-plugins]` policy table (parse + RBAC on write). |
@@ -192,8 +195,9 @@ Execution follows the v2-spec desktop-app milestones (this work starts after M4;
 Plugin host, permission proxy, slot registry, command palette, `before-publish` hook. Ship **Library Dashboard** and **Publish Doctor** as vendored built-ins running through the host.
 *Acceptance:* both built-ins fully functional with the host as their only access path; disabling either at runtime removes every trace (panels, commands, listeners); `import()`-loading verified on macOS WKWebView, Windows WebView2, Linux WebKitGTK; `make prepush` green.
 
-**P2 — Consent, policy, storage, settings UI.**
-Extensions settings pane; enable-time permission consent; per-plugin storage; `[app-plugins]` manifest policy + RBAC + audit events.
+**P2 — Consent, policy, storage, Extensions screen.**
+The full Extensions screen (installed / available / add-your-own / policy
+visibility / diagnostics); enable-time permission consent; per-plugin storage; `[app-plugins]` manifest policy + RBAC + audit events.
 *Acceptance:* allowlist/disabled modes enforced end-to-end (policy set via CLI-edited manifest, app obeys); permission re-prompt on changed permissions; audit events verified via `sx audit`; Playwright coverage for enable/disable/consent flows.
 
 **P3 — Built-in set complete.**
