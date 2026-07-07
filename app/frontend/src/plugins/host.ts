@@ -191,10 +191,14 @@ export async function enablePlugin(id: string): Promise<void> {
   if (!p) throw new Error(`unknown extension ${id}`);
   if (p.enabled) return;
   // minAppVersion gates the load: an extension built against a newer API
-  // fails with a clear message instead of half-working. Dev builds
-  // (empty/non-numeric version) are never blocked.
+  // fails with a clear message instead of half-working. Only exact
+  // release versions (X.Y.Z) are gated — snapshot builds carry a
+  // git-describe suffix ("2.0.0-21-gf49c02d" = 2.0.0 plus 21 commits),
+  // so their base version UNDERSTATES what the build contains and a
+  // numeric comparison wrongly blocks features the build already has.
+  // Dev/snapshot builds are developer machines; presume current.
   const min = p.manifest.minAppVersion;
-  if (min && appVersion && /^\d/.test(appVersion) && compareVersions(appVersion, min) < 0) {
+  if (min && /^\d+\.\d+\.\d+$/.test(appVersion) && compareVersions(appVersion, min) < 0) {
     p.error = `needs sx ${min}+ (this is ${appVersion})`;
     notify();
     throw new Error(p.error);
