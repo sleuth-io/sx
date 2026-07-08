@@ -226,6 +226,10 @@ export function OpenSettings() {
   return window['go']['main']['App']['OpenSettings']();
 }
 
+export function PersonalAssets() {
+  return window['go']['main']['App']['PersonalAssets']();
+}
+
 export function PickDirectory() {
   return window['go']['main']['App']['PickDirectory']();
 }

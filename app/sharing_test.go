@@ -168,3 +168,47 @@ func TestListKnownReposFromTeams(t *testing.T) {
 		t.Fatalf("bots = %+v, %v", bots, err)
 	}
 }
+
+// The sidebar's "My skills" listing: assets carrying the caller's user
+// scope, excluding app-plugin assets (extensions never appear in library
+// views, so counting them would disagree with the grid the row filters).
+func TestPersonalAssetsListing(t *testing.T) {
+	a, cfgDir, _ := scopedExtensionApp(t, "alice@example.com")
+
+	names, err := a.PersonalAssets()
+	if err != nil || len(names) != 0 {
+		t.Fatalf("fresh personal assets = %+v, %v; want none", names, err)
+	}
+
+	// A plain skill personally scoped to alice counts.
+	draft, err := a.CreateDraftFromFiles("alice-notes", []AssetFile{
+		{Path: "SKILL.md", Content: "---\nname: alice-notes\n---\n# Notes\n"},
+	})
+	if err != nil {
+		t.Fatalf("draft: %v", err)
+	}
+	if _, err := a.PublishDraft(draft.ID); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if err := a.AddAssetInstallation("alice-notes", AssetInstallation{Kind: "user"}); err != nil {
+		t.Fatalf("personal scope: %v", err)
+	}
+
+	// A personally-installed extension must NOT count.
+	marketplaceWith(t, a, "my-widget")
+	if _, err := a.InstallMarketplaceExtension("my-widget", ExtensionScopeMe); err != nil {
+		t.Fatalf("extension install: %v", err)
+	}
+
+	names, err = a.PersonalAssets()
+	if err != nil || len(names) != 1 || names[0] != "alice-notes" {
+		t.Fatalf("personal assets = %+v, %v; want just alice-notes", names, err)
+	}
+
+	// A different identity sees nothing of alice's.
+	seedConfigWithIdentity(t, cfgDir, "bob@example.com")
+	names, err = a.PersonalAssets()
+	if err != nil || len(names) != 0 {
+		t.Fatalf("bob's personal assets = %+v, %v; want none", names, err)
+	}
+}

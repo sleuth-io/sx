@@ -6,6 +6,7 @@ import PluginMount from "./PluginMount";
 export type Scope =
   | { kind: "all" }
   | { kind: "installed" }
+  | { kind: "personal" }
   | { kind: "drafts" }
   | { kind: "dashboard" }
   | { kind: "plugin-view"; name: string }
@@ -50,6 +51,7 @@ export default function Sidebar({
   onScope,
   totalCount,
   installedCount,
+  personalCount,
   draftCount,
   collections,
   teams,
@@ -76,6 +78,7 @@ export default function Sidebar({
   onScope: (scope: Scope) => void;
   totalCount: number;
   installedCount: number;
+  personalCount: number;
   draftCount: number;
   collections: main.Collection[];
   teams: main.TeamInfo[];
@@ -176,6 +179,17 @@ export default function Sidebar({
           active={active === "installed"}
           onClick={() => onScope({ kind: "installed" })}
         />
+        {/* Appears only once something is installed just for this user —
+            no personal installs, no row (the app stays simple until the
+            concept exists in their library). */}
+        {personalCount > 0 && (
+          <Row
+            label="My skills"
+            count={personalCount}
+            active={active === "personal"}
+            onClick={() => onScope({ kind: "personal" })}
+          />
+        )}
         {draftCount > 0 && (
           <Row
             label="Drafts"

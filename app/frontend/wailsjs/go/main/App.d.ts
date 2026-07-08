@@ -114,6 +114,8 @@ export function ListVaultPlugins():Promise<Array<main.VaultPlugin>>;
 
 export function OpenSettings():Promise<void>;
 
+export function PersonalAssets():Promise<Array<string>>;
+
 export function PickDirectory():Promise<string>;
 
 export function PickFilesForDraft():Promise<main.Draft>;

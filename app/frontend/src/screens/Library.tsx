@@ -19,6 +19,7 @@ import {
   ListCollections,
   ListDrafts,
   ListTeams,
+  PersonalAssets,
   RemoveAssetInstallationRow,
   RemoveCollectionInstallationRow,
   RenameCollection,
@@ -94,6 +95,9 @@ export default function Library({
   const [collections, setCollections] = useState<main.Collection[]>([]);
   const [teams, setTeams] = useState<main.TeamInfo[]>([]);
   const [teamAssets, setTeamAssets] = useState<Record<string, string[]>>({});
+  // Assets installed just for this user — drives the sidebar's
+  // conditional "My skills" row and its scope filter.
+  const [personalAssets, setPersonalAssets] = useState<string[]>([]);
   // Repo URL → asset names; null when this library doesn't track repos.
   const [repoAssets, setRepoAssets] = useState<Record<string, string[]> | null>(
     null,
@@ -468,6 +472,9 @@ export default function Library({
     TeamAssets()
       .then((m) => apply(setTeamAssets)(m ?? {}))
       .catch(applyFallback(setTeamAssets, {}));
+    PersonalAssets()
+      .then((v) => apply(setPersonalAssets)(v ?? []))
+      .catch(applyFallback(setPersonalAssets, []));
     if (vault.trackRepos) {
       RepoAssets()
         .then((m) => apply(setRepoAssets)(m ?? {}))
@@ -1010,6 +1017,9 @@ export default function Library({
         case "team":
           if (!(teamAssets[scope.name] ?? []).includes(a.name)) return false;
           break;
+        case "personal":
+          if (!personalAssets.includes(a.name)) return false;
+          break;
         case "repo":
           if (!(repoAssets?.[scope.name] ?? []).includes(a.name)) return false;
           break;
@@ -1036,6 +1046,7 @@ export default function Library({
     installed,
     activeCollection,
     teamAssets,
+    personalAssets,
     repoAssets,
     sort,
     typeFilter,
@@ -1170,6 +1181,7 @@ export default function Library({
         }}
         totalCount={(assets ?? []).length}
         installedCount={installedHereCount}
+        personalCount={personalAssets.length}
         draftCount={drafts.length}
         collections={collections}
         teams={teams}
@@ -2569,6 +2581,18 @@ function EmptyState({
         <div className="text-sm font-medium">This collection is empty</div>
         <div className="mt-1 max-w-sm text-sm text-ink-faint">
           Open an asset and tap this collection's name to add it.
+        </div>
+      </Centered>
+    );
+  }
+  if (scope.kind === "personal") {
+    return (
+      <Centered>
+        <div className="text-sm font-medium">Nothing just for you yet</div>
+        <div className="mt-1 max-w-sm text-sm text-ink-faint">
+          Skills installed only for your account show up here — use{" "}
+          <span className="font-medium text-ink-soft">Share…</span> on an
+          asset and pick Personal.
         </div>
       </Centered>
     );

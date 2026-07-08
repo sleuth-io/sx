@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
@@ -258,6 +259,68 @@ func installationsView(targets []vaultpkg.InstallTarget, present bool) Installat
 		return a.Repo+a.Team+a.User+a.Bot < b.Repo+b.Team+b.User+b.Bot
 	})
 	return view
+}
+
+// PersonalAssets lists the asset names installed just for the caller —
+// their user scopes, directly or via a user-scoped collection. Feeds the
+// sidebar's "My skills" row, which appears only when this is non-empty,
+// so an empty answer (no identity, no capability, nothing personal) is
+// an empty list, never an error.
+func (a *App) PersonalAssets() ([]string, error) {
+	out := []string{}
+	self := manifest.NormalizeEmail(strings.TrimSpace(a.GetVaultInfo().Identity))
+	if self == "" {
+		return out, nil
+	}
+	v, err := a.currentVault()
+	if err != nil {
+		return out, nil
+	}
+	lister, ok := v.(vaultpkg.UserAssetLister)
+	if !ok {
+		return out, nil
+	}
+	byUser, err := lister.ListUserAssets(a.ctx)
+	if err != nil {
+		return out, nil
+	}
+	names := byUser[self]
+	// Extensions are user-scoped assets too (personal installs are their
+	// default), but strict UI separation keeps app-plugins out of every
+	// library view — so out of "My skills" as well, or the row's count
+	// would disagree with the grid it filters.
+	if len(names) > 0 {
+		if res, err := a.currentVaultListAppPlugins(); err == nil {
+			filtered := names[:0]
+			for _, n := range names {
+				if !res[n] {
+					filtered = append(filtered, n)
+				}
+			}
+			names = filtered
+		}
+	}
+	out = append(out, names...)
+	sort.Strings(out)
+	return out, nil
+}
+
+// currentVaultListAppPlugins returns the vault's app-plugin asset names
+// as a set.
+func (a *App) currentVaultListAppPlugins() (map[string]bool, error) {
+	v, err := a.currentVault()
+	if err != nil {
+		return nil, err
+	}
+	res, err := v.ListAssets(a.ctx, vaultpkg.ListAssetsOptions{Type: asset.TypeAppPlugin.Key, Limit: 200})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(res.Assets))
+	for _, s := range res.Assets {
+		out[s.Name] = true
+	}
+	return out, nil
 }
 
 // ListVaultBots returns the vault's bot names, for the Bot picker.
