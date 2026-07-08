@@ -20,6 +20,7 @@ import {
   RenameCollection,
   RenameTeam,
   RepoAssets,
+  SearchAssetContent,
   SetAssetTeamSharing,
   SetCollectionMembershipBulk,
   SetCollectionTeamSharing,
@@ -45,6 +46,14 @@ import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
 import ShareModal from "../components/ShareModal";
 import Sidebar, { repoLabel, Scope } from "../components/Sidebar";
+import CommandPalette from "../components/CommandPalette";
+import Dashboard from "../components/Dashboard";
+import PluginMount from "../components/PluginMount";
+import { bootExtensions, syncVaultExtensions } from "../plugins/boot";
+import { useSlot } from "../plugins/registry";
+import { emitEvent } from "../plugins/events";
+import { setPluginUIHandlers } from "../plugins/sxapi";
+import type { CommandSpec } from "../plugins/api";
 import usePanelSize from "../lib/usePanelSize";
 import TeamModal from "../components/TeamModal";
 import TypeBadge from "../components/TypeBadge";
@@ -108,6 +117,38 @@ export default function Library({
   const [aiClients, setAiClients] = useState<main.AIClient[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  // Content matches from the vault-side full-text search — the main
+  // search box finds text INSIDE assets, not just names/descriptions.
+  const [contentHits, setContentHits] = useState<Map<
+    string,
+    main.ContentMatch
+  > | null>(null);
+  const [contentSearching, setContentSearching] = useState(false);
+  const contentSeq = useRef(0);
+  useEffect(() => {
+    const q = query.trim();
+    const seq = ++contentSeq.current;
+    if (q.length < 3) {
+      setContentHits(null);
+      setContentSearching(false);
+      return;
+    }
+    setContentSearching(true);
+    const timer = setTimeout(() => {
+      SearchAssetContent(q)
+        .then((matches) => {
+          if (seq !== contentSeq.current) return;
+          setContentHits(new Map((matches ?? []).map((m) => [m.name, m])));
+        })
+        .catch(() => {
+          if (seq === contentSeq.current) setContentHits(null);
+        })
+        .finally(() => {
+          if (seq === contentSeq.current) setContentSearching(false);
+        });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [query]);
   const [scope, setScope] = useState<Scope>({ kind: "all" });
   const [view, setView] = useState<ViewMode>(
     () => (localStorage.getItem("sx-view") as ViewMode) || "list",
@@ -119,6 +160,7 @@ export default function Library({
   const [showAddAsset, setShowAddAsset] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [newSubOpen, setNewSubOpen] = useState(false);
   const newMenuRef = useRef<HTMLDivElement>(null);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const sortMenuRef = useRef<HTMLDivElement>(null);
@@ -364,6 +406,7 @@ export default function Library({
     try {
       const summary = await SyncAITools();
       setToastMessage(summary);
+      emitEvent("vault-synced", {});
       load();
     } catch (e) {
       setToastMessage(String(e));
@@ -396,7 +439,10 @@ export default function Library({
       .then((v) => {
         if (gen !== loadGen.current) return;
         loadedOnce.current = true;
-        setAssets(v);
+        // App extensions ride the asset pipeline but are NOT AI assets:
+        // they surface only in the Extensions screen, never in the
+        // library views (docs/app-plugins-spec.md, strict UI separation).
+        setAssets((v ?? []).filter((a) => a.type !== "app-plugin"));
       })
       .catch((e) => {
         if (gen !== loadGen.current) return;
@@ -426,6 +472,75 @@ export default function Library({
   }, [vault.trackRepos]);
 
   useEffect(load, [load]);
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
+
+  // Extension system: boot once, and hand extensions the app's real UI
+  // services (toast + confirm) so sx.ui works.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    setPluginUIHandlers({
+      notice: setToastMessage,
+      confirm: confirmAction,
+      refresh: () => loadRef.current(),
+      openAsset: setSelected,
+      openView: (key) => setScope({ kind: "plugin-view", name: key }),
+    });
+    void bootExtensions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // The keydown and menu-accelerator paths can BOTH fire for one ⌘K
+  // press on some platforms; the debounce makes that one toggle. The
+  // header chip deliberately bypasses it (below) — a click is never a
+  // duplicate delivery and must never be swallowed.
+  const lastPaletteToggle = useRef(0);
+  const togglePalette = useCallback(() => {
+    const now = Date.now();
+    if (now - lastPaletteToggle.current < 250) return;
+    lastPaletteToggle.current = now;
+    setPaletteOpen((v) => !v);
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        togglePalette();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [togglePalette]);
+  const pluginCommands = useSlot("command");
+  const mainViews = useSlot("main-view");
+  const newMenuCommands = useMemo(
+    () => pluginCommands.map((e) => e.spec).filter((c) => c.menu === "new"),
+    [pluginCommands],
+  );
+  const coreCommands = useMemo<CommandSpec[]>(
+    () => [
+      { id: "core-new-skill", title: "New skill…", run: () => setShowAddAsset(true) },
+      {
+        id: "core-new-collection",
+        title: "New collection…",
+        run: () => setShowCollectionModal(true),
+      },
+      { id: "core-sync", title: "Sync AI tools", run: () => syncAITools() },
+      {
+        id: "core-dashboard",
+        title: "Open dashboard",
+        run: () => setScope({ kind: "dashboard" }),
+      },
+      {
+        id: "core-settings",
+        title: "Open settings…",
+        run: () => setShowSettings(true),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   useEffect(() => {
     ListAIClients()
       .then(setAiClients)
@@ -768,9 +883,16 @@ export default function Library({
     EventsOn("new-skill", () => setShowAddAsset(true));
     EventsOn("new-collection", () => setShowCollectionModal(true));
     EventsOn("new-library", () => setShowSettings(true));
+    EventsOn("command-palette", togglePalette);
     return () =>
-      EventsOff("open-settings", "new-skill", "new-collection", "new-library");
-  }, []);
+      EventsOff(
+        "open-settings",
+        "new-skill",
+        "new-collection",
+        "new-library",
+        "command-palette",
+      );
+  }, [togglePalette]);
 
   const types = useMemo(() => {
     const seen = new Map<string, string>();
@@ -878,7 +1000,9 @@ export default function Library({
       if (!q) return true;
       return (
         a.name.toLowerCase().includes(q) ||
-        a.description.toLowerCase().includes(q)
+        a.description.toLowerCase().includes(q) ||
+        // Full-text hits inside the asset's markdown count too.
+        (contentHits?.has(a.name) ?? false)
       );
     });
     return list.sort((a, b) => {
@@ -888,6 +1012,7 @@ export default function Library({
   }, [
     assets,
     query,
+    contentHits,
     scope,
     installed,
     activeCollection,
@@ -948,6 +1073,13 @@ export default function Library({
     switch (scope.kind) {
       case "all":
         return "Skills";
+      case "dashboard":
+        return "Dashboard";
+      case "plugin-view":
+        return (
+          mainViews.find((v) => v.pluginId + ":" + v.spec.id === scope.name)
+            ?.spec.title ?? "View"
+        );
       case "installed":
         return "In your AI tools";
       case "drafts":
@@ -1094,143 +1226,168 @@ export default function Library({
               className="ml-auto flex h-9 shrink-0 items-center gap-2"
               style={{ ["--wails-draggable" as never]: "no-drag" }}
             >
-              <div className="relative h-full">
-                <input
-                  ref={searchRef}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search…"
-                  className="peer h-full w-36 rounded-lg border border-line bg-canvas px-3 pr-8 text-sm outline-none focus:border-accent lg:w-56"
-                />
-                {!query && (
-                  <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-faint peer-focus:hidden">
-                    /
-                  </kbd>
-                )}
-              </div>
-
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                title="Filter by type"
-                className="h-full rounded-lg border border-line bg-canvas py-0 pl-3 pr-7 text-sm text-ink-soft outline-none"
+              {/* The palette's visible front door: a hidden-only ⌘K is
+                  never discovered (GitHub retired theirs over exactly
+                  this). The chip is clickable AND teaches the shortcut. */}
+              <button
+                onClick={() => setPaletteOpen((v) => !v)}
+                aria-label="Command palette"
+                title="Command palette — every action, plus your extensions"
+                className="flex h-full items-center rounded-lg border border-line px-2.5 font-mono text-[11px] text-ink-faint transition hover:border-accent hover:text-ink"
               >
-                <option value="">All types</option>
-                {types.map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}s
-                  </option>
-                ))}
-              </select>
+                {navigator.platform.includes("Mac") ? "⌘K" : "Ctrl K"}
+              </button>
 
-              {/* Sort is a view preference, not a filter — it lives in a
-                  quiet icon menu (the Linear "display options" pattern)
-                  instead of crowding the filter row. */}
-              <div className="relative h-full" ref={sortMenuRef}>
-                <button
-                  onClick={() => setSortMenuOpen((v) => !v)}
-                  title={`Sort: ${sort === "name" ? "Name" : "Recently updated"}`}
-                  aria-label="Sort"
-                  aria-expanded={sortMenuOpen}
-                  className={`flex h-full items-center rounded-lg px-2 transition hover:bg-canvas hover:text-ink ${
-                    sortMenuOpen ? "bg-canvas text-ink" : "text-ink-faint"
-                  }`}
+              {/* Search, type filter, sort, and list/grid act on the
+                  asset list — on full-page surfaces (dashboard, plugin
+                  views) they'd be dead controls, so they hide. */}
+              {scope.kind !== "dashboard" && scope.kind !== "plugin-view" && (
+                <>
+                <div className="relative h-full">
+                  <input
+                    ref={searchRef}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search…"
+                    className="peer h-full w-36 rounded-lg border border-line bg-canvas px-3 pr-8 text-sm outline-none focus:border-accent lg:w-56"
+                  />
+                  {!query && (
+                    <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-faint peer-focus:hidden">
+                      /
+                    </kbd>
+                  )}
+                  {contentSearching && (
+                    <span
+                      className="pointer-events-none absolute right-2.5 top-1/2 h-2 w-2 -translate-y-1/2 animate-pulse rounded-full bg-accent"
+                      title="Searching inside assets…"
+                    />
+                  )}
+                </div>
+
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  title="Filter by type"
+                  className="h-full rounded-lg border border-line bg-canvas py-0 pl-3 pr-7 text-sm text-ink-soft outline-none"
                 >
-                  <svg
-                    aria-hidden="true"
-                    className="h-4 w-4"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                  <option value="">All types</option>
+                  {types.map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}s
+                    </option>
+                  ))}
+                </select>
+
+                {/* Sort is a view preference, not a filter — it lives in a
+                    quiet icon menu (the Linear "display options" pattern)
+                    instead of crowding the filter row. */}
+                <div className="relative h-full" ref={sortMenuRef}>
+                  <button
+                    onClick={() => setSortMenuOpen((v) => !v)}
+                    title={`Sort: ${sort === "name" ? "Name" : "Recently updated"}`}
+                    aria-label="Sort"
+                    aria-expanded={sortMenuOpen}
+                    className={`flex h-full items-center rounded-lg px-2 transition hover:bg-canvas hover:text-ink ${
+                      sortMenuOpen ? "bg-canvas text-ink" : "text-ink-faint"
+                    }`}
                   >
-                    <path d="M5 3v10M5 13l-2.5-2.5M5 13l2.5-2.5M11 13V3M11 3 8.5 5.5M11 3l2.5 2.5" />
-                  </svg>
-                </button>
-                {sortMenuOpen && (
-                  <div className="absolute right-0 z-40 mt-1.5 w-48 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
-                    <div className="px-3 pb-1 pt-1.5 text-[11px] font-semibold tracking-wide text-ink-faint">
-                      SORT BY
+                    <svg
+                      aria-hidden="true"
+                      className="h-4 w-4"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M5 3v10M5 13l-2.5-2.5M5 13l2.5-2.5M11 13V3M11 3 8.5 5.5M11 3l2.5 2.5" />
+                    </svg>
+                  </button>
+                  {sortMenuOpen && (
+                    <div className="absolute right-0 z-40 mt-1.5 w-48 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                      <div className="px-3 pb-1 pt-1.5 text-[11px] font-semibold tracking-wide text-ink-faint">
+                        SORT BY
+                      </div>
+                      {(
+                        [
+                          ["updated", "Recently updated"],
+                          ["name", "Name"],
+                        ] as [SortMode, string][]
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          onClick={() => {
+                            setSort(value);
+                            setSortMenuOpen(false);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
+                        >
+                          <span className="w-3.5 text-accent">
+                            {sort === value ? "✓" : ""}
+                          </span>
+                          {label}
+                        </button>
+                      ))}
                     </div>
-                    {(
-                      [
-                        ["updated", "Recently updated"],
-                        ["name", "Name"],
-                      ] as [SortMode, string][]
-                    ).map(([value, label]) => (
-                      <button
-                        key={value}
-                        onClick={() => {
-                          setSort(value);
-                          setSortMenuOpen(false);
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-soft transition hover:bg-canvas hover:text-ink"
-                      >
-                        <span className="w-3.5 text-accent">
-                          {sort === value ? "✓" : ""}
-                        </span>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              {/* List/grid: icon-only segments — one of the few controls
-                  where icons alone are unambiguous. */}
-              <div className="flex h-full items-center overflow-hidden rounded-lg border border-line">
-                <button
-                  onClick={() => setView("list")}
-                  title="List view"
-                  aria-label="List view"
-                  aria-pressed={view === "list"}
-                  className={`flex h-full items-center px-2 transition ${
-                    view === "list"
-                      ? "bg-canvas text-ink"
-                      : "text-ink-faint hover:text-ink"
-                  }`}
-                >
-                  <svg
-                    aria-hidden="true"
-                    className="h-3.5 w-3.5"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
+                {/* List/grid: icon-only segments — one of the few controls
+                    where icons alone are unambiguous. */}
+                <div className="flex h-full items-center overflow-hidden rounded-lg border border-line">
+                  <button
+                    onClick={() => setView("list")}
+                    title="List view"
+                    aria-label="List view"
+                    aria-pressed={view === "list"}
+                    className={`flex h-full items-center px-2 transition ${
+                      view === "list"
+                        ? "bg-canvas text-ink"
+                        : "text-ink-faint hover:text-ink"
+                    }`}
                   >
-                    <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => setView("grid")}
-                  title="Grid view"
-                  aria-label="Grid view"
-                  aria-pressed={view === "grid"}
-                  className={`flex h-full items-center px-2 transition ${
-                    view === "grid"
-                      ? "bg-canvas text-ink"
-                      : "text-ink-faint hover:text-ink"
-                  }`}
-                >
-                  <svg
-                    aria-hidden="true"
-                    className="h-3.5 w-3.5"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinejoin="round"
+                    <svg
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    >
+                      <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setView("grid")}
+                    title="Grid view"
+                    aria-label="Grid view"
+                    aria-pressed={view === "grid"}
+                    className={`flex h-full items-center px-2 transition ${
+                      view === "grid"
+                        ? "bg-canvas text-ink"
+                        : "text-ink-faint hover:text-ink"
+                    }`}
                   >
-                    <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" />
-                    <rect x="9" y="2.5" width="4.5" height="4.5" rx="1" />
-                    <rect x="2.5" y="9" width="4.5" height="4.5" rx="1" />
-                    <rect x="9" y="9" width="4.5" height="4.5" rx="1" />
-                  </svg>
-                </button>
-              </div>
+                    <svg
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" />
+                      <rect x="9" y="2.5" width="4.5" height="4.5" rx="1" />
+                      <rect x="2.5" y="9" width="4.5" height="4.5" rx="1" />
+                      <rect x="9" y="9" width="4.5" height="4.5" rx="1" />
+                    </svg>
+                  </button>
+                </div>
+              </>
+              )}
 
               {/* The library-level `sx install`: deliver everything scoped
                   to this machine into the AI tools, clean up what's stale. */}
@@ -1267,7 +1424,7 @@ export default function Library({
                   <span className="text-[10px] opacity-70">▾</span>
                 </button>
                 {newMenuOpen && (
-                  <div className="absolute right-0 z-40 mt-1.5 w-56 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                  <div className="absolute right-0 z-40 mt-1.5 w-64 overflow-visible rounded-xl border border-line bg-surface py-1 shadow-xl">
                     <MenuItem
                       label="New skill…"
                       hint="Files, zip, or scratch"
@@ -1284,6 +1441,56 @@ export default function Library({
                         setShowCollectionModal(true);
                       }}
                     />
+                    {/* Creation-shaped extension commands (menu: "new")
+                        live under ONE flyout so they don't dilute the two
+                        core actions. */}
+                    {newMenuCommands.length > 0 && (
+                      <div
+                        className="relative"
+                        onMouseEnter={() => setNewSubOpen(true)}
+                        onMouseLeave={() => setNewSubOpen(false)}
+                      >
+                        <button
+                          onClick={() => setNewSubOpen((v) => !v)}
+                          className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-sm transition hover:bg-accent-soft"
+                        >
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            From extensions
+                          </span>
+                          <span className="shrink-0 text-xs text-ink-faint">
+                            ▸
+                          </span>
+                        </button>
+                        {newSubOpen && (
+                          <div className="absolute right-full top-0 z-50 mr-1 w-72 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                            {/* Extension titles run long ("Template:
+                                team conventions…"), so these stack the
+                                hint under the title instead of racing
+                                it for one line. */}
+                            {newMenuCommands.map((c) => (
+                              <button
+                                key={c.id}
+                                onClick={() => {
+                                  setNewMenuOpen(false);
+                                  setNewSubOpen(false);
+                                  void c.run();
+                                }}
+                                className="block w-full px-3.5 py-2 text-left transition hover:bg-accent-soft"
+                              >
+                                <span className="block truncate text-sm font-medium">
+                                  {c.title}
+                                </span>
+                                {c.hint && (
+                                  <span className="block truncate text-xs text-ink-faint">
+                                    {c.hint}
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1404,7 +1611,26 @@ export default function Library({
             </div>
           )}
 
-          {assets === null ? (
+          {scope.kind === "dashboard" ? (
+            <Dashboard />
+          ) : scope.kind === "plugin-view" ? (
+            (() => {
+              const entry = mainViews.find(
+                (v) => v.pluginId + ":" + v.spec.id === scope.name,
+              );
+              return entry ? (
+                <div className="h-full overflow-y-auto p-5">
+                  <PluginMount
+                    key={scope.name}
+                    pluginId={entry.pluginId}
+                    mount={entry.spec.mount}
+                  />
+                </div>
+              ) : (
+                <EmptyState scope={scope} hasAssets={true} />
+              );
+            })()
+          ) : assets === null ? (
             <ListSkeleton />
           ) : nothingToShow ? (
             <EmptyState
@@ -1435,6 +1661,7 @@ export default function Library({
                   badgeWidth={badgeWidth}
                   installed={installed.has(a.name)}
                   checked={multiSel.has(a.name)}
+                  excerpt={query.trim() ? contentHits?.get(a.name) : undefined}
                   onClick={(e) =>
                     handleRowClick(
                       a.name,
@@ -1523,7 +1750,11 @@ export default function Library({
                     <TypeBadge type={a.type} label={a.typeLabel} />
                   </div>
                   <div className="mt-1.5 line-clamp-2 min-h-10 text-sm text-ink-soft">
-                    {a.description || "No description yet."}
+                    {query.trim() && contentHits?.get(a.name) ? (
+                      <ContentExcerpt m={contentHits.get(a.name)!} />
+                    ) : (
+                      a.description || "No description yet."
+                    )}
                   </div>
                   <div className="mt-3 flex items-center gap-2 text-xs text-ink-faint">
                     {installed.has(a.name) && (
@@ -1752,6 +1983,12 @@ export default function Library({
           </div>
         </Modal>
       )}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        coreCommands={coreCommands}
+      />
 
       {assetDrag && (
         <div
@@ -2050,6 +2287,9 @@ export default function Library({
           onProfileChanged={() => {
             setShowSettings(false);
             setScope({ kind: "all" });
+            // Extensions are per-library: swap in the new library's
+            // extension set, policy, and enablement.
+            void syncVaultExtensions();
             onVaultChanged();
           }}
           onLibrariesChanged={() => onVaultChanged()}
@@ -2065,11 +2305,28 @@ export default function Library({
   );
 }
 
+/** The highlighted context line for a full-text search hit. */
+function ContentExcerpt({ m }: { m: main.ContentMatch }) {
+  return (
+    <>
+      {m.before}
+      <mark className="rounded-sm bg-accent-soft px-0.5 text-accent">
+        {m.match}
+      </mark>
+      {m.after}
+      {m.matches > 1 && (
+        <span className="ml-1.5 text-xs text-ink-faint">×{m.matches}</span>
+      )}
+    </>
+  );
+}
+
 function AssetRow({
   asset,
   installed,
   badgeWidth,
   checked,
+  excerpt,
   onClick,
   onContextMenu,
   onDragHandle,
@@ -2078,6 +2335,7 @@ function AssetRow({
   installed: boolean;
   badgeWidth: string;
   checked: boolean;
+  excerpt?: main.ContentMatch;
   onClick: (e: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onDragHandle: (name: string, e: React.MouseEvent) => void;
@@ -2100,7 +2358,11 @@ function AssetRow({
         {asset.name}
       </span>
       <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">
-        {asset.description || "No description yet."}
+        {excerpt ? (
+          <ContentExcerpt m={excerpt} />
+        ) : (
+          asset.description || "No description yet."
+        )}
       </span>
       {installed && (
         <span

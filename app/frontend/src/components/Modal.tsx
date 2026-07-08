@@ -27,10 +27,13 @@ export default function Modal({
         className="absolute inset-0 bg-black/30"
         onClick={onClose}
       />
+      {/* Cap at the viewport and scroll the body: content taller than the
+          window (a long extensions list, say) must never push the header —
+          and its ✕ — off-screen. */}
       <div
-        className={`relative ${width} max-w-full rounded-2xl border border-line bg-surface shadow-2xl`}
+        className={`relative ${width} flex max-h-[calc(100vh-48px)] max-w-full flex-col rounded-2xl border border-line bg-surface shadow-2xl`}
       >
-        <header className="flex items-center border-b border-line px-5 py-3.5">
+        <header className="flex shrink-0 items-center border-b border-line px-5 py-3.5">
           <h2 className="flex-1 text-sm font-semibold">{title}</h2>
           <button
             onClick={onClose}
@@ -39,7 +42,9 @@ export default function Modal({
             ✕
           </button>
         </header>
-        <div className="px-5 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {children}
+        </div>
       </div>
     </div>
   );

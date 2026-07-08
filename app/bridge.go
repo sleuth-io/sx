@@ -31,6 +31,18 @@ type App struct {
 	mu    sync.Mutex
 	vault vaultpkg.Vault
 
+	// sleuthPluginSupport caches the per-profile "does this skills.new
+	// server know app-plugins?" probe (VaultSupportsExtensions) so the
+	// capability check costs one query per profile per session.
+	sleuthPluginSupport map[string]bool
+
+	// searchCache holds each asset's concatenated markdown keyed by
+	// name@version, so content search reads the vault once per revision.
+	// searchCacheKeys maps name → current key so republish and delete
+	// can evict the stale entry.
+	searchCache     sync.Map
+	searchCacheKeys sync.Map
+
 	// loginCancel aborts an in-flight skills.new device sign-in poll
 	// (CancelSleuthLogin). loginGen identifies the sign-in attempt that
 	// owns loginCancel, so a superseded attempt's cleanup can't cancel its
@@ -490,14 +502,20 @@ func (a *App) latestAssetZip(name string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	versions, err := v.GetVersionList(a.ctx, name)
+	return latestZipFromVault(a.ctx, v, name)
+}
+
+// latestZipFromVault is latestAssetZip against an arbitrary vault — the
+// marketplace browses vaults other than the configured one.
+func latestZipFromVault(ctx context.Context, v vaultpkg.Vault, name string) ([]byte, error) {
+	versions, err := v.GetVersionList(ctx, name)
 	if err != nil {
 		return nil, friendlyVaultError(err)
 	}
 	if len(versions) == 0 {
 		return nil, fmt.Errorf("%s has no versions", name)
 	}
-	zipData, err := v.GetAssetByVersion(a.ctx, name, versions[len(versions)-1])
+	zipData, err := v.GetAssetByVersion(ctx, name, versions[len(versions)-1])
 	if err != nil {
 		return nil, friendlyVaultError(err)
 	}

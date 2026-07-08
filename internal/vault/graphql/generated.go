@@ -151,6 +151,23 @@ func (v *AddAssetsToCollectionResponse) GetAddAssetsToCollection() *AddAssetsToC
 	return v.AddAssetsToCollection
 }
 
+type AppPluginPolicyMode string
+
+const (
+	// Open
+	AppPluginPolicyModeOpen AppPluginPolicyMode = "OPEN"
+	// Allowlist
+	AppPluginPolicyModeAllowlist AppPluginPolicyMode = "ALLOWLIST"
+	// Disabled
+	AppPluginPolicyModeDisabled AppPluginPolicyMode = "DISABLED"
+)
+
+var AllAppPluginPolicyMode = []AppPluginPolicyMode{
+	AppPluginPolicyModeOpen,
+	AppPluginPolicyModeAllowlist,
+	AppPluginPolicyModeDisabled,
+}
+
 // AssetAuditLogAssetAuditLogAssetAuditEventConnection includes the requested fields of the GraphQL type AssetAuditEventConnection.
 type AssetAuditLogAssetAuditLogAssetAuditEventConnection struct {
 	// Pagination data for this connection.
@@ -392,6 +409,32 @@ func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent) GetSlug() string { 
 // GetType returns AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent.Type, and is useful for accessing the field via an interface.
 func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent) GetType() AssetType { return v.Type }
 
+// AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin includes the requested fields of the GraphQL type AppPlugin.
+type AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin struct {
+	Typename *string   `json:"__typename"`
+	Id       string    `json:"id"`
+	Name     string    `json:"name"`
+	Slug     string    `json:"slug"`
+	Type     AssetType `json:"type"`
+}
+
+// GetTypename returns AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin.Typename, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin.Id, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetId() string { return v.Id }
+
+// GetName returns AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin.Name, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetName() string { return v.Name }
+
+// GetSlug returns AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin.Slug, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetSlug() string { return v.Slug }
+
+// GetType returns AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin.Type, and is useful for accessing the field via an interface.
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetType() AssetType { return v.Type }
+
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
 type AssetGIDVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin struct {
 	Typename *string   `json:"__typename"`
@@ -555,6 +598,7 @@ func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesSkill) GetType() AssetType
 //
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset is implemented by the following types:
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent
+// AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesCommand
 // AssetGIDVaultAssetsVaultAssetsConnectionNodesHook
@@ -579,6 +623,8 @@ type AssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset interface {
 }
 
 func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent) implementsGraphQLInterfaceAssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin) implementsGraphQLInterfaceAssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
 func (v *AssetGIDVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) implementsGraphQLInterfaceAssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
@@ -609,6 +655,9 @@ func __unmarshalAssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset(b []byte
 	switch tn.TypeName {
 	case "Agent":
 		*v = new(AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent)
+		return json.Unmarshal(b, *v)
+	case "AppPlugin":
+		*v = new(AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin)
 		return json.Unmarshal(b, *v)
 	case "ClaudeCodePlugin":
 		*v = new(AssetGIDVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin)
@@ -647,6 +696,14 @@ func __marshalAssetGIDVaultAssetsVaultAssetsConnectionNodesVaultAsset(v *AssetGI
 		result := struct {
 			TypeName string `json:"__typename"`
 			*AssetGIDVaultAssetsVaultAssetsConnectionNodesAgent
+		}{typename, v}
+		return json.Marshal(result)
+	case *AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin:
+		typename = "AppPlugin"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*AssetGIDVaultAssetsVaultAssetsConnectionNodesAppPlugin
 		}{typename, v}
 		return json.Marshal(result)
 	case *AssetGIDVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin:
@@ -902,6 +959,34 @@ func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent) GetInstal
 	return v.Installations
 }
 
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin includes the requested fields of the GraphQL type AppPlugin.
+type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin struct {
+	Typename      *string                                                                                                `json:"__typename"`
+	Slug          string                                                                                                 `json:"slug"`
+	Name          string                                                                                                 `json:"name"`
+	Installations []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation `json:"installations"`
+}
+
+// GetTypename returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin.Typename, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetSlug returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin.Slug, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetSlug() string {
+	return v.Slug
+}
+
+// GetName returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin.Name, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetName() string {
+	return v.Name
+}
+
+// GetInstallations returns AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin.Installations, and is useful for accessing the field via an interface.
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetInstallations() []AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAssetInstallationsVaultAssetInstallation {
+	return v.Installations
+}
+
 // AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
 type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin struct {
 	Typename      *string                                                                                                `json:"__typename"`
@@ -1069,6 +1154,7 @@ func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesSkill) GetInstal
 //
 // AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset is implemented by the following types:
 // AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent
+// AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin
 // AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
 // AssetInstallationsVaultAssetsVaultAssetsConnectionNodesCommand
 // AssetInstallationsVaultAssetsVaultAssetsConnectionNodesHook
@@ -1091,6 +1177,8 @@ type AssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset interface
 }
 
 func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent) implementsGraphQLInterfaceAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin) implementsGraphQLInterfaceAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
 func (v *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) implementsGraphQLInterfaceAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
@@ -1121,6 +1209,9 @@ func __unmarshalAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsse
 	switch tn.TypeName {
 	case "Agent":
 		*v = new(AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent)
+		return json.Unmarshal(b, *v)
+	case "AppPlugin":
+		*v = new(AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin)
 		return json.Unmarshal(b, *v)
 	case "ClaudeCodePlugin":
 		*v = new(AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin)
@@ -1159,6 +1250,14 @@ func __marshalAssetInstallationsVaultAssetsVaultAssetsConnectionNodesVaultAsset(
 		result := struct {
 			TypeName string `json:"__typename"`
 			*AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAgent
+		}{typename, v}
+		return json.Marshal(result)
+	case *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin:
+		typename = "AppPlugin"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*AssetInstallationsVaultAssetsVaultAssetsConnectionNodesAppPlugin
 		}{typename, v}
 		return json.Marshal(result)
 	case *AssetInstallationsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin:
@@ -1300,6 +1399,8 @@ const (
 	AssetTypeRule AssetType = "RULE"
 	// Claude Code Plugin
 	AssetTypeClaudeCodePlugin AssetType = "CLAUDE_CODE_PLUGIN"
+	// App Plugin
+	AssetTypeAppPlugin AssetType = "APP_PLUGIN"
 )
 
 var AllAssetType = []AssetType{
@@ -1310,6 +1411,7 @@ var AllAssetType = []AssetType{
 	AssetTypeHook,
 	AssetTypeRule,
 	AssetTypeClaudeCodePlugin,
+	AssetTypeAppPlugin,
 }
 
 // AssetUsageEventsAssetUsageEventsAssetUsageEventConnection includes the requested fields of the GraphQL type AssetUsageEventConnection.
@@ -1616,6 +1718,28 @@ func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnecti
 	return v.Slug
 }
 
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin includes the requested fields of the GraphQL type AppPlugin.
+type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin struct {
+	Typename *string `json:"__typename"`
+	Id       string  `json:"id"`
+	Slug     string  `json:"slug"`
+}
+
+// GetTypename returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin.Typename, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin.Id, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin) GetId() string {
+	return v.Id
+}
+
+// GetSlug returns CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin.Slug, and is useful for accessing the field via an interface.
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin) GetSlug() string {
+	return v.Slug
+}
+
 // CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
 type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin struct {
 	Typename *string `json:"__typename"`
@@ -1755,6 +1879,7 @@ func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnecti
 //
 // CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset is implemented by the following types:
 // CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent
+// CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin
 // CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin
 // CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesCommand
 // CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesHook
@@ -1775,6 +1900,8 @@ type CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNo
 }
 
 func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent) implementsGraphQLInterfaceCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin) implementsGraphQLInterfaceCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
 func (v *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin) implementsGraphQLInterfaceCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
@@ -1805,6 +1932,9 @@ func __unmarshalCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsC
 	switch tn.TypeName {
 	case "Agent":
 		*v = new(CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent)
+		return json.Unmarshal(b, *v)
+	case "AppPlugin":
+		*v = new(CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin)
 		return json.Unmarshal(b, *v)
 	case "ClaudeCodePlugin":
 		*v = new(CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin)
@@ -1843,6 +1973,14 @@ func __marshalCollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsCon
 		result := struct {
 			TypeName string `json:"__typename"`
 			*CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAgent
+		}{typename, v}
+		return json.Marshal(result)
+	case *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin:
+		typename = "AppPlugin"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesAppPlugin
 		}{typename, v}
 		return json.Marshal(result)
 	case *CollectionAssetsCollectionVaultAssetCollectionAssetsVaultAssetsConnectionNodesClaudeCodePlugin:
@@ -2111,6 +2249,44 @@ func (v *CreateAgentAssetCreateAssetCreateAssetMutationAssetAgent) GetLatestVers
 	return v.LatestVersion
 }
 
+// CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin includes the requested fields of the GraphQL type AppPlugin.
+type CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin struct {
+	Typename      *string   `json:"__typename"`
+	Id            string    `json:"id"`
+	Slug          string    `json:"slug"`
+	Name          string    `json:"name"`
+	Type          AssetType `json:"type"`
+	LatestVersion string    `json:"latestVersion"`
+}
+
+// GetTypename returns CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin.Typename, and is useful for accessing the field via an interface.
+func (v *CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin.Id, and is useful for accessing the field via an interface.
+func (v *CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin) GetId() string { return v.Id }
+
+// GetSlug returns CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin.Slug, and is useful for accessing the field via an interface.
+func (v *CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin) GetSlug() string {
+	return v.Slug
+}
+
+// GetName returns CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin.Name, and is useful for accessing the field via an interface.
+func (v *CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin) GetName() string {
+	return v.Name
+}
+
+// GetType returns CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin.Type, and is useful for accessing the field via an interface.
+func (v *CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin) GetType() AssetType {
+	return v.Type
+}
+
+// GetLatestVersion returns CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin.LatestVersion, and is useful for accessing the field via an interface.
+func (v *CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin) GetLatestVersion() string {
+	return v.LatestVersion
+}
+
 // CreateAgentAssetCreateAssetCreateAssetMutationAssetClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
 type CreateAgentAssetCreateAssetCreateAssetMutationAssetClaudeCodePlugin struct {
 	Typename      *string   `json:"__typename"`
@@ -2326,6 +2502,7 @@ func (v *CreateAgentAssetCreateAssetCreateAssetMutationAssetSkill) GetLatestVers
 //
 // CreateAgentAssetCreateAssetCreateAssetMutationAssetVaultAsset is implemented by the following types:
 // CreateAgentAssetCreateAssetCreateAssetMutationAssetAgent
+// CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin
 // CreateAgentAssetCreateAssetCreateAssetMutationAssetClaudeCodePlugin
 // CreateAgentAssetCreateAssetCreateAssetMutationAssetCommand
 // CreateAgentAssetCreateAssetCreateAssetMutationAssetHook
@@ -2352,6 +2529,8 @@ type CreateAgentAssetCreateAssetCreateAssetMutationAssetVaultAsset interface {
 }
 
 func (v *CreateAgentAssetCreateAssetCreateAssetMutationAssetAgent) implementsGraphQLInterfaceCreateAgentAssetCreateAssetCreateAssetMutationAssetVaultAsset() {
+}
+func (v *CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin) implementsGraphQLInterfaceCreateAgentAssetCreateAssetCreateAssetMutationAssetVaultAsset() {
 }
 func (v *CreateAgentAssetCreateAssetCreateAssetMutationAssetClaudeCodePlugin) implementsGraphQLInterfaceCreateAgentAssetCreateAssetCreateAssetMutationAssetVaultAsset() {
 }
@@ -2382,6 +2561,9 @@ func __unmarshalCreateAgentAssetCreateAssetCreateAssetMutationAssetVaultAsset(b 
 	switch tn.TypeName {
 	case "Agent":
 		*v = new(CreateAgentAssetCreateAssetCreateAssetMutationAssetAgent)
+		return json.Unmarshal(b, *v)
+	case "AppPlugin":
+		*v = new(CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin)
 		return json.Unmarshal(b, *v)
 	case "ClaudeCodePlugin":
 		*v = new(CreateAgentAssetCreateAssetCreateAssetMutationAssetClaudeCodePlugin)
@@ -2420,6 +2602,14 @@ func __marshalCreateAgentAssetCreateAssetCreateAssetMutationAssetVaultAsset(v *C
 		result := struct {
 			TypeName string `json:"__typename"`
 			*CreateAgentAssetCreateAssetCreateAssetMutationAssetAgent
+		}{typename, v}
+		return json.Marshal(result)
+	case *CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin:
+		typename = "AppPlugin"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*CreateAgentAssetCreateAssetCreateAssetMutationAssetAppPlugin
 		}{typename, v}
 		return json.Marshal(result)
 	case *CreateAgentAssetCreateAssetCreateAssetMutationAssetClaudeCodePlugin:
@@ -3134,6 +3324,63 @@ type FindUserResponse struct {
 func (v *FindUserResponse) GetOrganization() FindUserOrganizationOrganizationType {
 	return v.Organization
 }
+
+// GetAppPluginPolicyResponse is returned by GetAppPluginPolicy on success.
+type GetAppPluginPolicyResponse struct {
+	Vault GetAppPluginPolicyVault `json:"vault"`
+}
+
+// GetVault returns GetAppPluginPolicyResponse.Vault, and is useful for accessing the field via an interface.
+func (v *GetAppPluginPolicyResponse) GetVault() GetAppPluginPolicyVault { return v.Vault }
+
+// GetAppPluginPolicyVault includes the requested fields of the GraphQL type Vault.
+// The GraphQL type's documentation follows.
+//
+// Vault containing assets.
+type GetAppPluginPolicyVault struct {
+	AppPluginPolicy GetAppPluginPolicyVaultAppPluginPolicy `json:"appPluginPolicy"`
+}
+
+// GetAppPluginPolicy returns GetAppPluginPolicyVault.AppPluginPolicy, and is useful for accessing the field via an interface.
+func (v *GetAppPluginPolicyVault) GetAppPluginPolicy() GetAppPluginPolicyVaultAppPluginPolicy {
+	return v.AppPluginPolicy
+}
+
+// GetAppPluginPolicyVaultAppPluginPolicy includes the requested fields of the GraphQL type AppPluginPolicy.
+// The GraphQL type's documentation follows.
+//
+// Org policy gating sx desktop-app extensions.
+type GetAppPluginPolicyVaultAppPluginPolicy struct {
+	// OPEN = no restrictions, ALLOWLIST = only listed third-party extensions, DISABLED = all off
+	Mode AppPluginPolicyMode `json:"mode"`
+	// Extension ids permitted when mode is ALLOWLIST (built-ins are always exempt)
+	Allowed []string `json:"allowed"`
+}
+
+// GetMode returns GetAppPluginPolicyVaultAppPluginPolicy.Mode, and is useful for accessing the field via an interface.
+func (v *GetAppPluginPolicyVaultAppPluginPolicy) GetMode() AppPluginPolicyMode { return v.Mode }
+
+// GetAllowed returns GetAppPluginPolicyVaultAppPluginPolicy.Allowed, and is useful for accessing the field via an interface.
+func (v *GetAppPluginPolicyVaultAppPluginPolicy) GetAllowed() []string { return v.Allowed }
+
+// GetAppPluginStorageResponse is returned by GetAppPluginStorage on success.
+type GetAppPluginStorageResponse struct {
+	Vault GetAppPluginStorageVault `json:"vault"`
+}
+
+// GetVault returns GetAppPluginStorageResponse.Vault, and is useful for accessing the field via an interface.
+func (v *GetAppPluginStorageResponse) GetVault() GetAppPluginStorageVault { return v.Vault }
+
+// GetAppPluginStorageVault includes the requested fields of the GraphQL type Vault.
+// The GraphQL type's documentation follows.
+//
+// Vault containing assets.
+type GetAppPluginStorageVault struct {
+	AppPluginStorage *json.RawMessage `json:"appPluginStorage"`
+}
+
+// GetAppPluginStorage returns GetAppPluginStorageVault.AppPluginStorage, and is useful for accessing the field via an interface.
+func (v *GetAppPluginStorageVault) GetAppPluginStorage() *json.RawMessage { return v.AppPluginStorage }
 
 // GetMeResponse is returned by GetMe on success.
 type GetMeResponse struct {
@@ -4112,6 +4359,130 @@ func (v *RevokeBotRuntimeTokensRevokeBotRuntimeTokensRevokeBotRuntimeTokensMutat
 	return v.RevokedCount
 }
 
+type SetAppPluginPolicyInput struct {
+	Mode AppPluginPolicyMode `json:"mode"`
+	// Extension ids to permit; only meaningful (and only stored) when mode is ALLOWLIST
+	Allowed []string `json:"allowed"`
+}
+
+// GetMode returns SetAppPluginPolicyInput.Mode, and is useful for accessing the field via an interface.
+func (v *SetAppPluginPolicyInput) GetMode() AppPluginPolicyMode { return v.Mode }
+
+// GetAllowed returns SetAppPluginPolicyInput.Allowed, and is useful for accessing the field via an interface.
+func (v *SetAppPluginPolicyInput) GetAllowed() []string { return v.Allowed }
+
+// SetAppPluginPolicyResponse is returned by SetAppPluginPolicy on success.
+type SetAppPluginPolicyResponse struct {
+	// Replace the org's extension policy. Org admins only; the change is audited.
+	SetAppPluginPolicy *SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutation `json:"setAppPluginPolicy"`
+}
+
+// GetSetAppPluginPolicy returns SetAppPluginPolicyResponse.SetAppPluginPolicy, and is useful for accessing the field via an interface.
+func (v *SetAppPluginPolicyResponse) GetSetAppPluginPolicy() *SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutation {
+	return v.SetAppPluginPolicy
+}
+
+// SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutation includes the requested fields of the GraphQL type SetAppPluginPolicyMutation.
+// The GraphQL type's documentation follows.
+//
+// Replace the org's extension policy. Org admins only; the change is audited.
+type SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutation struct {
+	AppPluginPolicy *SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationAppPluginPolicy  `json:"appPluginPolicy"`
+	Errors          []SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationErrorsErrorType `json:"errors"`
+}
+
+// GetAppPluginPolicy returns SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutation.AppPluginPolicy, and is useful for accessing the field via an interface.
+func (v *SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutation) GetAppPluginPolicy() *SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationAppPluginPolicy {
+	return v.AppPluginPolicy
+}
+
+// GetErrors returns SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutation.Errors, and is useful for accessing the field via an interface.
+func (v *SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutation) GetErrors() []SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationErrorsErrorType {
+	return v.Errors
+}
+
+// SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationAppPluginPolicy includes the requested fields of the GraphQL type AppPluginPolicy.
+// The GraphQL type's documentation follows.
+//
+// Org policy gating sx desktop-app extensions.
+type SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationAppPluginPolicy struct {
+	// OPEN = no restrictions, ALLOWLIST = only listed third-party extensions, DISABLED = all off
+	Mode AppPluginPolicyMode `json:"mode"`
+}
+
+// GetMode returns SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationAppPluginPolicy.Mode, and is useful for accessing the field via an interface.
+func (v *SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationAppPluginPolicy) GetMode() AppPluginPolicyMode {
+	return v.Mode
+}
+
+// SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *SetAppPluginPolicySetAppPluginPolicySetAppPluginPolicyMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+type SetAppPluginStorageInput struct {
+	PluginId string `json:"pluginId"`
+	// Full document to store; null or empty deletes the stored document
+	Data *json.RawMessage `json:"data"`
+}
+
+// GetPluginId returns SetAppPluginStorageInput.PluginId, and is useful for accessing the field via an interface.
+func (v *SetAppPluginStorageInput) GetPluginId() string { return v.PluginId }
+
+// GetData returns SetAppPluginStorageInput.Data, and is useful for accessing the field via an interface.
+func (v *SetAppPluginStorageInput) GetData() *json.RawMessage { return v.Data }
+
+// SetAppPluginStorageResponse is returned by SetAppPluginStorage on success.
+type SetAppPluginStorageResponse struct {
+	// Replace a plugin's shared storage document whole. Any vault member may write.
+	SetAppPluginStorage *SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutation `json:"setAppPluginStorage"`
+}
+
+// GetSetAppPluginStorage returns SetAppPluginStorageResponse.SetAppPluginStorage, and is useful for accessing the field via an interface.
+func (v *SetAppPluginStorageResponse) GetSetAppPluginStorage() *SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutation {
+	return v.SetAppPluginStorage
+}
+
+// SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutation includes the requested fields of the GraphQL type SetAppPluginStorageMutation.
+// The GraphQL type's documentation follows.
+//
+// Replace a plugin's shared storage document whole. Any vault member may write.
+type SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutation struct {
+	Errors []SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType `json:"errors"`
+}
+
+// GetErrors returns SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutation.Errors, and is useful for accessing the field via an interface.
+func (v *SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutation) GetErrors() []SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType {
+	return v.Errors
+}
+
+// SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *SetAppPluginStorageSetAppPluginStorageSetAppPluginStorageMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
 type SetAssetInstallationsInput struct {
 	AssetName     string                        `json:"assetName"`
 	AssetVersion  *string                       `json:"assetVersion"`
@@ -4255,6 +4626,22 @@ func (v *SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutation
 	return v.Name
 }
 
+// SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAppPlugin includes the requested fields of the GraphQL type AppPlugin.
+type SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAppPlugin struct {
+	Typename *string `json:"__typename"`
+	Name     string  `json:"name"`
+}
+
+// GetTypename returns SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAppPlugin.Typename, and is useful for accessing the field via an interface.
+func (v *SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAppPlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAppPlugin.Name, and is useful for accessing the field via an interface.
+func (v *SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAppPlugin) GetName() string {
+	return v.Name
+}
+
 // SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
 type SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetClaudeCodePlugin struct {
 	Typename *string `json:"__typename"`
@@ -4358,6 +4745,7 @@ func (v *SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutation
 //
 // SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetVaultAsset is implemented by the following types:
 // SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAgent
+// SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAppPlugin
 // SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetClaudeCodePlugin
 // SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetCommand
 // SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetHook
@@ -4376,6 +4764,8 @@ type SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAsse
 }
 
 func (v *SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAgent) implementsGraphQLInterfaceSetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetVaultAsset() {
+}
+func (v *SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAppPlugin) implementsGraphQLInterfaceSetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetVaultAsset() {
 }
 func (v *SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetClaudeCodePlugin) implementsGraphQLInterfaceSetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetVaultAsset() {
 }
@@ -4406,6 +4796,9 @@ func __unmarshalSetAssetInstallationsSetAssetInstallationsSetAssetInstallationsM
 	switch tn.TypeName {
 	case "Agent":
 		*v = new(SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAgent)
+		return json.Unmarshal(b, *v)
+	case "AppPlugin":
+		*v = new(SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAppPlugin)
 		return json.Unmarshal(b, *v)
 	case "ClaudeCodePlugin":
 		*v = new(SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetClaudeCodePlugin)
@@ -4444,6 +4837,14 @@ func __marshalSetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMut
 		result := struct {
 			TypeName string `json:"__typename"`
 			*SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAgent
+		}{typename, v}
+		return json.Marshal(result)
+	case *SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAppPlugin:
+		typename = "AppPlugin"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetAppPlugin
 		}{typename, v}
 		return json.Marshal(result)
 	case *SetAssetInstallationsSetAssetInstallationsSetAssetInstallationsMutationAssetClaudeCodePlugin:
@@ -4746,6 +5147,22 @@ func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation
 	return v.Name
 }
 
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAppPlugin includes the requested fields of the GraphQL type AppPlugin.
+type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAppPlugin struct {
+	Typename *string `json:"__typename"`
+	Name     string  `json:"name"`
+}
+
+// GetTypename returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAppPlugin.Typename, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAppPlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetName returns UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAppPlugin.Name, and is useful for accessing the field via an interface.
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAppPlugin) GetName() string {
+	return v.Name
+}
+
 // UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
 type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin struct {
 	Typename *string `json:"__typename"`
@@ -4849,6 +5266,7 @@ func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutation
 //
 // UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset is implemented by the following types:
 // UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent
+// UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAppPlugin
 // UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin
 // UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetCommand
 // UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetHook
@@ -4867,6 +5285,8 @@ type UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAsse
 }
 
 func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent) implementsGraphQLInterfaceUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset() {
+}
+func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAppPlugin) implementsGraphQLInterfaceUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset() {
 }
 func (v *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin) implementsGraphQLInterfaceUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetVaultAsset() {
 }
@@ -4897,6 +5317,9 @@ func __unmarshalUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsM
 	switch tn.TypeName {
 	case "Agent":
 		*v = new(UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent)
+		return json.Unmarshal(b, *v)
+	case "AppPlugin":
+		*v = new(UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAppPlugin)
 		return json.Unmarshal(b, *v)
 	case "ClaudeCodePlugin":
 		*v = new(UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin)
@@ -4935,6 +5358,14 @@ func __marshalUninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMut
 		result := struct {
 			TypeName string `json:"__typename"`
 			*UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAgent
+		}{typename, v}
+		return json.Marshal(result)
+	case *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAppPlugin:
+		typename = "AppPlugin"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetAppPlugin
 		}{typename, v}
 		return json.Marshal(result)
 	case *UninstallAssetTargetsUninstallAssetTargetsUninstallAssetTargetsMutationAssetClaudeCodePlugin:
@@ -5560,6 +5991,58 @@ func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent) GetVersions
 	return v.Versions
 }
 
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin includes the requested fields of the GraphQL type AppPlugin.
+type VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin struct {
+	Typename    *string                                                                                    `json:"__typename"`
+	Slug        string                                                                                     `json:"slug"`
+	Name        string                                                                                     `json:"name"`
+	Type        AssetType                                                                                  `json:"type"`
+	Description string                                                                                     `json:"description"`
+	CreatedAt   time.Time                                                                                  `json:"createdAt"`
+	UpdatedAt   time.Time                                                                                  `json:"updatedAt"`
+	Versions    []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion `json:"versions"`
+}
+
+// GetTypename returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin.Typename, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetSlug returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin.Slug, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetSlug() string {
+	return v.Slug
+}
+
+// GetName returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin.Name, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetName() string {
+	return v.Name
+}
+
+// GetType returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin.Type, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetType() AssetType {
+	return v.Type
+}
+
+// GetDescription returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin.Description, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetDescription() string {
+	return v.Description
+}
+
+// GetCreatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin.CreatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetCreatedAt() time.Time {
+	return v.CreatedAt
+}
+
+// GetUpdatedAt returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetUpdatedAt() time.Time {
+	return v.UpdatedAt
+}
+
+// GetVersions returns VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin.Versions, and is useful for accessing the field via an interface.
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetVersions() []VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAssetVersionsVaultAssetVersion {
+	return v.Versions
+}
+
 // VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
 type VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin struct {
 	Typename    *string                                                                                    `json:"__typename"`
@@ -5867,6 +6350,7 @@ func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesSkill) GetVersions
 //
 // VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset is implemented by the following types:
 // VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent
+// VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin
 // VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
 // VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand
 // VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesHook
@@ -5898,6 +6382,8 @@ type VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset interface {
 
 func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent) implementsGraphQLInterfaceVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
+func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin) implementsGraphQLInterfaceVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
 func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) implementsGraphQLInterfaceVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
 func (v *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesCommand) implementsGraphQLInterfaceVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
@@ -5927,6 +6413,9 @@ func __unmarshalVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset(
 	switch tn.TypeName {
 	case "Agent":
 		*v = new(VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent)
+		return json.Unmarshal(b, *v)
+	case "AppPlugin":
+		*v = new(VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin)
 		return json.Unmarshal(b, *v)
 	case "ClaudeCodePlugin":
 		*v = new(VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin)
@@ -5965,6 +6454,14 @@ func __marshalVaultAssetLookupVaultAssetsVaultAssetsConnectionNodesVaultAsset(v 
 		result := struct {
 			TypeName string `json:"__typename"`
 			*VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAgent
+		}{typename, v}
+		return json.Marshal(result)
+	case *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin:
+		typename = "AppPlugin"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesAppPlugin
 		}{typename, v}
 		return json.Marshal(result)
 	case *VaultAssetLookupVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin:
@@ -6210,6 +6707,56 @@ func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAgent) GetCreatedAt() t
 
 // GetUpdatedAt returns VaultAssetsVaultAssetsVaultAssetsConnectionNodesAgent.UpdatedAt, and is useful for accessing the field via an interface.
 func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAgent) GetUpdatedAt() time.Time {
+	return v.UpdatedAt
+}
+
+// VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin includes the requested fields of the GraphQL type AppPlugin.
+type VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin struct {
+	Typename      *string   `json:"__typename"`
+	Slug          string    `json:"slug"`
+	Type          AssetType `json:"type"`
+	LatestVersion string    `json:"latestVersion"`
+	VersionsCount int       `json:"versionsCount"`
+	Description   string    `json:"description"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+// GetTypename returns VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin.Typename, and is useful for accessing the field via an interface.
+func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetSlug returns VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin.Slug, and is useful for accessing the field via an interface.
+func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetSlug() string { return v.Slug }
+
+// GetType returns VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin.Type, and is useful for accessing the field via an interface.
+func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetType() AssetType {
+	return v.Type
+}
+
+// GetLatestVersion returns VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin.LatestVersion, and is useful for accessing the field via an interface.
+func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetLatestVersion() string {
+	return v.LatestVersion
+}
+
+// GetVersionsCount returns VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin.VersionsCount, and is useful for accessing the field via an interface.
+func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetVersionsCount() int {
+	return v.VersionsCount
+}
+
+// GetDescription returns VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin.Description, and is useful for accessing the field via an interface.
+func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetDescription() string {
+	return v.Description
+}
+
+// GetCreatedAt returns VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin.CreatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetCreatedAt() time.Time {
+	return v.CreatedAt
+}
+
+// GetUpdatedAt returns VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetUpdatedAt() time.Time {
 	return v.UpdatedAt
 }
 
@@ -6514,6 +7061,7 @@ func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesSkill) GetUpdatedAt() t
 //
 // VaultAssetsVaultAssetsVaultAssetsConnectionNodesVaultAsset is implemented by the following types:
 // VaultAssetsVaultAssetsVaultAssetsConnectionNodesAgent
+// VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin
 // VaultAssetsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
 // VaultAssetsVaultAssetsVaultAssetsConnectionNodesCommand
 // VaultAssetsVaultAssetsVaultAssetsConnectionNodesHook
@@ -6545,6 +7093,8 @@ type VaultAssetsVaultAssetsVaultAssetsConnectionNodesVaultAsset interface {
 
 func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAgent) implementsGraphQLInterfaceVaultAssetsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
+func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin) implementsGraphQLInterfaceVaultAssetsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
 func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) implementsGraphQLInterfaceVaultAssetsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
 }
 func (v *VaultAssetsVaultAssetsVaultAssetsConnectionNodesCommand) implementsGraphQLInterfaceVaultAssetsVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
@@ -6574,6 +7124,9 @@ func __unmarshalVaultAssetsVaultAssetsVaultAssetsConnectionNodesVaultAsset(b []b
 	switch tn.TypeName {
 	case "Agent":
 		*v = new(VaultAssetsVaultAssetsVaultAssetsConnectionNodesAgent)
+		return json.Unmarshal(b, *v)
+	case "AppPlugin":
+		*v = new(VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin)
 		return json.Unmarshal(b, *v)
 	case "ClaudeCodePlugin":
 		*v = new(VaultAssetsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin)
@@ -6612,6 +7165,14 @@ func __marshalVaultAssetsVaultAssetsVaultAssetsConnectionNodesVaultAsset(v *Vaul
 		result := struct {
 			TypeName string `json:"__typename"`
 			*VaultAssetsVaultAssetsVaultAssetsConnectionNodesAgent
+		}{typename, v}
+		return json.Marshal(result)
+	case *VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin:
+		typename = "AppPlugin"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*VaultAssetsVaultAssetsVaultAssetsConnectionNodesAppPlugin
 		}{typename, v}
 		return json.Marshal(result)
 	case *VaultAssetsVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin:
@@ -6925,6 +7486,14 @@ type __FindUserInput struct {
 // GetTerm returns __FindUserInput.Term, and is useful for accessing the field via an interface.
 func (v *__FindUserInput) GetTerm() string { return v.Term }
 
+// __GetAppPluginStorageInput is used internally by genqlient
+type __GetAppPluginStorageInput struct {
+	PluginId string `json:"pluginId"`
+}
+
+// GetPluginId returns __GetAppPluginStorageInput.PluginId, and is useful for accessing the field via an interface.
+func (v *__GetAppPluginStorageInput) GetPluginId() string { return v.PluginId }
+
 // __ImportAuditEventsInput is used internally by genqlient
 type __ImportAuditEventsInput struct {
 	Events []ImportAuditEventInput `json:"events"`
@@ -7042,6 +7611,22 @@ type __RevokeBotRuntimeTokensInput struct {
 
 // GetBotId returns __RevokeBotRuntimeTokensInput.BotId, and is useful for accessing the field via an interface.
 func (v *__RevokeBotRuntimeTokensInput) GetBotId() string { return v.BotId }
+
+// __SetAppPluginPolicyInput is used internally by genqlient
+type __SetAppPluginPolicyInput struct {
+	Input SetAppPluginPolicyInput `json:"input"`
+}
+
+// GetInput returns __SetAppPluginPolicyInput.Input, and is useful for accessing the field via an interface.
+func (v *__SetAppPluginPolicyInput) GetInput() SetAppPluginPolicyInput { return v.Input }
+
+// __SetAppPluginStorageInput is used internally by genqlient
+type __SetAppPluginStorageInput struct {
+	Input SetAppPluginStorageInput `json:"input"`
+}
+
+// GetInput returns __SetAppPluginStorageInput.Input, and is useful for accessing the field via an interface.
+func (v *__SetAppPluginStorageInput) GetInput() SetAppPluginStorageInput { return v.Input }
 
 // __SetAssetInstallationsInput is used internally by genqlient
 type __SetAssetInstallationsInput struct {
@@ -8067,6 +8652,73 @@ func FindUser(
 	return data_, err_
 }
 
+// The query executed by GetAppPluginPolicy.
+const GetAppPluginPolicy_Operation = `
+query GetAppPluginPolicy {
+	vault {
+		appPluginPolicy {
+			mode
+			allowed
+		}
+	}
+}
+`
+
+func GetAppPluginPolicy(
+	ctx_ context.Context,
+	client_ graphql.Client,
+) (data_ *GetAppPluginPolicyResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "GetAppPluginPolicy",
+		Query:  GetAppPluginPolicy_Operation,
+	}
+
+	data_ = &GetAppPluginPolicyResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The query executed by GetAppPluginStorage.
+const GetAppPluginStorage_Operation = `
+query GetAppPluginStorage ($pluginId: String!) {
+	vault {
+		appPluginStorage(pluginId: $pluginId)
+	}
+}
+`
+
+func GetAppPluginStorage(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	pluginId string,
+) (data_ *GetAppPluginStorageResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "GetAppPluginStorage",
+		Query:  GetAppPluginStorage_Operation,
+		Variables: &__GetAppPluginStorageInput{
+			PluginId: pluginId,
+		},
+	}
+
+	data_ = &GetAppPluginStorageResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
 // The query executed by GetMe.
 const GetMe_Operation = `
 query GetMe {
@@ -8659,6 +9311,83 @@ func RevokeBotRuntimeTokens(
 	}
 
 	data_ = &RevokeBotRuntimeTokensResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by SetAppPluginPolicy.
+const SetAppPluginPolicy_Operation = `
+mutation SetAppPluginPolicy ($input: SetAppPluginPolicyInput!) {
+	setAppPluginPolicy(input: $input) {
+		appPluginPolicy {
+			mode
+		}
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func SetAppPluginPolicy(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input SetAppPluginPolicyInput,
+) (data_ *SetAppPluginPolicyResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "SetAppPluginPolicy",
+		Query:  SetAppPluginPolicy_Operation,
+		Variables: &__SetAppPluginPolicyInput{
+			Input: input,
+		},
+	}
+
+	data_ = &SetAppPluginPolicyResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by SetAppPluginStorage.
+const SetAppPluginStorage_Operation = `
+mutation SetAppPluginStorage ($input: SetAppPluginStorageInput!) {
+	setAppPluginStorage(input: $input) {
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func SetAppPluginStorage(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input SetAppPluginStorageInput,
+) (data_ *SetAppPluginStorageResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "SetAppPluginStorage",
+		Query:  SetAppPluginStorage_Operation,
+		Variables: &__SetAppPluginStorageInput{
+			Input: input,
+		},
+	}
+
+	data_ = &SetAppPluginStorageResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(

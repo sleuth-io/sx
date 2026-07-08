@@ -324,6 +324,7 @@ type OrganizationType implements TeamOrUsersScoped {
     userRole: Role = null
     ids: [ID!] = null
     alwaysIncludeIds: [ID!] = null
+    missingRoleDescription: Boolean = false
 
     """Maximum allowed value is 50."""
     first: Int
@@ -359,6 +360,9 @@ type OrganizationType implements TeamOrUsersScoped {
   flagEnabled(flagName: String!): Boolean!
   apiKey: String! @deprecated(reason: "Use `accessTokens` field instead.")
   trialDaysRemaining: Int!
+
+  """Number of active members without an AI role description set."""
+  missingRoleDescriptionCount: Int!
   isActive: Boolean!
   timezone: String
   planType: PlanType!
@@ -935,6 +939,9 @@ enum AssetType {
 
   """Claude Code Plugin"""
   CLAUDE_CODE_PLUGIN
+
+  """App Plugin"""
+  APP_PLUGIN
 }
 
 """Status of an asset."""
@@ -3377,12 +3384,37 @@ type AiScanReport {
 }
 
 """
+One evidence upload (a client sync) for the data-collection admin view.
+
+The gzipped ``data`` blob is never exposed - only the window, size and parse lifecycle, plus who
+the upload belongs to. ``created_at`` is the upload time; ``captured_start``/``captured_end`` are
+the AI-activity window the client declared it scanned.
+"""
+type AiScanUpload {
+  id: ID!
+  source: String!
+  capturedStart: DateTime!
+  capturedEnd: DateTime!
+  sizeBytes: Int!
+  parseStatus: String!
+  sessionCount: Int!
+  createdAt: DateTime!
+  personId: ID!
+  personName: String!
+  personEmail: String!
+}
+
+"""
 One subject's role on a report, from the stored snapshot. Survives subject-user deletion.
+
+The role text is private data (it doubles as the user's what-to-exclude-from-analysis note), so
+only ``has_role`` - whether a role was set - is exposed. The reader can see who is missing a role
+without the description itself leaving the server.
 """
 type AiScanSubjectRole {
   email: String!
   name: String!
-  role: String!
+  hasRole: Boolean!
 }
 
 """
@@ -3484,6 +3516,8 @@ type Vault {
     after: String
   ): VaultAssetsConnection!
   asset(id: ID!): VaultAsset
+  appPluginPolicy: AppPluginPolicy!
+  appPluginStorage(pluginId: String!): JSONString
 }
 
 """Paginated list of vault assets."""
@@ -3537,6 +3571,30 @@ enum AssetSourceType {
 
   """Git"""
   GIT
+}
+
+"""Org policy gating sx desktop-app extensions."""
+type AppPluginPolicy {
+  """
+  OPEN = no restrictions, ALLOWLIST = only listed third-party extensions, DISABLED = all off
+  """
+  mode: AppPluginPolicyMode!
+
+  """
+  Extension ids permitted when mode is ALLOWLIST (built-ins are always exempt)
+  """
+  allowed: [String!]!
+}
+
+enum AppPluginPolicyMode {
+  """Open"""
+  OPEN
+
+  """Allowlist"""
+  ALLOWLIST
+
+  """Disabled"""
+  DISABLED
 }
 
 """Asset in the vault (Skill, MCP, Agent, etc.)."""
@@ -4134,6 +4192,58 @@ type ClaudeCodePlugin implements VaultAsset {
   """Whether an evaluation is currently in progress for this asset"""
   evaluating: Boolean!
   marketplaceUrl: String
+}
+
+type AppPlugin implements VaultAsset {
+  id: ID!
+  name: String!
+  slug: String!
+  type: AssetType!
+  latestVersion: String!
+  versionsCount: Int!
+  description: String!
+  status: SkillStatusEnum
+  installations: [VaultAssetInstallation!]!
+
+  """
+  Pending installation requests for this asset visible to the current user
+  """
+  installationRequests: [AssetInstallationRequest!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  versions: [VaultAssetVersion!]!
+  profiles: [VaultAssetProfile!]!
+  isChatDefault: Boolean!
+  usageCount: Int!
+
+  """Token counts for the current version"""
+  tokenCounts: AssetTokenCount
+
+  """Asset source metadata"""
+  source: AssetSource!
+
+  """Current user's permissions for this asset"""
+  permissions: VaultAssetPermissions
+
+  """Files belonging to this asset"""
+  files(
+    """Get files at a specific asset version number"""
+    version: Int
+  ): [SkillFile!]!
+
+  """Repository code contexts where this asset will execute"""
+  codeContexts: [AssetCodeContext!]!
+
+  """Whether an evaluation is currently in progress for this asset"""
+  evaluating: Boolean!
+
+  """Entry file within the bundle (default main.js)"""
+  entry: String
+
+  """
+  Permissions mirror from plugin.json (the bundle's plugin.json is the runtime source of truth)
+  """
+  pluginPermissions: [String!]
 }
 
 type RemoteMarketplacePlugin {
@@ -5213,6 +5323,19 @@ type Query {
   deviceGrant(clientId: String!, userCode: String!): DeviceGrant
   aiscanReports: [AiScanReport!]!
   aiscanReport(id: ID!): AiScanReport
+  aiscanUploads(
+    personIds: [ID!]
+    uploadedAfter: DateTime
+    uploadedBefore: DateTime
+
+    """Maximum allowed value is 50."""
+    first: Int
+
+    """Maximum allowed value is 50."""
+    last: Int
+    before: String
+    after: String
+  ): AiScanUploadConnection!
   aiscanCoverage(personIds: [ID!]): [AiScanSourceCoverage!]!
   aiscanSyncPlan(source: String!, schemaVersion: Int!, available: [AiScanSpanInput!]!): AiScanSyncPlan
   search(
@@ -5622,6 +5745,24 @@ type ReviewTemplateGqlType {
   duration: Int!
 }
 
+type AiScanUploadConnection {
+  """Pagination data for this connection."""
+  pageInfo: PageInfo!
+  edges: [AiScanUploadEdge!]!
+  nodes: [AiScanUpload!]!
+
+  """Total count of edges."""
+  totalCount: Int!
+}
+
+type AiScanUploadEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: AiScanUpload!
+}
+
 """A half-open time span the client can read from a source."""
 input AiScanSpanInput {
   start: DateTime!
@@ -5694,6 +5835,16 @@ type Mutation {
   skills.new doesn't lose its audit trail.
   """
   importAuditEvents(events: [ImportAuditEventInput!]!): ImportAuditEventsMutation
+
+  """
+  Replace the org's extension policy. Org admins only; the change is audited.
+  """
+  setAppPluginPolicy(input: SetAppPluginPolicyInput!): SetAppPluginPolicyMutation
+
+  """
+  Replace a plugin's shared storage document whole. Any vault member may write.
+  """
+  setAppPluginStorage(input: SetAppPluginStorageInput!): SetAppPluginStorageMutation
   updateSkillsSettings(input: UpdateSkillsSettingsInput!): UpdateSkillsSettingsMutation
 
   """Import an external (non-managed) asset as a new managed asset."""
@@ -5982,6 +6133,7 @@ type Mutation {
   inviteMember(input: InviteMemberInput!): InviteMemberMutation
   deleteMember(userId: ID!): DeleteMemberMutation
   changeMemberRole(input: ChangeRoleMutationInput!): ChangeRoleMutation
+  setUserRoleDescription(input: SetUserRoleDescriptionMutationInput!): SetUserRoleDescriptionMutation
   setTeamsSyncStatus(input: TeamsSyncInputType!): TeamsSyncStatusMutation
   triggerTeamsSync(input: TriggerTeamsSyncInputType!): TriggerTeamsSyncMutation
   revokeInvitation(input: RevokeInvitationMutationInput!): RevokeInvitationMutationPayload
@@ -6213,6 +6365,38 @@ input ImportAuditEventInput {
   target: String
 
   """Event-specific payload"""
+  data: JSONString
+}
+
+"""
+Replace the org's extension policy. Org admins only; the change is audited.
+"""
+type SetAppPluginPolicyMutation {
+  appPluginPolicy: AppPluginPolicy
+  errors: [ErrorType!]!
+}
+
+input SetAppPluginPolicyInput {
+  mode: AppPluginPolicyMode!
+
+  """
+  Extension ids to permit; only meaningful (and only stored) when mode is ALLOWLIST
+  """
+  allowed: [String!]
+}
+
+"""
+Replace a plugin's shared storage document whole. Any vault member may write.
+"""
+type SetAppPluginStorageMutation {
+  data: JSONString
+  errors: [ErrorType!]!
+}
+
+input SetAppPluginStorageInput {
+  pluginId: String!
+
+  """Full document to store; null or empty deletes the stored document"""
   data: JSONString
 }
 
@@ -7312,6 +7496,15 @@ type ChangeRoleMutation {
 input ChangeRoleMutationInput {
   userId: ID!
   role: Role!
+}
+
+type SetUserRoleDescriptionMutation {
+  success: Boolean!
+}
+
+input SetUserRoleDescriptionMutationInput {
+  userId: ID!
+  roleDescription: String!
 }
 
 type TeamsSyncStatusMutation {

@@ -1032,7 +1032,6 @@ func (g *GitVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Lis
 				assetSummary.Description = meta.Asset.Description
 			}
 		}
-
 		// Get file timestamps
 		assetDirInfo, _ := entry.Info()
 		if assetDirInfo != nil {
@@ -1043,6 +1042,15 @@ func (g *GitVault) ListAssets(ctx context.Context, opts ListAssetsOptions) (*Lis
 		// Apply type filter if specified
 		if opts.Type != "" && assetSummary.Type.Key != opts.Type {
 			continue
+		}
+
+		// AFTER the type filter: this fallback reads files, and a
+		// filtered listing must not pay it for assets it discards.
+		if assetSummary.Description == "" {
+			// Assets published without a metadata description usually
+			// still declare one in markdown frontmatter — show it.
+			assetSummary.Description = markdownDescription(
+				filepath.Join(g.repoPath, l.VersionDir(entry.Name(), latestVersion)))
 		}
 
 		assets = append(assets, assetSummary)
@@ -1129,6 +1137,10 @@ func (g *GitVault) GetAssetDetails(ctx context.Context, name string) (*AssetDeta
 			details.Description = meta.Asset.Description
 			details.Metadata = meta
 		}
+	}
+	if details.Description == "" {
+		details.Description = markdownDescription(
+			filepath.Join(g.repoPath, l.VersionDir(name, latestVersion)))
 	}
 
 	// Get directory timestamps

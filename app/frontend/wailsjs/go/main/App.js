@@ -10,12 +10,20 @@ export function AddCollectionRepoScope(arg1, arg2) {
   return window['go']['main']['App']['AddCollectionRepoScope'](arg1, arg2);
 }
 
+export function AddExtensionFromFolder() {
+  return window['go']['main']['App']['AddExtensionFromFolder']();
+}
+
 export function AddLibrary(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddLibrary'](arg1, arg2, arg3, arg4);
 }
 
 export function AddTeamMember(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddTeamMember'](arg1, arg2, arg3);
+}
+
+export function AppVersion() {
+  return window['go']['main']['App']['AppVersion']();
 }
 
 export function AvailableRepoName(arg1) {
@@ -56,6 +64,10 @@ export function CreateCollection(arg1) {
 
 export function CreateDraftFromAsset(arg1) {
   return window['go']['main']['App']['CreateDraftFromAsset'](arg1);
+}
+
+export function CreateDraftFromFiles(arg1, arg2) {
+  return window['go']['main']['App']['CreateDraftFromFiles'](arg1, arg2);
 }
 
 export function CreateDraftFromPaths(arg1) {
@@ -110,6 +122,14 @@ export function GetDraft(arg1) {
   return window['go']['main']['App']['GetDraft'](arg1);
 }
 
+export function GetMarketplaceURL() {
+  return window['go']['main']['App']['GetMarketplaceURL']();
+}
+
+export function GetPluginPolicy() {
+  return window['go']['main']['App']['GetPluginPolicy']();
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
@@ -132,6 +152,14 @@ export function HasIdentity() {
 
 export function HideApp() {
   return window['go']['main']['App']['HideApp']();
+}
+
+export function ImportDraftsFromFolder() {
+  return window['go']['main']['App']['ImportDraftsFromFolder']();
+}
+
+export function InstallMarketplaceExtension(arg1) {
+  return window['go']['main']['App']['InstallMarketplaceExtension'](arg1);
 }
 
 export function InstalledAssets() {
@@ -166,6 +194,10 @@ export function ListTeams() {
   return window['go']['main']['App']['ListTeams']();
 }
 
+export function ListVaultPlugins() {
+  return window['go']['main']['App']['ListVaultPlugins']();
+}
+
 export function OpenSettings() {
   return window['go']['main']['App']['OpenSettings']();
 }
@@ -180,6 +212,62 @@ export function PickFilesForDraft() {
 
 export function PickFolderForDraft() {
   return window['go']['main']['App']['PickFolderForDraft']();
+}
+
+export function PluginAuditEvents(arg1) {
+  return window['go']['main']['App']['PluginAuditEvents'](arg1);
+}
+
+export function PluginConsents() {
+  return window['go']['main']['App']['PluginConsents']();
+}
+
+export function PluginCurrentUser() {
+  return window['go']['main']['App']['PluginCurrentUser']();
+}
+
+export function PluginDecisions() {
+  return window['go']['main']['App']['PluginDecisions']();
+}
+
+export function PluginLoadData(arg1) {
+  return window['go']['main']['App']['PluginLoadData'](arg1);
+}
+
+export function PluginSaveData(arg1, arg2) {
+  return window['go']['main']['App']['PluginSaveData'](arg1, arg2);
+}
+
+export function PluginSecretGet(arg1, arg2) {
+  return window['go']['main']['App']['PluginSecretGet'](arg1, arg2);
+}
+
+export function PluginSecretSet(arg1, arg2, arg3) {
+  return window['go']['main']['App']['PluginSecretSet'](arg1, arg2, arg3);
+}
+
+export function PluginSharedLoad(arg1) {
+  return window['go']['main']['App']['PluginSharedLoad'](arg1);
+}
+
+export function PluginSharedSave(arg1, arg2) {
+  return window['go']['main']['App']['PluginSharedSave'](arg1, arg2);
+}
+
+export function PluginTeams() {
+  return window['go']['main']['App']['PluginTeams']();
+}
+
+export function PluginUsageEvents(arg1) {
+  return window['go']['main']['App']['PluginUsageEvents'](arg1);
+}
+
+export function PluginUserStats(arg1) {
+  return window['go']['main']['App']['PluginUserStats'](arg1);
+}
+
+export function PluginWriteMetadata(arg1, arg2) {
+  return window['go']['main']['App']['PluginWriteMetadata'](arg1, arg2);
 }
 
 export function PublishDraft(arg1) {
@@ -214,6 +302,14 @@ export function RestoreRevision(arg1, arg2) {
   return window['go']['main']['App']['RestoreRevision'](arg1, arg2);
 }
 
+export function SearchAssetContent(arg1) {
+  return window['go']['main']['App']['SearchAssetContent'](arg1);
+}
+
+export function SearchMarketplace(arg1) {
+  return window['go']['main']['App']['SearchMarketplace'](arg1);
+}
+
 export function SetAssetPersonal(arg1, arg2) {
   return window['go']['main']['App']['SetAssetPersonal'](arg1, arg2);
 }
@@ -240,6 +336,18 @@ export function SetLibraryActive(arg1, arg2) {
 
 export function SetLibraryRepoTracking(arg1, arg2) {
   return window['go']['main']['App']['SetLibraryRepoTracking'](arg1, arg2);
+}
+
+export function SetMarketplaceURL(arg1) {
+  return window['go']['main']['App']['SetMarketplaceURL'](arg1);
+}
+
+export function SetPluginConsent(arg1, arg2) {
+  return window['go']['main']['App']['SetPluginConsent'](arg1, arg2);
+}
+
+export function SetPluginDecision(arg1, arg2) {
+  return window['go']['main']['App']['SetPluginDecision'](arg1, arg2);
 }
 
 export function SetTeamAdmin(arg1, arg2, arg3) {
@@ -292,4 +400,8 @@ export function TeamAssets() {
 
 export function UpdateDraft(arg1) {
   return window['go']['main']['App']['UpdateDraft'](arg1);
+}
+
+export function VaultSupportsExtensions() {
+  return window['go']['main']['App']['VaultSupportsExtensions']();
 }

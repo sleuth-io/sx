@@ -130,36 +130,10 @@ func slugify(s string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// inferDescription pulls a short description out of markdown content:
-// frontmatter description first, else the first non-heading paragraph line.
+// inferDescription pulls a short description out of markdown content;
+// shared with the publish pipeline and vault listings.
 func inferDescription(content string) string {
-	lines := strings.Split(content, "\n")
-	inFrontmatter := false
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if i == 0 && trimmed == "---" {
-			inFrontmatter = true
-			continue
-		}
-		if inFrontmatter {
-			if trimmed == "---" {
-				inFrontmatter = false
-				continue
-			}
-			if desc, ok := strings.CutPrefix(trimmed, "description:"); ok {
-				return strings.Trim(strings.TrimSpace(desc), `"'`)
-			}
-			continue
-		}
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		if len(trimmed) > 200 {
-			trimmed = trimmed[:197] + "…"
-		}
-		return trimmed
-	}
-	return ""
+	return asset.InferDescription(content)
 }
 
 // promptFileNameFor returns the canonical prompt filename for a type, so a
@@ -428,6 +402,43 @@ func (a *App) assembleDraft(name string, files []AssetFile) (Draft, error) {
 		}
 	}
 
+	return draft, a.saveDraft(draft)
+}
+
+// CreateDraftFromFiles creates a draft from in-memory files — the
+// extension API's drafts.create path. The id derives from the name and
+// is uniquified against existing drafts, so repeated creates (multiple
+// quick-captures, the same template twice) never clobber each other.
+func (a *App) CreateDraftFromFiles(name string, files []AssetFile) (Draft, error) {
+	draftsMu.Lock()
+	defer draftsMu.Unlock()
+	if len(files) == 0 {
+		return Draft{}, errors.New("a draft needs at least one file")
+	}
+	base := slugify(name)
+	if base == "" {
+		base = "extension-draft"
+	}
+	id := base
+	for i := 2; ; i++ {
+		if _, err := a.loadDraft(id); err != nil {
+			break // free slot
+		}
+		id = fmt.Sprintf("%s-%d", base, i)
+	}
+	t := asset.TypeSkill
+	if zipData, err := zipFromFiles(files); err == nil {
+		if _, detected, _, derr := publish.DetectNameAndType(zipData, id); derr == nil && detected.Key != "" {
+			t = detected
+		}
+	}
+	draft := Draft{
+		ID:        id,
+		Name:      id,
+		Type:      t.Key,
+		TypeLabel: t.Label,
+		Files:     files,
+	}
 	return draft, a.saveDraft(draft)
 }
 

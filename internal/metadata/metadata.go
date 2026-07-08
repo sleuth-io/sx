@@ -26,7 +26,18 @@ type Metadata struct {
 	MCP              *MCPConfig              `toml:"mcp,omitempty"`
 	ClaudeCodePlugin *ClaudeCodePluginConfig `toml:"claude-code-plugin,omitempty"`
 	Rule             *RuleConfig             `toml:"rule,omitempty"`
+	AppPlugin        *AppPluginConfig        `toml:"app-plugin,omitempty"`
 	Custom           map[string]any          `toml:"custom,omitempty"`
+}
+
+// AppPluginConfig represents the [app-plugin] section — sx desktop app
+// extensions (docs/app-plugins-spec.md). Entry is the bundled ES module
+// (default main.js); Permissions mirrors plugin.json for vault-side
+// indexing and policy tooling (plugin.json inside the bundle remains the
+// runtime source of truth).
+type AppPluginConfig struct {
+	Entry       string   `toml:"entry,omitempty"`
+	Permissions []string `toml:"permissions,omitempty"`
 }
 
 // Asset represents the [asset] section (formerly [artifact])

@@ -20,6 +20,8 @@ import {
 } from "../../wailsjs/go/main/App";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import type { main } from "../../wailsjs/go/models";
+import ExtensionsSection from "./ExtensionsSection";
+import MarketplaceSection from "./MarketplaceSection";
 import Modal from "./Modal";
 import RepoPicker, { CreateRepoCard, suggestRepoName } from "./RepoPicker";
 
@@ -48,6 +50,7 @@ export default function SettingsModal({
   onLibrariesChanged?: () => void;
 }) {
   const [settings, setSettings] = useState<main.Settings | null>(null);
+  const [tab, setTab] = useState<"libraries" | "extensions">("libraries");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -70,8 +73,12 @@ export default function SettingsModal({
   const [removeSource, setRemoveSource] = useState(false);
   const [removeError, setRemoveError] = useState("");
 
-  // Which library's ⋯ menu is open.
+  // Which library's ⋯ menu is open, and where its trigger sits. The menu
+  // renders position:fixed (the modal body scrolls and would clip an
+  // absolutely-positioned flyout), so we anchor to the trigger's rect and
+  // close on any scroll rather than drift away from it.
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
   useEffect(() => {
     if (menuFor === null) return;
     const onDown = (e: globalThis.MouseEvent) => {
@@ -80,8 +87,15 @@ export default function SettingsModal({
       );
       if (!root) setMenuFor(null);
     };
+    const close = () => setMenuFor(null);
     window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
   }, [menuFor]);
 
   const load = () => {
@@ -270,8 +284,38 @@ export default function SettingsModal({
   }
 
   return (
-    <Modal title="Settings" onClose={onClose} width="w-[540px]">
-      {!settings ? (
+    <Modal title="Settings" onClose={onClose} width="w-[760px]">
+      {/* Settings tab rail (org-settings pattern): each concern gets its
+          own tab instead of one long scroll. */}
+      <div className="flex min-h-[420px] gap-5">
+        <nav className="w-40 shrink-0 border-r border-line pr-3">
+          {(
+            [
+              ["libraries", "Libraries"],
+              ["extensions", "Extensions"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              data-settings-tab={key}
+              onClick={() => setTab(key)}
+              className={`mb-1 w-full rounded-lg px-3 py-1.5 text-left text-sm transition ${
+                tab === key
+                  ? "bg-accent-soft font-medium text-accent"
+                  : "text-ink-soft hover:bg-canvas hover:text-ink"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+        <div className="min-w-0 flex-1">
+      {tab === "extensions" ? (
+        <>
+          <ExtensionsSection />
+          <MarketplaceSection />
+        </>
+      ) : !settings ? (
         <div className="h-20 animate-pulse rounded-lg bg-canvas" />
       ) : (
         <>
@@ -344,9 +388,10 @@ export default function SettingsModal({
                 )}
                 <div className="relative shrink-0" data-library-menu={p.name}>
                   <button
-                    onClick={() =>
-                      setMenuFor(menuFor === p.name ? null : p.name)
-                    }
+                    onClick={(e) => {
+                      setMenuRect(e.currentTarget.getBoundingClientRect());
+                      setMenuFor(menuFor === p.name ? null : p.name);
+                    }}
                     disabled={busy !== ""}
                     title={`Options for ${p.name}`}
                     aria-label={`Options for ${p.name}`}
@@ -368,8 +413,37 @@ export default function SettingsModal({
                       <circle cx="13" cy="8" r="1.4" />
                     </svg>
                   </button>
-                  {menuFor === p.name && (
-                    <div className="absolute right-0 top-full z-40 mt-1 w-60 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                  {menuFor === p.name && menuRect && (
+                    <div
+                      // Positioned from the menu's MEASURED height (the
+                      // ref runs after insertion, before paint): open
+                      // below the trigger when it fits, flip above when
+                      // it doesn't. Menu height varies too much across
+                      // library types for an estimate.
+                      ref={(el) => {
+                        if (!el) return;
+                        const h = el.getBoundingClientRect().height;
+                        if (menuRect.bottom + 4 + h <= window.innerHeight - 8) {
+                          el.style.top = `${menuRect.bottom + 4}px`;
+                          el.style.bottom = "";
+                        } else if (h <= menuRect.top - 12) {
+                          el.style.top = "";
+                          el.style.bottom = `${window.innerHeight - menuRect.top + 4}px`;
+                        } else {
+                          // Fits neither side (tiny window): pin to the
+                          // top and let the internal scroll take over.
+                          el.style.top = "8px";
+                          el.style.bottom = "";
+                        }
+                      }}
+                      className="fixed z-[70] w-60 overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-xl"
+                      style={{
+                        right: window.innerWidth - menuRect.right,
+                        // Backstop for tiny windows: never exceed the
+                        // viewport; scroll internally instead.
+                        maxHeight: "calc(100vh - 16px)",
+                      }}
+                    >
                       {p.type === "sleuth" ? (
                         <div className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink-faint">
                           <span className="w-3.5" />
@@ -682,11 +756,14 @@ export default function SettingsModal({
           </div>
         </>
       )}
-      {error && (
+
+      {error && tab === "libraries" && (
         <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
           {error}
         </div>
       )}
+        </div>
+      </div>
 
       {/* Remove-library confirmation. Deleting the source is opt-in and
           spelled out; plain removal just disconnects. */}

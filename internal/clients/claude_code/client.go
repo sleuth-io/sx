@@ -31,7 +31,7 @@ func NewClient() *Client {
 		BaseClient: clients.NewBaseClient(
 			clients.ClientIDClaudeCode,
 			"Claude Code",
-			asset.AllTypes(),
+			asset.ClientTypes(),
 		),
 	}
 }

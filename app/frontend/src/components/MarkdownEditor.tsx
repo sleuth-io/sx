@@ -39,10 +39,13 @@ export default function MarkdownEditor({
   value,
   onChange,
   readOnly = false,
+  onView,
 }: {
   value: string;
   onChange: (value: string) => void;
   readOnly?: boolean;
+  /** Receives the live CodeMirror view (for the extension editor API). */
+  onView?: (view: EditorView) => void;
 }) {
   const dark = usePrefersDark();
   return (
@@ -50,6 +53,7 @@ export default function MarkdownEditor({
       value={value}
       onChange={onChange}
       readOnly={readOnly}
+      onCreateEditor={(view) => onView?.(view)}
       theme={dark ? "dark" : "light"}
       extensions={[markdown(), baseTheme, EditorView.lineWrapping]}
       basicSetup={{

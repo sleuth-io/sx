@@ -1,15 +1,20 @@
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import type { main } from "../../wailsjs/go/models";
+import { useSlot } from "../plugins/registry";
+import PluginMount from "./PluginMount";
 
 export type Scope =
   | { kind: "all" }
   | { kind: "installed" }
   | { kind: "drafts" }
+  | { kind: "dashboard" }
+  | { kind: "plugin-view"; name: string }
   | { kind: "collection"; name: string }
   | { kind: "team"; name: string }
   | { kind: "repo"; name: string };
 
 function scopeKey(s: Scope): string {
+  if (s.kind === "plugin-view") return "plugin-view:" + s.name;
   if (s.kind === "collection") return "collection:" + s.name;
   if (s.kind === "team") return "team:" + s.name;
   if (s.kind === "repo") return "repo:" + s.name;
@@ -95,6 +100,13 @@ export default function Sidebar({
   width: number;
 }) {
   const active = scopeKey(scope);
+  const sidebarPanels = useSlot("sidebar-panel");
+  const dashboardWidgets = useSlot("dashboard-widget").length;
+  const mainViews = useSlot("main-view");
+  // Collapsed by default; remembering the choice per machine.
+  const [toolsOpen, setToolsOpen] = useState(
+    () => localStorage.getItem("sx-tools-open") === "1",
+  );
 
   return (
     <aside
@@ -173,6 +185,26 @@ export default function Sidebar({
             accent="amber"
           />
         )}
+        {dashboardWidgets > 0 && (
+          <Row
+            label="Dashboard"
+            count={dashboardWidgets}
+            active={active === "dashboard"}
+            onClick={() => onScope({ kind: "dashboard" })}
+          />
+        )}
+        {/* Extension-contributed full-page views (views:main). */}
+        {mainViews.map((v) => {
+          const key = v.pluginId + ":" + v.spec.id;
+          return (
+            <Row
+              key={key}
+              label={v.spec.title}
+              active={active === "plugin-view:" + key}
+              onClick={() => onScope({ kind: "plugin-view", name: key })}
+            />
+          );
+        })}
 
         <div className="mt-4 flex items-center justify-between pr-1">
           <SectionLabel>COLLECTIONS</SectionLabel>
@@ -315,6 +347,55 @@ export default function Sidebar({
             )}
           </>
         )}
+
+        {/* Extension-contributed sidebar panels (views:sidebar) live
+            under ONE collapsed TOOLS section at the BOTTOM — they're
+            tools that act on the library, not core navigation, and
+            expanded by default they crowd out collections and teams.
+            Collapsed, the tool names still show so the section never
+            reads as an empty header. */}
+        {sidebarPanels.length > 0 && (
+          <div className="mt-4" data-tools-section>
+            <button
+              onClick={() => {
+                setToolsOpen((v) => {
+                  localStorage.setItem("sx-tools-open", v ? "" : "1");
+                  return !v;
+                });
+              }}
+              className="w-full rounded-lg px-2 pb-1 pt-2 text-left transition hover:bg-canvas"
+              aria-expanded={toolsOpen}
+              title={toolsOpen ? "Collapse tools" : "Expand tools"}
+            >
+              <span className="flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold tracking-wide text-ink-faint">
+                  TOOLS
+                </span>
+                <span className="text-xs leading-none text-ink-faint">
+                  {toolsOpen ? "▾" : "▸"}
+                </span>
+              </span>
+              {!toolsOpen && (
+                <span className="mt-0.5 block truncate text-xs text-ink-faint">
+                  {sidebarPanels.map((p) => p.spec.title).join(" · ")}
+                </span>
+              )}
+            </button>
+            {toolsOpen &&
+              sidebarPanels.map((p) => (
+                <div key={p.pluginId + ":" + p.spec.id} className="mt-1">
+                  <div className="px-2 text-[10px] font-semibold tracking-wider text-ink-faint">
+                    {p.spec.title.toUpperCase()}
+                  </div>
+                  <PluginMount
+                    pluginId={p.pluginId}
+                    mount={p.spec.mount}
+                    className="px-1"
+                  />
+                </div>
+              ))}
+          </div>
+        )}
       </nav>
 
       {/* Who you are in this library: the skills.new account, or the git
@@ -367,7 +448,7 @@ function Row({
   accent,
 }: {
   label: string;
-  count: number;
+  count?: number;
   active: boolean;
   onClick: () => void;
   accent?: "amber";
@@ -382,15 +463,17 @@ function Row({
       }`}
     >
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span
-        className={`text-xs tabular-nums ${
-          accent === "amber" && !active
-            ? "rounded-full bg-amber-50 px-1.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-            : "text-ink-faint"
-        }`}
-      >
-        {count}
-      </span>
+      {count !== undefined && (
+        <span
+          className={`text-xs tabular-nums ${
+            accent === "amber" && !active
+              ? "rounded-full bg-amber-50 px-1.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+              : "text-ink-faint"
+          }`}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }

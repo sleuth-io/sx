@@ -127,6 +127,26 @@ export namespace main {
 	        this.assets = source["assets"];
 	    }
 	}
+	export class ContentMatch {
+	    name: string;
+	    matches: number;
+	    before: string;
+	    match: string;
+	    after: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ContentMatch(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.matches = source["matches"];
+	        this.before = source["before"];
+	        this.match = source["match"];
+	        this.after = source["after"];
+	    }
+	}
 	export class Draft {
 	    id: string;
 	    name: string;
@@ -199,6 +219,20 @@ export namespace main {
 	        this.reason = source["reason"];
 	    }
 	}
+	export class ImportResult {
+	    created: string[];
+	    skipped: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImportResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.created = source["created"];
+	        this.skipped = source["skipped"];
+	    }
+	}
 	export class InstalledAssetInfo {
 	    name: string;
 	    version: string;
@@ -242,6 +276,166 @@ export namespace main {
 	        this.sharedSource = source["sharedSource"];
 	        this.sourceProvider = source["sourceProvider"];
 	    }
+	}
+	export class MarketplaceExtension {
+	    assetName: string;
+	    id: string;
+	    name: string;
+	    version: string;
+	    description: string;
+	    author: string;
+	    permissions: string[];
+	    installed: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MarketplaceExtension(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.assetName = source["assetName"];
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.version = source["version"];
+	        this.description = source["description"];
+	        this.author = source["author"];
+	        this.permissions = source["permissions"];
+	        this.installed = source["installed"];
+	    }
+	}
+	export class PluginAuditEventRecord {
+	    timestamp: string;
+	    actor: string;
+	    event: string;
+	    targetType: string;
+	    target: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginAuditEventRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = source["timestamp"];
+	        this.actor = source["actor"];
+	        this.event = source["event"];
+	        this.targetType = source["targetType"];
+	        this.target = source["target"];
+	    }
+	}
+	export class PluginMetadataPatch {
+	    description?: string;
+	    keywords: string[];
+	    owner?: string;
+	    status?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginMetadataPatch(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.description = source["description"];
+	        this.keywords = source["keywords"];
+	        this.owner = source["owner"];
+	        this.status = source["status"];
+	    }
+	}
+	export class PluginPolicy {
+	    mode: string;
+	    allowed: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginPolicy(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.allowed = source["allowed"];
+	    }
+	}
+	export class PluginTeamRecord {
+	    name: string;
+	    members: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginTeamRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.members = source["members"];
+	    }
+	}
+	export class PluginUsageEventRecord {
+	    timestamp: string;
+	    actor: string;
+	    assetName: string;
+	    assetVersion: string;
+	    assetType: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginUsageEventRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = source["timestamp"];
+	        this.actor = source["actor"];
+	        this.assetName = source["assetName"];
+	        this.assetVersion = source["assetVersion"];
+	        this.assetType = source["assetType"];
+	    }
+	}
+	export class PluginUserActivity {
+	    actor: string;
+	    events: number;
+	    distinctAssets: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginUserActivity(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.actor = source["actor"];
+	        this.events = source["events"];
+	        this.distinctAssets = source["distinctAssets"];
+	    }
+	}
+	export class PluginUserStatsResult {
+	    knownUsers: string[];
+	    active: PluginUserActivity[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginUserStatsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.knownUsers = source["knownUsers"];
+	        this.active = this.convertValues(source["active"], PluginUserActivity);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class ProfileInfo {
 	    name: string;
@@ -393,6 +587,22 @@ export namespace main {
 	        this.identity = source["identity"];
 	        this.trackRepos = source["trackRepos"];
 	        this.icon = source["icon"];
+	    }
+	}
+	export class VaultPlugin {
+	    assetName: string;
+	    manifest: string;
+	    source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new VaultPlugin(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.assetName = source["assetName"];
+	        this.manifest = source["manifest"];
+	        this.source = source["source"];
 	    }
 	}
 

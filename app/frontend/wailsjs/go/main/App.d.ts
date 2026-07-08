@@ -6,9 +6,13 @@ export function AddAssetRepoScope(arg1:string,arg2:string):Promise<void>;
 
 export function AddCollectionRepoScope(arg1:string,arg2:string):Promise<void>;
 
+export function AddExtensionFromFolder():Promise<string>;
+
 export function AddLibrary(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.VaultInfo>;
 
 export function AddTeamMember(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function AppVersion():Promise<string>;
 
 export function AvailableRepoName(arg1:string):Promise<string>;
 
@@ -29,6 +33,8 @@ export function CreateBlankDraft(arg1:string):Promise<main.Draft>;
 export function CreateCollection(arg1:string):Promise<main.Collection>;
 
 export function CreateDraftFromAsset(arg1:string):Promise<main.Draft>;
+
+export function CreateDraftFromFiles(arg1:string,arg2:Array<main.AssetFile>):Promise<main.Draft>;
 
 export function CreateDraftFromPaths(arg1:Array<string>):Promise<main.Draft>;
 
@@ -56,6 +62,10 @@ export function GetCollectionSharing(arg1:string):Promise<main.AssetSharing>;
 
 export function GetDraft(arg1:string):Promise<main.Draft>;
 
+export function GetMarketplaceURL():Promise<string>;
+
+export function GetPluginPolicy():Promise<main.PluginPolicy>;
+
 export function GetSettings():Promise<main.Settings>;
 
 export function GetVaultInfo():Promise<main.VaultInfo>;
@@ -67,6 +77,10 @@ export function GitStatus():Promise<main.GitStatusInfo>;
 export function HasIdentity():Promise<boolean>;
 
 export function HideApp():Promise<void>;
+
+export function ImportDraftsFromFolder():Promise<main.ImportResult>;
+
+export function InstallMarketplaceExtension(arg1:string):Promise<string>;
 
 export function InstalledAssets():Promise<Array<main.InstalledAssetInfo>>;
 
@@ -84,6 +98,8 @@ export function ListSyncFolders():Promise<Array<main.SyncFolderOption>>;
 
 export function ListTeams():Promise<Array<main.TeamInfo>>;
 
+export function ListVaultPlugins():Promise<Array<main.VaultPlugin>>;
+
 export function OpenSettings():Promise<void>;
 
 export function PickDirectory():Promise<string>;
@@ -91,6 +107,34 @@ export function PickDirectory():Promise<string>;
 export function PickFilesForDraft():Promise<main.Draft>;
 
 export function PickFolderForDraft():Promise<main.Draft>;
+
+export function PluginAuditEvents(arg1:number):Promise<Array<main.PluginAuditEventRecord>>;
+
+export function PluginConsents():Promise<Record<string, Array<string>>>;
+
+export function PluginCurrentUser():Promise<string>;
+
+export function PluginDecisions():Promise<Record<string, boolean>>;
+
+export function PluginLoadData(arg1:string):Promise<string>;
+
+export function PluginSaveData(arg1:string,arg2:string):Promise<void>;
+
+export function PluginSecretGet(arg1:string,arg2:string):Promise<string>;
+
+export function PluginSecretSet(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function PluginSharedLoad(arg1:string):Promise<string>;
+
+export function PluginSharedSave(arg1:string,arg2:string):Promise<void>;
+
+export function PluginTeams():Promise<Array<main.PluginTeamRecord>>;
+
+export function PluginUsageEvents(arg1:number):Promise<Array<main.PluginUsageEventRecord>>;
+
+export function PluginUserStats(arg1:number):Promise<main.PluginUserStatsResult>;
+
+export function PluginWriteMetadata(arg1:string,arg2:main.PluginMetadataPatch):Promise<void>;
 
 export function PublishDraft(arg1:string):Promise<main.AssetCard>;
 
@@ -108,6 +152,10 @@ export function RepoAssets():Promise<Record<string, Array<string>>>;
 
 export function RestoreRevision(arg1:string,arg2:string):Promise<void>;
 
+export function SearchAssetContent(arg1:string):Promise<Array<main.ContentMatch>>;
+
+export function SearchMarketplace(arg1:string):Promise<Array<main.MarketplaceExtension>>;
+
 export function SetAssetPersonal(arg1:string,arg2:boolean):Promise<string>;
 
 export function SetAssetTeamSharing(arg1:string,arg2:string,arg3:boolean):Promise<void>;
@@ -121,6 +169,12 @@ export function SetCollectionTeamSharing(arg1:string,arg2:string,arg3:boolean):P
 export function SetLibraryActive(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetLibraryRepoTracking(arg1:string,arg2:boolean):Promise<main.VaultInfo>;
+
+export function SetMarketplaceURL(arg1:string):Promise<void>;
+
+export function SetPluginConsent(arg1:string,arg2:Array<string>):Promise<void>;
+
+export function SetPluginDecision(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetTeamAdmin(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
@@ -147,3 +201,5 @@ export function SyncAITools():Promise<string>;
 export function TeamAssets():Promise<Record<string, Array<string>>>;
 
 export function UpdateDraft(arg1:main.Draft):Promise<main.Draft>;
+
+export function VaultSupportsExtensions():Promise<boolean>;

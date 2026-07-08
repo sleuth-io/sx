@@ -260,7 +260,9 @@ func (a *App) DeleteAssets(names []string) error {
 		}
 		if err := v.RemoveAsset(a.ctx, name, "", true); err != nil {
 			failed = append(failed, name)
+			continue
 		}
+		a.purgeSearchCache(name)
 	}
 	if len(failed) > 0 {
 		return fmt.Errorf("could not delete: %s", strings.Join(failed, ", "))

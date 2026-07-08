@@ -1722,6 +1722,18 @@ func (s *SleuthVault) QueryAuditEvents(ctx context.Context, filter mgmt.AuditFil
 		if !conn.PageInfo.HasNextPage || conn.PageInfo.EndCursor == nil {
 			break
 		}
+		// The server log is newest-first; once a page ends past a Since
+		// window there is nothing more to find. Without this, a
+		// Since-bounded query still pages the org's entire history
+		// (verify the ordering per page so an ordering change can't
+		// silently truncate results).
+		if !filter.Since.IsZero() && len(conn.Nodes) > 1 {
+			first := conn.Nodes[0].Date
+			last := conn.Nodes[len(conn.Nodes)-1].Date
+			if first.After(last) && last.Before(filter.Since) {
+				break
+			}
+		}
 		after = conn.PageInfo.EndCursor
 	}
 	return out, nil

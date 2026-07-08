@@ -7,6 +7,8 @@ package publish
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/assets/detectors"
@@ -80,23 +82,66 @@ func SuggestVersionFromList(ctx context.Context, vault VersionReader, name strin
 
 // BuildMetadata produces the metadata to stamp into a publish: existing
 // metadata from the zip (with name/version/type overridden) when present,
-// or freshly detected metadata otherwise.
+// or freshly detected metadata otherwise. A missing description backfills
+// from the bundle's markdown frontmatter — authors declare it there, and
+// every listing surface reads metadata.
 func BuildMetadata(name, ver string, assetType asset.Type, zipData []byte) *metadata.Metadata {
+	meta := (*metadata.Metadata)(nil)
 	if metadataBytes, err := utils.ReadZipFile(zipData, "metadata.toml"); err == nil {
-		if existing, err := metadata.Parse(metadataBytes); err == nil {
-			existing.Asset.Name = name
-			existing.Asset.Version = ver
-			existing.Asset.Type = assetType
-			return existing
+		if existing, parseErr := metadata.Parse(metadataBytes); parseErr == nil {
+			meta = existing
 		}
 	}
-
-	files, _ := utils.ListZipFiles(zipData)
-	meta := detectors.DetectAssetType(files, name, ver)
+	if meta == nil {
+		files, _ := utils.ListZipFiles(zipData)
+		meta = detectors.DetectAssetType(files, name, ver)
+	}
 	meta.Asset.Name = name
 	meta.Asset.Version = ver
 	meta.Asset.Type = assetType
+	if meta.Asset.Description == "" {
+		meta.Asset.Description = inferZipDescription(zipData)
+	}
 	return meta
+}
+
+// inferZipDescription pulls a description from the bundle's markdown:
+// SKILL.md first, then the alphabetically first top-level markdown file.
+func inferZipDescription(zipData []byte) string {
+	files, err := utils.ListZipFiles(zipData)
+	if err != nil {
+		return ""
+	}
+	var skill, others []string
+	for _, name := range files {
+		if strings.ContainsRune(name, '/') {
+			continue
+		}
+		lower := strings.ToLower(name)
+		if !strings.HasSuffix(lower, ".md") && !strings.HasSuffix(lower, ".markdown") {
+			continue
+		}
+		if lower == "skill.md" {
+			skill = append(skill, name)
+		} else {
+			others = append(others, name)
+		}
+	}
+	// SKILL.md first, then the rest alphabetically — sorted even when
+	// SKILL.md exists, so the fallback stays deterministic when it
+	// yields no description.
+	sort.Strings(others)
+	candidates := append(skill, others...)
+	for _, name := range candidates {
+		content, err := utils.ReadZipFile(zipData, name)
+		if err != nil {
+			continue
+		}
+		if desc := asset.InferDescription(string(content)); desc != "" {
+			return desc
+		}
+	}
+	return ""
 }
 
 // ApplyMetadata writes meta into the zip as metadata.toml, replacing an

@@ -221,6 +221,21 @@ exists to avoid fan-out drift: partial installs from per-asset failures,
 members added later not inheriting targets, and collection uninstalls
 deleting direct installs they didn't create.
 
+## `[app-plugins]` — desktop-app extension policy
+
+Optional. Gates which extensions the sx desktop app may enable
+(docs/app-plugins-spec.md). Absent means open. `allowlist` restricts
+**vault-installed extensions only** (built-ins always stay available);
+`disabled` turns off everything, built-ins included. Only org-admins may
+change it on a governed vault; writes append a `plugin.policy-changed`
+audit event.
+
+```toml
+[app-plugins]
+mode    = "allowlist"   # "open" | "allowlist" | "disabled"
+allowed = ["acme-metrics", "team-linter"]
+```
+
 ## `[org]` — vault governance
 
 Optional. Holds the **org-admins** list — the file-vault stand-in for an org

@@ -3,6 +3,7 @@ package manifest
 import (
 	"sort"
 
+	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/mgmt"
 	"github.com/sleuth-io/sx/internal/scope"
@@ -85,6 +86,12 @@ func Resolve(m *Manifest, actor mgmt.Actor) *lockfile.LockFile {
 	out.Assets = make([]lockfile.Asset, 0, len(m.Assets))
 	for i := range m.Assets {
 		src := m.Assets[i]
+		// App extensions never install into AI clients; the desktop app
+		// reads them from the vault directly, so the lock (which exists
+		// to drive client installs) excludes them entirely.
+		if src.Type.Key == asset.TypeAppPlugin.Key {
+			continue
+		}
 		dst := lockfile.Asset{
 			Name:         src.Name,
 			Version:      src.Version,

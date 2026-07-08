@@ -83,8 +83,20 @@ func main() {
 		})
 	}
 
+	// Edit precedes View per the platform-standard macOS menu order
+	// (App, File, Edit, View, Window, Help).
 	if goruntime.GOOS == "darwin" {
 		appMenu.Append(menu.EditMenu())
+	}
+
+	// View holds the command palette so the menu bar advertises the ⌘K
+	// accelerator — the platform-native way users discover shortcuts.
+	// The frontend also handles the raw keydown; its toggle is debounced
+	// so double delivery (native accelerator + webview key) is one toggle.
+	viewMenu := appMenu.AddSubmenu("View")
+	viewMenu.AddText("Command Palette…", keys.CmdOrCtrl("k"), emit("command-palette"))
+
+	if goruntime.GOOS == "darwin" {
 		appMenu.Append(menu.WindowMenu())
 	}
 
