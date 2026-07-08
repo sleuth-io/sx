@@ -166,11 +166,13 @@ func (a *App) GetCollectionInstallations(name string) (InstallationsView, error)
 	return installationsView(targets, present), nil
 }
 
-// AddCollectionInstallation adds one install row to a collection. An org
-// row REPLACES the other rows: asset org installs clear scopes at the
-// vault layer, but collection org installs are an explicit row that
-// coexists, so the replacement the dialog promises ("replaces every row
-// above") is done here — set org first, then drop the rest best-effort.
+// AddCollectionInstallation adds one install row to a collection, with
+// the same narrowing semantics assets get from the vault layer: an org
+// row REPLACES the other rows, and a narrower row replaces an org row.
+// Asset org installs clear scopes in the vault; collection org installs
+// are an explicit row that would coexist, so both replacements are done
+// here — set the new row first, then drop the contradicted rows
+// best-effort.
 func (a *App) AddCollectionInstallation(name string, inst AssetInstallation) error {
 	if _, err := a.findCollection(name); err != nil {
 		return err
@@ -183,29 +185,31 @@ func (a *App) AddCollectionInstallation(name string, inst AssetInstallation) err
 	if err != nil {
 		return err
 	}
-	var previous []vaultpkg.InstallTarget
-	if target.Kind == vaultpkg.InstallKindOrg {
-		previous, _, err = r.CurrentCollectionInstallTargets(a.ctx, name)
-		if err != nil {
-			return friendlyVaultError(err)
-		}
+	previous, _, err := r.CurrentCollectionInstallTargets(a.ctx, name)
+	if err != nil {
+		return friendlyVaultError(err)
 	}
 	if err := r.SetCollectionInstallation(a.ctx, name, target); err != nil {
 		return friendlyVaultError(err)
 	}
-	if target.Kind == vaultpkg.InstallKindOrg {
-		var failed int
-		for _, t := range previous {
-			if t.Kind == vaultpkg.InstallKindOrg {
-				continue
-			}
-			if err := r.RemoveCollectionInstallation(a.ctx, name, t); err != nil {
-				failed++
-			}
+	var failed int
+	for _, t := range previous {
+		contradicted := t.Kind != vaultpkg.InstallKindOrg
+		if target.Kind != vaultpkg.InstallKindOrg {
+			// Narrow add: only an org row contradicts it — everyone
+			// would keep receiving the collection despite the narrower
+			// intent.
+			contradicted = t.Kind == vaultpkg.InstallKindOrg
 		}
-		if failed > 0 {
-			return fmt.Errorf("installed for everyone, but %d previous row(s) could not be removed", failed)
+		if !contradicted {
+			continue
 		}
+		if err := r.RemoveCollectionInstallation(a.ctx, name, t); err != nil {
+			failed++
+		}
+	}
+	if failed > 0 {
+		return fmt.Errorf("installed, but %d contradicted row(s) could not be removed", failed)
 	}
 	return nil
 }
@@ -276,22 +280,31 @@ func (a *App) ListVaultBots() ([]string, error) {
 	return out, nil
 }
 
-// ListKnownRepos returns repository URLs the vault already knows about
-// (team repositories), as suggestions for the Repo picker — free-text
-// URLs are also accepted by AddAssetInstallation.
+// ListKnownRepos returns repository URLs the vault already knows about —
+// team repositories plus repos already carrying install scopes — as
+// suggestions for the Repo picker. The dialog hides the Repo option
+// entirely when this is empty (the app stays simple until repositories
+// actually exist); free-text URLs are still accepted by
+// AddAssetInstallation when it shows.
 func (a *App) ListKnownRepos() ([]string, error) {
 	seen := map[string]bool{}
 	out := []string{}
-	teams, err := a.ListTeams()
-	if err != nil {
-		return out, nil
+	add := func(r string) {
+		if r = strings.TrimSpace(r); r != "" && !seen[r] {
+			seen[r] = true
+			out = append(out, r)
+		}
 	}
-	for _, t := range teams {
-		for _, r := range t.Repositories {
-			if r = strings.TrimSpace(r); r != "" && !seen[r] {
-				seen[r] = true
-				out = append(out, r)
+	if teams, err := a.ListTeams(); err == nil {
+		for _, t := range teams {
+			for _, r := range t.Repositories {
+				add(r)
 			}
+		}
+	}
+	if repoAssets, err := a.RepoAssets(); err == nil {
+		for r := range repoAssets {
+			add(r)
 		}
 	}
 	sort.Strings(out)

@@ -104,6 +104,16 @@ func TestCollectionOrgInstallReplacesRows(t *testing.T) {
 	if len(view.Installations) != 1 || view.Installations[0].Kind != "org" {
 		t.Fatalf("rows after org = %+v; want just the org row", view.Installations)
 	}
+
+	// And the other direction: a narrower install replaces the org row,
+	// otherwise everyone would keep receiving it despite the intent.
+	if err := a.AddCollectionInstallation("starter", AssetInstallation{Kind: "team", Team: "infra"}); err != nil {
+		t.Fatalf("narrow install: %v", err)
+	}
+	view, _ = a.GetCollectionInstallations("starter")
+	if len(view.Installations) != 1 || view.Installations[0].Kind != "team" {
+		t.Fatalf("rows after narrow = %+v; want just the team row", view.Installations)
+	}
 }
 
 func TestInstallationValidation(t *testing.T) {

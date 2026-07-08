@@ -138,6 +138,38 @@ export default function ShareModal({
     (i) => i.kind === "user" && (i.user ?? "").toLowerCase() === self.toLowerCase(),
   );
 
+  // Keep the picker simple: repo/team/bot options appear only once such
+  // things exist in the library. Org and Personal always apply.
+  const visibleKinds = ADD_KINDS.filter((k) => {
+    if (k.key === "repo") return repoSuggestions.length > 0;
+    if (k.key === "team") return teams.length > 0;
+    if (k.key === "bot") return bots.length > 0;
+    return true;
+  });
+  const activeKind: AddKind = visibleKinds.some((k) => k.key === addKind)
+    ? addKind
+    : (visibleKinds[0]?.key ?? "org");
+
+  // Narrowing works both ways and deserves a heads-up: an org install
+  // removes every narrower row, and adding a narrower row while everyone
+  // receives it takes it away from everyone else.
+  const orgRowPresent = has((i) => i.kind === "org");
+  const coversEveryone = (view?.everyone ?? false) || orgRowPresent;
+  const narrowingWarning = (() => {
+    if (!view) return "";
+    if (activeKind === "org" && rows.length > 0 && !view.everyone) {
+      const n = rows.filter((i) => i.kind !== "org").length;
+      if (n > 0) {
+        return `Installing for everyone removes the ${n} narrower installation${n === 1 ? "" : "s"} above — the whole library receives it instead.`;
+      }
+      return "";
+    }
+    if (activeKind !== "org" && coversEveryone) {
+      return "This is currently installed for everyone. Adding a narrower installation replaces that — only the rows listed here will receive it.";
+    }
+    return "";
+  })();
+
   return (
     <Modal title={title} onClose={onClose} width="w-[480px]">
       {!view ? (
@@ -190,7 +222,7 @@ export default function ShareModal({
             ADD NEW INSTALLATIONS
           </div>
           <div className="mb-2 flex rounded-lg border border-line p-0.5">
-            {ADD_KINDS.map((k) => (
+            {visibleKinds.map((k) => (
               <button
                 key={k.key}
                 onClick={() => {
@@ -199,7 +231,7 @@ export default function ShareModal({
                 }}
                 data-add-kind={k.key}
                 className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition ${
-                  addKind === k.key
+                  activeKind === k.key
                     ? "bg-accent text-white"
                     : "text-ink-soft hover:text-ink"
                 }`}
@@ -209,7 +241,16 @@ export default function ShareModal({
             ))}
           </div>
 
-          {addKind === "repo" && (
+          {narrowingWarning && (
+            <p
+              data-narrowing-warning
+              className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+            >
+              {narrowingWarning}
+            </p>
+          )}
+
+          {activeKind === "repo" && (
             <div className="flex gap-2">
               <input
                 value={repoInput}
@@ -243,53 +284,47 @@ export default function ShareModal({
             </div>
           )}
 
-          {addKind === "team" &&
-            (teams.length > 0 ? (
-              <>
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search teams…"
-                  disabled={busy}
-                  className="mb-1.5 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
-                />
-                <ul className="max-h-40 space-y-1 overflow-y-auto">
-                  {teamCandidates.map((t) => (
-                    <li key={t.name}>
-                      <button
-                        onClick={() => void add({ kind: "team", team: t.name })}
-                        disabled={busy}
-                        className="flex w-full items-center rounded-lg px-3 py-1.5 text-left text-sm transition hover:bg-accent-soft disabled:opacity-50"
-                      >
-                        <span className="min-w-0 flex-1 truncate">
-                          {t.name}
-                        </span>
-                        <span className="text-xs text-ink-faint">
-                          {(t.members ?? []).length}{" "}
-                          {(t.members ?? []).length === 1
-                            ? "member"
-                            : "members"}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                  {teamCandidates.length === 0 && (
-                    <li className="px-3 py-1.5 text-sm text-ink-faint">
-                      {search
-                        ? "No teams match"
-                        : "Already installed for every team"}
-                    </li>
-                  )}
-                </ul>
-              </>
-            ) : (
-              <p className="text-sm text-ink-faint">
-                No teams yet — create one from the sidebar to share with a
-                specific group.
-              </p>
-            ))}
+          {activeKind === "team" && (
+            <>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search teams…"
+                disabled={busy}
+                className="mb-1.5 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+              />
+              <ul className="max-h-40 space-y-1 overflow-y-auto">
+                {teamCandidates.map((t) => (
+                  <li key={t.name}>
+                    <button
+                      onClick={() => void add({ kind: "team", team: t.name })}
+                      disabled={busy}
+                      className="flex w-full items-center rounded-lg px-3 py-1.5 text-left text-sm transition hover:bg-accent-soft disabled:opacity-50"
+                    >
+                      <span className="min-w-0 flex-1 truncate">
+                        {t.name}
+                      </span>
+                      <span className="text-xs text-ink-faint">
+                        {(t.members ?? []).length}{" "}
+                        {(t.members ?? []).length === 1
+                          ? "member"
+                          : "members"}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {teamCandidates.length === 0 && (
+                  <li className="px-3 py-1.5 text-sm text-ink-faint">
+                    {search
+                      ? "No teams match"
+                      : "Already installed for every team"}
+                  </li>
+                )}
+              </ul>
+            </>
+          )}
 
-          {addKind === "bot" &&
+          {activeKind === "bot" &&
             (botCandidates.length > 0 ? (
               <ul className="max-h-40 space-y-1 overflow-y-auto">
                 {botCandidates.map((b) => (
@@ -306,30 +341,23 @@ export default function ShareModal({
               </ul>
             ) : (
               <p className="text-sm text-ink-faint">
-                {bots.length > 0
-                  ? "Already installed for every bot."
-                  : "No bots in this library — create them with the sx CLI (sx bot add)."}
+                Already installed for every bot.
               </p>
             ))}
 
-          {addKind === "org" && (
+          {activeKind === "org" && (
             <button
               onClick={() => void add({ kind: "org" })}
-              disabled={busy || view.everyone}
+              disabled={busy || view.everyone || orgRowPresent}
               className="w-full rounded-lg border border-dashed border-line px-3 py-2 text-left text-sm text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-50"
             >
-              {view.everyone
-                ? "Already installed for everyone (the default)"
+              {view.everyone || orgRowPresent
+                ? "Already installed for everyone"
                 : "Install for everyone in this library"}
-              {!view.everyone && (
-                <span className="ml-1.5 text-xs text-ink-faint">
-                  replaces every row above
-                </span>
-              )}
             </button>
           )}
 
-          {addKind === "user" &&
+          {activeKind === "user" &&
             (self ? (
               <button
                 onClick={() => void add({ kind: "user" })}
