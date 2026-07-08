@@ -1231,13 +1231,11 @@ export default function Library({
                   this). The chip is clickable AND teaches the shortcut. */}
               <button
                 onClick={togglePalette}
+                aria-label="Command palette"
                 title="Command palette — every action, plus your extensions"
-                className="flex h-full items-center gap-1.5 rounded-lg px-2 text-sm text-ink-faint transition hover:bg-canvas hover:text-ink"
+                className="flex h-full items-center rounded-lg border border-line px-2.5 font-mono text-[11px] text-ink-faint transition hover:border-accent hover:text-ink"
               >
-                <kbd className="rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px]">
-                  {navigator.platform.includes("Mac") ? "⌘K" : "Ctrl K"}
-                </kbd>
-                <span className="hidden lg:inline">Commands</span>
+                {navigator.platform.includes("Mac") ? "⌘K" : "Ctrl K"}
               </button>
 
               {/* Search, type filter, sort, and list/grid act on the
