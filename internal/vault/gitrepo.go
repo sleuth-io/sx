@@ -309,18 +309,27 @@ func (g *GitVault) GetAssetByVersion(ctx context.Context, name, version string) 
 	return zipData, nil
 }
 
-// ReadRootFile reads one file from the vault root after syncing the clone
-// (e.g. a marketplace's catalog.json / stats.json). The name must be a
-// bare filename — no path separators — so callers can't walk out of the
-// root.
-func (g *GitVault) ReadRootFile(ctx context.Context, name string) ([]byte, error) {
-	if name == "" || name != filepath.Base(name) {
-		return nil, fmt.Errorf("invalid root file name %q", name)
+// ReadRootFiles reads files from the vault root behind ONE clone sync
+// (e.g. a marketplace's catalog.json + stats.json — per-file reads would
+// pay the fetch twice). Names must be bare filenames — no path
+// separators — so callers can't walk out of the root. Missing files are
+// simply absent from the result, not an error.
+func (g *GitVault) ReadRootFiles(ctx context.Context, names []string) (map[string][]byte, error) {
+	for _, name := range names {
+		if name == "" || name != filepath.Base(name) {
+			return nil, fmt.Errorf("invalid root file name %q", name)
+		}
 	}
 	if err := g.cloneOrUpdate(ctx); err != nil {
 		return nil, fmt.Errorf("failed to clone/update repository: %w", err)
 	}
-	return os.ReadFile(filepath.Join(g.repoPath, name))
+	out := make(map[string][]byte, len(names))
+	for _, name := range names {
+		if data, err := os.ReadFile(filepath.Join(g.repoPath, name)); err == nil {
+			out[name] = data
+		}
+	}
+	return out, nil
 }
 
 // GetMetadata retrieves metadata for a specific asset version. Git vaults

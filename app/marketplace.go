@@ -95,9 +95,11 @@ type MarketplaceExtension struct {
 }
 
 // rootFileReader is the optional vault capability behind marketplace
-// catalog and stats files (file-backed vaults implement it).
+// catalog and stats files (file-backed vaults implement it). The batch
+// shape matters: a git vault syncs its clone once per call, and the
+// marketplace needs two files per search.
 type rootFileReader interface {
-	ReadRootFile(ctx context.Context, name string) ([]byte, error)
+	ReadRootFiles(ctx context.Context, names []string) (map[string][]byte, error)
 }
 
 func (a *App) marketplaceConfigPath() (string, error) {
@@ -177,11 +179,14 @@ func (a *App) SearchMarketplace(query string) ([]MarketplaceExtension, error) {
 	if err != nil {
 		return out, err
 	}
-	entries, err := a.marketplaceEntries(mkt, query)
+	// Both root files in one read: on a git marketplace each read syncs
+	// the clone, so per-file reads would fetch the same repo twice.
+	files := a.marketplaceRootFiles(mkt)
+	entries, err := a.marketplaceEntries(mkt, files["catalog.json"], query)
 	if err != nil {
 		return out, err
 	}
-	stats := a.marketplaceStats(mkt)
+	stats := parseMarketplaceStats(files["stats.json"])
 	for i := range entries {
 		entries[i].Installs = stats[entries[i].ID]
 	}
@@ -189,13 +194,28 @@ func (a *App) SearchMarketplace(query string) ([]MarketplaceExtension, error) {
 	return append(out, entries...), nil
 }
 
+// marketplaceRootFiles reads the marketplace's catalog and stats files
+// behind one vault sync. Best-effort: vaults without the capability (or
+// unreadable roots) contribute nothing and callers fall back.
+func (a *App) marketplaceRootFiles(mkt vaultpkg.Vault) map[string][]byte {
+	reader, ok := mkt.(rootFileReader)
+	if !ok {
+		return nil
+	}
+	files, err := reader.ReadRootFiles(a.ctx, []string{"catalog.json", "stats.json"})
+	if err != nil {
+		return nil
+	}
+	return files
+}
+
 // marketplaceEntries prefers the marketplace's CI-generated catalog.json:
 // one root file read instead of unpacking every bundle — and mandatory
 // once version archives live behind HTTP sources, where a per-card bundle
 // fetch would be slow AND count as an install. Marketplaces without a
 // catalog (private or hand-built) fall back to scanning bundles.
-func (a *App) marketplaceEntries(mkt vaultpkg.Vault, query string) ([]MarketplaceExtension, error) {
-	if entries, ok := a.entriesFromCatalog(mkt, query); ok {
+func (a *App) marketplaceEntries(mkt vaultpkg.Vault, catalog []byte, query string) ([]MarketplaceExtension, error) {
+	if entries, ok := entriesFromCatalog(catalog, query); ok {
 		return entries, nil
 	}
 	res, err := mkt.ListAssets(a.ctx, vaultpkg.ListAssetsOptions{
@@ -216,16 +236,10 @@ func (a *App) marketplaceEntries(mkt vaultpkg.Vault, query string) ([]Marketplac
 	return out, nil
 }
 
-// entriesFromCatalog reads the marketplace's catalog.json. Returns
-// ok=false (fall back to bundle scanning) when the vault can't read root
-// files, has no catalog, or the catalog doesn't parse.
-func (a *App) entriesFromCatalog(mkt vaultpkg.Vault, query string) ([]MarketplaceExtension, bool) {
-	reader, ok := mkt.(rootFileReader)
-	if !ok {
-		return nil, false
-	}
-	data, err := reader.ReadRootFile(a.ctx, "catalog.json")
-	if err != nil {
+// entriesFromCatalog parses catalog.json content. Returns ok=false (fall
+// back to bundle scanning) when there is no catalog or it doesn't parse.
+func entriesFromCatalog(data []byte, query string) ([]MarketplaceExtension, bool) {
+	if len(data) == 0 {
 		return nil, false
 	}
 	var doc struct {
@@ -256,16 +270,11 @@ func (a *App) entriesFromCatalog(mkt vaultpkg.Vault, query string) ([]Marketplac
 	return out, true
 }
 
-// marketplaceStats reads the marketplace's stats.json (nightly-aggregated
+// parseMarketplaceStats parses stats.json content (nightly-aggregated
 // release download counts), keyed by plugin id. Best-effort: no stats
 // file, no counts.
-func (a *App) marketplaceStats(mkt vaultpkg.Vault) map[string]int {
-	reader, ok := mkt.(rootFileReader)
-	if !ok {
-		return nil
-	}
-	data, err := reader.ReadRootFile(a.ctx, "stats.json")
-	if err != nil {
+func parseMarketplaceStats(data []byte) map[string]int {
+	if len(data) == 0 {
 		return nil
 	}
 	var doc map[string]struct {

@@ -157,6 +157,13 @@ func (a *App) extensionPresent(id string) bool {
 // caller means it: a personal install loses only the caller's user scope
 // (full delete when no one else receives it), a shared one is deleted for
 // everyone. Returns a short summary of what actually happened.
+//
+// The full delete for a recipient WITHOUT a personal scope is deliberate:
+// a team/org-shared extension would come right back on the next sync if
+// we only touched their view, "I don't want it running" is the enable
+// toggle's job, and the vault's edit gate (docs/rbac.md — team-scoped
+// assets are editable by team members only) plus the confirm dialog's
+// "anyone it's shared with loses it too" bound the blast radius.
 func (a *App) RemoveExtensionAsset(id string) (string, error) {
 	if err := validateAssetRef(id, ""); err != nil {
 		return "", err

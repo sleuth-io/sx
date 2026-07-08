@@ -11,10 +11,12 @@ import Modal from "./Modal";
  * Manage every install row on an asset or a whole collection — org,
  * repo, path, team, user, bot — not just the kinds the app can create.
  * Rows written by the CLI or a skills.new server show up faithfully and
- * can be removed, and anything the vault permits can be added; the
- * vault's RBAC is the gate and its errors surface verbatim. Changes
- * apply immediately. The caller supplies the read/write operations so
- * the same dialog serves assets and collections.
+ * can be removed, and every scope EXCEPT path can be added here (path
+ * installs — repo + subpaths, the advanced monorepo case — stay
+ * CLI-only; they render and remove fine). The vault's RBAC is the gate
+ * and its errors surface verbatim. Changes apply immediately. The
+ * caller supplies the read/write operations so the same dialog serves
+ * assets and collections.
  */
 
 /** Strip protocol/.git noise so repo rows read like repo names. */
@@ -82,7 +84,6 @@ export default function ShareModal({
   const [view, setView] = useState<main.InstallationsView | null>(null);
   const [addKind, setAddKind] = useState<AddKind>("repo");
   const [search, setSearch] = useState("");
-  const [repoInput, setRepoInput] = useState("");
   const [repoSuggestions, setRepoSuggestions] = useState<string[]>([]);
   const [bots, setBots] = useState<string[]>([]);
   const [self, setSelf] = useState("");
@@ -128,12 +129,6 @@ export default function ShareModal({
   const has = (pred: (i: main.AssetInstallation) => boolean) =>
     rows.some(pred);
   const needle = search.trim().toLowerCase();
-  const teamCandidates = teams
-    .filter((t) => !has((i) => i.kind === "team" && i.team === t.name))
-    .filter((t) => !needle || t.name.toLowerCase().includes(needle));
-  const botCandidates = bots.filter(
-    (b) => !has((i) => i.kind === "bot" && i.bot === b),
-  );
   const personalAlready = has(
     (i) => i.kind === "user" && (i.user ?? "").toLowerCase() === self.toLowerCase(),
   );
@@ -149,6 +144,61 @@ export default function ShareModal({
   const activeKind: AddKind = visibleKinds.some((k) => k.key === addKind)
     ? addKind
     : (visibleKinds[0]?.key ?? "org");
+
+  // Repo, team, and bot pick through ONE control: a search box over a
+  // candidate list. Candidates are what exists in the library minus
+  // what's already installed, filtered by the search.
+  type Candidate = {
+    key: string;
+    label: string;
+    hint?: string;
+    inst: Partial<main.AssetInstallation>;
+  };
+  const pickerCandidates: Candidate[] = (() => {
+    switch (activeKind) {
+      case "repo":
+        return repoSuggestions
+          .filter((r) => !has((i) => i.kind === "repo" && i.repo === r))
+          .filter(
+            (r) =>
+              !needle ||
+              r.toLowerCase().includes(needle) ||
+              shortRepo(r).toLowerCase().includes(needle),
+          )
+          .map((r) => ({
+            key: r,
+            label: shortRepo(r),
+            inst: { kind: "repo", repo: r },
+          }));
+      case "team":
+        return teams
+          .filter((t) => !has((i) => i.kind === "team" && i.team === t.name))
+          .filter((t) => !needle || t.name.toLowerCase().includes(needle))
+          .map((t) => ({
+            key: t.name,
+            label: t.name,
+            hint: `${(t.members ?? []).length} ${
+              (t.members ?? []).length === 1 ? "member" : "members"
+            }`,
+            inst: { kind: "team", team: t.name },
+          }));
+      case "bot":
+        return bots
+          .filter((b) => !has((i) => i.kind === "bot" && i.bot === b))
+          .filter((b) => !needle || b.toLowerCase().includes(needle))
+          .map((b) => ({ key: b, label: b, inst: { kind: "bot", bot: b } }));
+      default:
+        return [];
+    }
+  })();
+  // A typed repo URL that matches no suggestion is still addable — as a
+  // row in the same list, so the control reads the same as team/bot.
+  const freeRepoEntry =
+    activeKind === "repo" &&
+    search.trim() !== "" &&
+    !repoSuggestions.some((r) => r.toLowerCase() === needle)
+      ? search.trim()
+      : "";
 
   // Narrowing works both ways and deserves a heads-up: an org install
   // removes every narrower row, and adding a narrower row while everyone
@@ -250,100 +300,81 @@ export default function ShareModal({
             </p>
           )}
 
-          {activeKind === "repo" && (
-            <div className="flex gap-2">
-              <input
-                value={repoInput}
-                onChange={(e) => setRepoInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && repoInput.trim()) {
-                    void add({ kind: "repo", repo: repoInput.trim() });
-                    setRepoInput("");
-                  }
-                }}
-                list="share-repo-suggestions"
-                placeholder="Repository URL (e.g. github.com/acme/api)…"
-                disabled={busy}
-                className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
-              />
-              <datalist id="share-repo-suggestions">
-                {repoSuggestions.map((r) => (
-                  <option key={r} value={r} />
-                ))}
-              </datalist>
-              <button
-                onClick={() => {
-                  void add({ kind: "repo", repo: repoInput.trim() });
-                  setRepoInput("");
-                }}
-                disabled={busy || !repoInput.trim()}
-                className="shrink-0 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-              >
-                Add
-              </button>
-            </div>
-          )}
-
-          {activeKind === "team" && (
+          {(activeKind === "repo" ||
+            activeKind === "team" ||
+            activeKind === "bot") && (
             <>
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search teams…"
+                placeholder={
+                  activeKind === "repo"
+                    ? "Search repositories, or enter a URL…"
+                    : activeKind === "team"
+                      ? "Search teams…"
+                      : "Search bots…"
+                }
                 disabled={busy}
+                data-picker-search
                 className="mb-1.5 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
               />
               <ul className="max-h-40 space-y-1 overflow-y-auto">
-                {teamCandidates.map((t) => (
-                  <li key={t.name}>
+                {pickerCandidates.map((c) => (
+                  <li key={c.key}>
                     <button
-                      onClick={() => void add({ kind: "team", team: t.name })}
+                      onClick={() => void add(c.inst)}
                       disabled={busy}
                       className="flex w-full items-center rounded-lg px-3 py-1.5 text-left text-sm transition hover:bg-accent-soft disabled:opacity-50"
                     >
                       <span className="min-w-0 flex-1 truncate">
-                        {t.name}
+                        {c.label}
                       </span>
-                      <span className="text-xs text-ink-faint">
-                        {(t.members ?? []).length}{" "}
-                        {(t.members ?? []).length === 1
-                          ? "member"
-                          : "members"}
-                      </span>
+                      {c.hint && (
+                        <span className="text-xs text-ink-faint">
+                          {c.hint}
+                        </span>
+                      )}
                     </button>
                   </li>
                 ))}
-                {teamCandidates.length === 0 && (
+                {freeRepoEntry && (
+                  <li>
+                    <button
+                      onClick={() => {
+                        void add({ kind: "repo", repo: freeRepoEntry });
+                        setSearch("");
+                      }}
+                      disabled={busy}
+                      data-add-free-repo
+                      className="flex w-full items-center rounded-lg border border-dashed border-line px-3 py-1.5 text-left text-sm text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-50"
+                    >
+                      <span className="min-w-0 flex-1 truncate">
+                        Install in “{freeRepoEntry}”
+                      </span>
+                      <span className="text-xs text-ink-faint">new repo</span>
+                    </button>
+                  </li>
+                )}
+                {pickerCandidates.length === 0 && !freeRepoEntry && (
                   <li className="px-3 py-1.5 text-sm text-ink-faint">
                     {search
-                      ? "No teams match"
-                      : "Already installed for every team"}
+                      ? `No ${
+                          activeKind === "repo"
+                            ? "repositories"
+                            : activeKind === "team"
+                              ? "teams"
+                              : "bots"
+                        } match`
+                      : `Already installed for every ${
+                          activeKind === "repo"
+                            ? "known repository"
+                            : activeKind
+                        }`}
                   </li>
                 )}
               </ul>
             </>
           )}
-
-          {activeKind === "bot" &&
-            (botCandidates.length > 0 ? (
-              <ul className="max-h-40 space-y-1 overflow-y-auto">
-                {botCandidates.map((b) => (
-                  <li key={b}>
-                    <button
-                      onClick={() => void add({ kind: "bot", bot: b })}
-                      disabled={busy}
-                      className="flex w-full items-center rounded-lg px-3 py-1.5 text-left text-sm transition hover:bg-accent-soft disabled:opacity-50"
-                    >
-                      {b}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-ink-faint">
-                Already installed for every bot.
-              </p>
-            ))}
 
           {activeKind === "org" && (
             <button

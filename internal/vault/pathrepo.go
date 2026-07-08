@@ -165,14 +165,22 @@ func (p *PathVault) GetVersionList(ctx context.Context, name string) ([]string, 
 	return versionListForAsset(p.repoPath, l, name)
 }
 
-// ReadRootFile reads one file from the vault root (e.g. a marketplace's
-// catalog.json / stats.json). The name must be a bare filename — no path
-// separators — so callers can't walk out of the root.
-func (p *PathVault) ReadRootFile(ctx context.Context, name string) ([]byte, error) {
-	if name == "" || name != filepath.Base(name) {
-		return nil, fmt.Errorf("invalid root file name %q", name)
+// ReadRootFiles reads files from the vault root (e.g. a marketplace's
+// catalog.json + stats.json; the git vault syncs once for the batch,
+// hence the plural API). Names must be bare filenames — no path
+// separators — so callers can't walk out of the root. Missing files are
+// simply absent from the result, not an error.
+func (p *PathVault) ReadRootFiles(ctx context.Context, names []string) (map[string][]byte, error) {
+	out := make(map[string][]byte, len(names))
+	for _, name := range names {
+		if name == "" || name != filepath.Base(name) {
+			return nil, fmt.Errorf("invalid root file name %q", name)
+		}
+		if data, err := os.ReadFile(filepath.Join(p.repoPath, name)); err == nil {
+			out[name] = data
+		}
 	}
-	return os.ReadFile(filepath.Join(p.repoPath, name))
+	return out, nil
 }
 
 // GetMetadata retrieves metadata for a specific asset version

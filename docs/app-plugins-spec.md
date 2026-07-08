@@ -193,8 +193,8 @@ adoption.
   "✓ Installed for you" / "✓ In library" states, install-count badge and
   a "Most installed" sort, editable source URL.
 - **Catalog and stats files.** A marketplace may publish two root files,
-  both read from the already-synced clone (`ReadRootFile` on file-backed
-  vaults): `catalog.json` — the browse list, one file read instead of
+  both read from the already-synced clone (`ReadRootFiles` on file-backed
+  vaults — one batch read, one clone sync): `catalog.json` — the browse list, one file read instead of
   unpacking every bundle — and `stats.json` — global install counts per
   extension id. Marketplaces without them fall back to bundle scanning
   and show no counts.

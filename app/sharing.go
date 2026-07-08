@@ -15,8 +15,11 @@ import (
 // The Manage Installations dialog shows EVERY install row on an asset or
 // collection — org, repo, path, team, user, bot — not just the kinds the
 // app can create. Scopes written by the CLI or a skills.new server must
-// read back faithfully here, and anything the vault permits must be
-// addable/removable, with the vault's RBAC as the gate.
+// read back faithfully here and be removable, with the vault's RBAC as
+// the gate. Every kind except path is addable from the app too; path
+// installs (repo + subpaths, the advanced monorepo case) stay CLI-only —
+// installationToTarget still validates them so removal of existing path
+// rows works.
 
 // AssetInstallation is one install row as the frontend shows and edits
 // it. Kind is the manifest scope kind; only the fields for that kind are
