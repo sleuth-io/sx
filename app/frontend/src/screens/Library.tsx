@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AddAssetInstallation,
+  AddAssetRepoScope,
+  AddCollectionInstallation,
+  AddCollectionRepoScope,
   CreateDraftFromAsset,
   CreateDraftFromPaths,
   CreateTeam,
+  DeleteAssets,
   DeleteCollection,
   DeleteTeam,
-  GetCollectionSharing,
-  AddAssetRepoScope,
-  AddCollectionRepoScope,
-  DeleteAssets,
-  GetAssetSharing,
+  GetAssetInstallations,
+  GetCollectionInstallations,
   GetDraft,
   InstalledAssets,
   ListAIClients,
@@ -17,6 +19,8 @@ import {
   ListCollections,
   ListDrafts,
   ListTeams,
+  RemoveAssetInstallationRow,
+  RemoveCollectionInstallationRow,
   RenameCollection,
   RenameTeam,
   RepoAssets,
@@ -25,8 +29,6 @@ import {
   SetCollectionMembershipBulk,
   SetCollectionTeamSharing,
   SetTeamRepository,
-  ShareAssetWithEveryone,
-  ShareCollectionWithEveryone,
   SyncAITools,
   TeamAssets,
 } from "../../wailsjs/go/main/App";
@@ -1040,8 +1042,8 @@ export default function Library({
   ]);
 
   // Collections fully shared with the viewed team — every asset in the
-  // collection is installed for the team (same rule GetCollectionSharing
-  // uses), so the collection itself belongs in the team's list.
+  // collection is installed for the team, so the collection itself
+  // belongs in the team's list.
   const teamCollections = useMemo(() => {
     if (scope.kind !== "team") return [];
     const shared = new Set(teamAssets[scope.name] ?? []);
@@ -1936,55 +1938,72 @@ export default function Library({
         <ShareModal
           title={
             multiSel.size === 1
-              ? `Share ${[...multiSel][0]}`
-              : `Share ${multiSel.size} skills`
+              ? `Manage installations — ${[...multiSel][0]}`
+              : `Manage installations — ${multiSel.size} skills`
           }
           teams={teams}
-          getSharing={async () => {
-            // A single selection shows the asset's real sharing (matching
-            // the detail panel, including the "+N more places" hint). A
-            // true multi-selection shows the intersection: a team appears
-            // as shared only when EVERY selected asset already has it;
-            // opaque "other" scope counts can't be intersected.
+          getInstallations={async () => {
+            // A single selection shows the asset's real install rows
+            // (matching the detail panel). A true multi-selection shows
+            // the intersection: a row appears only when EVERY selected
+            // asset already has it — rows compare by their scope fields,
+            // never by server entity ids, which differ per asset.
             const names = [...multiSel];
             if (names.length === 1) {
-              return GetAssetSharing(names[0]);
+              return GetAssetInstallations(names[0]);
             }
-            const all = await Promise.all(names.map((n) => GetAssetSharing(n)));
+            const all = await Promise.all(
+              names.map((n) => GetAssetInstallations(n)),
+            );
+            const key = (i: main.AssetInstallation) =>
+              JSON.stringify([i.kind, i.repo, i.paths, i.team, i.user, i.bot]);
+            const shared = (all[0]?.installations ?? [])
+              .filter((row) =>
+                all.every((v) =>
+                  (v.installations ?? []).some((i) => key(i) === key(row)),
+                ),
+              )
+              // Entity ids belong to ONE asset's rows; a bulk remove must
+              // address every asset by scope fields instead.
+              .map(
+                (row) =>
+                  ({
+                    ...row,
+                    entityId: "",
+                    monoRepoConfigId: "",
+                  }) as main.AssetInstallation,
+              );
             return {
-              everyone: all.every((s) => s.everyone),
-              teams: (all[0]?.teams ?? []).filter((t) =>
-                all.every((s) => (s.teams ?? []).includes(t)),
-              ),
-              other: 0,
-            } as main.AssetSharing;
+              everyone: all.every((v) => v.everyone),
+              installations: shared,
+            } as main.InstallationsView;
           }}
-          setTeamShared={async (team, shared) => {
+          addInstallation={async (inst) => {
             if (
               multiSel.size > 1 &&
               !(await confirmAction(
-                `${shared ? "Share" : "Stop sharing"} ${multiSel.size} skills with ${team}?`,
-                shared ? "Share" : "Stop sharing",
+                `Install ${multiSel.size} skills there?`,
+                "Install",
               ))
             ) {
               return;
             }
             for (const n of multiSel) {
-              await SetAssetTeamSharing(n, team, shared);
+              await AddAssetInstallation(n, inst);
             }
           }}
-          shareEveryone={async () => {
+          removeInstallation={async (inst) => {
             if (
               multiSel.size > 1 &&
               !(await confirmAction(
-                `Share ${multiSel.size} skills with everyone in this library?`,
-                "Share",
+                `Remove this installation from ${multiSel.size} skills?`,
+                "Remove",
               ))
             ) {
               return;
             }
             for (const n of multiSel) {
-              await ShareAssetWithEveryone(n);
+              await RemoveAssetInstallationRow(n, inst);
             }
           }}
           onClose={() => setBulkShare(false)}
@@ -2155,13 +2174,15 @@ export default function Library({
 
       {shareCollection && (
         <ShareModal
-          title={`Share ${shareCollection}`}
+          title={`Manage installations — ${shareCollection}`}
           teams={teams}
-          getSharing={() => GetCollectionSharing(shareCollection)}
-          setTeamShared={(team, shared) =>
-            SetCollectionTeamSharing(shareCollection, team, shared)
+          getInstallations={() => GetCollectionInstallations(shareCollection)}
+          addInstallation={(inst) =>
+            AddCollectionInstallation(shareCollection, inst)
           }
-          shareEveryone={() => ShareCollectionWithEveryone(shareCollection)}
+          removeInstallation={(inst) =>
+            RemoveCollectionInstallationRow(shareCollection, inst)
+          }
           onClose={() => setShareCollection("")}
           onChanged={load}
         />

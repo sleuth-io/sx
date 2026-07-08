@@ -95,20 +95,30 @@ export namespace main {
 		}
 	}
 	
-	export class AssetSharing {
-	    everyone: boolean;
-	    teams: string[];
-	    other: number;
+	export class AssetInstallation {
+	    kind: string;
+	    repo?: string;
+	    paths?: string[];
+	    team?: string;
+	    user?: string;
+	    bot?: string;
+	    entityId?: string;
+	    monoRepoConfigId?: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new AssetSharing(source);
+	        return new AssetInstallation(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.everyone = source["everyone"];
-	        this.teams = source["teams"];
-	        this.other = source["other"];
+	        this.kind = source["kind"];
+	        this.repo = source["repo"];
+	        this.paths = source["paths"];
+	        this.team = source["team"];
+	        this.user = source["user"];
+	        this.bot = source["bot"];
+	        this.entityId = source["entityId"];
+	        this.monoRepoConfigId = source["monoRepoConfigId"];
 	    }
 	}
 	export class Collection {
@@ -248,6 +258,38 @@ export namespace main {
 	        this.created = source["created"];
 	        this.skipped = source["skipped"];
 	    }
+	}
+	export class InstallationsView {
+	    everyone: boolean;
+	    installations: AssetInstallation[];
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallationsView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.everyone = source["everyone"];
+	        this.installations = this.convertValues(source["installations"], AssetInstallation);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class InstalledAssetInfo {
 	    name: string;
