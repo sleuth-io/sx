@@ -30,6 +30,10 @@ export function AvailableRepoName(arg1) {
   return window['go']['main']['App']['AvailableRepoName'](arg1);
 }
 
+export function CanInstallForEveryone() {
+  return window['go']['main']['App']['CanInstallForEveryone']();
+}
+
 export function CancelSleuthLogin() {
   return window['go']['main']['App']['CancelSleuthLogin']();
 }
@@ -162,8 +166,8 @@ export function ImportDraftsFromFolder() {
   return window['go']['main']['App']['ImportDraftsFromFolder']();
 }
 
-export function InstallMarketplaceExtension(arg1) {
-  return window['go']['main']['App']['InstallMarketplaceExtension'](arg1);
+export function InstallMarketplaceExtension(arg1, arg2) {
+  return window['go']['main']['App']['InstallMarketplaceExtension'](arg1, arg2);
 }
 
 export function InstalledAssets() {
@@ -282,6 +286,10 @@ export function Quit() {
   return window['go']['main']['App']['Quit']();
 }
 
+export function RemoveExtensionAsset(arg1) {
+  return window['go']['main']['App']['RemoveExtensionAsset'](arg1);
+}
+
 export function RemoveLibrary(arg1, arg2) {
   return window['go']['main']['App']['RemoveLibrary'](arg1, arg2);
 }
@@ -380,6 +388,10 @@ export function ShareAssetWithEveryone(arg1) {
 
 export function ShareCollectionWithEveryone(arg1) {
   return window['go']['main']['App']['ShareCollectionWithEveryone'](arg1);
+}
+
+export function ShareExtensionWithLibrary(arg1) {
+  return window['go']['main']['App']['ShareExtensionWithLibrary'](arg1);
 }
 
 export function ShowAbout() {

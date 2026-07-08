@@ -165,6 +165,16 @@ func (p *PathVault) GetVersionList(ctx context.Context, name string) ([]string, 
 	return versionListForAsset(p.repoPath, l, name)
 }
 
+// ReadRootFile reads one file from the vault root (e.g. a marketplace's
+// catalog.json / stats.json). The name must be a bare filename — no path
+// separators — so callers can't walk out of the root.
+func (p *PathVault) ReadRootFile(ctx context.Context, name string) ([]byte, error) {
+	if name == "" || name != filepath.Base(name) {
+		return nil, fmt.Errorf("invalid root file name %q", name)
+	}
+	return os.ReadFile(filepath.Join(p.repoPath, name))
+}
+
 // GetMetadata retrieves metadata for a specific asset version
 func (p *PathVault) GetMetadata(ctx context.Context, name, version string) (*metadata.Metadata, error) {
 	l, err := detectLayout(p.repoPath)

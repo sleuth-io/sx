@@ -33,7 +33,7 @@ func newExtensionVault(t *testing.T, a *App, id, name, description string) strin
 	// Publish through the app pointed temporarily at this vault.
 	prev := a.vault
 	a.vault = v
-	if _, err := a.addExtensionFrom(src); err != nil {
+	if _, _, err := a.addExtensionFrom(src); err != nil {
 		t.Fatalf("publish fixture extension: %v", err)
 	}
 	a.vault = prev
@@ -59,11 +59,11 @@ func TestExtensionsUnsupportedOnSleuth(t *testing.T) {
 	if a.VaultSupportsExtensions() {
 		t.Fatalf("sleuth vault should not support extensions yet")
 	}
-	if _, err := a.addExtensionFrom(t.TempDir()); err == nil ||
+	if _, _, err := a.addExtensionFrom(t.TempDir()); err == nil ||
 		!strings.Contains(err.Error(), "doesn't support extensions") {
 		t.Fatalf("addExtensionFrom error = %v", err)
 	}
-	if _, err := a.InstallMarketplaceExtension("anything"); err == nil ||
+	if _, err := a.InstallMarketplaceExtension("anything", ExtensionScopeOrg); err == nil ||
 		!strings.Contains(err.Error(), "doesn't support extensions") {
 		t.Fatalf("install error = %v", err)
 	}
@@ -111,7 +111,7 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 		}
 		prev := a.vault
 		a.vault = mv
-		if _, err := a.addExtensionFrom(src); err != nil {
+		if _, _, err := a.addExtensionFrom(src); err != nil {
 			t.Fatalf("publish second fixture: %v", err)
 		}
 		a.vault = prev
@@ -156,7 +156,7 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 	}
 
 	// Install copies into the current vault and flips the flag.
-	name, err := a.InstallMarketplaceExtension("related-assets")
+	name, err := a.InstallMarketplaceExtension("related-assets", ExtensionScopeOrg)
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 	}
 
 	// Unknown asset fails cleanly.
-	if _, err := a.InstallMarketplaceExtension("nope"); err == nil {
+	if _, err := a.InstallMarketplaceExtension("nope", ExtensionScopeOrg); err == nil {
 		t.Fatalf("unknown asset accepted")
 	}
 
@@ -197,7 +197,7 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 	if err := mkt.RenameAsset(a.ctx, "library-search", "acme-search"); err != nil {
 		t.Fatalf("rename in marketplace: %v", err)
 	}
-	installedName, err := a.InstallMarketplaceExtension("acme-search")
+	installedName, err := a.InstallMarketplaceExtension("acme-search", ExtensionScopeOrg)
 	if err != nil {
 		t.Fatalf("install renamed entry: %v", err)
 	}

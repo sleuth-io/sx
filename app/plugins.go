@@ -537,17 +537,33 @@ func (a *App) AddExtensionFromFolder() (string, error) {
 	if dir == "" {
 		return "", nil // cancelled
 	}
-	return a.addExtensionFrom(dir)
-}
-
-// addExtensionFrom is the dialog-free publish core, split out for tests.
-func (a *App) addExtensionFrom(dir string) (string, error) {
-	if !a.VaultSupportsExtensions() {
-		return "", errExtensionsUnsupported
-	}
+	// Authoring publishes for the whole library, like every other draft.
 	manifestBytes, err := os.ReadFile(filepath.Join(dir, "plugin.json"))
 	if err != nil {
 		return "", errors.New("that folder has no plugin.json — see docs/app-plugin-authoring.md")
+	}
+	var pm struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(manifestBytes, &pm)
+	wasUpdate := pm.ID != "" && a.extensionPresent(pm.ID)
+	name, version, err := a.addExtensionFrom(dir)
+	if err != nil {
+		return "", err
+	}
+	a.emitExtensionInstall(name, version, ExtensionScopeOrg, "folder", wasUpdate)
+	return name, nil
+}
+
+// addExtensionFrom is the dialog-free publish core, split out for tests.
+// Returns the published asset name and the plugin.json version.
+func (a *App) addExtensionFrom(dir string) (string, string, error) {
+	if !a.VaultSupportsExtensions() {
+		return "", "", errExtensionsUnsupported
+	}
+	manifestBytes, err := os.ReadFile(filepath.Join(dir, "plugin.json"))
+	if err != nil {
+		return "", "", errors.New("that folder has no plugin.json — see docs/app-plugin-authoring.md")
 	}
 	var pm struct {
 		ID          string   `json:"id"`
@@ -557,35 +573,35 @@ func (a *App) addExtensionFrom(dir string) (string, error) {
 		Permissions []string `json:"permissions"`
 	}
 	if err := json.Unmarshal(manifestBytes, &pm); err != nil {
-		return "", errors.New("plugin.json is not valid JSON")
+		return "", "", errors.New("plugin.json is not valid JSON")
 	}
 	// Publish-time validation mirrors the loader (host.ts
 	// parseVaultManifest) so nothing can publish successfully and then
 	// silently fail to load.
 	if err := validatePluginID(pm.ID); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if pm.ID == "sx" || strings.HasPrefix(pm.ID, "sx-") {
-		return "", errors.New(`extension ids may not claim the "sx" prefix`)
+		return "", "", errors.New(`extension ids may not claim the "sx" prefix`)
 	}
 	if pm.Name == "" || pm.Version == "" {
-		return "", errors.New("plugin.json needs name and version")
+		return "", "", errors.New("plugin.json needs name and version")
 	}
 	if pm.Permissions == nil {
-		return "", errors.New("plugin.json needs a permissions array (may be empty)")
+		return "", "", errors.New("plugin.json needs a permissions array (may be empty)")
 	}
 	for _, perm := range pm.Permissions {
 		if !isKnownPluginPermission(perm) {
-			return "", fmt.Errorf("plugin.json declares unknown permission %q", perm)
+			return "", "", fmt.Errorf("plugin.json declares unknown permission %q", perm)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, "main.js")); err != nil {
-		return "", errors.New("that folder has no main.js — bundle your extension to a single ES module")
+		return "", "", errors.New("that folder has no main.js — bundle your extension to a single ES module")
 	}
 
 	draft, err := a.CreateDraftFromPaths([]string{dir})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	draft.Name = pm.ID
 	draft.Type = asset.TypeAppPlugin.Key
@@ -595,31 +611,35 @@ func (a *App) addExtensionFrom(dir string) (string, error) {
 	}
 	updated, err := a.UpdateDraft(draft)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	card, err := a.PublishDraft(updated.ID)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return card.Name, nil
+	return card.Name, pm.Version, nil
 }
 
 // VaultPlugin is a vault-installed extension as the frontend consumes it:
-// the plugin.json manifest (runtime source of truth) plus its code.
+// the plugin.json manifest (runtime source of truth), its code, and who
+// receives it (for scope chips and the remove/share actions).
 type VaultPlugin struct {
-	AssetName string `json:"assetName"`
-	Manifest  string `json:"manifest"` // raw plugin.json
-	Source    string `json:"source"`   // bundled ES module (entry file)
+	AssetName string         `json:"assetName"`
+	Manifest  string         `json:"manifest"` // raw plugin.json
+	Source    string         `json:"source"`   // bundled ES module (entry file)
+	Scope     ExtensionScope `json:"scope"`
 }
 
 // maxPluginSourceBytes bounds a bundle so a hostile vault entry can't
 // balloon the webview; 5 MB is generous for a bundled extension.
 const maxPluginSourceBytes = 5 << 20
 
-// ListVaultPlugins returns every app-plugin asset in the current vault
-// with its manifest and code, ready for the host's Blob loader. Assets
-// missing plugin.json or their entry file are skipped with a log — a
-// malformed extension must not break the Extensions screen.
+// ListVaultPlugins returns the app-plugin assets in the current vault that
+// REACH the caller — library-wide, via a team, or via their own personal
+// scope — with manifest and code ready for the host's Blob loader. An
+// extension someone else installed just for themselves doesn't appear.
+// Assets missing plugin.json or their entry file are skipped with a log —
+// a malformed extension must not break the Extensions screen.
 func (a *App) ListVaultPlugins() ([]VaultPlugin, error) {
 	out := []VaultPlugin{}
 	v, err := a.currentVault()
@@ -631,12 +651,22 @@ func (a *App) ListVaultPlugins() ([]VaultPlugin, error) {
 		// Backends without the type (skills.new until P5) list nothing.
 		return out, nil
 	}
+	self := manifest.NormalizeEmail(strings.TrimSpace(a.GetVaultInfo().Identity))
+	var sharing installTargetReader
+	if r, err := a.sharingVault(); err == nil {
+		sharing = r
+	}
 	for _, summary := range res.Assets {
+		scope := a.extensionScope(summary.Name, self, sharing)
+		if !scope.Shared && !scope.Personal {
+			continue // installed just for someone else
+		}
 		plugin, err := a.loadVaultPlugin(summary.Name)
 		if err != nil {
 			logger.Get().Warn("skipping malformed extension asset", "asset", summary.Name, "error", err)
 			continue
 		}
+		plugin.Scope = scope
 		out = append(out, plugin)
 	}
 	return out, nil

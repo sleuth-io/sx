@@ -71,6 +71,14 @@ const (
 	EventPluginEnabled       = "plugin.enabled"
 	EventPluginDisabled      = "plugin.disabled"
 	EventPluginPolicyChanged = "plugin.policy-changed"
+
+	// Extension lifecycle events. Data carries version, scope
+	// ("library" or "personal") and source ("marketplace" or "folder").
+	// Shared marks a personal install promoted to the whole library.
+	EventPluginInstalled   = "plugin.installed"
+	EventPluginUpdated     = "plugin.updated"
+	EventPluginUninstalled = "plugin.uninstalled"
+	EventPluginShared      = "plugin.shared"
 )
 
 // Audit target type constants.

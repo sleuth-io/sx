@@ -309,6 +309,20 @@ func (g *GitVault) GetAssetByVersion(ctx context.Context, name, version string) 
 	return zipData, nil
 }
 
+// ReadRootFile reads one file from the vault root after syncing the clone
+// (e.g. a marketplace's catalog.json / stats.json). The name must be a
+// bare filename — no path separators — so callers can't walk out of the
+// root.
+func (g *GitVault) ReadRootFile(ctx context.Context, name string) ([]byte, error) {
+	if name == "" || name != filepath.Base(name) {
+		return nil, fmt.Errorf("invalid root file name %q", name)
+	}
+	if err := g.cloneOrUpdate(ctx); err != nil {
+		return nil, fmt.Errorf("failed to clone/update repository: %w", err)
+	}
+	return os.ReadFile(filepath.Join(g.repoPath, name))
+}
+
 // GetMetadata retrieves metadata for a specific asset version. Git vaults
 // store assets exploded under assets/<name>/<version>/, so the metadata.toml
 // is just a file read away after syncing the repo.

@@ -189,6 +189,22 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ExtensionScope {
+	    shared: boolean;
+	    personal: boolean;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExtensionScope(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.shared = source["shared"];
+	        this.personal = source["personal"];
+	        this.label = source["label"];
+	    }
+	}
 	export class GitRepoOption {
 	    name: string;
 	    url: string;
@@ -286,6 +302,7 @@ export namespace main {
 	    author: string;
 	    permissions: string[];
 	    installed: boolean;
+	    installs: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new MarketplaceExtension(source);
@@ -301,6 +318,7 @@ export namespace main {
 	        this.author = source["author"];
 	        this.permissions = source["permissions"];
 	        this.installed = source["installed"];
+	        this.installs = source["installs"];
 	    }
 	}
 	export class PluginAuditEventRecord {
@@ -593,6 +611,7 @@ export namespace main {
 	    assetName: string;
 	    manifest: string;
 	    source: string;
+	    scope: ExtensionScope;
 	
 	    static createFrom(source: any = {}) {
 	        return new VaultPlugin(source);
@@ -603,7 +622,26 @@ export namespace main {
 	        this.assetName = source["assetName"];
 	        this.manifest = source["manifest"];
 	        this.source = source["source"];
+	        this.scope = this.convertValues(source["scope"], ExtensionScope);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

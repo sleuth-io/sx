@@ -32,11 +32,21 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/** Who receives an extension, from the vault's install scopes. shared =
+ * reaches the user via library/team sharing; personal = their own user
+ * scope. Built-ins carry no scope (undefined). */
+export interface ExtensionScope {
+  shared: boolean;
+  personal: boolean;
+  label: string;
+}
+
 export interface LoadedPlugin {
   manifest: PluginManifest;
   builtIn: boolean;
   enabled: boolean;
   error?: string;
+  scope?: ExtensionScope;
 }
 
 interface Registered {
@@ -46,6 +56,7 @@ interface Registered {
   instance?: SxPlugin;
   enabled: boolean;
   error?: string;
+  scope?: ExtensionScope;
 }
 
 const plugins = new Map<string, Registered>();
@@ -69,6 +80,7 @@ export function listPlugins(): LoadedPlugin[] {
       builtIn: p.builtIn,
       enabled: p.enabled,
       error: p.error,
+      scope: p.scope,
     }));
   }
   return snapshot;
@@ -152,7 +164,11 @@ export function parseVaultManifest(raw: string): PluginManifest {
 /** Register a vault-installed extension: code arrives as source text and
  * loads through the Blob importer. Defaults OFF; enabling requires
  * consent and passes the org policy gate like everything else. */
-export function registerVaultPlugin(manifest: PluginManifest, source: string): void {
+export function registerVaultPlugin(
+  manifest: PluginManifest,
+  source: string,
+  scope?: ExtensionScope,
+): void {
   const existing = plugins.get(manifest.id);
   if (existing?.builtIn) {
     // Built-ins win; say so instead of silently dropping (a vault asset
@@ -170,6 +186,7 @@ export function registerVaultPlugin(manifest: PluginManifest, source: string): v
     // consent there).
     existing.manifest = manifest;
     existing.make = () => importFromSource(source);
+    existing.scope = scope;
     notify();
     return;
   }
@@ -178,6 +195,7 @@ export function registerVaultPlugin(manifest: PluginManifest, source: string): v
     builtIn: false,
     make: () => importFromSource(source),
     enabled: false,
+    scope,
   });
   notify();
 }

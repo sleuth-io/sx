@@ -5,6 +5,13 @@ see what's actually being adopted. Events are appended to
 `.sx/usage/YYYY-MM.jsonl` under the vault root; the `sx stats` command
 aggregates them into a dashboard.
 
+Desktop-app extension installs record the same event with
+`asset_type = "app-plugin"` (appended best-effort by the app), so
+extension adoption shows up in this dashboard alongside skills. That is
+this vault's view; **global** marketplace install counts are a separate
+mechanism — release-asset download counts aggregated into the
+marketplace repo's `stats.json` — described in docs/app-plugins-spec.md.
+
 ## The `sx stats` command
 
 ```bash

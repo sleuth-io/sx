@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   AddExtensionFromFolder,
-  DeleteAssets,
+  CanInstallForEveryone,
   GetVaultInfo,
+  RemoveExtensionAsset,
   SetPluginDecision,
+  ShareExtensionWithLibrary,
   VaultSupportsExtensions,
 } from "../../wailsjs/go/main/App";
 import { refreshVaultPlugins } from "../plugins/boot";
@@ -44,6 +46,7 @@ export default function ExtensionsSection() {
   const plugins = useSyncExternalStore(subscribeHost, listPlugins);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   // Consent prompts queue: Update all can stage several
   // permission-changed extensions; they re-prompt one at a time.
   const [consentQueue, setConsentQueue] = useState<PluginManifest[]>([]);
@@ -60,6 +63,9 @@ export default function ExtensionsSection() {
   // can't store app-plugin assets yet (skills.new until P5).
   const [libraryName, setLibraryName] = useState("");
   const [supported, setSupported] = useState(true);
+  // Sharing a personal install library-wide is org-admin-gated on
+  // governed vaults, same as "Install for everyone" in the marketplace.
+  const [canEveryone, setCanEveryone] = useState(false);
   useEffect(() => {
     GetVaultInfo()
       .then((v) => setLibraryName(v.name || ""))
@@ -69,6 +75,9 @@ export default function ExtensionsSection() {
       // Fail CLOSED like the backend gate: if we can't tell whether the
       // library stores extensions, a publish would fail anyway.
       .catch(() => setSupported(false));
+    CanInstallForEveryone()
+      .then(setCanEveryone)
+      .catch(() => setCanEveryone(false));
   }, []);
 
   useEffect(() => {
@@ -192,14 +201,35 @@ export default function ExtensionsSection() {
     setRemoveFor(null);
     setBusy(manifest.id);
     setError("");
+    setNotice("");
     try {
-      // Disable first (full teardown), then delete the vault asset —
+      // Disable first (full teardown), then remove the vault side —
       // publish forces asset name = plugin id, so the id addresses it.
+      // The backend removes what the user means: a personal install
+      // loses only their scope, a shared one goes for everyone. The
+      // refresh re-registers the extension if it still reaches them
+      // (e.g. the library shares what they personally dropped).
       disablePlugin(manifest.id);
       await SetPluginDecision(manifest.id, false);
-      await DeleteAssets([manifest.id]);
+      const summary = await RemoveExtensionAsset(manifest.id);
       unregisterVaultPlugin(manifest.id);
       await refreshVaultPlugins();
+      if (summary) setNotice(summary);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function share(manifest: PluginManifest) {
+    setBusy(manifest.id);
+    setError("");
+    setNotice("");
+    try {
+      await ShareExtensionWithLibrary(manifest.id);
+      await refreshVaultPlugins();
+      setNotice(`${manifest.name} is now shared with the whole library.`);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -255,9 +285,10 @@ export default function ExtensionsSection() {
       </div>
       <p className="mb-3 text-xs text-ink-faint">
         Extensions belong to this library
-        {libraryName ? ` (${libraryName})` : ""}: installing one shares it
-        with everyone who uses it; turning it on is each person's own
-        choice. Disabling one removes everything it added, immediately.
+        {libraryName ? ` (${libraryName})` : ""}: each one is installed just
+        for you or shared with the library — the chip on a row says which.
+        Turning one on is each person's own choice. Disabling one removes
+        everything it added, immediately.
       </p>
       {!supported && (
         <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
@@ -287,6 +318,17 @@ export default function ExtensionsSection() {
                       built-in
                     </span>
                   )}
+                  {!p.builtIn &&
+                    p.scope?.label &&
+                    p.scope.label !== "Everyone" && (
+                      <span
+                        title="Who receives this extension"
+                        data-scope-chip={p.manifest.id}
+                        className="rounded-full border border-accent/40 px-1.5 text-[10px] text-accent"
+                      >
+                        {p.scope.label}
+                      </span>
+                    )}
                 </div>
                 {p.manifest.description && (
                   <p className="mt-0.5 text-xs text-ink-faint">
@@ -315,11 +357,25 @@ export default function ExtensionsSection() {
                     : `Update to v${update.entry.version}`}
                 </button>
               )}
+              {!p.builtIn &&
+                p.scope?.personal &&
+                !p.scope?.shared &&
+                canEveryone && (
+                  <button
+                    onClick={() => void share(p.manifest)}
+                    disabled={busy === p.manifest.id}
+                    title={`Share ${p.manifest.name} with everyone in this library`}
+                    data-share={p.manifest.id}
+                    className="shrink-0 rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-50"
+                  >
+                    Share with library
+                  </button>
+                )}
               {!p.builtIn && (
                 <button
                   onClick={() => setRemoveFor(p.manifest)}
                   disabled={busy === p.manifest.id}
-                  title={`Remove ${p.manifest.name} from this library`}
+                  title={`Remove ${p.manifest.name}`}
                   aria-label={`Remove ${p.manifest.name}`}
                   className="shrink-0 rounded-lg px-1.5 py-1 text-xs text-ink-faint transition hover:text-danger disabled:opacity-50"
                 >
@@ -353,6 +409,11 @@ export default function ExtensionsSection() {
           {preflight.detail ? ` (${preflight.detail})` : ""}
         </p>
       )}
+      {notice && (
+        <div className="mt-2 rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent">
+          {notice}
+        </div>
+      )}
       {error && (
         <div className="mt-2 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">
           {error}
@@ -372,9 +433,18 @@ export default function ExtensionsSection() {
               Remove {removeFor.name}?
             </h3>
             <p className="mt-2 text-xs text-ink-faint">
-              This disables the extension and deletes it from the library —
-              anyone it's shared with loses it too. You can reinstall it from
-              the marketplace or a folder later.
+              {(() => {
+                const scope = plugins.find(
+                  (p) => p.manifest.id === removeFor.id,
+                )?.scope;
+                if (scope?.personal && !scope?.shared) {
+                  return "This is installed just for you — removing it doesn't affect anyone else. You can reinstall it from the marketplace later.";
+                }
+                if (scope?.personal && scope?.shared) {
+                  return "This removes your personal install, but the library still shares this extension with you, so it stays available.";
+                }
+                return "This disables the extension and deletes it from the library — anyone it's shared with loses it too. You can reinstall it from the marketplace or a folder later.";
+              })()}
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <button

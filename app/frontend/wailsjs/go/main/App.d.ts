@@ -16,6 +16,8 @@ export function AppVersion():Promise<string>;
 
 export function AvailableRepoName(arg1:string):Promise<string>;
 
+export function CanInstallForEveryone():Promise<boolean>;
+
 export function CancelSleuthLogin():Promise<void>;
 
 export function CheckForUpdate():Promise<main.UpdateInfo>;
@@ -82,7 +84,7 @@ export function HideApp():Promise<void>;
 
 export function ImportDraftsFromFolder():Promise<main.ImportResult>;
 
-export function InstallMarketplaceExtension(arg1:string):Promise<string>;
+export function InstallMarketplaceExtension(arg1:string,arg2:string):Promise<string>;
 
 export function InstalledAssets():Promise<Array<main.InstalledAssetInfo>>;
 
@@ -142,6 +144,8 @@ export function PublishDraft(arg1:string):Promise<main.AssetCard>;
 
 export function Quit():Promise<void>;
 
+export function RemoveExtensionAsset(arg1:string):Promise<string>;
+
 export function RemoveLibrary(arg1:string,arg2:boolean):Promise<main.VaultInfo>;
 
 export function RemoveTeamMember(arg1:string,arg2:string):Promise<void>;
@@ -191,6 +195,8 @@ export function SetupSharedFolderVault(arg1:string,arg2:string):Promise<main.Vau
 export function ShareAssetWithEveryone(arg1:string):Promise<void>;
 
 export function ShareCollectionWithEveryone(arg1:string):Promise<void>;
+
+export function ShareExtensionWithLibrary(arg1:string):Promise<void>;
 
 export function ShowAbout():Promise<void>;
 

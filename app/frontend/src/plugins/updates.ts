@@ -110,7 +110,10 @@ export async function applyUpdate(
   const wasEnabled = !!listPlugins().find(
     (p) => p.manifest.id === entry.id && p.enabled,
   );
-  await InstallMarketplaceExtension(entry.assetName);
+  // The extension is already in the vault, so this republish is an
+  // update: the backend keeps its existing sharing and the scope
+  // argument is inert.
+  await InstallMarketplaceExtension(entry.assetName, "org");
   await refreshVaultPlugins();
   const updated = listPlugins().find((p) => p.manifest.id === entry.id);
   if (!updated || !wasEnabled) return { state: "installed" };
