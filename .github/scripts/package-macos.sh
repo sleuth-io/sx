@@ -17,6 +17,7 @@
 #   NOTARY_KEY_ID               App Store Connect API key ID       (optional)
 #   NOTARY_ISSUER_ID            App Store Connect issuer ID        (optional)
 #   NOTARY_KEY                  App Store Connect .p8 key contents (optional)
+#   NOTARY_TIMEOUT_SECS         max wait per notarization (default 10800)
 #
 # Outputs: sx-app-macos-<arch>[-unsigned|-unnotarized].{zip,dmg} next to
 # the bundle; names are appended to $GITHUB_ENV (ZIP_NAME/DMG_NAME) when
@@ -79,6 +80,13 @@ notarize() {
   # warning (return 1 → callers skip stapling); an actual rejection or
   # submission failure kills the release — a silently-unnotarized signed
   # build would look done but still trip Gatekeeper.
+  #
+  # Deliberately NOT `notarytool submit --wait`: that holds one connection
+  # open for the whole (sometimes hours-long) review, and a single network
+  # blip on the runner either errors out or wedges silently while the
+  # submission continues fine server-side. Instead submit once to get a
+  # submission id, then poll `notarytool info` — each poll is a fresh
+  # connection, so transient failures just mean try again.
   local artifact="$1"
   if [ -z "${NOTARY_KEY_ID:-}" ] || [ -z "${NOTARY_ISSUER_ID:-}" ] || [ -z "${NOTARY_KEY:-}" ]; then
     echo "WARNING: signed but NOT notarized — Gatekeeper will still warn. Add the NOTARY_* secrets." >&2
@@ -86,15 +94,68 @@ notarize() {
   fi
   local key_path="$RUNNER_TEMP/notary-key.p8"
   echo "$NOTARY_KEY" > "$key_path"
+
   echo "==> Notarizing $(basename "$artifact")"
-  if ! xcrun notarytool submit "$artifact" \
-    --key "$key_path" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
-    --wait; then
-    echo "ERROR: notarization failed for $(basename "$artifact")" >&2
+  local submit_out submission_id attempt
+  for attempt in 1 2 3; do
+    if submit_out="$(xcrun notarytool submit "$artifact" \
+      --key "$key_path" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+      --output-format json 2>&1)"; then
+      break
+    fi
+    echo "WARNING: notarytool submit attempt $attempt failed: $submit_out" >&2
+    if [ "$attempt" -eq 3 ]; then
+      echo "ERROR: could not submit $(basename "$artifact") for notarization" >&2
+      rm -f "$key_path"
+      exit 1
+    fi
+    sleep 30
+  done
+  submission_id="$(printf '%s' "$submit_out" | sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p' | head -n 1)"
+  if [ -z "$submission_id" ]; then
+    echo "ERROR: could not parse submission id from notarytool output: $submit_out" >&2
     rm -f "$key_path"
     exit 1
   fi
-  rm -f "$key_path"
+  echo "==> Submission id: $submission_id — polling for the verdict"
+
+  # Apple's first submissions from a new team can take hours; poll with a
+  # generous cap rather than trusting one long-lived connection.
+  local deadline=$(( $(date +%s) + ${NOTARY_TIMEOUT_SECS:-10800} ))
+  local info_out status
+  while :; do
+    if info_out="$(xcrun notarytool info "$submission_id" \
+      --key "$key_path" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+      --output-format json 2>&1)"; then
+      status="$(printf '%s' "$info_out" | sed -n 's/.*"status" *: *"\([^"]*\)".*/\1/p' | head -n 1)"
+      case "$status" in
+        Accepted)
+          echo "==> Notarization accepted for $(basename "$artifact")"
+          rm -f "$key_path"
+          return 0
+          ;;
+        "In Progress")
+          echo "    still in progress ($(date -u +%H:%M:%S) UTC)"
+          ;;
+        *)
+          # Invalid/Rejected — surface Apple's reasons before dying.
+          echo "ERROR: notarization $status for $(basename "$artifact")" >&2
+          xcrun notarytool log "$submission_id" \
+            --key "$key_path" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" >&2 || true
+          rm -f "$key_path"
+          exit 1
+          ;;
+      esac
+    else
+      echo "WARNING: notary status check failed (transient network?): $info_out" >&2
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "ERROR: notarization still not finished after ${NOTARY_TIMEOUT_SECS:-10800}s for $(basename "$artifact")" >&2
+      rm -f "$key_path"
+      exit 1
+    fi
+    sleep 30
+  done
 }
 
 STAGING_ZIP="$OUT_DIR/.staging-update.zip"
