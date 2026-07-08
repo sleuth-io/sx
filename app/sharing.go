@@ -246,8 +246,10 @@ func installationsView(targets []vaultpkg.InstallTarget, present bool) Installat
 	for _, t := range targets {
 		view.Installations = append(view.Installations, installationFromTarget(t))
 	}
-	// Stable order for the dialog: grouped by kind, then by name.
-	kindRank := map[string]int{"org": 0, "team": 1, "repo": 2, "path": 3, "user": 4, "bot": 5}
+	// Stable order for the dialog, matching its picker tabs: org, team,
+	// bot, repo (paths ride with repos), personal. Grouped by kind, then
+	// by name.
+	kindRank := map[string]int{"org": 0, "team": 1, "bot": 2, "repo": 3, "path": 4, "user": 5}
 	sort.SliceStable(view.Installations, func(i, j int) bool {
 		a, b := view.Installations[i], view.Installations[j]
 		if a.Kind != b.Kind {

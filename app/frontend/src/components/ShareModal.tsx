@@ -56,10 +56,10 @@ function rowText(
 }
 
 const ADD_KINDS = [
-  { key: "repo", label: "Repo" },
+  { key: "org", label: "Org" },
   { key: "team", label: "Team" },
   { key: "bot", label: "Bot" },
-  { key: "org", label: "Org" },
+  { key: "repo", label: "Repo" },
   { key: "user", label: "Personal" },
 ] as const;
 type AddKind = (typeof ADD_KINDS)[number]["key"];
