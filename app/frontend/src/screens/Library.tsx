@@ -491,10 +491,10 @@ export default function Library({
     void bootExtensions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // The palette toggles from three places: the webview keydown, the
-  // native menu accelerator (which may ALSO reach the webview as a
-  // keydown on some platforms), and the header ⌘K chip. The debounce
-  // makes a double-delivered ⌘K one toggle instead of an open+close.
+  // The keydown and menu-accelerator paths can BOTH fire for one ⌘K
+  // press on some platforms; the debounce makes that one toggle. The
+  // header chip deliberately bypasses it (below) — a click is never a
+  // duplicate delivery and must never be swallowed.
   const lastPaletteToggle = useRef(0);
   const togglePalette = useCallback(() => {
     const now = Date.now();
@@ -1230,7 +1230,7 @@ export default function Library({
                   never discovered (GitHub retired theirs over exactly
                   this). The chip is clickable AND teaches the shortcut. */}
               <button
-                onClick={togglePalette}
+                onClick={() => setPaletteOpen((v) => !v)}
                 aria-label="Command palette"
                 title="Command palette — every action, plus your extensions"
                 className="flex h-full items-center rounded-lg border border-line px-2.5 font-mono text-[11px] text-ink-faint transition hover:border-accent hover:text-ink"
