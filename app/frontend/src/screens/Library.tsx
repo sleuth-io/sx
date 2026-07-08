@@ -53,7 +53,11 @@ import { bootExtensions, syncVaultExtensions } from "../plugins/boot";
 import { useSlot } from "../plugins/registry";
 import { emitEvent } from "../plugins/events";
 import { setPluginUIHandlers } from "../plugins/sxapi";
-import type { CommandSpec } from "../plugins/api";
+import type {
+  CollectionViewSpec,
+  CommandSpec,
+  ViewMount,
+} from "../plugins/api";
 import usePanelSize from "../lib/usePanelSize";
 import TeamModal from "../components/TeamModal";
 import TypeBadge from "../components/TypeBadge";
@@ -514,6 +518,19 @@ export default function Library({
   }, [togglePalette]);
   const pluginCommands = useSlot("command");
   const mainViews = useSlot("main-view");
+  // Extension-contributed collection tabs (views:collection). "" is the
+  // built-in Assets list; a missing key (extension disabled mid-view)
+  // falls back to it. With no registrations the collection view renders
+  // exactly as before — no tab row at all.
+  const collectionViews = useSlot("collection-view");
+  const [collectionTab, setCollectionTab] = useState("");
+  useEffect(() => setCollectionTab(""), [scope]);
+  const currentCollectionView =
+    scope.kind === "collection"
+      ? collectionViews.find(
+          (v) => v.pluginId + ":" + v.spec.id === collectionTab,
+        )
+      : undefined;
   const newMenuCommands = useMemo(
     () => pluginCommands.map((e) => e.spec).filter((c) => c.menu === "new"),
     [pluginCommands],
@@ -1611,7 +1628,47 @@ export default function Library({
             </div>
           )}
 
-          {scope.kind === "dashboard" ? (
+          {/* Extension collection tabs: only when a collection scope is
+              open AND at least one view is registered — otherwise the
+              default experience is untouched. */}
+          {activeCollection && collectionViews.length > 0 && (
+            <div
+              className="flex items-center gap-1 border-b border-line px-6 pt-2"
+              data-collection-tabs
+            >
+              {[
+                { key: "", title: "Assets" },
+                ...collectionViews.map((v) => ({
+                  key: v.pluginId + ":" + v.spec.id,
+                  title: v.spec.title,
+                })),
+              ].map((t) => (
+                <button
+                  key={t.key}
+                  data-collection-tab={t.key || "assets"}
+                  onClick={() => setCollectionTab(t.key)}
+                  className={`rounded-t-lg border-b-2 px-3 py-1.5 text-xs font-medium transition ${
+                    (currentCollectionView ? collectionTab : "") === t.key
+                      ? "border-accent text-ink"
+                      : "border-transparent text-ink-faint hover:text-ink"
+                  }`}
+                >
+                  {t.title}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeCollection && currentCollectionView ? (
+            <div className="h-full overflow-y-auto p-5">
+              <CollectionViewMount
+                key={activeCollection.name + ":" + collectionTab}
+                pluginId={currentCollectionView.pluginId}
+                spec={currentCollectionView.spec}
+                collection={activeCollection.name}
+              />
+            </div>
+          ) : scope.kind === "dashboard" ? (
             <Dashboard />
           ) : scope.kind === "plugin-view" ? (
             (() => {
@@ -2530,6 +2587,28 @@ function EmptyState({
       </div>
     </Centered>
   );
+}
+
+/**
+ * Mount wrapper for one extension collection view: memoizes the mount
+ * closure so PluginMount doesn't remount on every Library render, and
+ * threads the collection name through the CollectionViewSpec contract
+ * (the same pattern as AssetDetail's AssetTabMount).
+ */
+function CollectionViewMount({
+  pluginId,
+  spec,
+  collection,
+}: {
+  pluginId: string;
+  spec: CollectionViewSpec;
+  collection: string;
+}) {
+  const mount = useCallback(
+    (view: ViewMount) => spec.mount(view, { collection }),
+    [spec, collection],
+  );
+  return <PluginMount pluginId={pluginId} mount={mount} />;
 }
 
 function Centered({ children }: { children: React.ReactNode }) {

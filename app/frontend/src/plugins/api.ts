@@ -3,7 +3,7 @@
 // extension needs something this file doesn't offer, the answer is an API
 // addition, never an escape hatch to app internals.
 
-export const SX_API_VERSION = "1.5.0";
+export const SX_API_VERSION = "1.6.0";
 
 /** Capabilities an extension may declare. Undeclared calls throw.
  * `net:<host>` is a parameterized family (API 1.4.0): each declared
@@ -22,6 +22,8 @@ export type Permission =
   | "assets:write-metadata"
   | "secrets"
   | "storage:shared"
+  | "views:collection"
+  | "export"
   | `net:${string}`;
 
 /** plugin.json — the extension manifest. */
@@ -121,6 +123,15 @@ export interface MainViewSpec {
   title: string;
   mount(view: ViewMount): void;
 }
+
+export interface CollectionViewSpec {
+  id: string;
+  title: string;
+  mount(view: ViewMount, ctx: { collection: string }): void;
+}
+
+/** Bundle formats sx.collections.export can produce (API 1.6.0). */
+export type CollectionExportFormat = "claude-code" | "codex" | "gemini" | "zip";
 
 export interface DashboardWidgetSpec {
   id: string;
@@ -238,6 +249,15 @@ export interface SxAPI {
     list(): Promise<{ name: string; members: string[] }[]>;
   };
 
+  /** Requires export (API 1.6.0). Bundles a collection's member assets
+   * into a single file behind a native save dialog. "zip" carries every
+   * asset (one folder each); the plugin formats ("claude-code", "codex",
+   * "gemini") carry skill assets only. Resolves to the saved file path,
+   * or "" when the user cancels the dialog. */
+  readonly collections: {
+    export(name: string, format: CollectionExportFormat): Promise<string>;
+  };
+
   /** Requires secrets (API 1.4.0). Named secrets in the OS keychain,
    * scoped to this extension and profile — for API keys and tokens
    * that must never land in plugin data files or the vault. */
@@ -290,6 +310,10 @@ export interface SxAPI {
   /** Requires views:main (API 1.3.0): a full-page view, listed in the
    * sidebar's LIBRARY section. */
   registerMainView(spec: MainViewSpec): void;
+  /** Requires views:collection (API 1.6.0): a tab on the Library's
+   * collection view; mount receives the collection name. With no
+   * registrations the collection view renders exactly as before. */
+  registerCollectionView(spec: CollectionViewSpec): void;
   /** Requires commands. */
   registerCommand(spec: CommandSpec): void;
 

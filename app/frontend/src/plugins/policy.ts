@@ -92,6 +92,8 @@ const PERMISSION_DESCRIPTIONS: Record<FixedPermission, string> = {
   secrets: "Store its own API keys and tokens in your OS keychain",
   "storage:shared":
     "Keep shared state in this library, visible to everyone who uses it",
+  "views:collection": "Add tabs to collection views",
+  export: "Export collections as files to your computer",
 };
 
 /** Plain-language permission description for the consent sheet. The

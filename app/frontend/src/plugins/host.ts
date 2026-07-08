@@ -105,6 +105,8 @@ const KNOWN_PERMISSIONS = new Set([
   "assets:write-metadata",
   "secrets",
   "storage:shared",
+  "views:collection",
+  "export",
 ]);
 
 // net:<host> is a parameterized permission family; the host is a bare

@@ -97,6 +97,8 @@ Everything registered through `sx.*` is tracked by the host and torn down automa
 | `net:<host>` | Host-scoped network egress via `sx.net.fetch` (1.4.0): one grant per exact hostname (no wildcards/schemes/ports in the grant), https-only, redirects refused, real streaming `Response`. The consent sheet renders one line per declared host. |
 | `secrets` | Named per-extension secrets in the OS keyring via `sx.secrets.get/set` (1.4.0), keyed `<profile>/<extension-id>/<name>`; 0600-file fallback on headless machines. For API keys that must never land in plugin data files or the vault. |
 | `storage:shared` | One team-shared JSON document per extension via `sx.sharedStorage.load/save` (1.5.0), stored in the vault at `.sx/app-plugins/<id>.json` — syncs to everyone; commits on git vaults; 256 KB cap, whole-document last-writer-wins. |
+| `views:collection` | Register a tab on the Library's collection view (`registerCollectionView`, 1.6.0). The first tab stays the built-in asset list; the mount receives the collection name. No registrations means no tab row — the default view is untouched. |
+| `export` | Export a collection's member assets as one file via `sx.collections.export` (1.6.0): a plain zip (every asset), or a Claude Code / Codex / Gemini plugin bundle (skill assets only). Saved through a native dialog; resolves "" on cancel. |
 | (always) | `sx.ui` kit — modal, notice/toast, confirm, settings panel schema, plus `openView` into the extension's own main views (1.4.0, gated on `views:main`); `sx.storage` — `loadData()`/`saveData()` per plugin per profile (stored app-side, not in the vault); `sx.app.version`, `sx.api.version`. |
 
 **Explicitly excluded from API v1** (deferred, revisit after P6 planning):
@@ -196,6 +198,40 @@ confirm).
   box, not a parallel sidebar search — `SearchAssetContent` in core now
   does it (per-revision markdown cache, AND semantics, heading-weighted,
   excerpt highlighting in result rows).
+
+### API 1.6.0 additions (collection views & export)
+
+- `views:collection` permission + `registerCollectionView({id, title,
+  mount})`: a tab on the Library's **collection** view (slot kind
+  `collection-view`). When a collection scope is open and at least one
+  view is registered, the content pane grows a small tab row — the same
+  pattern as the asset detail's Content + extension tabs — whose first
+  tab, **Assets**, is the built-in asset list; each registered view adds
+  a tab. `mount(view, ctx)` receives `ctx.collection`, the collection's
+  name. With zero registrations there is no tab row at all: the default
+  collection experience is byte-identical. Mounts ride the standard
+  tracking, so disabling the extension mid-view tears the tab down and
+  falls back to Assets.
+- `export` permission + `sx.collections.export(name, format)`: bundles a
+  collection's member assets into a single file behind a **native save
+  dialog** (suggested name `<collection>-<format>.zip`); resolves to the
+  saved path, or `""` when the user cancels. Formats:
+  - `"zip"` — one folder per member asset containing its files (all
+    asset types).
+  - `"claude-code"` — a Claude Code plugin directory, zipped:
+    `.claude-plugin/plugin.json` (`{name, description, version:
+    "1.0.0"}`) plus `skills/<asset>/…` per **skill** asset.
+  - `"codex"` — the Codex analogue: `.codex-plugin/plugin.json`
+    (`{name, version, description, skills: "./skills"}`) plus
+    `skills/<asset>/…` per skill asset.
+  - `"gemini"` — a Gemini extension: `gemini-extension.json` plus
+    `commands/<asset>.toml` per skill asset, converted through the same
+    skill→command translation `sx install` uses for Gemini
+    (docs/plugins-spec.md).
+  The plugin formats carry **skill assets only** in v1 (mirroring the
+  derived-marketplace generator, internal/manifest/pluginexport.go);
+  non-skill members are skipped, and a collection with no skills refuses
+  those formats with a plain error.
 
 ### API 1.5.0 additions (wave-2, Review Rota)
 

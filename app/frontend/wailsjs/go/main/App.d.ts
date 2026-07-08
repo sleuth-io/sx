@@ -54,6 +54,8 @@ export function DiscardDraft(arg1:string):Promise<void>;
 
 export function DownloadAsset(arg1:string):Promise<string>;
 
+export function ExportCollectionBundle(arg1:string,arg2:string):Promise<string>;
+
 export function GetAsset(arg1:string,arg2:string):Promise<main.AssetDetail>;
 
 export function GetAssetSharing(arg1:string):Promise<main.AssetSharing>;

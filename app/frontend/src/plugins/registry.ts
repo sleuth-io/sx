@@ -6,6 +6,7 @@
 import { useSyncExternalStore } from "react";
 import type {
   AssetTabSpec,
+  CollectionViewSpec,
   CommandSpec,
   DashboardWidgetSpec,
   MainViewSpec,
@@ -17,6 +18,7 @@ export type SlotKind =
   | "asset-tab"
   | "dashboard-widget"
   | "main-view"
+  | "collection-view"
   | "command";
 
 type SpecFor = {
@@ -24,6 +26,7 @@ type SpecFor = {
   "asset-tab": AssetTabSpec;
   "dashboard-widget": DashboardWidgetSpec;
   "main-view": MainViewSpec;
+  "collection-view": CollectionViewSpec;
   command: CommandSpec;
 };
 
