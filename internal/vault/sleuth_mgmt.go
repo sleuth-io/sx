@@ -452,7 +452,13 @@ func (s *SleuthVault) SetAssetInstallations(ctx context.Context, assetName strin
 	}
 	for _, t := range targets {
 		if t.Kind == InstallKindOrg {
-			return nil, s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, nil, appendMode)
+			// Org is exclusive and ALWAYS a replace, whatever appendMode
+			// says: forwarding append=true would send "append nothing",
+			// leaving existing narrower scopes in place — the asset would
+			// silently fail to go global. Mirrors the file-backed
+			// `orgWide || !appendMode` clear (mgmt_ops.go) and the
+			// singular org branch's hardcoded replace above.
+			return nil, s.setAssetInstallationsGraphQL(ctx, assetName, nil, false, nil, false)
 		}
 	}
 	var repositories []vaultgql.RepositoryInstallationInput
