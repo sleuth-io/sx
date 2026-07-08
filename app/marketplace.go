@@ -85,12 +85,12 @@ type MarketplaceExtension struct {
 	Description string   `json:"description"`
 	Author      string   `json:"author"`
 	Permissions []string `json:"permissions"`
-	// Installed means the current vault already has an app-plugin asset
-	// with this name; the UI shows a label instead of an Install button.
-	Installed bool `json:"installed"`
 	// Installs is the global install count from the marketplace's
 	// stats.json (aggregated release-asset downloads). 0 when the
-	// marketplace publishes no stats.
+	// marketplace publishes no stats. There is deliberately no
+	// installed-here flag: the UI derives installed state from the live
+	// plugin registry, because a cached catalog flag goes stale across
+	// library switches (see MarketplaceSection).
 	Installs int `json:"installs"`
 }
 
@@ -167,11 +167,10 @@ func openMarketplaceVault(rawURL string) (vaultpkg.Vault, error) {
 }
 
 // SearchMarketplace lists the marketplace's extensions matching query
-// (empty lists everything), newest metadata included, flagged with
-// whether each is already installed in the current vault and its global
-// install count when the marketplace publishes stats. Entries whose
-// bundles are malformed are skipped with a log — one bad asset must not
-// blank the marketplace.
+// (empty lists everything), newest metadata included, with each entry's
+// global install count when the marketplace publishes stats. Entries
+// whose bundles are malformed are skipped with a log — one bad asset
+// must not blank the marketplace.
 func (a *App) SearchMarketplace(query string) ([]MarketplaceExtension, error) {
 	out := []MarketplaceExtension{}
 	mkt, err := openMarketplaceVault(a.GetMarketplaceURL())
@@ -182,22 +181,8 @@ func (a *App) SearchMarketplace(query string) ([]MarketplaceExtension, error) {
 	if err != nil {
 		return out, err
 	}
-
-	installed := map[string]bool{}
-	if v, err := a.currentVault(); err == nil {
-		if mine, err := v.ListAssets(a.ctx, vaultpkg.ListAssetsOptions{Type: asset.TypeAppPlugin.Key, Limit: 200}); err == nil {
-			for _, s := range mine.Assets {
-				installed[s.Name] = true
-			}
-		}
-	}
 	stats := a.marketplaceStats(mkt)
 	for i := range entries {
-		// Installed matches on the plugin ID: install republishes under
-		// pm.ID (addExtensionFrom forces the name), so the current vault's
-		// asset names are always ids — the MARKETPLACE's asset name is
-		// whatever its publisher chose and may diverge.
-		entries[i].Installed = installed[entries[i].ID]
 		entries[i].Installs = stats[entries[i].ID]
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })

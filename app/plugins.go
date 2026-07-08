@@ -656,8 +656,9 @@ func (a *App) ListVaultPlugins() ([]VaultPlugin, error) {
 	if r, err := a.sharingVault(); err == nil {
 		sharing = r
 	}
+	teams := a.teamsOnce()
 	for _, summary := range res.Assets {
-		scope := a.extensionScope(summary.Name, self, sharing)
+		scope := a.extensionScope(summary.Name, self, sharing, teams)
 		if !scope.Shared && !scope.Personal {
 			continue // installed just for someone else
 		}

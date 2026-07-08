@@ -76,6 +76,17 @@ export default function MarketplaceSection() {
       .catch(() => setCanEveryone(false));
   }, []);
 
+  // The install-options menu dismisses like a normal popover: Escape
+  // closes it (the backdrop below handles click-away).
+  useEffect(() => {
+    if (!menuFor) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuFor("");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuFor]);
+
   const fetchCatalog = useCallback(async (force = false) => {
     setSearching(true);
     setError("");
@@ -288,12 +299,13 @@ export default function MarketplaceSection() {
                   const mine = installedPlugins.find(
                     (p) => !p.builtIn && p.manifest.id === r.id,
                   );
-                  // Derived from the LIVE host registry only. The
-                  // catalog's fetched `installed` flag was stamped
-                  // against whichever library was current at fetch
-                  // time, and the catalog cache outlives library
-                  // switches — trusting it showed "In library" for
-                  // extensions the newly selected library doesn't have.
+                  // Derived from the LIVE host registry only — the
+                  // catalog deliberately carries no installed flag: a
+                  // fetched flag is stamped against whichever library
+                  // was current at fetch time, and the catalog cache
+                  // outlives library switches, so trusting one showed
+                  // "In library" for extensions the newly selected
+                  // library doesn't have.
                   const installed = !!mine;
                   if (
                     installed &&
@@ -355,17 +367,24 @@ export default function MarketplaceSection() {
                         </button>
                       )}
                       {menuFor === r.assetName && (
-                        <span className="absolute right-0 top-full z-10 mt-1 w-44 rounded-lg border border-line bg-surface p-1 shadow-lg">
-                          <button
-                            onClick={() => void install(r, "org")}
-                            className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-ink transition hover:bg-accent-soft"
-                          >
-                            Install for everyone
-                            <span className="block text-[10px] text-ink-faint">
-                              Shares it with the whole library
-                            </span>
-                          </button>
-                        </span>
+                        <>
+                          {/* Invisible click-away backdrop, under the menu. */}
+                          <span
+                            className="fixed inset-0 z-[5]"
+                            onMouseDown={() => setMenuFor("")}
+                          />
+                          <span className="absolute right-0 top-full z-10 mt-1 w-44 rounded-lg border border-line bg-surface p-1 shadow-lg">
+                            <button
+                              onClick={() => void install(r, "org")}
+                              className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-ink transition hover:bg-accent-soft"
+                            >
+                              Install for everyone
+                              <span className="block text-[10px] text-ink-faint">
+                                Shares it with the whole library
+                              </span>
+                            </button>
+                          </span>
+                        </>
                       )}
                     </span>
                   );

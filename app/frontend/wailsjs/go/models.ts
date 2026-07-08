@@ -301,7 +301,6 @@ export namespace main {
 	    description: string;
 	    author: string;
 	    permissions: string[];
-	    installed: boolean;
 	    installs: number;
 	
 	    static createFrom(source: any = {}) {
@@ -317,7 +316,6 @@ export namespace main {
 	        this.description = source["description"];
 	        this.author = source["author"];
 	        this.permissions = source["permissions"];
-	        this.installed = source["installed"];
 	        this.installs = source["installs"];
 	    }
 	}

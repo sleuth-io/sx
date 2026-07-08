@@ -244,10 +244,12 @@ func (a *App) ShareExtensionWithLibrary(id string) error {
 	return nil
 }
 
-// extensionScope computes who receives the named extension relative to the
-// caller. A nil reader or unknown identity can't tell, so the extension
-// stays visible with no chip — filtering must fail open, never hide.
-func (a *App) extensionScope(name, self string, r installTargetReader) ExtensionScope {
+// extensionScope computes who receives the named extension relative to
+// the caller. teams is a memoized fetch (teamsOnce) so a loop over many
+// assets resolves team membership from one read. A nil reader or unknown
+// identity can't tell, so the extension stays visible with no chip —
+// filtering must fail open, never hide.
+func (a *App) extensionScope(name, self string, r installTargetReader, teams func() []TeamInfo) ExtensionScope {
 	if r == nil || self == "" {
 		return ExtensionScope{Shared: true}
 	}
@@ -255,7 +257,7 @@ func (a *App) extensionScope(name, self string, r installTargetReader) Extension
 	if err != nil {
 		return ExtensionScope{Shared: true}
 	}
-	shared, mine := a.assetReachesUser(targets, self)
+	shared, mine := assetReachesUserVia(targets, self, teams)
 	return ExtensionScope{
 		Shared:   shared,
 		Personal: mine,

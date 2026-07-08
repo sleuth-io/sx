@@ -142,9 +142,6 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 	if all[0].Name != "Library Search" || all[1].Name != "Related Assets" {
 		t.Fatalf("unexpected order/names: %+v", all)
 	}
-	if all[0].Installed || all[1].Installed {
-		t.Fatalf("nothing should be installed yet: %+v", all)
-	}
 	if all[1].Version != "1.0.0" || len(all[1].Permissions) != 1 {
 		t.Fatalf("manifest fields not parsed: %+v", all[1])
 	}
@@ -155,7 +152,7 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 		t.Fatalf("filtered search = %+v, %v", found, err)
 	}
 
-	// Install copies into the current vault and flips the flag.
+	// Install copies into the current vault.
 	name, err := a.InstallMarketplaceExtension("related-assets", ExtensionScopeOrg)
 	if err != nil {
 		t.Fatalf("install: %v", err)
@@ -167,18 +164,6 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 	if err != nil || len(plugins) != 1 || plugins[0].AssetName != "related-assets" {
 		t.Fatalf("vault plugins after install = %+v, %v", plugins, err)
 	}
-	after, err := a.SearchMarketplace("")
-	if err != nil {
-		t.Fatalf("re-search: %v", err)
-	}
-	for _, e := range after {
-		if e.ID == "related-assets" && !e.Installed {
-			t.Fatalf("installed flag not set: %+v", e)
-		}
-		if e.ID == "library-search" && e.Installed {
-			t.Fatalf("library-search wrongly marked installed")
-		}
-	}
 
 	// Unknown asset fails cleanly.
 	if _, err := a.InstallMarketplaceExtension("nope", ExtensionScopeOrg); err == nil {
@@ -187,9 +172,9 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 
 	// A marketplace may name an asset independently of its plugin id
 	// (the source URL is user-editable, so foreign conventions happen).
-	// Install republishes under the plugin id, and the installed flag
-	// must match on the id — not the marketplace's asset name — or the
-	// entry never flips to installed.
+	// Install republishes under the plugin id — not the marketplace's
+	// asset name — so the vault's asset names are always ids and the
+	// UI's live-registry installed derivation can match on them.
 	mkt, err := vaultpkg.NewPathVault("file://" + mktDir)
 	if err != nil {
 		t.Fatal(err)
@@ -208,10 +193,14 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("final search: %v", err)
 	}
+	renamed := false
 	for _, e := range final {
-		if e.AssetName == "acme-search" && (!e.Installed || e.ID != "library-search") {
-			t.Fatalf("renamed entry not matched by id: %+v", e)
+		if e.AssetName == "acme-search" && e.ID == "library-search" {
+			renamed = true
 		}
+	}
+	if !renamed {
+		t.Fatalf("renamed entry missing or id mismatch: %+v", final)
 	}
 }
 
