@@ -34,13 +34,17 @@ export default class AdoptionWidget implements SxPlugin {
       const withUsage = stats.active.length;
       const without = Math.max(total - withUsage, 0);
       const pct = total > 0 ? Math.round((withUsage / total) * 100) : 0;
+      // Hover answers the obvious follow-up: WHO is in each group.
+      const activeSet = new Set(stats.active.map((u) => u.actor));
+      const activeWho = stats.active.map((u) => u.actor).sort();
+      const withoutWho = stats.knownUsers.filter((u) => !activeSet.has(u)).sort();
       view.el.replaceChildren(
         headline(
           `${pct}% adoption — ${withUsage} of ${total} users with usage`,
         ),
         donut(
-          { label: "Without usage", value: without, color: "#ef4444" },
-          { label: "With usage", value: withUsage, color: "#22c55e" },
+          { label: "Without usage", value: without, color: "#ef4444", who: withoutWho },
+          { label: "With usage", value: withUsage, color: "#22c55e", who: activeWho },
         ),
       );
     } catch (e) {

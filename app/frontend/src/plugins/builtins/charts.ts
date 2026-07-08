@@ -31,8 +31,8 @@ export function headline(text: string): HTMLElement {
 
 /** Donut with two segments (e.g. with/without usage) plus a legend. */
 export function donut(
-  a: { label: string; value: number; color: string },
-  b: { label: string; value: number; color: string },
+  a: { label: string; value: number; color: string; who?: string[] },
+  b: { label: string; value: number; color: string; who?: string[] },
 ): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "flex flex-col items-center gap-1 p-3";
@@ -60,6 +60,13 @@ export function donut(
       "stroke-dashoffset": String(-offset * circumference),
       transform: `rotate(-90 ${c} ${c})`,
     });
+    // Hovering a segment names its people (SVG tooltips need a <title>
+    // child, not the attribute).
+    if (seg.who?.length) {
+      const t = svgEl("title", {});
+      t.textContent = whoSummary(seg.label, seg.who);
+      ring.appendChild(t);
+    }
     svg.appendChild(ring);
     // Count label at the segment's midpoint angle.
     if (seg.value > 0) {
@@ -87,10 +94,20 @@ export function donut(
     dot.className = "inline-block h-2.5 w-2.5 rounded-sm";
     dot.style.background = seg.color;
     item.append(dot, seg.label);
+    if (seg.who?.length) item.title = whoSummary(seg.label, seg.who);
     legend.appendChild(item);
   }
   wrap.appendChild(legend);
   return wrap;
+}
+
+/** "With usage: a@x, b@y" — capped so a big org doesn't produce a
+ * screen-high native tooltip. */
+function whoSummary(label: string, who: string[]): string {
+  const MAX = 15;
+  const names = who.slice(0, MAX).join(", ");
+  const more = who.length > MAX ? ` +${who.length - MAX} more` : "";
+  return `${label}: ${names}${more}`;
 }
 
 export interface Series {
@@ -192,9 +209,15 @@ export function lineChart(
       row.append(dot, name, val);
       tip.appendChild(row);
     }
-    tip.style.left = `${Math.min(e.clientX - rect.left + 12, rect.width - 150)}px`;
-    tip.style.top = "8px";
+    // Clamp by the tooltip's MEASURED width (long asset names blow past
+    // any fixed guess and get clipped by the card edge): make it
+    // visible first so offsetWidth is real, then position.
     tip.classList.remove("hidden");
+    const tipW = tip.offsetWidth;
+    const x = e.clientX - rect.left;
+    const left = x + 12 + tipW > rect.width ? Math.max(4, x - tipW - 12) : x + 12;
+    tip.style.left = `${left}px`;
+    tip.style.top = "8px";
   });
   svg.addEventListener("mouseleave", () => tip.classList.add("hidden"));
   return wrap;
