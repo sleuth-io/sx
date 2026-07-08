@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -366,5 +367,32 @@ func TestMarketplaceCatalogMalformedFallsBack(t *testing.T) {
 	all, err := a.SearchMarketplace("")
 	if err != nil || len(all) != 1 || all[0].ID != "fallback-tool" {
 		t.Fatalf("fallback entries = %+v, %v", all, err)
+	}
+}
+
+// failingListVault errors on ListAssets; every other Vault method panics
+// via the nil embed, which this test never reaches.
+type failingListVault struct{ vaultpkg.Vault }
+
+func (failingListVault) ListAssets(ctx context.Context, opts vaultpkg.ListAssetsOptions) (*vaultpkg.ListAssetsResult, error) {
+	return nil, errors.New("backend hiccup")
+}
+
+// A listing failure must surface as an error, never as an empty result:
+// the frontend prunes plugins missing from a successful listing, so
+// empty-on-error would tear down every running extension on a transient
+// backend problem.
+func TestListVaultPluginsSurfacesListError(t *testing.T) {
+	a, _, _ := scopedExtensionApp(t, "alice@example.com")
+	a.vault = failingListVault{}
+	if _, err := a.ListVaultPlugins(); err == nil {
+		t.Fatalf("ListVaultPlugins swallowed the listing error")
+	}
+	// No configured vault stays a genuinely empty listing, not an error.
+	a.vault = nil
+	t.Setenv("SX_CONFIG_DIR", t.TempDir())
+	plugins, err := a.ListVaultPlugins()
+	if err != nil || len(plugins) != 0 {
+		t.Fatalf("no-vault listing = %+v, %v; want empty and nil", plugins, err)
 	}
 }

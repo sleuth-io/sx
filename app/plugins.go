@@ -640,6 +640,14 @@ const maxPluginSourceBytes = 5 << 20
 // extension someone else installed just for themselves doesn't appear.
 // Assets missing plugin.json or their entry file are skipped with a log —
 // a malformed extension must not break the Extensions screen.
+//
+// A listing failure is an ERROR, never an empty result: the frontend
+// prunes registered plugins missing from a successful listing
+// (refreshVaultPlugins), so a transient backend hiccup reported as "no
+// extensions" would tear down everything that's running. Backends
+// without the type (skills.new until P5) surface here as an error too —
+// callers already catch and keep built-ins working. No configured vault
+// IS a genuinely empty listing: there's nothing to reach the caller.
 func (a *App) ListVaultPlugins() ([]VaultPlugin, error) {
 	out := []VaultPlugin{}
 	v, err := a.currentVault()
@@ -648,8 +656,7 @@ func (a *App) ListVaultPlugins() ([]VaultPlugin, error) {
 	}
 	res, err := v.ListAssets(a.ctx, vaultpkg.ListAssetsOptions{Type: asset.TypeAppPlugin.Key, Limit: 200})
 	if err != nil {
-		// Backends without the type (skills.new until P5) list nothing.
-		return out, nil
+		return nil, friendlyVaultError(err)
 	}
 	self := manifest.NormalizeEmail(strings.TrimSpace(a.GetVaultInfo().Identity))
 	var sharing installTargetReader

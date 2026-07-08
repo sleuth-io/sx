@@ -156,7 +156,10 @@ async function doSyncVaultExtensions(): Promise<void> {
 /** Re-scan the vault for extensions (after install, remove, or a sharing
  * change). Upserts what the vault lists and drops vault extensions that
  * no longer reach this user — a remove or scope change must not leave a
- * stale row behind. */
+ * stale row behind. The prune runs ONLY on a successful listing:
+ * ListVaultPlugins throws on a listing failure rather than returning
+ * empty, so a transient backend error lands in the catch below instead
+ * of reading as "no extensions" and tearing down everything running. */
 export async function refreshVaultPlugins(): Promise<void> {
   try {
     const listed = (await ListVaultPlugins()) ?? [];
@@ -176,7 +179,8 @@ export async function refreshVaultPlugins(): Promise<void> {
       }
     }
   } catch {
-    // vault unreachable; the next boot retries
+    // Listing failed — leave the registry as-is; the next boot or
+    // refresh reconciles.
   }
 }
 
