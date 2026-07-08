@@ -4,6 +4,7 @@
 // tracked per plugin so the host can dispose every DOM trace on disable.
 
 import {
+  ExportCollectionBundle,
   GetAsset,
   GetDraft,
   ListDrafts,
@@ -27,6 +28,8 @@ import {
 } from "../../wailsjs/go/main/App";
 import type {
   AssetTabSpec,
+  CollectionExportFormat,
+  CollectionViewSpec,
   CommandSpec,
   DashboardWidgetSpec,
   MainViewSpec,
@@ -301,6 +304,15 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
       },
     },
 
+    collections: {
+      async export(name: string, format: CollectionExportFormat) {
+        need("export");
+        // The bridge shows the native save dialog and resolves "" on
+        // cancel — cancelling is a user choice, not an error.
+        return (await ExportCollectionBundle(name, format)) ?? "";
+      },
+    },
+
     secrets: {
       async get(name: string) {
         need("secrets");
@@ -427,6 +439,10 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
     registerMainView(spec: MainViewSpec) {
       need("views:main");
       registerSlotEntry("main-view", id, spec);
+    },
+    registerCollectionView(spec: CollectionViewSpec) {
+      need("views:collection");
+      registerSlotEntry("collection-view", id, spec);
     },
     registerCommand(spec: CommandSpec) {
       need("commands");

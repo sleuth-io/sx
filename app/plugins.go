@@ -46,7 +46,7 @@ var knownPluginPermissions = map[string]bool{
 	"views:sidebar": true, "views:asset-tab": true, "views:dashboard": true,
 	"commands": true, "events": true, "editor": true,
 	"views:main": true, "assets:write-metadata": true, "secrets": true,
-	"storage:shared": true,
+	"storage:shared": true, "views:collection": true, "export": true,
 }
 
 // netPermissionPattern matches the host-scoped network permission
