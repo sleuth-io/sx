@@ -132,7 +132,11 @@ func (g *GitVault) ListUserAssets(ctx context.Context) (map[string][]string, err
 
 // ListUserAssets maps normalized email → asset names installed just for
 // that person, read from the same paged installations query
-// ListTeamAssets uses.
+// ListTeamAssets uses. For USER installations the email is entityRef —
+// entityName is the person's display name (see schema.graphql:
+// "Canonical reference used to install this entity … the email for USER
+// installations"); entityName is only a fallback for servers that
+// predate the ref field.
 func (s *SleuthVault) ListUserAssets(ctx context.Context) (map[string][]string, error) {
 	out := map[string][]string{}
 	pageSize := 50
@@ -150,8 +154,14 @@ func (s *SleuthVault) ListUserAssets(ctx context.Context) (map[string][]string, 
 				name = node.GetName()
 			}
 			for _, inst := range node.GetInstallations() {
-				if strings.EqualFold(string(inst.EntityType), "USER") && inst.EntityName != "" {
-					email := manifest.NormalizeEmail(inst.EntityName)
+				if !strings.EqualFold(string(inst.EntityType), "USER") {
+					continue
+				}
+				ref := inst.EntityName
+				if inst.EntityRef != nil && *inst.EntityRef != "" {
+					ref = *inst.EntityRef
+				}
+				if email := manifest.NormalizeEmail(ref); email != "" {
 					out[email] = append(out[email], name)
 				}
 			}
