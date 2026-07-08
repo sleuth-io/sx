@@ -51,8 +51,13 @@ jobs:
             platform: darwin/arm64
             arch: arm64
             artifact: sx-app-macos-arm64
+          # macos-13 (the old Intel image) was retired 2025-12-04; jobs
+          # requesting it queue forever — no runner exists to take them.
+          # macos-15-intel is the supported x86_64 image through fall
+          # 2027, after which Intel macOS goes away entirely and this
+          # entry should fold into a darwin/universal build.
           - name: macos-amd64
-            os: macos-13
+            os: macos-15-intel
             platform: darwin/amd64
             arch: amd64
             artifact: sx-app-macos-amd64
