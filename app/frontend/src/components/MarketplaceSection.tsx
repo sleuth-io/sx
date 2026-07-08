@@ -235,9 +235,13 @@ export default function MarketplaceSection() {
                   const mine = installedPlugins.find(
                     (p) => !p.builtIn && p.manifest.id === r.id,
                   );
-                  // Derived reactively (not from the fetched flag), so
-                  // installs/updates flip this card without a refetch.
-                  const installed = r.installed || !!mine;
+                  // Derived from the LIVE host registry only. The
+                  // catalog's fetched `installed` flag was stamped
+                  // against whichever library was current at fetch
+                  // time, and the catalog cache outlives library
+                  // switches — trusting it showed "In library" for
+                  // extensions the newly selected library doesn't have.
+                  const installed = !!mine;
                   if (
                     installed &&
                     mine &&
