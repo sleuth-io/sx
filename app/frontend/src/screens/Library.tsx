@@ -491,16 +491,27 @@ export default function Library({
     void bootExtensions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The palette toggles from three places: the webview keydown, the
+  // native menu accelerator (which may ALSO reach the webview as a
+  // keydown on some platforms), and the header ⌘K chip. The debounce
+  // makes a double-delivered ⌘K one toggle instead of an open+close.
+  const lastPaletteToggle = useRef(0);
+  const togglePalette = useCallback(() => {
+    const now = Date.now();
+    if (now - lastPaletteToggle.current < 250) return;
+    lastPaletteToggle.current = now;
+    setPaletteOpen((v) => !v);
+  }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setPaletteOpen((v) => !v);
+        togglePalette();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [togglePalette]);
   const pluginCommands = useSlot("command");
   const mainViews = useSlot("main-view");
   const newMenuCommands = useMemo(
@@ -872,9 +883,16 @@ export default function Library({
     EventsOn("new-skill", () => setShowAddAsset(true));
     EventsOn("new-collection", () => setShowCollectionModal(true));
     EventsOn("new-library", () => setShowSettings(true));
+    EventsOn("command-palette", togglePalette);
     return () =>
-      EventsOff("open-settings", "new-skill", "new-collection", "new-library");
-  }, []);
+      EventsOff(
+        "open-settings",
+        "new-skill",
+        "new-collection",
+        "new-library",
+        "command-palette",
+      );
+  }, [togglePalette]);
 
   const types = useMemo(() => {
     const seen = new Map<string, string>();
@@ -1208,6 +1226,20 @@ export default function Library({
               className="ml-auto flex h-9 shrink-0 items-center gap-2"
               style={{ ["--wails-draggable" as never]: "no-drag" }}
             >
+              {/* The palette's visible front door: a hidden-only ⌘K is
+                  never discovered (GitHub retired theirs over exactly
+                  this). The chip is clickable AND teaches the shortcut. */}
+              <button
+                onClick={togglePalette}
+                title="Command palette — every action, plus your extensions"
+                className="flex h-full items-center gap-1.5 rounded-lg px-2 text-sm text-ink-faint transition hover:bg-canvas hover:text-ink"
+              >
+                <kbd className="rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px]">
+                  {navigator.platform.includes("Mac") ? "⌘K" : "Ctrl K"}
+                </kbd>
+                <span className="hidden lg:inline">Commands</span>
+              </button>
+
               {/* Search, type filter, sort, and list/grid act on the
                   asset list — on full-page surfaces (dashboard, plugin
                   views) they'd be dead controls, so they hide. */}
