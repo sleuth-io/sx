@@ -180,7 +180,7 @@ export function lineChart(
   // Hover tooltip: nearest bucket, one row per series (mock parity).
   const tip = document.createElement("div");
   tip.className =
-    "pointer-events-none absolute z-10 hidden rounded-lg border border-line bg-surface px-3 py-2 text-xs shadow-xl";
+    "pointer-events-none absolute z-10 hidden max-w-[260px] rounded-lg border border-line bg-surface px-3 py-2 text-xs shadow-xl";
   wrap.appendChild(tip);
   svg.addEventListener("mousemove", (e) => {
     const rect = svg.getBoundingClientRect();
@@ -214,8 +214,11 @@ export function lineChart(
     // visible first so offsetWidth is real, then position.
     tip.classList.remove("hidden");
     const tipW = tip.offsetWidth;
-    const x = e.clientX - rect.left;
-    const left = x + 12 + tipW > rect.width ? Math.max(4, x - tipW - 12) : x + 12;
+    const cursorX = e.clientX - rect.left;
+    const left =
+      cursorX + 12 + tipW > rect.width
+        ? Math.max(4, cursorX - tipW - 12)
+        : cursorX + 12;
     tip.style.left = `${left}px`;
     tip.style.top = "8px";
   });
