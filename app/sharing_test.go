@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
 // The Manage Installations dialog round-trip: every scope kind reads
@@ -210,5 +213,34 @@ func TestPersonalAssetsListing(t *testing.T) {
 	names, err = a.PersonalAssets()
 	if err != nil || len(names) != 0 {
 		t.Fatalf("bob's personal assets = %+v, %v; want none", names, err)
+	}
+}
+
+// Adds route through the append-mode bulk API (additive on every
+// backend); a target the vault's RBAC skips must surface its reason,
+// not read as success.
+func TestAddInstallationSurfacesRBACDenial(t *testing.T) {
+	a, _, _ := scopedExtensionApp(t, "alice@example.com")
+	marketplaceWith(t, a, "guarded")
+	if _, err := a.InstallMarketplaceExtension("guarded", ExtensionScopeMe); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	admins, ok := a.vault.(interface {
+		AddOrgAdmins(ctx context.Context, emails []string) (int, error)
+	})
+	if !ok {
+		t.Fatalf("vault has no AddOrgAdmins")
+	}
+	if _, err := admins.AddOrgAdmins(a.ctx, []string{"boss@example.com"}); err != nil {
+		t.Fatalf("govern vault: %v", err)
+	}
+	err := a.AddAssetInstallation("guarded", AssetInstallation{Kind: "org"})
+	if err == nil || !strings.Contains(err.Error(), "org-admin") {
+		t.Fatalf("err = %v, want org-admin denial reason", err)
+	}
+	// The denied add must not have changed the rows.
+	targets, _ := installTargets(t, a, "guarded")
+	if len(targets) != 1 || targets[0].Kind != vaultpkg.InstallKindUser {
+		t.Fatalf("targets after denial = %+v", targets)
 	}
 }

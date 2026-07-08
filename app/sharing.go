@@ -115,8 +115,18 @@ func (a *App) GetAssetInstallations(name string) (InstallationsView, error) {
 	return installationsView(targets, present), nil
 }
 
-// AddAssetInstallation adds one install row. The vault's RBAC gate
-// (docs/rbac.md) decides whether the caller may — errors surface as-is.
+// bulkInstallTargetWriter is the vault capability behind additive row
+// adds. The singular SetAssetInstallation appends on file vaults but
+// REPLACES on skills.new, so building a multi-scope install one row at a
+// time would clobber there; append-mode bulk writes are additive on
+// every backend (and an org target stays exclusive in both).
+type bulkInstallTargetWriter interface {
+	SetAssetInstallations(ctx context.Context, assetName string, targets []vaultpkg.InstallTarget, appendMode bool) ([]vaultpkg.SkippedTarget, error)
+}
+
+// AddAssetInstallation adds one install row without disturbing the rest.
+// The vault's RBAC gate (docs/rbac.md) decides whether the caller may —
+// denials surface with the vault's reason.
 func (a *App) AddAssetInstallation(name string, inst AssetInstallation) error {
 	if err := validateAssetRef(name, ""); err != nil {
 		return err
@@ -125,12 +135,20 @@ func (a *App) AddAssetInstallation(name string, inst AssetInstallation) error {
 	if err != nil {
 		return err
 	}
-	r, err := a.sharingVault()
+	v, err := a.currentVault()
 	if err != nil {
 		return err
 	}
-	if err := r.SetAssetInstallation(a.ctx, name, target); err != nil {
+	bulk, ok := v.(bulkInstallTargetWriter)
+	if !ok {
+		return errors.New("this library doesn't support sharing controls")
+	}
+	skipped, err := bulk.SetAssetInstallations(a.ctx, name, []vaultpkg.InstallTarget{target}, true)
+	if err != nil {
 		return friendlyVaultError(err)
+	}
+	if len(skipped) > 0 {
+		return errors.New(skipped[0].Reason)
 	}
 	return nil
 }
