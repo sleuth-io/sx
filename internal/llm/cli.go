@@ -16,6 +16,18 @@ import (
 // auth the user already set up in that CLI — a user-initiated
 // convenience, never something an extension can reach without the
 // llm:use grant and the user having picked this provider in Settings.
+//
+// TRUST BOUNDARY: the prompt is extension-authored, and these CLIs are
+// agents that can normally run tools. Each invocation is therefore
+// pinned to its most restricted mode — claude gets `--tools ""` (no
+// tools at all), codex gets `--sandbox read-only`, gemini gets
+// `--approval-mode default` (headless has no approver, so mutating
+// tools can't run) — and the working directory is a fresh empty
+// scratch dir, never a real project. Residual risk on codex/gemini:
+// their restricted modes still permit READS, so a hostile prompt could
+// try to exfiltrate file contents through the reply. That's why the
+// consent line for llm:use names prompt-sending explicitly and CLI
+// providers are an explicit user choice, never a default.
 type cliProvider struct {
 	id      string
 	binPath string
@@ -80,10 +92,13 @@ func (p *cliProvider) Complete(ctx context.Context, req Request) (Response, erro
 func (p *cliProvider) run(ctx context.Context, stdin string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, p.binPath, args...) // #nosec G204 -- binPath comes from provider detection, args are fixed flags
 	cmd.Env = cliEnv()
-	// Run in the user's home dir: these CLIs are workspace-oriented and
-	// must not treat the app bundle's cwd as a project.
-	if home, err := os.UserHomeDir(); err == nil {
-		cmd.Dir = home
+	// Run in a fresh empty scratch dir: these CLIs are
+	// workspace-oriented, and neither the app bundle's cwd nor the
+	// user's home may be treated as the project an extension-authored
+	// prompt gets to look at.
+	if scratch, err := os.MkdirTemp("", "sx-llm-*"); err == nil {
+		cmd.Dir = scratch
+		defer func() { _ = os.RemoveAll(scratch) }()
 	}
 	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
@@ -103,7 +118,9 @@ func (p *cliProvider) run(ctx context.Context, stdin string, args ...string) (st
 }
 
 func (p *cliProvider) runClaude(ctx context.Context, prompt, model string) (Response, error) {
-	args := []string{"-p", "--output-format", "json"}
+	// --tools "" removes every built-in tool: the agent CLI degrades to
+	// a pure completion endpoint, which is all llm:use grants.
+	args := []string{"-p", "--output-format", "json", "--tools", ""}
 	if model != "" {
 		args = append(args, "--model", model)
 	}
@@ -144,7 +161,9 @@ func (p *cliProvider) runCodex(ctx context.Context, prompt, model string) (Respo
 	_ = lastMsg.Close()
 	defer func() { _ = os.Remove(lastPath) }()
 
-	args := []string{"exec", "--skip-git-repo-check", "--output-last-message", lastPath}
+	// codex has no no-tools mode; read-only is its most restricted
+	// sandbox (shell commands can't write or leave side effects).
+	args := []string{"exec", "--skip-git-repo-check", "--sandbox", "read-only", "--output-last-message", lastPath}
 	if model != "" {
 		args = append(args, "-m", model)
 	}
@@ -161,7 +180,9 @@ func (p *cliProvider) runCodex(ctx context.Context, prompt, model string) (Respo
 }
 
 func (p *cliProvider) runGemini(ctx context.Context, prompt, model string) (Response, error) {
-	args := []string{"--output-format", "json"}
+	// Pin approval-mode to default (never yolo/auto_edit): headless has
+	// no one to approve, so approval-gated tools cannot execute.
+	args := []string{"--output-format", "json", "--approval-mode", "default"}
 	if model != "" {
 		args = append(args, "--model", model)
 	}

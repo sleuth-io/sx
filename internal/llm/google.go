@@ -14,7 +14,7 @@ const googleAPIURL = "https://generativelanguage.googleapis.com"
 type googleProvider struct {
 	apiKey  string
 	model   string
-	baseURL string // test override; "" = generativelanguage.googleapis.com
+	baseURL string // "" = generativelanguage.googleapis.com
 }
 
 func (p *googleProvider) ID() string { return ProviderGoogle }

@@ -139,6 +139,67 @@ func TestOpenAIProvider(t *testing.T) {
 	}
 }
 
+func TestNormalizeOpenAIBase(t *testing.T) {
+	cases := []struct {
+		in       string
+		wantBase string
+		wantOAI  bool
+	}{
+		{"", "https://api.openai.com", true},
+		{"https://api.openai.com/v1", "https://api.openai.com", true},
+		{"https://api.openai.com/v1/", "https://api.openai.com", true},
+		{"https://openrouter.ai/api/v1", "https://openrouter.ai/api", false},
+		{"http://localhost:8000", "http://localhost:8000", false},
+	}
+	for _, tc := range cases {
+		base, isOAI := normalizeOpenAIBase(tc.in)
+		if base != tc.wantBase || isOAI != tc.wantOAI {
+			t.Errorf("normalizeOpenAIBase(%q) = %q, %v; want %q, %v",
+				tc.in, base, isOAI, tc.wantBase, tc.wantOAI)
+		}
+	}
+}
+
+func TestOpenAIProviderV1SuffixNotDoubled(t *testing.T) {
+	var got map[string]any
+	srv := captureServer(t, `{"choices":[{"message":{"content":"ok"}}]}`, &got)
+	defer srv.Close()
+
+	p := &openAIProvider{apiKey: "k", model: "m", baseURL: srv.URL + "/v1"}
+	if _, err := p.Complete(context.Background(), basicReq); err != nil {
+		t.Fatal(err)
+	}
+	if got["_path"] != "/v1/chat/completions" {
+		t.Fatalf("path = %v (v1 suffix should not double)", got["_path"])
+	}
+}
+
+func TestSchemaValidationRejectsNonConforming(t *testing.T) {
+	// Reply is well-formed JSON but misses the required field — the
+	// sx.llm contract promises a VALIDATED document, so this must fail.
+	srv := captureServer(t, `{"content":[{"type":"text","text":"{\"nope\":1}"}]}`, nil)
+	defer srv.Close()
+
+	req := Request{
+		Messages: []Message{{Role: "user", Content: "hello"}},
+		Schema:   json.RawMessage(`{"type":"object","required":["ok"],"properties":{"ok":{"type":"boolean"}}}`),
+	}
+	p := &anthropicProvider{apiKey: "k", baseURL: srv.URL}
+	_, err := p.Complete(context.Background(), req)
+	if err == nil || !strings.Contains(err.Error(), "schema") {
+		t.Fatalf("non-conforming reply should fail validation, got %v", err)
+	}
+
+	// The same schema with a conforming reply passes.
+	srv2 := captureServer(t, `{"content":[{"type":"text","text":"{\"ok\":true}"}]}`, nil)
+	defer srv2.Close()
+	p2 := &anthropicProvider{apiKey: "k", baseURL: srv2.URL}
+	resp, err := p2.Complete(context.Background(), req)
+	if err != nil || resp.Text != `{"ok":true}` {
+		t.Fatalf("conforming reply = %q, %v", resp.Text, err)
+	}
+}
+
 func TestOpenAIProviderSchemaPrependsSystem(t *testing.T) {
 	var got map[string]any
 	srv := captureServer(t, `{"choices":[{"message":{"content":"{\"ok\":false}"}}]}`, &got)

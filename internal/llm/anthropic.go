@@ -17,7 +17,7 @@ const anthropicAPIURL = "https://api.anthropic.com"
 type anthropicProvider struct {
 	apiKey  string
 	model   string
-	baseURL string // test override; "" = api.anthropic.com
+	baseURL string // "" = api.anthropic.com; also covers gateways/proxies
 }
 
 func (p *anthropicProvider) ID() string { return ProviderAnthropic }

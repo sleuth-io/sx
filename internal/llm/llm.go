@@ -68,10 +68,12 @@ const (
 	ProviderGoogle    = "google"
 )
 
-// Config is the user's provider selection, persisted by the app.
-// APIKey is resolved from the OS keyring at call time and never stored
-// here. BaseURL applies to Ollama (server address) and OpenAI
-// (OpenAI-compatible endpoints: OpenRouter, Groq, vLLM, LM Studio, …).
+// Config is the user's provider selection, persisted by the app. The
+// API key is resolved from the OS keyring at call time and never
+// stored here. BaseURL overrides the provider's default endpoint:
+// Ollama's server address, an OpenAI-compatible endpoint (OpenRouter,
+// Groq, vLLM, LM Studio, …), or a gateway in front of Anthropic or
+// Google. CLI providers ignore it.
 type Config struct {
 	Provider string `json:"provider"`
 	Model    string `json:"model,omitempty"`
@@ -101,7 +103,7 @@ func New(cfg Config, apiKey string) (Provider, error) {
 		if apiKey == "" {
 			return nil, errors.New("no Anthropic API key set — add one in Settings")
 		}
-		return &anthropicProvider{apiKey: apiKey, model: cfg.Model}, nil
+		return &anthropicProvider{apiKey: apiKey, model: cfg.Model, baseURL: cfg.BaseURL}, nil
 	case ProviderOpenAI:
 		if apiKey == "" {
 			return nil, errors.New("no API key set — add one in Settings")
@@ -117,7 +119,7 @@ func New(cfg Config, apiKey string) (Provider, error) {
 		if cfg.Model == "" {
 			return nil, errors.New("no model set — enter one in Settings")
 		}
-		return &googleProvider{apiKey: apiKey, model: cfg.Model}, nil
+		return &googleProvider{apiKey: apiKey, model: cfg.Model, baseURL: cfg.BaseURL}, nil
 	case "":
 		return nil, errors.New("no AI provider configured — choose one in Settings")
 	default:

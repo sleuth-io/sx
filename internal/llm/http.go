@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // completionTimeout bounds one hosted-API or Ollama completion. Large
@@ -87,10 +89,46 @@ func extractJSON(text string) (string, error) {
 }
 
 // finishStructured applies schema post-processing to a raw reply:
-// extract the JSON document when the request asked for one.
+// extract the JSON document when the request asked for one, then
+// validate it against the request's schema — the sx.llm contract is a
+// VALIDATED document, so a well-formed reply missing required fields
+// fails here instead of crashing the extension later.
 func finishStructured(req Request, text string) (string, error) {
 	if len(req.Schema) == 0 {
 		return text, nil
 	}
-	return extractJSON(text)
+	doc, err := extractJSON(text)
+	if err != nil {
+		return "", err
+	}
+	if err := validateAgainstSchema(req.Schema, doc); err != nil {
+		return "", err
+	}
+	return doc, nil
+}
+
+// validateAgainstSchema checks one JSON document against a JSON Schema.
+func validateAgainstSchema(schema json.RawMessage, doc string) error {
+	schemaDoc, err := jsonschema.UnmarshalJSON(bytes.NewReader(schema))
+	if err != nil {
+		return fmt.Errorf("invalid schema: %w", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource("request://schema", schemaDoc); err != nil {
+		return fmt.Errorf("invalid schema: %w", err)
+	}
+	compiled, err := compiler.Compile("request://schema")
+	if err != nil {
+		return fmt.Errorf("invalid schema: %w", err)
+	}
+	// jsonschema decodes numbers as json.Number, which the validator
+	// requires for exact numeric keyword checks.
+	instance, err := jsonschema.UnmarshalJSON(strings.NewReader(doc))
+	if err != nil {
+		return fmt.Errorf("model reply is not valid JSON: %w", err)
+	}
+	if err := compiled.Validate(instance); err != nil {
+		return fmt.Errorf("model reply does not match the requested schema: %w", err)
+	}
+	return nil
 }
