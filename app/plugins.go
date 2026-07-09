@@ -110,9 +110,13 @@ func (a *App) PluginLoadData(id string) (string, error) {
 	return string(data), nil
 }
 
-// maxPluginDataBytes bounds a single extension's stored state; the API is
-// for settings and small caches, not a database.
-const maxPluginDataBytes = 1 << 20
+// maxPluginDataBytes bounds a single extension's stored state. It's a
+// LOCAL per-profile file (<config>/app-plugins/<profile>/<id>.data.json),
+// never synced to the vault — the only cost is local disk — so the limit
+// is generous enough to hold an incremental event cache (a year of usage
+// events for an active org), not just settings. Distinct from the
+// vault-synced storage:shared doc, which stays small (256 KB).
+const maxPluginDataBytes = 10 << 20
 
 // PluginSaveData persists the extension's JSON blob atomically.
 func (a *App) PluginSaveData(id, data string) error {
