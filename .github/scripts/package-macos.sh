@@ -155,7 +155,9 @@ notarize() {
           rm -f "$key_path"
           return 0
           ;;
-        "In Progress")
+        "In Progress"|"")
+          # Empty = info succeeded but the status didn't parse — treat as
+          # transient like a failed poll, never as a verdict.
           echo "    still in progress ($(date -u +%H:%M:%S) UTC)"
           ;;
         *)
