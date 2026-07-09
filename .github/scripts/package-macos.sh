@@ -33,6 +33,23 @@ RUNNER_TEMP="${RUNNER_TEMP:-$(mktemp -d)}"
 
 SIGNED=false
 KEYCHAIN=""
+
+# Run a command with a hard cap and retries. codesign (--timestamp) and
+# stapler both call out to Apple servers with no timeout of their own; a
+# stall (or a locked keychain prompt) otherwise hangs the job until the
+# runner's 6h limit. perl ships with macOS; alarm+exec kills on deadline.
+bounded() {
+  local attempt
+  for attempt in 1 2 3; do
+    if perl -e 'alarm shift; exec @ARGV' 180 "$@"; then
+      return 0
+    fi
+    echo "WARNING: '$1' attempt $attempt failed or timed out" >&2
+    [ "$attempt" -lt 3 ] && sleep 15
+  done
+  echo "ERROR: '$*' failed after 3 attempts" >&2
+  return 1
+}
 cleanup() {
   if [ -n "$KEYCHAIN" ]; then
     security delete-keychain "$KEYCHAIN" 2>/dev/null || true
@@ -47,7 +64,11 @@ if [ -n "${MACOS_CERTIFICATE_P12:-}" ] && [ -n "${MACOS_CERTIFICATE_PASSWORD:-}"
   CERT_PATH="$RUNNER_TEMP/certificate.p12"
   echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$CERT_PATH"
   security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-  security set-keychain-settings -lut 1800 "$KEYCHAIN"
+  # 6h lock timeout (matches the job's max lifetime), NOT the usual 1800:
+  # notarization can hold the job for hours between signing operations,
+  # and a keychain that auto-locks meanwhile makes the next codesign hang
+  # forever waiting for an unlock prompt no headless runner will answer.
+  security set-keychain-settings -lut 21600 "$KEYCHAIN"
   security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
   security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" \
     -A -t cert -f pkcs12 -k "$KEYCHAIN"
@@ -63,7 +84,7 @@ if [ -n "${MACOS_CERTIFICATE_P12:-}" ] && [ -n "${MACOS_CERTIFICATE_PASSWORD:-}"
   fi
 
   echo "==> Signing $APP_NAME with '$IDENTITY' (hardened runtime)"
-  codesign --force --options runtime --timestamp \
+  bounded codesign --force --options runtime --timestamp \
     --sign "$IDENTITY" "$APP_PATH"
   codesign --verify --strict --verbose=2 "$APP_PATH"
   SIGNED=true
@@ -166,7 +187,8 @@ if [ "$SIGNED" = true ] && notarize "$STAGING_ZIP"; then
   # The ticket staples to the .app, not the zip — staple, then rebuild
   # the zip so the update feed carries the stapled bundle.
   echo "==> Stapling $APP_NAME and rebuilding the zip"
-  xcrun stapler staple "$APP_PATH"
+  security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+  bounded xcrun stapler staple "$APP_PATH"
   rm -f "$STAGING_ZIP"
   ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$STAGING_ZIP"
   NOTARIZED=true
@@ -197,9 +219,13 @@ hdiutil create -volname "sx" -srcfolder "$STAGING" -ov -format UDZO \
 rm -rf "$STAGING"
 
 if [ "$SIGNED" = true ]; then
-  codesign --force --timestamp --sign "$IDENTITY" "$OUT_DIR/$DMG_NAME"
+  # Hours may have passed inside notarize(); re-unlock in case the
+  # keychain locked anyway, and cap the signing call so a hang fails the
+  # job in minutes instead of idling to the 6h runner limit.
+  security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+  bounded codesign --force --timestamp --sign "$IDENTITY" "$OUT_DIR/$DMG_NAME"
   if notarize "$OUT_DIR/$DMG_NAME"; then
-    xcrun stapler staple "$OUT_DIR/$DMG_NAME"
+    bounded xcrun stapler staple "$OUT_DIR/$DMG_NAME"
   fi
 fi
 
