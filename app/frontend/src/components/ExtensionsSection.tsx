@@ -324,7 +324,7 @@ export default function ExtensionsSection() {
                       <span
                         title="Who receives this extension"
                         data-scope-chip={p.manifest.id}
-                        className="rounded-full border border-accent/40 px-1.5 text-[10px] text-accent"
+                        className="shrink-0 whitespace-nowrap rounded-full border border-accent/40 px-1.5 text-[10px] font-normal text-accent"
                       >
                         {p.scope.label}
                       </span>
