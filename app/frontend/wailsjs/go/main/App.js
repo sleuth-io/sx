@@ -182,6 +182,26 @@ export function InstalledAssets() {
   return window['go']['main']['App']['InstalledAssets']();
 }
 
+export function LLMComplete(arg1, arg2) {
+  return window['go']['main']['App']['LLMComplete'](arg1, arg2);
+}
+
+export function LLMSetAPIKey(arg1, arg2) {
+  return window['go']['main']['App']['LLMSetAPIKey'](arg1, arg2);
+}
+
+export function LLMSetConfig(arg1) {
+  return window['go']['main']['App']['LLMSetConfig'](arg1);
+}
+
+export function LLMStatus() {
+  return window['go']['main']['App']['LLMStatus']();
+}
+
+export function LLMTest() {
+  return window['go']['main']['App']['LLMTest']();
+}
+
 export function ListAIClients() {
   return window['go']['main']['App']['ListAIClients']();
 }

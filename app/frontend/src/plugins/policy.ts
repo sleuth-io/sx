@@ -96,6 +96,8 @@ const PERMISSION_DESCRIPTIONS: Record<FixedPermission, string> = {
   "views:team": "Add tabs to team views",
   "views:repo": "Add tabs to repository views",
   export: "Export collections as files to your computer",
+  "llm:use":
+    "Send prompts to the AI provider you configured in Settings (your CLI, local model, or API key)",
 };
 
 /** Plain-language permission description for the consent sheet. The

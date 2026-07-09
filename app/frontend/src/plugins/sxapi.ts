@@ -29,6 +29,8 @@ import {
   PluginAuditEventsSince,
   PluginCurrentUser,
   PluginUserStats,
+  LLMComplete,
+  LLMStatus,
 } from "../../wailsjs/go/main/App";
 import type {
   AssetTabSpec,
@@ -36,6 +38,8 @@ import type {
   CollectionViewSpec,
   CommandSpec,
   DashboardWidgetSpec,
+  LLMRequest,
+  LLMResult,
   MainViewSpec,
   RepoViewSpec,
   Permission,
@@ -365,6 +369,27 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
       async set(name: string, value: string) {
         need("secrets");
         await PluginSecretSet(id, name, value);
+      },
+    },
+
+    llm: {
+      async complete(req: LLMRequest): Promise<LLMResult> {
+        need("llm:use");
+        const raw = await LLMComplete(id, JSON.stringify(req));
+        const resp = JSON.parse(raw) as LLMResult;
+        if (req.schema) {
+          // The bridge already extracted and validated a JSON document;
+          // parse it here so extensions never re-implement that.
+          resp.json = JSON.parse(resp.text);
+        }
+        return resp;
+      },
+      async provider(): Promise<string> {
+        need("llm:use");
+        // Only the provider id crosses into the sandbox — never the
+        // full status (base URLs, key presence) meant for settings.
+        const status = await LLMStatus();
+        return status?.config?.provider ?? "";
       },
     },
 

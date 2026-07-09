@@ -20,6 +20,7 @@ import {
 } from "../../wailsjs/go/main/App";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import type { main } from "../../wailsjs/go/models";
+import AISettingsPanel from "./AISettingsPanel";
 import ExtensionsSection from "./ExtensionsSection";
 import MarketplaceSection from "./MarketplaceSection";
 import Modal from "./Modal";
@@ -50,7 +51,9 @@ export default function SettingsModal({
   onLibrariesChanged?: () => void;
 }) {
   const [settings, setSettings] = useState<main.Settings | null>(null);
-  const [tab, setTab] = useState<"libraries" | "extensions">("libraries");
+  const [tab, setTab] = useState<"libraries" | "extensions" | "ai">(
+    "libraries",
+  );
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -293,6 +296,7 @@ export default function SettingsModal({
             [
               ["libraries", "Libraries"],
               ["extensions", "Extensions"],
+              ["ai", "AI provider"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -315,6 +319,8 @@ export default function SettingsModal({
           <ExtensionsSection />
           <MarketplaceSection />
         </>
+      ) : tab === "ai" ? (
+        <AISettingsPanel />
       ) : !settings ? (
         <div className="h-20 animate-pulse rounded-lg bg-canvas" />
       ) : (
