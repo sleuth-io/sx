@@ -1707,7 +1707,11 @@ export default function Library({
           )}
 
           {activeCollection && currentCollectionView ? (
-            <div className="h-full overflow-y-auto p-5">
+            // No nested scroller: <main> already scrolls. An h-full here
+            // would add the tab row's height on top of a full-height pane
+            // and overflow <main> by exactly that, showing a phantom
+            // scrollbar even when the content fits.
+            <div className="p-5">
               <CollectionViewMount
                 key={activeCollection.name + ":" + collectionTab}
                 pluginId={currentCollectionView.pluginId}
@@ -1716,7 +1720,7 @@ export default function Library({
               />
             </div>
           ) : scope.kind === "team" && currentTeamView ? (
-            <div className="h-full overflow-y-auto p-5">
+            <div className="p-5">
               <TeamViewMount
                 key={scope.name + ":" + collectionTab}
                 pluginId={currentTeamView.pluginId}
@@ -1725,7 +1729,7 @@ export default function Library({
               />
             </div>
           ) : scope.kind === "repo" && currentRepoView ? (
-            <div className="h-full overflow-y-auto p-5">
+            <div className="p-5">
               <RepoViewMount
                 key={scope.name + ":" + collectionTab}
                 pluginId={currentRepoView.pluginId}
