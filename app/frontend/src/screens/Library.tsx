@@ -1745,6 +1745,11 @@ export default function Library({
                 (v) => v.pluginId + ":" + v.spec.id === scope.name,
               );
               return entry ? (
+                // Intentionally KEEPS the nested h-full scroller (unlike
+                // the tab-view panes above): a full-page main view has no
+                // tab row over it, so there's no tab-height overflow, and
+                // a fill-height view (e.g. a chat pinned to the bottom)
+                // needs a definite-height parent.
                 <div className="h-full overflow-y-auto p-5">
                   <PluginMount
                     key={scope.name}

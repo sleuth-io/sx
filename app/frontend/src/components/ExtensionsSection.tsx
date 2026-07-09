@@ -400,49 +400,65 @@ export default function ExtensionsSection() {
                     }
                     disabled={busy === p.manifest.id}
                     aria-label={`More actions for ${p.manifest.name}`}
+                    aria-haspopup="menu"
                     aria-expanded={menuFor === p.manifest.id}
                     data-ext-menu={p.manifest.id}
-                    className="rounded-lg px-1.5 py-1 text-sm leading-none text-ink-faint transition hover:text-ink disabled:opacity-50"
+                    // relative z-10 keeps the trigger above the click-away
+                    // backdrop so a second click closes the menu.
+                    className="relative z-10 rounded-lg px-1.5 py-1 text-sm leading-none text-ink-faint transition hover:text-ink disabled:opacity-50"
                   >
                     ⋯
                   </button>
-                  {menuFor === p.manifest.id && (
-                    <>
-                      {/* Invisible click-away backdrop, under the menu. */}
-                      <span
-                        className="fixed inset-0 z-[5]"
-                        onMouseDown={() => setMenuFor("")}
-                      />
-                      <div className="absolute right-0 top-full z-10 mt-1 w-44 rounded-lg border border-line bg-surface p-1 shadow-lg">
-                        {p.scope?.personal &&
-                          !p.scope?.shared &&
-                          canEveryone && (
+                  {menuFor === p.manifest.id &&
+                    (() => {
+                      const canShare = !!(
+                        p.scope?.personal &&
+                        !p.scope?.shared &&
+                        canEveryone
+                      );
+                      return (
+                        <>
+                          {/* Invisible click-away backdrop, under the menu. */}
+                          <span
+                            className="fixed inset-0 z-[5]"
+                            onMouseDown={() => setMenuFor("")}
+                          />
+                          <div
+                            role="menu"
+                            className="absolute right-0 top-full z-10 mt-1 w-44 rounded-lg border border-line bg-surface p-1 shadow-lg"
+                          >
+                            {canShare && (
+                              <button
+                                role="menuitem"
+                                autoFocus
+                                onClick={() => {
+                                  setMenuFor("");
+                                  void share(p.manifest);
+                                }}
+                                disabled={busy === p.manifest.id}
+                                data-share={p.manifest.id}
+                                className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-ink transition hover:bg-accent-soft disabled:opacity-50"
+                              >
+                                Share with library
+                              </button>
+                            )}
                             <button
+                              role="menuitem"
+                              autoFocus={!canShare}
                               onClick={() => {
                                 setMenuFor("");
-                                void share(p.manifest);
+                                setRemoveFor(p.manifest);
                               }}
                               disabled={busy === p.manifest.id}
-                              data-share={p.manifest.id}
-                              className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-ink transition hover:bg-accent-soft disabled:opacity-50"
+                              data-remove={p.manifest.id}
+                              className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-danger transition hover:bg-danger-soft disabled:opacity-50"
                             >
-                              Share with library
+                              Remove…
                             </button>
-                          )}
-                        <button
-                          onClick={() => {
-                            setMenuFor("");
-                            setRemoveFor(p.manifest);
-                          }}
-                          disabled={busy === p.manifest.id}
-                          data-remove={p.manifest.id}
-                          className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-danger transition hover:bg-danger-soft disabled:opacity-50"
-                        >
-                          Remove…
-                        </button>
-                      </div>
-                    </>
-                  )}
+                          </div>
+                        </>
+                      );
+                    })()}
                 </div>
               )}
             </li>
