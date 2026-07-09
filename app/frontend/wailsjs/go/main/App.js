@@ -246,6 +246,10 @@ export function PluginAuditEvents(arg1) {
   return window['go']['main']['App']['PluginAuditEvents'](arg1);
 }
 
+export function PluginAuditEventsSince(arg1) {
+  return window['go']['main']['App']['PluginAuditEventsSince'](arg1);
+}
+
 export function PluginConsents() {
   return window['go']['main']['App']['PluginConsents']();
 }
@@ -288,6 +292,10 @@ export function PluginTeams() {
 
 export function PluginUsageEvents(arg1) {
   return window['go']['main']['App']['PluginUsageEvents'](arg1);
+}
+
+export function PluginUsageEventsSince(arg1) {
+  return window['go']['main']['App']['PluginUsageEventsSince'](arg1);
 }
 
 export function PluginUserStats(arg1) {

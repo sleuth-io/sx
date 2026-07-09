@@ -101,7 +101,7 @@ Everything registered through `sx.*` is tracked by the host and torn down automa
 | `export` | Export a collection's member assets as one file via `sx.collections.export` (1.6.0): a plain zip (every asset), or a Claude Code / Codex / Gemini plugin bundle (skill assets only). Saved through a native dialog; resolves "" on cancel. |
 | `views:team` | Register a tab on the Library's team view (`registerTeamView`, 1.7.0). Same contract as collection views; the mount receives the team name. |
 | `views:repo` | Register a tab on the Library's repository view (`registerRepoView`, 1.7.0). Same contract; the mount receives the repository URL. `sx.repos.list()` (under `assets:read`) maps repo URL → asset names scoped there. |
-| (always) | `sx.ui` kit — modal, notice/toast, confirm, settings panel schema, plus `openView` into the extension's own main views (1.4.0, gated on `views:main`); `sx.storage` — `loadData()`/`saveData()` per plugin per profile (stored app-side, not in the vault); `sx.app.version`, `sx.api.version`. |
+| (always) | `sx.ui` kit — modal, notice/toast, confirm, settings panel schema, plus `openView` into the extension's own main views (1.4.0, gated on `views:main`); `sx.storage` — `loadData()`/`saveData()` per plugin per profile (stored app-side, not in the vault; 10 MB cap — enough for an incremental event cache); `sx.app.version`, `sx.api.version`. |
 
 **Explicitly excluded from API v1** (deferred, revisit after P6 planning):
 - CodeMirror *extension* exposure — exporting our exact CM6 package instances and freezing them; Obsidian's biggest coupling trap. Defer. (Distinct from the scoped `sx.editor` text facade shipped in 1.2.0, which exposes offsets and strings, never CM objects.)
@@ -241,6 +241,21 @@ adoption.
   box, not a parallel sidebar search — `SearchAssetContent` in core now
   does it (per-revision markdown cache, AND semantics, heading-weighted,
   excerpt highlighting in result rows).
+
+### API 1.8.0 additions (incremental usage/audit fetch)
+
+- `sx.usage.eventsSince(iso)` and `sx.usage.auditEventsSince(iso)` (under
+  the existing `usage:read`): the same reads as `events`/`auditEvents`,
+  but bounded by a precise RFC3339 `since` (e.g. an event's own `timestamp`) instead of a day count. The
+  Pulse `assetUsageEvents` field and sx's `UsageFilter` already carry
+  `since`/`until`; this surfaces the precise lower bound to extensions so
+  an analytics view can cache a window in `storage` and pull only the
+  delta on each reload — a second load, even across restarts, transfers
+  almost nothing. The server filter is `>=`, so the newest cached event
+  repeats in the delta; dedupe on merge (usage events have no id — key on
+  timestamp+actor+asset+version). Feature-detect (`typeof
+  sx.usage.eventsSince === "function"`) so an extension still runs on
+  apps predating 1.8.0, falling back to the windowed read. The `since` is clamped to no earlier than the day-count APIs' one-year cap, so it can only narrow the window, never force an unbounded scan.
 
 ### API 1.7.0 additions (team & repo views)
 

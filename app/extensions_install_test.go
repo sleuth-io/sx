@@ -414,3 +414,73 @@ func TestPublishAcceptsTeamRepoViewPermissions(t *testing.T) {
 		t.Fatalf("publish with team/repo view permissions: %v", err)
 	}
 }
+
+// PluginUsageEventsSince surfaces the vault's precise `since` filter to
+// extensions: a bad timestamp errors, and the cutoff actually bounds the
+// result (the incremental-refresh primitive).
+func TestPluginUsageEventsSince(t *testing.T) {
+	a, _, vdir := scopedExtensionApp(t, "alice@example.com")
+
+	if _, err := a.PluginUsageEventsSince("not-a-timestamp"); err == nil {
+		t.Fatalf("bad timestamp should error")
+	}
+
+	// Installing emits a usage event (asset_type app-plugin).
+	marketplaceWith(t, a, "widget")
+	if _, err := a.InstallMarketplaceExtension("widget", ExtensionScopeMe); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	waitForEvent(t, vdir, "usage", `"widget"`)
+
+	past := time.Now().Add(-time.Hour).Format(time.RFC3339)
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+
+	recent, err := a.PluginUsageEventsSince(past)
+	if err != nil {
+		t.Fatalf("since past: %v", err)
+	}
+	found := false
+	for _, e := range recent {
+		if e.AssetName == "widget" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("since-past must include the widget event: %+v", recent)
+	}
+
+	none, err := a.PluginUsageEventsSince(future)
+	if err != nil {
+		t.Fatalf("since future: %v", err)
+	}
+	for _, e := range none {
+		if e.AssetName == "widget" {
+			t.Fatalf("since-future must exclude the widget event")
+		}
+	}
+}
+
+// A far-past `since` must be clamped to the one-year cap — the
+// incremental variants may only narrow the window, never force the
+// unbounded history scan usageCutoff guards against.
+func TestPluginUsageEventsSinceClampsFarPast(t *testing.T) {
+	a, _, _ := scopedExtensionApp(t, "alice@example.com")
+	// Doesn't error and doesn't attempt an epoch-wide scan; on an empty
+	// vault it simply returns nothing, having clamped internally.
+	if _, err := a.PluginUsageEventsSince("0001-01-01T00:00:00Z"); err != nil {
+		t.Fatalf("far-past since should be clamped, not error: %v", err)
+	}
+	if _, err := a.PluginAuditEventsSince("0001-01-01T00:00:00Z"); err != nil {
+		t.Fatalf("far-past audit since should be clamped, not error: %v", err)
+	}
+	// The clamp helper is the invariant: anything older than ~a year
+	// snaps to the year floor; anything newer passes through.
+	floor := usageCutoff(365)
+	if got := clampUsageSince(floor.AddDate(0, 0, -30)); got.Before(floor) {
+		t.Fatalf("far-past not clamped: got %v, floor %v", got, floor)
+	}
+	recent := time.Now().AddDate(0, 0, -7)
+	if got := clampUsageSince(recent); !got.Equal(recent) {
+		t.Fatalf("recent since should pass through unchanged: got %v", got)
+	}
+}

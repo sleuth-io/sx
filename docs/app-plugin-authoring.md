@@ -74,10 +74,10 @@ event handlers.
 
 | Needs permission | Surface |
 |---|---|
-| — | `sx.ui.notice(msg)`, `sx.ui.confirm(msg, action)`, `sx.ui.openAsset(name)` (API 1.1.0 — opens an asset's detail panel, for making result rows navigable), `sx.storage.loadData()/saveData(data)`, `sx.app.version`, `sx.app.currentUser()` (API 1.5.0 — the identity vault changes are attributed to), `sx.api.version` |
+| — | `sx.ui.notice(msg)`, `sx.ui.confirm(msg, action)`, `sx.ui.openAsset(name)` (API 1.1.0 — opens an asset's detail panel, for making result rows navigable), `sx.storage.loadData()/saveData(data)` (per user, per profile, local — up to 10 MB, room for an incremental event cache), `sx.app.version`, `sx.app.currentUser()` (API 1.5.0 — the identity vault changes are attributed to), `sx.api.version` |
 | `views:main` (also) | `sx.ui.openView(viewId)` (API 1.4.0) — navigate to one of **your own** registered main views, e.g. from a command. |
 | `assets:read` | `sx.assets.list()`, `sx.assets.listCollections()`, `sx.assets.readFiles(name)` |
-| `usage:read` | `sx.usage.events(days)`, `sx.usage.auditEvents(days)`, `sx.usage.userStats(days)`, `sx.teams.list()` (names + membership, API 1.2.0; each team's `assets` list is filled only if you also hold `assets:read`) |
+| `usage:read` | `sx.usage.events(days)`, `sx.usage.eventsSince(iso)` / `auditEventsSince(iso)` (incremental, API 1.8.0), `sx.usage.auditEvents(days)`, `sx.usage.userStats(days)`, `sx.teams.list()` (names + membership, API 1.2.0; each team's `assets` list is filled only if you also hold `assets:read`) |
 | `drafts:write` | `sx.drafts.create({name, files})`, `sx.drafts.list()` (API 1.3.0), `sx.drafts.updateFiles(id, files)` (1.3.0), `sx.drafts.importFromFolder()` — drafts only, never publishes |
 | `views:sidebar` / `views:asset-tab` / `views:dashboard` / `views:main` (full-page view listed in the sidebar, API 1.3.0) | `sx.registerSidebarPanel/AssetTab/DashboardWidget({id, title, mount})` — `mount(view)` receives a bare DOM element (`view.el`); register cleanup with `view.onDispose(cb)`. No React is exposed. |
 | `views:collection` | `sx.registerCollectionView({id, title, mount})` (API 1.6.0) — a tab on a collection's view in the Library, next to the built-in **Assets** tab. `mount(view, ctx)` receives `ctx.collection`, the open collection's name. When no collection views are registered the Library shows no tab row at all. |
