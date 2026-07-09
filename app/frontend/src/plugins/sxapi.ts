@@ -10,6 +10,7 @@ import {
   ListDrafts,
   PluginTeams,
   RepoAssets,
+  TeamAssets,
   PluginWriteMetadata,
   UpdateDraft,
   ListAssets,
@@ -299,10 +300,16 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
     teams: {
       async list() {
         need("usage:read");
-        const teams = await PluginTeams();
+        const [teams, assets] = await Promise.all([
+          PluginTeams(),
+          // Which assets each team receives (API 1.7.0) — best-effort:
+          // vaults that can't report it just leave the lists empty.
+          TeamAssets().catch(() => ({}) as Record<string, string[]>),
+        ]);
         return (teams ?? []).map((t) => ({
           name: t.name,
           members: t.members ?? [],
+          assets: assets?.[t.name] ?? [],
         }));
       },
     },
