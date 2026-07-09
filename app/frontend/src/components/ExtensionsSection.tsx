@@ -52,6 +52,10 @@ export default function ExtensionsSection() {
   const [consentQueue, setConsentQueue] = useState<PluginManifest[]>([]);
   const consentFor = consentQueue[0] ?? null;
   const [removeFor, setRemoveFor] = useState<PluginManifest | null>(null);
+  // Which row's overflow (⋯) menu is open ("" = none). Secondary and
+  // destructive per-extension actions live here so the resting row keeps
+  // only the toggle inline (Firefox about:addons pattern).
+  const [menuFor, setMenuFor] = useState("");
   const [preflight, setPreflight] = useState<LoaderPreflight | null>(null);
   // Update-all progress ("Updating 2/5…").
   const [batch, setBatch] = useState<{ done: number; total: number } | null>(
@@ -79,6 +83,17 @@ export default function ExtensionsSection() {
       .then(setCanEveryone)
       .catch(() => setCanEveryone(false));
   }, []);
+
+  // The overflow menu dismisses like a normal popover: Escape closes it
+  // (the backdrop below handles click-away).
+  useEffect(() => {
+    if (!menuFor) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuFor("");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuFor]);
 
   useEffect(() => {
     void loaderPreflight().then(setPreflight);
@@ -344,6 +359,11 @@ export default function ExtensionsSection() {
                   <p className="mt-0.5 text-xs text-danger">{p.error}</p>
                 )}
               </div>
+              {/* Trailing controls: Update pill (only when available) stays
+                  visible, then the primary toggle, then an overflow menu
+                  for the occasional/destructive actions — so the resting
+                  row has at most two controls and the description keeps
+                  full width. */}
               {update && (
                 <button
                   onClick={() => void updateOne(update)}
@@ -352,34 +372,7 @@ export default function ExtensionsSection() {
                   title={`Update from v${update.installedVersion} to v${update.entry.version}`}
                   className="shrink-0 rounded-lg border border-accent px-2.5 py-1 text-xs font-medium text-accent transition hover:bg-accent-soft disabled:opacity-50"
                 >
-                  {busy === p.manifest.id
-                    ? "Updating…"
-                    : `Update to v${update.entry.version}`}
-                </button>
-              )}
-              {!p.builtIn &&
-                p.scope?.personal &&
-                !p.scope?.shared &&
-                canEveryone && (
-                  <button
-                    onClick={() => void share(p.manifest)}
-                    disabled={busy === p.manifest.id}
-                    title={`Share ${p.manifest.name} with everyone in this library`}
-                    data-share={p.manifest.id}
-                    className="shrink-0 rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-ink-soft transition hover:border-accent hover:text-ink disabled:opacity-50"
-                  >
-                    Share with library
-                  </button>
-                )}
-              {!p.builtIn && (
-                <button
-                  onClick={() => setRemoveFor(p.manifest)}
-                  disabled={busy === p.manifest.id}
-                  title={`Remove ${p.manifest.name}`}
-                  aria-label={`Remove ${p.manifest.name}`}
-                  className="shrink-0 rounded-lg px-1.5 py-1 text-xs text-ink-faint transition hover:text-danger disabled:opacity-50"
-                >
-                  Remove…
+                  {busy === p.manifest.id ? "Updating…" : "Update"}
                 </button>
               )}
               <button
@@ -398,6 +391,60 @@ export default function ExtensionsSection() {
                   }`}
                 />
               </button>
+              {/* Built-ins have neither Share nor Remove, so no menu. */}
+              {!p.builtIn && (
+                <div className="relative shrink-0">
+                  <button
+                    onClick={() =>
+                      setMenuFor(menuFor === p.manifest.id ? "" : p.manifest.id)
+                    }
+                    disabled={busy === p.manifest.id}
+                    aria-label={`More actions for ${p.manifest.name}`}
+                    aria-expanded={menuFor === p.manifest.id}
+                    data-ext-menu={p.manifest.id}
+                    className="rounded-lg px-1.5 py-1 text-sm leading-none text-ink-faint transition hover:text-ink disabled:opacity-50"
+                  >
+                    ⋯
+                  </button>
+                  {menuFor === p.manifest.id && (
+                    <>
+                      {/* Invisible click-away backdrop, under the menu. */}
+                      <span
+                        className="fixed inset-0 z-[5]"
+                        onMouseDown={() => setMenuFor("")}
+                      />
+                      <div className="absolute right-0 top-full z-10 mt-1 w-44 rounded-lg border border-line bg-surface p-1 shadow-lg">
+                        {p.scope?.personal &&
+                          !p.scope?.shared &&
+                          canEveryone && (
+                            <button
+                              onClick={() => {
+                                setMenuFor("");
+                                void share(p.manifest);
+                              }}
+                              disabled={busy === p.manifest.id}
+                              data-share={p.manifest.id}
+                              className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-ink transition hover:bg-accent-soft disabled:opacity-50"
+                            >
+                              Share with library
+                            </button>
+                          )}
+                        <button
+                          onClick={() => {
+                            setMenuFor("");
+                            setRemoveFor(p.manifest);
+                          }}
+                          disabled={busy === p.manifest.id}
+                          data-remove={p.manifest.id}
+                          className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-danger transition hover:bg-danger-soft disabled:opacity-50"
+                        >
+                          Remove…
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </li>
           );
         })}
