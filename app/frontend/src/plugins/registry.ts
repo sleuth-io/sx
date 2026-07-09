@@ -10,7 +10,9 @@ import type {
   CommandSpec,
   DashboardWidgetSpec,
   MainViewSpec,
+  RepoViewSpec,
   SidebarPanelSpec,
+  TeamViewSpec,
 } from "./api";
 
 export type SlotKind =
@@ -19,6 +21,8 @@ export type SlotKind =
   | "dashboard-widget"
   | "main-view"
   | "collection-view"
+  | "team-view"
+  | "repo-view"
   | "command";
 
 type SpecFor = {
@@ -27,6 +31,8 @@ type SpecFor = {
   "dashboard-widget": DashboardWidgetSpec;
   "main-view": MainViewSpec;
   "collection-view": CollectionViewSpec;
+  "team-view": TeamViewSpec;
+  "repo-view": RepoViewSpec;
   command: CommandSpec;
 };
 

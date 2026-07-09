@@ -396,3 +396,21 @@ func TestListVaultPluginsSurfacesListError(t *testing.T) {
 		t.Fatalf("no-vault listing = %+v, %v; want empty and nil", plugins, err)
 	}
 }
+
+// Publish validation must accept the 1.7.0 view permissions, or a
+// team/repo-view extension can never land in a vault.
+func TestPublishAcceptsTeamRepoViewPermissions(t *testing.T) {
+	a, _, _ := scopedExtensionApp(t, "alice@example.com")
+	src := t.TempDir()
+	manifest := `{"id":"team-tools","name":"Team Tools","version":"1.0.0",` +
+		`"permissions":["views:team","views:repo","assets:read"]}`
+	if err := os.WriteFile(src+"/plugin.json", []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(src+"/main.js", []byte("export default class { onload(sx) {} }"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := a.addExtensionFrom(src); err != nil {
+		t.Fatalf("publish with team/repo view permissions: %v", err)
+	}
+}

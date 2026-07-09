@@ -9,6 +9,7 @@ import {
   GetDraft,
   ListDrafts,
   PluginTeams,
+  RepoAssets,
   PluginWriteMetadata,
   UpdateDraft,
   ListAssets,
@@ -33,9 +34,11 @@ import type {
   CommandSpec,
   DashboardWidgetSpec,
   MainViewSpec,
+  RepoViewSpec,
   Permission,
   PluginManifest,
   SidebarPanelSpec,
+  TeamViewSpec,
   SxAPI,
   ViewMount,
 } from "./api";
@@ -304,6 +307,18 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
       },
     },
 
+    repos: {
+      /** Repository URL → asset names scoped to it (API 1.7.0). */
+      async list() {
+        need("assets:read");
+        const repos = await RepoAssets();
+        return Object.entries(repos ?? {}).map(([url, assets]) => ({
+          url,
+          assets: assets ?? [],
+        }));
+      },
+    },
+
     collections: {
       async export(name: string, format: CollectionExportFormat) {
         need("export");
@@ -443,6 +458,14 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
     registerCollectionView(spec: CollectionViewSpec) {
       need("views:collection");
       registerSlotEntry("collection-view", id, spec);
+    },
+    registerTeamView(spec: TeamViewSpec) {
+      need("views:team");
+      registerSlotEntry("team-view", id, spec);
+    },
+    registerRepoView(spec: RepoViewSpec) {
+      need("views:repo");
+      registerSlotEntry("repo-view", id, spec);
     },
     registerCommand(spec: CommandSpec) {
       need("commands");

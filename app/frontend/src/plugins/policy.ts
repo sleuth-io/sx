@@ -93,6 +93,8 @@ const PERMISSION_DESCRIPTIONS: Record<FixedPermission, string> = {
   "storage:shared":
     "Keep shared state in this library, visible to everyone who uses it",
   "views:collection": "Add tabs to collection views",
+  "views:team": "Add tabs to team views",
+  "views:repo": "Add tabs to repository views",
   export: "Export collections as files to your computer",
 };
 

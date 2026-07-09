@@ -99,6 +99,8 @@ Everything registered through `sx.*` is tracked by the host and torn down automa
 | `storage:shared` | One team-shared JSON document per extension via `sx.sharedStorage.load/save` (1.5.0), stored in the vault at `.sx/app-plugins/<id>.json` — syncs to everyone; commits on git vaults; 256 KB cap, whole-document last-writer-wins. |
 | `views:collection` | Register a tab on the Library's collection view (`registerCollectionView`, 1.6.0). The first tab stays the built-in asset list; the mount receives the collection name. No registrations means no tab row — the default view is untouched. |
 | `export` | Export a collection's member assets as one file via `sx.collections.export` (1.6.0): a plain zip (every asset), or a Claude Code / Codex / Gemini plugin bundle (skill assets only). Saved through a native dialog; resolves "" on cancel. |
+| `views:team` | Register a tab on the Library's team view (`registerTeamView`, 1.7.0). Same contract as collection views; the mount receives the team name. |
+| `views:repo` | Register a tab on the Library's repository view (`registerRepoView`, 1.7.0). Same contract; the mount receives the repository URL. `sx.repos.list()` (under `assets:read`) maps repo URL → asset names scoped there. |
 | (always) | `sx.ui` kit — modal, notice/toast, confirm, settings panel schema, plus `openView` into the extension's own main views (1.4.0, gated on `views:main`); `sx.storage` — `loadData()`/`saveData()` per plugin per profile (stored app-side, not in the vault); `sx.app.version`, `sx.api.version`. |
 
 **Explicitly excluded from API v1** (deferred, revisit after P6 planning):
@@ -239,6 +241,20 @@ adoption.
   box, not a parallel sidebar search — `SearchAssetContent` in core now
   does it (per-revision markdown cache, AND semantics, heading-weighted,
   excerpt highlighting in result rows).
+
+### API 1.7.0 additions (team & repo views)
+
+- `views:team` + `registerTeamView({id, title, mount})` and `views:repo`
+  + `registerRepoView({id, title, mount})`: tabs on the Library's
+  **team** and **repository** views (slot kinds `team-view` /
+  `repo-view`), with the exact contract collection views established —
+  first tab stays the built-in asset list, `mount(view, ctx)` receives
+  `ctx.team` (the team name) or `ctx.repo` (the repository URL), zero
+  registrations means zero UI change, and disabling an extension
+  mid-view falls back to Assets.
+- `sx.repos.list()` (under the existing `assets:read`): repository URL →
+  asset names scoped to install there — the repo-centric read repo-view
+  extensions build on, mirroring `sx.teams.list()` for teams.
 
 ### API 1.6.0 additions (collection views & export)
 

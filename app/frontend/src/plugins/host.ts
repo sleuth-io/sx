@@ -118,6 +118,8 @@ const KNOWN_PERMISSIONS = new Set([
   "secrets",
   "storage:shared",
   "views:collection",
+  "views:team",
+  "views:repo",
   "export",
 ]);
 
