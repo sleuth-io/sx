@@ -242,6 +242,21 @@ adoption.
   does it (per-revision markdown cache, AND semantics, heading-weighted,
   excerpt highlighting in result rows).
 
+### API 1.8.0 additions (incremental usage/audit fetch)
+
+- `sx.usage.eventsSince(iso)` and `sx.usage.auditEventsSince(iso)` (under
+  the existing `usage:read`): the same reads as `events`/`auditEvents`,
+  but bounded by a precise RFC3339 `since` instead of a day count. The
+  Pulse `assetUsageEvents` field and sx's `UsageFilter` already carry
+  `since`/`until`; this surfaces the precise lower bound to extensions so
+  an analytics view can cache a window in `storage` and pull only the
+  delta on each reload — a second load, even across restarts, transfers
+  almost nothing. The server filter is `>=`, so the newest cached event
+  repeats in the delta; dedupe on merge (usage events have no id — key on
+  timestamp+actor+asset+version). Feature-detect (`typeof
+  sx.usage.eventsSince === "function"`) so an extension still runs on
+  apps predating 1.8.0, falling back to the windowed read.
+
 ### API 1.7.0 additions (team & repo views)
 
 - `views:team` + `registerTeamView({id, title, mount})` and `views:repo`

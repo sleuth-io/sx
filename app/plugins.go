@@ -357,11 +357,28 @@ type PluginUsageEventRecord struct {
 // PluginUsageEvents returns the vault's usage events from the last
 // sinceDays days (capped), newest first — the usage:read capability.
 func (a *App) PluginUsageEvents(sinceDays int) ([]PluginUsageEventRecord, error) {
+	return a.usageEventsSince(usageCutoff(sinceDays))
+}
+
+// PluginUsageEventsSince returns usage events at or after sinceISO
+// (RFC3339), newest first — the incremental-refresh companion to
+// PluginUsageEvents (SxAPI 1.8.0). An extension caches a window then
+// pulls only what's newer than its newest cached event, so a reload
+// transfers almost nothing. The server already supports the precise
+// `since` filter; this just surfaces it to extensions.
+func (a *App) PluginUsageEventsSince(sinceISO string) ([]PluginUsageEventRecord, error) {
+	since, err := time.Parse(time.RFC3339, sinceISO)
+	if err != nil {
+		return nil, fmt.Errorf("invalid since timestamp %q (want RFC3339)", sinceISO)
+	}
+	return a.usageEventsSince(since)
+}
+
+func (a *App) usageEventsSince(cutoff time.Time) ([]PluginUsageEventRecord, error) {
 	v, err := a.currentVault()
 	if err != nil {
 		return nil, err
 	}
-	cutoff := usageCutoff(sinceDays)
 	// Since bounds the read server-side/file-side so a dashboard widget
 	// never walks an org's whole history.
 	events, err := v.ReadUsageEvents(a.ctx, mgmt.UsageFilter{Since: cutoff})
@@ -397,11 +414,25 @@ type PluginAuditEventRecord struct {
 // PluginAuditEvents returns the vault's audit events from the last
 // sinceDays days (capped), newest first — the usage:read capability.
 func (a *App) PluginAuditEvents(sinceDays int) ([]PluginAuditEventRecord, error) {
+	return a.auditEventsSince(usageCutoff(sinceDays))
+}
+
+// PluginAuditEventsSince returns audit events at or after sinceISO
+// (RFC3339), newest first — the incremental companion to
+// PluginAuditEvents (SxAPI 1.8.0).
+func (a *App) PluginAuditEventsSince(sinceISO string) ([]PluginAuditEventRecord, error) {
+	since, err := time.Parse(time.RFC3339, sinceISO)
+	if err != nil {
+		return nil, fmt.Errorf("invalid since timestamp %q (want RFC3339)", sinceISO)
+	}
+	return a.auditEventsSince(since)
+}
+
+func (a *App) auditEventsSince(cutoff time.Time) ([]PluginAuditEventRecord, error) {
 	v, err := a.currentVault()
 	if err != nil {
 		return nil, err
 	}
-	cutoff := usageCutoff(sinceDays)
 	// Both bounds matter: Since scopes the window, Limit caps the walk —
 	// unbounded, the sleuth backend pages an org's ENTIRE audit log,
 	// which is slow at best and 502s at worst.

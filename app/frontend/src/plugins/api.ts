@@ -3,7 +3,7 @@
 // extension needs something this file doesn't offer, the answer is an API
 // addition, never an escape hatch to app internals.
 
-export const SX_API_VERSION = "1.7.0";
+export const SX_API_VERSION = "1.8.0";
 
 /** Capabilities an extension may declare. Undeclared calls throw.
  * `net:<host>` is a parameterized family (API 1.4.0): each declared
@@ -241,6 +241,16 @@ export interface SxAPI {
   readonly usage: {
     events(sinceDays: number): Promise<UsageEvent[]>;
     auditEvents(sinceDays: number): Promise<AuditEvent[]>;
+    /** Events at or after `since` (ISO-8601), newest first — the
+     * incremental-refresh companion to `events` (API 1.8.0). Cache a
+     * window, then pull only what's newer than your newest cached event
+     * (the server filter is `>=`, so the boundary event repeats — dedupe
+     * on merge). Feature-detect: `typeof sx.usage.eventsSince ===
+     * "function"` before use, for apps predating 1.8.0. */
+    eventsSince(since: string): Promise<UsageEvent[]>;
+    /** Audit events at or after `since` (ISO-8601), newest first — the
+     * incremental companion to `auditEvents` (API 1.8.0). */
+    auditEventsSince(since: string): Promise<AuditEvent[]>;
     /** Per-user adoption: everyone the vault knows plus who used what. */
     userStats(sinceDays: number): Promise<UserStats>;
   };

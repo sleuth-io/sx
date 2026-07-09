@@ -24,7 +24,9 @@ import {
   PluginSharedLoad,
   PluginSharedSave,
   PluginUsageEvents,
+  PluginUsageEventsSince,
   PluginAuditEvents,
+  PluginAuditEventsSince,
   PluginCurrentUser,
   PluginUserStats,
 } from "../../wailsjs/go/main/App";
@@ -272,9 +274,17 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
         need("usage:read");
         return (await PluginUsageEvents(sinceDays)) ?? [];
       },
+      async eventsSince(since: string) {
+        need("usage:read");
+        return (await PluginUsageEventsSince(since)) ?? [];
+      },
       async auditEvents(sinceDays: number) {
         need("usage:read");
         return (await PluginAuditEvents(sinceDays)) ?? [];
+      },
+      async auditEventsSince(since: string) {
+        need("usage:read");
+        return (await PluginAuditEventsSince(since)) ?? [];
       },
       async userStats(sinceDays: number) {
         need("usage:read");

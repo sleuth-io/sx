@@ -414,3 +414,48 @@ func TestPublishAcceptsTeamRepoViewPermissions(t *testing.T) {
 		t.Fatalf("publish with team/repo view permissions: %v", err)
 	}
 }
+
+// PluginUsageEventsSince surfaces the vault's precise `since` filter to
+// extensions: a bad timestamp errors, and the cutoff actually bounds the
+// result (the incremental-refresh primitive).
+func TestPluginUsageEventsSince(t *testing.T) {
+	a, _, vdir := scopedExtensionApp(t, "alice@example.com")
+
+	if _, err := a.PluginUsageEventsSince("not-a-timestamp"); err == nil {
+		t.Fatalf("bad timestamp should error")
+	}
+
+	// Installing emits a usage event (asset_type app-plugin).
+	marketplaceWith(t, a, "widget")
+	if _, err := a.InstallMarketplaceExtension("widget", ExtensionScopeMe); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	waitForEvent(t, vdir, "usage", `"widget"`)
+
+	past := time.Now().Add(-time.Hour).Format(time.RFC3339)
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+
+	recent, err := a.PluginUsageEventsSince(past)
+	if err != nil {
+		t.Fatalf("since past: %v", err)
+	}
+	found := false
+	for _, e := range recent {
+		if e.AssetName == "widget" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("since-past must include the widget event: %+v", recent)
+	}
+
+	none, err := a.PluginUsageEventsSince(future)
+	if err != nil {
+		t.Fatalf("since future: %v", err)
+	}
+	for _, e := range none {
+		if e.AssetName == "widget" {
+			t.Fatalf("since-future must exclude the widget event")
+		}
+	}
+}

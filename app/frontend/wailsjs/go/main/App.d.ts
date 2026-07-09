@@ -124,6 +124,8 @@ export function PickFolderForDraft():Promise<main.Draft>;
 
 export function PluginAuditEvents(arg1:number):Promise<Array<main.PluginAuditEventRecord>>;
 
+export function PluginAuditEventsSince(arg1:string):Promise<Array<main.PluginAuditEventRecord>>;
+
 export function PluginConsents():Promise<Record<string, Array<string>>>;
 
 export function PluginCurrentUser():Promise<string>;
@@ -145,6 +147,8 @@ export function PluginSharedSave(arg1:string,arg2:string):Promise<void>;
 export function PluginTeams():Promise<Array<main.PluginTeamRecord>>;
 
 export function PluginUsageEvents(arg1:number):Promise<Array<main.PluginUsageEventRecord>>;
+
+export function PluginUsageEventsSince(arg1:string):Promise<Array<main.PluginUsageEventRecord>>;
 
 export function PluginUserStats(arg1:number):Promise<main.PluginUserStatsResult>;
 
