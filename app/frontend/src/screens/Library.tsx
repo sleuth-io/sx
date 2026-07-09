@@ -1707,7 +1707,15 @@ export default function Library({
           )}
 
           {activeCollection && currentCollectionView ? (
-            <div className="h-full overflow-y-auto p-5">
+            // No nested scroller: <main> already scrolls. An h-full (or
+            // min-h-full) here would add the tab row's height on top of a
+            // full-height pane and overflow <main> by exactly that,
+            // showing a phantom scrollbar even when the content fits. All
+            // registered collection/team/repo views are content-flow
+            // (root is max-width only), so content-height is correct; a
+            // future fill-height tab view would need <main> restructured
+            // into a flex column, not a percentage height here.
+            <div className="p-5">
               <CollectionViewMount
                 key={activeCollection.name + ":" + collectionTab}
                 pluginId={currentCollectionView.pluginId}
@@ -1716,7 +1724,7 @@ export default function Library({
               />
             </div>
           ) : scope.kind === "team" && currentTeamView ? (
-            <div className="h-full overflow-y-auto p-5">
+            <div className="p-5">
               <TeamViewMount
                 key={scope.name + ":" + collectionTab}
                 pluginId={currentTeamView.pluginId}
@@ -1725,7 +1733,7 @@ export default function Library({
               />
             </div>
           ) : scope.kind === "repo" && currentRepoView ? (
-            <div className="h-full overflow-y-auto p-5">
+            <div className="p-5">
               <RepoViewMount
                 key={scope.name + ":" + collectionTab}
                 pluginId={currentRepoView.pluginId}
@@ -1741,6 +1749,11 @@ export default function Library({
                 (v) => v.pluginId + ":" + v.spec.id === scope.name,
               );
               return entry ? (
+                // Intentionally KEEPS the nested h-full scroller (unlike
+                // the tab-view panes above): a full-page main view has no
+                // tab row over it, so there's no tab-height overflow, and
+                // a fill-height view (e.g. a chat pinned to the bottom)
+                // needs a definite-height parent.
                 <div className="h-full overflow-y-auto p-5">
                   <PluginMount
                     key={scope.name}
