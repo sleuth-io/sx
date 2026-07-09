@@ -9,6 +9,8 @@ import {
   GetDraft,
   ListDrafts,
   PluginTeams,
+  RepoAssets,
+  TeamAssets,
   PluginWriteMetadata,
   UpdateDraft,
   ListAssets,
@@ -33,9 +35,11 @@ import type {
   CommandSpec,
   DashboardWidgetSpec,
   MainViewSpec,
+  RepoViewSpec,
   Permission,
   PluginManifest,
   SidebarPanelSpec,
+  TeamViewSpec,
   SxAPI,
   ViewMount,
 } from "./api";
@@ -296,10 +300,40 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
     teams: {
       async list() {
         need("usage:read");
-        const teams = await PluginTeams();
+        // The team ASSET names are asset data — gate them on assets:read,
+        // the same permission repos.list() requires for the same class of
+        // data. A grouping-only extension (usage:read alone) still gets
+        // names + membership, just empty asset lists.
+        const wantAssets = granted.has("assets:read");
+        const [teams, assets] = await Promise.all([
+          PluginTeams(),
+          // Best-effort like repos.list(): a vault that can't report it
+          // (or a real read error) leaves the lists empty rather than
+          // failing the whole call.
+          wantAssets
+            ? TeamAssets().catch(() => ({}) as Record<string, string[]>)
+            : Promise.resolve({} as Record<string, string[]>),
+        ]);
         return (teams ?? []).map((t) => ({
           name: t.name,
           members: t.members ?? [],
+          assets: assets?.[t.name] ?? [],
+        }));
+      },
+    },
+
+    repos: {
+      /** Repository URL → asset names scoped to it (API 1.7.0). */
+      async list() {
+        need("assets:read");
+        // Best-effort, matching teams.list(): degrade to empty on a
+        // backend error instead of breaking the repo-view extension.
+        const repos = await RepoAssets().catch(
+          () => ({}) as Record<string, string[]>,
+        );
+        return Object.entries(repos ?? {}).map(([url, assets]) => ({
+          url,
+          assets: assets ?? [],
         }));
       },
     },
@@ -443,6 +477,14 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
     registerCollectionView(spec: CollectionViewSpec) {
       need("views:collection");
       registerSlotEntry("collection-view", id, spec);
+    },
+    registerTeamView(spec: TeamViewSpec) {
+      need("views:team");
+      registerSlotEntry("team-view", id, spec);
+    },
+    registerRepoView(spec: RepoViewSpec) {
+      need("views:repo");
+      registerSlotEntry("repo-view", id, spec);
     },
     registerCommand(spec: CommandSpec) {
       need("commands");

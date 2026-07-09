@@ -58,6 +58,8 @@ import { emitEvent } from "../plugins/events";
 import { setPluginUIHandlers } from "../plugins/sxapi";
 import type {
   CollectionViewSpec,
+  RepoViewSpec,
+  TeamViewSpec,
   CommandSpec,
   ViewMount,
 } from "../plugins/api";
@@ -539,6 +541,19 @@ export default function Library({
       ? collectionViews.find(
           (v) => v.pluginId + ":" + v.spec.id === collectionTab,
         )
+      : undefined;
+  // Team and repo views carry the same tab contract as collections
+  // (views:team / views:repo, API 1.7.0): "" = built-in list, missing
+  // key falls back, no registrations = no tab row.
+  const teamViews = useSlot("team-view");
+  const currentTeamView =
+    scope.kind === "team"
+      ? teamViews.find((v) => v.pluginId + ":" + v.spec.id === collectionTab)
+      : undefined;
+  const repoViews = useSlot("repo-view");
+  const currentRepoView =
+    scope.kind === "repo"
+      ? repoViews.find((v) => v.pluginId + ":" + v.spec.id === collectionTab)
       : undefined;
   const newMenuCommands = useMemo(
     () => pluginCommands.map((e) => e.spec).filter((c) => c.menu === "new"),
@@ -1673,6 +1688,24 @@ export default function Library({
             </div>
           )}
 
+          {/* Extension team/repo tabs: same contract as collections. */}
+          {scope.kind === "team" && teamViews.length > 0 && (
+            <ScopeTabRow
+              kind="team"
+              views={teamViews}
+              activeKey={currentTeamView ? collectionTab : ""}
+              onSelect={setCollectionTab}
+            />
+          )}
+          {scope.kind === "repo" && repoViews.length > 0 && (
+            <ScopeTabRow
+              kind="repo"
+              views={repoViews}
+              activeKey={currentRepoView ? collectionTab : ""}
+              onSelect={setCollectionTab}
+            />
+          )}
+
           {activeCollection && currentCollectionView ? (
             <div className="h-full overflow-y-auto p-5">
               <CollectionViewMount
@@ -1680,6 +1713,24 @@ export default function Library({
                 pluginId={currentCollectionView.pluginId}
                 spec={currentCollectionView.spec}
                 collection={activeCollection.name}
+              />
+            </div>
+          ) : scope.kind === "team" && currentTeamView ? (
+            <div className="h-full overflow-y-auto p-5">
+              <TeamViewMount
+                key={scope.name + ":" + collectionTab}
+                pluginId={currentTeamView.pluginId}
+                spec={currentTeamView.spec}
+                team={scope.name}
+              />
+            </div>
+          ) : scope.kind === "repo" && currentRepoView ? (
+            <div className="h-full overflow-y-auto p-5">
+              <RepoViewMount
+                key={scope.name + ":" + collectionTab}
+                pluginId={currentRepoView.pluginId}
+                spec={currentRepoView.spec}
+                repo={scope.name}
               />
             </div>
           ) : scope.kind === "dashboard" ? (
@@ -2652,6 +2703,87 @@ function CollectionViewMount({
   const mount = useCallback(
     (view: ViewMount) => spec.mount(view, { collection }),
     [spec, collection],
+  );
+  return <PluginMount pluginId={pluginId} mount={mount} />;
+}
+
+/**
+ * Tab row for extension-contributed team/repo views. The first tab is
+ * always the built-in asset list; extension tabs follow. Rendered only
+ * when at least one view is registered, so the default experience is
+ * untouched otherwise.
+ */
+function ScopeTabRow({
+  kind,
+  views,
+  activeKey,
+  onSelect,
+}: {
+  kind: "team" | "repo";
+  views: { pluginId: string; spec: { id: string; title: string } }[];
+  activeKey: string;
+  onSelect: (key: string) => void;
+}) {
+  return (
+    <div
+      className="flex items-center gap-1 border-b border-line px-6 pt-2"
+      data-scope-tabs={kind}
+    >
+      {[
+        { key: "", title: "Assets" },
+        ...views.map((v) => ({
+          key: v.pluginId + ":" + v.spec.id,
+          title: v.spec.title,
+        })),
+      ].map((t) => (
+        <button
+          key={t.key}
+          data-scope-tab={t.key || "assets"}
+          onClick={() => onSelect(t.key)}
+          className={`rounded-t-lg border-b-2 px-3 py-1.5 text-xs font-medium transition ${
+            activeKey === t.key
+              ? "border-accent text-ink"
+              : "border-transparent text-ink-faint hover:text-ink"
+          }`}
+        >
+          {t.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Mount adapters for team/repo views: thread the scope context into the
+ * extension's mount with STABLE identities (PluginMount remounts when the
+ * mount callback changes — same pattern as CollectionViewMount). */
+function TeamViewMount({
+  pluginId,
+  spec,
+  team,
+}: {
+  pluginId: string;
+  spec: TeamViewSpec;
+  team: string;
+}) {
+  const mount = useCallback(
+    (view: ViewMount) => spec.mount(view, { team }),
+    [spec, team],
+  );
+  return <PluginMount pluginId={pluginId} mount={mount} />;
+}
+
+function RepoViewMount({
+  pluginId,
+  spec,
+  repo,
+}: {
+  pluginId: string;
+  spec: RepoViewSpec;
+  repo: string;
+}) {
+  const mount = useCallback(
+    (view: ViewMount) => spec.mount(view, { repo }),
+    [spec, repo],
   );
   return <PluginMount pluginId={pluginId} mount={mount} />;
 }

@@ -3,7 +3,7 @@
 // extension needs something this file doesn't offer, the answer is an API
 // addition, never an escape hatch to app internals.
 
-export const SX_API_VERSION = "1.6.0";
+export const SX_API_VERSION = "1.7.0";
 
 /** Capabilities an extension may declare. Undeclared calls throw.
  * `net:<host>` is a parameterized family (API 1.4.0): each declared
@@ -23,6 +23,8 @@ export type Permission =
   | "secrets"
   | "storage:shared"
   | "views:collection"
+  | "views:team"
+  | "views:repo"
   | "export"
   | `net:${string}`;
 
@@ -128,6 +130,19 @@ export interface CollectionViewSpec {
   id: string;
   title: string;
   mount(view: ViewMount, ctx: { collection: string }): void;
+}
+
+export interface TeamViewSpec {
+  id: string;
+  title: string;
+  mount(view: ViewMount, ctx: { team: string }): void;
+}
+
+export interface RepoViewSpec {
+  id: string;
+  title: string;
+  /** ctx.repo is the repository URL exactly as the vault records it. */
+  mount(view: ViewMount, ctx: { repo: string }): void;
 }
 
 /** Bundle formats sx.collections.export can produce (API 1.6.0). */
@@ -243,10 +258,20 @@ export interface SxAPI {
     },
   ): Promise<void>;
 
-  /** Requires usage:read (API 1.2.0). Team names and membership for
-   * grouping — team management stays core. */
+  /** Requires usage:read (API 1.2.0) for team names and membership —
+   * team management stays core. */
   readonly teams: {
-    list(): Promise<{ name: string; members: string[] }[]>;
+    /** `assets` (names shared with the team, API 1.7.0) is populated
+     * only when the extension ALSO holds assets:read — the same gate
+     * repos.list() uses for the same class of data; otherwise it is []. */
+    list(): Promise<{ name: string; members: string[]; assets: string[] }[]>;
+  };
+
+  /** Requires assets:read (API 1.7.0). Repository URL → asset names
+   * scoped to install there — the repo-centric read repo-view
+   * extensions build on. */
+  readonly repos: {
+    list(): Promise<{ url: string; assets: string[] }[]>;
   };
 
   /** Requires export (API 1.6.0). Bundles a collection's member assets
@@ -314,6 +339,14 @@ export interface SxAPI {
    * collection view; mount receives the collection name. With no
    * registrations the collection view renders exactly as before. */
   registerCollectionView(spec: CollectionViewSpec): void;
+  /** Requires views:team (API 1.7.0): a tab on the Library's team view;
+   * mount receives the team name. With no registrations the team view
+   * renders exactly as before. */
+  registerTeamView(spec: TeamViewSpec): void;
+  /** Requires views:repo (API 1.7.0): a tab on the Library's repository
+   * view; mount receives the repository URL. With no registrations the
+   * repo view renders exactly as before. */
+  registerRepoView(spec: RepoViewSpec): void;
   /** Requires commands. */
   registerCommand(spec: CommandSpec): void;
 
