@@ -258,10 +258,12 @@ export interface SxAPI {
     },
   ): Promise<void>;
 
-  /** Requires usage:read (API 1.2.0). Team names and membership for
-   * grouping — team management stays core. */
+  /** Requires usage:read (API 1.2.0) for team names and membership —
+   * team management stays core. */
   readonly teams: {
-    /** assets = names shared with the team (API 1.7.0; [] before). */
+    /** `assets` (names shared with the team, API 1.7.0) is populated
+     * only when the extension ALSO holds assets:read — the same gate
+     * repos.list() uses for the same class of data; otherwise it is []. */
     list(): Promise<{ name: string; members: string[]; assets: string[] }[]>;
   };
 
