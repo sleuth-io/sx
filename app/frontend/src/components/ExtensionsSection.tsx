@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   AddExtensionFromFolder,
   CanInstallForEveryone,
@@ -56,6 +63,14 @@ export default function ExtensionsSection() {
   // destructive per-extension actions live here so the resting row keeps
   // only the toggle inline (Firefox about:addons pattern).
   const [menuFor, setMenuFor] = useState("");
+  // The ⋯ trigger that opened the current menu, so closing restores
+  // focus to it (keyboard users keep their place in the row).
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const closeMenu = useCallback(() => {
+    setMenuFor("");
+    menuTriggerRef.current?.focus();
+    menuTriggerRef.current = null;
+  }, []);
   const [preflight, setPreflight] = useState<LoaderPreflight | null>(null);
   // Update-all progress ("Updating 2/5…").
   const [batch, setBatch] = useState<{ done: number; total: number } | null>(
@@ -85,15 +100,15 @@ export default function ExtensionsSection() {
   }, []);
 
   // The overflow menu dismisses like a normal popover: Escape closes it
-  // (the backdrop below handles click-away).
+  // and restores focus to the trigger (the backdrop handles click-away).
   useEffect(() => {
     if (!menuFor) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuFor("");
+      if (e.key === "Escape") closeMenu();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [menuFor]);
+  }, [menuFor, closeMenu]);
 
   useEffect(() => {
     void loaderPreflight().then(setPreflight);
@@ -395,9 +410,14 @@ export default function ExtensionsSection() {
               {!p.builtIn && (
                 <div className="relative shrink-0">
                   <button
-                    onClick={() =>
-                      setMenuFor(menuFor === p.manifest.id ? "" : p.manifest.id)
-                    }
+                    onClick={(e) => {
+                      if (menuFor === p.manifest.id) {
+                        closeMenu();
+                      } else {
+                        menuTriggerRef.current = e.currentTarget;
+                        setMenuFor(p.manifest.id);
+                      }
+                    }}
                     disabled={busy === p.manifest.id}
                     aria-label={`More actions for ${p.manifest.name}`}
                     aria-haspopup="menu"
@@ -421,10 +441,36 @@ export default function ExtensionsSection() {
                           {/* Invisible click-away backdrop, under the menu. */}
                           <span
                             className="fixed inset-0 z-[5]"
-                            onMouseDown={() => setMenuFor("")}
+                            onMouseDown={() => closeMenu()}
                           />
                           <div
                             role="menu"
+                            // Roving focus between items, per the menu ARIA
+                            // pattern the roles advertise.
+                            onKeyDown={(e) => {
+                              const items = Array.from(
+                                e.currentTarget.querySelectorAll<HTMLButtonElement>(
+                                  '[role="menuitem"]:not(:disabled)',
+                                ),
+                              );
+                              if (items.length === 0) return;
+                              const i = items.indexOf(
+                                document.activeElement as HTMLButtonElement,
+                              );
+                              if (e.key === "ArrowDown") {
+                                e.preventDefault();
+                                items[(i + 1) % items.length]?.focus();
+                              } else if (e.key === "ArrowUp") {
+                                e.preventDefault();
+                                items[(i - 1 + items.length) % items.length]?.focus();
+                              } else if (e.key === "Home") {
+                                e.preventDefault();
+                                items[0]?.focus();
+                              } else if (e.key === "End") {
+                                e.preventDefault();
+                                items[items.length - 1]?.focus();
+                              }
+                            }}
                             className="absolute right-0 top-full z-10 mt-1 w-44 rounded-lg border border-line bg-surface p-1 shadow-lg"
                           >
                             {canShare && (
@@ -432,7 +478,7 @@ export default function ExtensionsSection() {
                                 role="menuitem"
                                 autoFocus
                                 onClick={() => {
-                                  setMenuFor("");
+                                  closeMenu();
                                   void share(p.manifest);
                                 }}
                                 disabled={busy === p.manifest.id}
@@ -446,7 +492,7 @@ export default function ExtensionsSection() {
                               role="menuitem"
                               autoFocus={!canShare}
                               onClick={() => {
-                                setMenuFor("");
+                                closeMenu();
                                 setRemoveFor(p.manifest);
                               }}
                               disabled={busy === p.manifest.id}

@@ -1707,10 +1707,14 @@ export default function Library({
           )}
 
           {activeCollection && currentCollectionView ? (
-            // No nested scroller: <main> already scrolls. An h-full here
-            // would add the tab row's height on top of a full-height pane
-            // and overflow <main> by exactly that, showing a phantom
-            // scrollbar even when the content fits.
+            // No nested scroller: <main> already scrolls. An h-full (or
+            // min-h-full) here would add the tab row's height on top of a
+            // full-height pane and overflow <main> by exactly that,
+            // showing a phantom scrollbar even when the content fits. All
+            // registered collection/team/repo views are content-flow
+            // (root is max-width only), so content-height is correct; a
+            // future fill-height tab view would need <main> restructured
+            // into a flex column, not a percentage height here.
             <div className="p-5">
               <CollectionViewMount
                 key={activeCollection.name + ":" + collectionTab}
