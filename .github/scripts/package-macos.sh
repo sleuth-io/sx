@@ -17,6 +17,7 @@
 #   NOTARY_KEY_ID               App Store Connect API key ID       (optional)
 #   NOTARY_ISSUER_ID            App Store Connect issuer ID        (optional)
 #   NOTARY_KEY                  App Store Connect .p8 key contents (optional)
+#   NOTARY_TIMEOUT_SECS         max wait per notarization (default 10800)
 #
 # Outputs: sx-app-macos-<arch>[-unsigned|-unnotarized].{zip,dmg} next to
 # the bundle; names are appended to $GITHUB_ENV (ZIP_NAME/DMG_NAME) when
@@ -32,6 +33,23 @@ RUNNER_TEMP="${RUNNER_TEMP:-$(mktemp -d)}"
 
 SIGNED=false
 KEYCHAIN=""
+
+# Run a command with a hard cap and retries. codesign (--timestamp) and
+# stapler both call out to Apple servers with no timeout of their own; a
+# stall (or a locked keychain prompt) otherwise hangs the job until the
+# runner's 6h limit. perl ships with macOS; alarm+exec kills on deadline.
+bounded() {
+  local attempt
+  for attempt in 1 2 3; do
+    if perl -e 'alarm shift; exec @ARGV' 180 "$@"; then
+      return 0
+    fi
+    echo "WARNING: '$1' attempt $attempt failed or timed out" >&2
+    [ "$attempt" -lt 3 ] && sleep 15
+  done
+  echo "ERROR: '$*' failed after 3 attempts" >&2
+  return 1
+}
 cleanup() {
   if [ -n "$KEYCHAIN" ]; then
     security delete-keychain "$KEYCHAIN" 2>/dev/null || true
@@ -46,7 +64,11 @@ if [ -n "${MACOS_CERTIFICATE_P12:-}" ] && [ -n "${MACOS_CERTIFICATE_PASSWORD:-}"
   CERT_PATH="$RUNNER_TEMP/certificate.p12"
   echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$CERT_PATH"
   security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-  security set-keychain-settings -lut 1800 "$KEYCHAIN"
+  # 6h lock timeout (matches the job's max lifetime), NOT the usual 1800:
+  # notarization can hold the job for hours between signing operations,
+  # and a keychain that auto-locks meanwhile makes the next codesign hang
+  # forever waiting for an unlock prompt no headless runner will answer.
+  security set-keychain-settings -lut 21600 "$KEYCHAIN"
   security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
   security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" \
     -A -t cert -f pkcs12 -k "$KEYCHAIN"
@@ -62,7 +84,7 @@ if [ -n "${MACOS_CERTIFICATE_P12:-}" ] && [ -n "${MACOS_CERTIFICATE_PASSWORD:-}"
   fi
 
   echo "==> Signing $APP_NAME with '$IDENTITY' (hardened runtime)"
-  codesign --force --options runtime --timestamp \
+  bounded codesign --force --options runtime --timestamp \
     --sign "$IDENTITY" "$APP_PATH"
   codesign --verify --strict --verbose=2 "$APP_PATH"
   SIGNED=true
@@ -79,6 +101,13 @@ notarize() {
   # warning (return 1 → callers skip stapling); an actual rejection or
   # submission failure kills the release — a silently-unnotarized signed
   # build would look done but still trip Gatekeeper.
+  #
+  # Deliberately NOT `notarytool submit --wait`: that holds one connection
+  # open for the whole (sometimes hours-long) review, and a single network
+  # blip on the runner either errors out or wedges silently while the
+  # submission continues fine server-side. Instead submit once to get a
+  # submission id, then poll `notarytool info` — each poll is a fresh
+  # connection, so transient failures just mean try again.
   local artifact="$1"
   if [ -z "${NOTARY_KEY_ID:-}" ] || [ -z "${NOTARY_ISSUER_ID:-}" ] || [ -z "${NOTARY_KEY:-}" ]; then
     echo "WARNING: signed but NOT notarized — Gatekeeper will still warn. Add the NOTARY_* secrets." >&2
@@ -86,15 +115,70 @@ notarize() {
   fi
   local key_path="$RUNNER_TEMP/notary-key.p8"
   echo "$NOTARY_KEY" > "$key_path"
+
   echo "==> Notarizing $(basename "$artifact")"
-  if ! xcrun notarytool submit "$artifact" \
-    --key "$key_path" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
-    --wait; then
-    echo "ERROR: notarization failed for $(basename "$artifact")" >&2
+  local submit_out submission_id attempt
+  for attempt in 1 2 3; do
+    if submit_out="$(xcrun notarytool submit "$artifact" \
+      --key "$key_path" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+      --output-format json 2>&1)"; then
+      break
+    fi
+    echo "WARNING: notarytool submit attempt $attempt failed: $submit_out" >&2
+    if [ "$attempt" -eq 3 ]; then
+      echo "ERROR: could not submit $(basename "$artifact") for notarization" >&2
+      rm -f "$key_path"
+      exit 1
+    fi
+    sleep 30
+  done
+  submission_id="$(printf '%s' "$submit_out" | sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p' | head -n 1)"
+  if [ -z "$submission_id" ]; then
+    echo "ERROR: could not parse submission id from notarytool output: $submit_out" >&2
     rm -f "$key_path"
     exit 1
   fi
-  rm -f "$key_path"
+  echo "==> Submission id: $submission_id — polling for the verdict"
+
+  # Apple's first submissions from a new team can take hours; poll with a
+  # generous cap rather than trusting one long-lived connection.
+  local deadline=$(( $(date +%s) + ${NOTARY_TIMEOUT_SECS:-10800} ))
+  local info_out status
+  while :; do
+    if info_out="$(xcrun notarytool info "$submission_id" \
+      --key "$key_path" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+      --output-format json 2>&1)"; then
+      status="$(printf '%s' "$info_out" | sed -n 's/.*"status" *: *"\([^"]*\)".*/\1/p' | head -n 1)"
+      case "$status" in
+        Accepted)
+          echo "==> Notarization accepted for $(basename "$artifact")"
+          rm -f "$key_path"
+          return 0
+          ;;
+        "In Progress"|"")
+          # Empty = info succeeded but the status didn't parse — treat as
+          # transient like a failed poll, never as a verdict.
+          echo "    still in progress ($(date -u +%H:%M:%S) UTC)"
+          ;;
+        *)
+          # Invalid/Rejected — surface Apple's reasons before dying.
+          echo "ERROR: notarization $status for $(basename "$artifact")" >&2
+          xcrun notarytool log "$submission_id" \
+            --key "$key_path" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" >&2 || true
+          rm -f "$key_path"
+          exit 1
+          ;;
+      esac
+    else
+      echo "WARNING: notary status check failed (transient network?): $info_out" >&2
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "ERROR: notarization still not finished after ${NOTARY_TIMEOUT_SECS:-10800}s for $(basename "$artifact")" >&2
+      rm -f "$key_path"
+      exit 1
+    fi
+    sleep 30
+  done
 }
 
 STAGING_ZIP="$OUT_DIR/.staging-update.zip"
@@ -105,7 +189,8 @@ if [ "$SIGNED" = true ] && notarize "$STAGING_ZIP"; then
   # The ticket staples to the .app, not the zip — staple, then rebuild
   # the zip so the update feed carries the stapled bundle.
   echo "==> Stapling $APP_NAME and rebuilding the zip"
-  xcrun stapler staple "$APP_PATH"
+  security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+  bounded xcrun stapler staple "$APP_PATH"
   rm -f "$STAGING_ZIP"
   ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$STAGING_ZIP"
   NOTARIZED=true
@@ -136,9 +221,13 @@ hdiutil create -volname "sx" -srcfolder "$STAGING" -ov -format UDZO \
 rm -rf "$STAGING"
 
 if [ "$SIGNED" = true ]; then
-  codesign --force --timestamp --sign "$IDENTITY" "$OUT_DIR/$DMG_NAME"
+  # Hours may have passed inside notarize(); re-unlock in case the
+  # keychain locked anyway, and cap the signing call so a hang fails the
+  # job in minutes instead of idling to the 6h runner limit.
+  security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+  bounded codesign --force --timestamp --sign "$IDENTITY" "$OUT_DIR/$DMG_NAME"
   if notarize "$OUT_DIR/$DMG_NAME"; then
-    xcrun stapler staple "$OUT_DIR/$DMG_NAME"
+    bounded xcrun stapler staple "$OUT_DIR/$DMG_NAME"
   fi
 fi
 

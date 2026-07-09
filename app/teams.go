@@ -327,17 +327,6 @@ func (a *App) TeamAssets() (map[string][]string, error) {
 	return out, nil
 }
 
-// AssetSharing reports who an asset is currently shared with.
-type AssetSharing struct {
-	// Everyone is true when the asset has no scopes — the whole library
-	// receives it.
-	Everyone bool     `json:"everyone"`
-	Teams    []string `json:"teams"`
-	// Other counts scopes the app doesn't manage (repos, paths, users,
-	// bots) so the UI can hint they exist without editing them.
-	Other int `json:"other"`
-}
-
 type installTargetReader interface {
 	CurrentInstallTargets(ctx context.Context, name string) ([]vaultpkg.InstallTarget, bool, error)
 	SetAssetInstallation(ctx context.Context, assetName string, target vaultpkg.InstallTarget) error
@@ -356,33 +345,9 @@ func (a *App) sharingVault() (installTargetReader, error) {
 	return r, nil
 }
 
-// GetAssetSharing reports an asset's current sharing.
-func (a *App) GetAssetSharing(name string) (AssetSharing, error) {
-	r, err := a.sharingVault()
-	if err != nil {
-		return AssetSharing{}, err
-	}
-	targets, present, err := r.CurrentInstallTargets(a.ctx, name)
-	if err != nil {
-		return AssetSharing{}, friendlyVaultError(err)
-	}
-	sharing := AssetSharing{Teams: []string{}}
-	if !present || len(targets) == 0 {
-		sharing.Everyone = true
-		return sharing, nil
-	}
-	for _, t := range targets {
-		if t.Kind == vaultpkg.InstallKindTeam {
-			sharing.Teams = append(sharing.Teams, t.Team)
-		} else {
-			sharing.Other++
-		}
-	}
-	sort.Strings(sharing.Teams)
-	return sharing, nil
-}
-
 // SetAssetTeamSharing shares an asset with a team, or stops sharing it.
+// The drag-to-team flow's fast path; the Manage Installations dialog
+// goes through Add/RemoveAssetInstallation (app/sharing.go) instead.
 func (a *App) SetAssetTeamSharing(name, team string, shared bool) error {
 	r, err := a.sharingVault()
 	if err != nil {
@@ -398,51 +363,6 @@ func (a *App) SetAssetTeamSharing(name, team string, shared bool) error {
 		return friendlyVaultError(err)
 	}
 	return nil
-}
-
-// ShareAssetWithEveryone returns an asset to library-wide sharing.
-func (a *App) ShareAssetWithEveryone(name string) error {
-	r, err := a.sharingVault()
-	if err != nil {
-		return err
-	}
-	if err := r.SetAssetInstallation(a.ctx, name, vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindOrg}); err != nil {
-		return friendlyVaultError(err)
-	}
-	return nil
-}
-
-// GetCollectionSharing reports the collection's OWN install rows — who
-// receives the whole collection as a unit. It deliberately does not
-// intersect member-asset sharing: that read was binary (one member shared
-// differently and the collection read as shared with no one), hiding
-// partial state with no way to see it.
-func (a *App) GetCollectionSharing(name string) (AssetSharing, error) {
-	if _, err := a.findCollection(name); err != nil {
-		return AssetSharing{}, err
-	}
-	r, err := a.collectionInstallVault()
-	if err != nil {
-		return AssetSharing{}, err
-	}
-	targets, _, err := r.CurrentCollectionInstallTargets(a.ctx, name)
-	if err != nil {
-		return AssetSharing{}, friendlyVaultError(err)
-	}
-	out := AssetSharing{Teams: []string{}}
-	for _, t := range targets {
-		switch t.Kind {
-		case vaultpkg.InstallKindOrg:
-			out.Everyone = true
-		case vaultpkg.InstallKindTeam:
-			out.Teams = append(out.Teams, t.Team)
-		case vaultpkg.InstallKindRepo, vaultpkg.InstallKindPath,
-			vaultpkg.InstallKindUser, vaultpkg.InstallKindBot:
-			out.Other++
-		}
-	}
-	sort.Strings(out.Teams)
-	return out, nil
 }
 
 // SetCollectionTeamSharing shares (or stops sharing) a collection with a
@@ -465,40 +385,6 @@ func (a *App) SetCollectionTeamSharing(name, team string, shared bool) error {
 	}
 	if err != nil {
 		return friendlyVaultError(err)
-	}
-	return nil
-}
-
-// ShareCollectionWithEveryone shares a collection library-wide: an
-// explicit org-level collection install replacing its team rows (matching
-// the share dialog's "replaces the team list" copy). Member assets' own
-// scopes are untouched.
-func (a *App) ShareCollectionWithEveryone(name string) error {
-	if _, err := a.findCollection(name); err != nil {
-		return err
-	}
-	r, err := a.collectionInstallVault()
-	if err != nil {
-		return err
-	}
-	targets, _, err := r.CurrentCollectionInstallTargets(a.ctx, name)
-	if err != nil {
-		return friendlyVaultError(err)
-	}
-	if err := r.SetCollectionInstallation(a.ctx, name, vaultpkg.InstallTarget{Kind: vaultpkg.InstallKindOrg}); err != nil {
-		return friendlyVaultError(err)
-	}
-	var failed []string
-	for _, t := range targets {
-		if t.Kind != vaultpkg.InstallKindTeam {
-			continue
-		}
-		if err := r.RemoveCollectionInstallation(a.ctx, name, t); err != nil {
-			failed = append(failed, t.Team)
-		}
-	}
-	if len(failed) > 0 {
-		return fmt.Errorf("shared with everyone, but team rows could not be removed: %s", strings.Join(failed, ", "))
 	}
 	return nil
 }

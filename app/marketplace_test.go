@@ -33,7 +33,7 @@ func newExtensionVault(t *testing.T, a *App, id, name, description string) strin
 	// Publish through the app pointed temporarily at this vault.
 	prev := a.vault
 	a.vault = v
-	if _, err := a.addExtensionFrom(src); err != nil {
+	if _, _, err := a.addExtensionFrom(src); err != nil {
 		t.Fatalf("publish fixture extension: %v", err)
 	}
 	a.vault = prev
@@ -59,11 +59,11 @@ func TestExtensionsUnsupportedOnSleuth(t *testing.T) {
 	if a.VaultSupportsExtensions() {
 		t.Fatalf("sleuth vault should not support extensions yet")
 	}
-	if _, err := a.addExtensionFrom(t.TempDir()); err == nil ||
+	if _, _, err := a.addExtensionFrom(t.TempDir()); err == nil ||
 		!strings.Contains(err.Error(), "doesn't support extensions") {
 		t.Fatalf("addExtensionFrom error = %v", err)
 	}
-	if _, err := a.InstallMarketplaceExtension("anything"); err == nil ||
+	if _, err := a.InstallMarketplaceExtension("anything", ExtensionScopeOrg); err == nil ||
 		!strings.Contains(err.Error(), "doesn't support extensions") {
 		t.Fatalf("install error = %v", err)
 	}
@@ -111,7 +111,7 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 		}
 		prev := a.vault
 		a.vault = mv
-		if _, err := a.addExtensionFrom(src); err != nil {
+		if _, _, err := a.addExtensionFrom(src); err != nil {
 			t.Fatalf("publish second fixture: %v", err)
 		}
 		a.vault = prev
@@ -142,9 +142,6 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 	if all[0].Name != "Library Search" || all[1].Name != "Related Assets" {
 		t.Fatalf("unexpected order/names: %+v", all)
 	}
-	if all[0].Installed || all[1].Installed {
-		t.Fatalf("nothing should be installed yet: %+v", all)
-	}
 	if all[1].Version != "1.0.0" || len(all[1].Permissions) != 1 {
 		t.Fatalf("manifest fields not parsed: %+v", all[1])
 	}
@@ -155,8 +152,8 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 		t.Fatalf("filtered search = %+v, %v", found, err)
 	}
 
-	// Install copies into the current vault and flips the flag.
-	name, err := a.InstallMarketplaceExtension("related-assets")
+	// Install copies into the current vault.
+	name, err := a.InstallMarketplaceExtension("related-assets", ExtensionScopeOrg)
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
@@ -167,29 +164,17 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 	if err != nil || len(plugins) != 1 || plugins[0].AssetName != "related-assets" {
 		t.Fatalf("vault plugins after install = %+v, %v", plugins, err)
 	}
-	after, err := a.SearchMarketplace("")
-	if err != nil {
-		t.Fatalf("re-search: %v", err)
-	}
-	for _, e := range after {
-		if e.ID == "related-assets" && !e.Installed {
-			t.Fatalf("installed flag not set: %+v", e)
-		}
-		if e.ID == "library-search" && e.Installed {
-			t.Fatalf("library-search wrongly marked installed")
-		}
-	}
 
 	// Unknown asset fails cleanly.
-	if _, err := a.InstallMarketplaceExtension("nope"); err == nil {
+	if _, err := a.InstallMarketplaceExtension("nope", ExtensionScopeOrg); err == nil {
 		t.Fatalf("unknown asset accepted")
 	}
 
 	// A marketplace may name an asset independently of its plugin id
 	// (the source URL is user-editable, so foreign conventions happen).
-	// Install republishes under the plugin id, and the installed flag
-	// must match on the id — not the marketplace's asset name — or the
-	// entry never flips to installed.
+	// Install republishes under the plugin id — not the marketplace's
+	// asset name — so the vault's asset names are always ids and the
+	// UI's live-registry installed derivation can match on them.
 	mkt, err := vaultpkg.NewPathVault("file://" + mktDir)
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +182,7 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 	if err := mkt.RenameAsset(a.ctx, "library-search", "acme-search"); err != nil {
 		t.Fatalf("rename in marketplace: %v", err)
 	}
-	installedName, err := a.InstallMarketplaceExtension("acme-search")
+	installedName, err := a.InstallMarketplaceExtension("acme-search", ExtensionScopeOrg)
 	if err != nil {
 		t.Fatalf("install renamed entry: %v", err)
 	}
@@ -208,10 +193,14 @@ func TestSearchAndInstallFromMarketplace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("final search: %v", err)
 	}
+	renamed := false
 	for _, e := range final {
-		if e.AssetName == "acme-search" && (!e.Installed || e.ID != "library-search") {
-			t.Fatalf("renamed entry not matched by id: %+v", e)
+		if e.AssetName == "acme-search" && e.ID == "library-search" {
+			renamed = true
 		}
+	}
+	if !renamed {
+		t.Fatalf("renamed entry missing or id mismatch: %+v", final)
 	}
 }
 

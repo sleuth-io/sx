@@ -2,6 +2,9 @@ package vault
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
 
@@ -271,5 +274,37 @@ func TestPathVault_UninstallAssetTargets(t *testing.T) {
 	}
 	if !hasKind(kinds, manifest.ScopeKindRepo) {
 		t.Errorf("baseline repo scope should remain, got %+v", kinds)
+	}
+}
+
+// Org is exclusive and always a REPLACE on the server, whatever
+// appendMode the caller passed: forwarding append=true would send
+// "append nothing" and leave existing narrower scopes in place, so an
+// org add on a governed library would silently fail to go global.
+func TestSleuthOrgInstallAlwaysReplaces(t *testing.T) {
+	var gotAppend *bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Variables struct {
+				Input struct {
+					Append *bool `json:"append"`
+				} `json:"input"`
+			} `json:"variables"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		gotAppend = req.Variables.Input.Append
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"setAssetInstallations":{"errors":[]}}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	v := NewSleuthVault(server.URL, "test-token")
+	skipped, err := v.SetAssetInstallations(context.Background(), "my-skill",
+		[]InstallTarget{{Kind: InstallKindOrg}}, true /* appendMode */)
+	if err != nil || len(skipped) != 0 {
+		t.Fatalf("SetAssetInstallations: skipped=%v err=%v", skipped, err)
+	}
+	if gotAppend == nil || *gotAppend {
+		t.Fatalf("org install sent append=%v, want explicit false (replace)", gotAppend)
 	}
 }

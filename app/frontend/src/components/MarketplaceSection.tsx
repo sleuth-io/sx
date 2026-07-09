@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
+  CanInstallForEveryone,
   GetMarketplaceURL,
   InstallMarketplaceExtension,
   SetMarketplaceURL,
@@ -21,6 +22,13 @@ import {
   loadCatalog,
   subscribeCatalog,
 } from "../plugins/updates";
+
+/** Compact install-count label: 950 → "950", 1234 → "1.2k". */
+function fmtInstalls(n: number): string {
+  if (n < 1000) return String(n);
+  const k = (n / 1000).toFixed(n < 10_000 ? 1 : 0).replace(/\.0$/, "");
+  return `${k}k`;
+}
 
 /**
  * The marketplace browser inside Settings → Extensions: search a shared
@@ -50,6 +58,11 @@ export default function MarketplaceSection() {
   // A library whose server can't store app-plugin assets (skills.new
   // until P5) can browse but not install.
   const [supported, setSupported] = useState(true);
+  // Whether the caller may install library-wide (org-admins on governed
+  // vaults). Everyone may always install just for themselves.
+  const [canEveryone, setCanEveryone] = useState(false);
+  // Which entry's install menu is open ("" = none).
+  const [menuFor, setMenuFor] = useState("");
   useEffect(() => {
     GetMarketplaceURL()
       .then(setRepoURL)
@@ -58,7 +71,21 @@ export default function MarketplaceSection() {
       .then(setSupported)
       // Fail CLOSED like the backend gate.
       .catch(() => setSupported(false));
+    CanInstallForEveryone()
+      .then(setCanEveryone)
+      .catch(() => setCanEveryone(false));
   }, []);
+
+  // The install-options menu dismisses like a normal popover: Escape
+  // closes it (the backdrop below handles click-away).
+  useEffect(() => {
+    if (!menuFor) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuFor("");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuFor]);
 
   const fetchCatalog = useCallback(async (force = false) => {
     setSearching(true);
@@ -77,8 +104,13 @@ export default function MarketplaceSection() {
     await fetchCatalog();
   }
 
+  // Sort by name (backend default) or by global install count, when the
+  // marketplace publishes one.
+  const [sortBy, setSortBy] = useState<"name" | "installs">("name");
+  const hasCounts = (catalog ?? []).some((r) => r.installs > 0);
+
   const needle = query.trim().toLowerCase();
-  const results =
+  const filtered =
     catalog?.filter(
       (r) =>
         !needle ||
@@ -86,13 +118,21 @@ export default function MarketplaceSection() {
         r.id.toLowerCase().includes(needle) ||
         r.description.toLowerCase().includes(needle),
     ) ?? null;
+  const results =
+    filtered && sortBy === "installs"
+      ? [...filtered].sort((a, b) => b.installs - a.installs)
+      : filtered;
 
-  async function install(entry: main.MarketplaceExtension) {
+  async function install(
+    entry: main.MarketplaceExtension,
+    scope: "me" | "org",
+  ) {
+    setMenuFor("");
     setInstalling(entry.assetName);
     setError("");
     setNotice("");
     try {
-      await InstallMarketplaceExtension(entry.assetName);
+      await InstallMarketplaceExtension(entry.assetName, scope);
       await refreshVaultPlugins();
       // Install means "I want this running": the permission list was on
       // the card the user just clicked, so that click is the consent —
@@ -102,16 +142,17 @@ export default function MarketplaceSection() {
       const manifest = listPlugins().find(
         (p) => p.manifest.id === entry.id,
       )?.manifest;
+      const where = scope === "me" ? "for you" : "for everyone";
       if (!blocked && manifest) {
         await recordConsent(manifest);
         await enablePlugin(entry.id);
         await SetPluginDecision(entry.id, true);
-        setNotice(`${entry.name} is installed and running.`);
+        setNotice(`${entry.name} is installed ${where} and running.`);
       } else {
         setNotice(
           blocked
             ? `${entry.name} was added to the library, but ${blocked}`
-            : `${entry.name} added to this library — enable it above when you're ready.`,
+            : `${entry.name} installed ${where} — enable it above when you're ready.`,
         );
       }
     } catch (e) {
@@ -170,8 +211,9 @@ export default function MarketplaceSection() {
         )}
       </div>
       <p className="mb-2 text-xs text-ink-faint">
-        Extensions shared in a public repository. Installing copies one into
-        this library and turns it on — each entry lists what it can access.
+        Extensions shared in a public repository. Install turns one on just
+        for you{canEveryone ? ", or for the whole library from the menu" : ""}
+        — each entry lists what it can access.
       </p>
 
       {opened && (
@@ -184,6 +226,20 @@ export default function MarketplaceSection() {
               data-marketplace-search
               className="w-full rounded-lg border border-line bg-canvas px-3 py-1.5 text-sm outline-none transition focus:border-accent"
             />
+            {hasCounts && (
+              <select
+                value={sortBy}
+                onChange={(e) =>
+                  setSortBy(e.target.value as "name" | "installs")
+                }
+                aria-label="Sort extensions"
+                data-marketplace-sort
+                className="shrink-0 rounded-lg border border-line bg-canvas px-2 py-1.5 text-xs text-ink-soft outline-none transition focus:border-accent"
+              >
+                <option value="name">A–Z</option>
+                <option value="installs">Most installed</option>
+              </select>
+            )}
           </div>
 
           {searching && results === null && (
@@ -211,6 +267,14 @@ export default function MarketplaceSection() {
                     <span className="text-[10px] text-ink-faint">
                       v{r.version}
                       {r.author ? ` · ${r.author}` : ""}
+                      {r.installs > 0 && (
+                        <span
+                          title={`${r.installs.toLocaleString()} installs across all sx libraries`}
+                          data-install-count={r.id}
+                        >
+                          {` · ⇩ ${fmtInstalls(r.installs)}`}
+                        </span>
+                      )}
                     </span>
                   </div>
                   {r.description && (
@@ -235,12 +299,13 @@ export default function MarketplaceSection() {
                   const mine = installedPlugins.find(
                     (p) => !p.builtIn && p.manifest.id === r.id,
                   );
-                  // Derived from the LIVE host registry only. The
-                  // catalog's fetched `installed` flag was stamped
-                  // against whichever library was current at fetch
-                  // time, and the catalog cache outlives library
-                  // switches — trusting it showed "In library" for
-                  // extensions the newly selected library doesn't have.
+                  // Derived from the LIVE host registry only — the
+                  // catalog deliberately carries no installed flag: a
+                  // fetched flag is stamped against whichever library
+                  // was current at fetch time, and the catalog cache
+                  // outlives library switches, so trusting one showed
+                  // "In library" for extensions the newly selected
+                  // library doesn't have.
                   const installed = !!mine;
                   if (
                     installed &&
@@ -259,25 +324,69 @@ export default function MarketplaceSection() {
                     );
                   }
                   if (installed) {
+                    // A personal install is yours alone; only sharing
+                    // (org or team) earns the library-wide badge.
+                    const personalOnly =
+                      !!mine?.scope?.personal && !mine?.scope?.shared;
                     return (
                       <span className="shrink-0 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                        ✓ In library
+                        {personalOnly ? "✓ Installed for you" : "✓ In library"}
                       </span>
                     );
                   }
                   return (
-                    <button
-                      onClick={() => void install(r)}
-                      disabled={installing !== "" || !supported}
-                      title={
-                        supported
-                          ? undefined
-                          : "This library's server can't store extensions yet — switch to a git or local library to install"
-                      }
-                      className="shrink-0 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-                    >
-                      {installing === r.assetName ? "Installing…" : "Install"}
-                    </button>
+                    <span className="relative flex shrink-0 items-center">
+                      <button
+                        onClick={() => void install(r, "me")}
+                        disabled={installing !== "" || !supported}
+                        title={
+                          supported
+                            ? "Install just for you — teammates aren't affected"
+                            : "This library's server can't store extensions yet — switch to a git or local library to install"
+                        }
+                        className={`rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50 ${
+                          canEveryone ? "rounded-r-none" : ""
+                        }`}
+                      >
+                        {installing === r.assetName
+                          ? "Installing…"
+                          : "Install"}
+                      </button>
+                      {canEveryone && (
+                        <button
+                          onClick={() =>
+                            setMenuFor(menuFor === r.assetName ? "" : r.assetName)
+                          }
+                          disabled={installing !== "" || !supported}
+                          aria-label={`More install options for ${r.name}`}
+                          aria-expanded={menuFor === r.assetName}
+                          data-install-menu={r.assetName}
+                          className="rounded-lg rounded-l-none border-l border-white/30 bg-accent px-1.5 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                        >
+                          ▾
+                        </button>
+                      )}
+                      {menuFor === r.assetName && (
+                        <>
+                          {/* Invisible click-away backdrop, under the menu. */}
+                          <span
+                            className="fixed inset-0 z-[5]"
+                            onMouseDown={() => setMenuFor("")}
+                          />
+                          <span className="absolute right-0 top-full z-10 mt-1 w-44 rounded-lg border border-line bg-surface p-1 shadow-lg">
+                            <button
+                              onClick={() => void install(r, "org")}
+                              className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-ink transition hover:bg-accent-soft"
+                            >
+                              Install for everyone
+                              <span className="block text-[10px] text-ink-faint">
+                                Shares it with the whole library
+                              </span>
+                            </button>
+                          </span>
+                        </>
+                      )}
+                    </span>
                   );
                 })()}
               </li>

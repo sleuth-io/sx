@@ -152,10 +152,31 @@ check, same consent model, same audit trail. Install **enables the
 extension for the installing user** — the permission chips on the
 marketplace card are the consent surface, so a separate consent sheet
 would ask the same question twice (org policy still has the final word).
-Other members of the library see it disabled and walk the normal consent
-sheet when they enable it. Non-built-in extensions can be **removed**
-from Settings → Extensions (disable + delete the vault asset, behind a
-confirm).
+Anyone else who receives it sees it disabled and walks the normal consent
+sheet when they enable it.
+
+**Install is scoped.** The Install button installs **just for the caller**
+(a `kind = "user"` scope on the asset — the same row `sx add --user me`
+writes), which docs/rbac.md allows for anyone, governed vault or not. The
+button's menu offers **Install for everyone** (library-wide, no scopes),
+shown only when the caller may set an org scope (`CanInstallForEveryone`:
+ungoverned vault, or org-admin). The Extensions screen lists only
+extensions that **reach** the caller — library-wide, via a team, or via
+their own user scope — with a chip naming the audience ("Just you",
+"Team platform", …); someone else's personal install doesn't appear.
+Re-installing an extension the vault already has is an update and leaves
+its sharing untouched. A personal install can later be promoted with
+**Share with library** (org-scope RBAC applies); the marketplace badge
+distinguishes "✓ Installed for you" from "✓ In library".
+
+**Remove matches intent.** Removing a personally-installed extension
+drops only the caller's user scope — as a full asset delete when no one
+else receives it (a bare last-scope removal would otherwise read as
+global). Removing a shared one deletes it for everyone, behind a confirm
+that says so. Lifecycle is audited (`plugin.installed` / `updated` /
+`uninstalled` / `shared`, see docs/audit.md) and every install records a
+usage event (`asset_type = "app-plugin"`), so `sx stats` sees extension
+adoption.
 
 - Default repository: `https://github.com/sleuth-io/sx-extensions`
   (`DefaultMarketplaceURL`); per-profile override stored in
@@ -163,11 +184,31 @@ confirm).
   (a git URL or a local/synced folder both work — the URL opens as a git
   or path vault respectively).
 - Bridge surface: `SearchMarketplace(query)` (type-filtered list with
-  each entry's `plugin.json` fields and an installed flag),
-  `InstallMarketplaceExtension(assetName)`, `Get/SetMarketplaceURL`.
+  each entry's `plugin.json` fields, installed flag, and global install
+  count), `InstallMarketplaceExtension(assetName, scope)` with scope
+  `"me"` or `"org"`, `CanInstallForEveryone()`, `RemoveExtensionAsset(id)`,
+  `ShareExtensionWithLibrary(id)`, `Get/SetMarketplaceURL`.
 - UI: **Settings → Extensions → Browse marketplace…** — search, permission
-  chips per entry, Install / Update / "✓ In library" states, editable
-  source URL.
+  chips per entry, split Install button (for me / for everyone), Update /
+  "✓ Installed for you" / "✓ In library" states, install-count badge and
+  a "Most installed" sort, editable source URL.
+- **Catalog and stats files.** A marketplace may publish two root files,
+  both read from the already-synced clone (`ReadRootFiles` on file-backed
+  vaults — one batch read, one clone sync): `catalog.json` — the browse list, one file read instead of
+  unpacking every bundle — and `stats.json` — global install counts per
+  extension id. Marketplaces without them fall back to bundle scanning
+  and show no counts.
+- **Countable installs (public marketplace).** CI on sx-extensions moves
+  each published version archive out of the tree onto a rolling GitHub
+  release as `<name>-<version>.zip`, rewriting its manifest entry to
+  `[assets.source-http]` (URL + sha256 + size). Installs then fetch the
+  release asset through the vault's existing HTTP source handler —
+  hash-verified against the git-committed manifest — and GitHub's
+  per-asset `download_count` becomes the anonymous install counter (the
+  Obsidian model). A nightly job aggregates the counts into `stats.json`.
+  Browsing never touches those URLs: the catalog serves the list and
+  `assets/<name>/` stays in-tree, so counts reflect installs, not
+  browses.
 - **Per-library, visibly.** Extensions belong to a library, so the
   Extensions screen names the library it's showing and re-syncs the
   whole set — vault plugins, policy, enablement — on every library

@@ -201,7 +201,7 @@ func TestAddExtensionFromFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	name, err := a.addExtensionFrom(src)
+	name, _, err := a.addExtensionFrom(src)
 	if err != nil {
 		t.Fatalf("addExtensionFrom: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestAddExtensionFromFolder(t *testing.T) {
 
 	// Rejects folders that aren't extensions.
 	empty := t.TempDir()
-	if _, err := a.addExtensionFrom(empty); err == nil {
+	if _, _, err := a.addExtensionFrom(empty); err == nil {
 		t.Fatalf("folder without plugin.json accepted")
 	}
 }

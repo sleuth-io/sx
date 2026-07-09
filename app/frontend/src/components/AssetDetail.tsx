@@ -2,14 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import {
+  AddAssetInstallation,
   DownloadAsset,
   GetAsset,
-  GetAssetSharing,
+  GetAssetInstallations,
+  RemoveAssetInstallationRow,
   RestoreRevision,
   SetAssetPersonal,
-  SetAssetTeamSharing,
   SetCollectionMembership,
-  ShareAssetWithEveryone,
 } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import { emitEvent } from "../plugins/events";
@@ -63,7 +63,7 @@ export default function AssetDetail({
   const currentTab = assetTabs.find(
     (t) => t.pluginId + ":" + t.spec.id === activeTab,
   );
-  const [sharing, setSharing] = useState<main.AssetSharing | null>(null);
+  const [sharing, setSharing] = useState<main.InstallationsView | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   // Right-anchored panel: dragging its left edge outward grows it.
   const [panelWidth, startPanelResize] = usePanelSize(
@@ -148,7 +148,7 @@ export default function AssetDetail({
 
   useEffect(() => {
     let stale = false;
-    GetAssetSharing(name)
+    GetAssetInstallations(name)
       .then((s) => {
         if (!stale) setSharing(s);
       })
@@ -160,18 +160,32 @@ export default function AssetDetail({
     };
   }, [name]);
 
+  // Every install row, spelled out (teams, repos, bots, people) instead
+  // of an opaque "+N more places" — truncated only past three entries.
   const sharingSummary = (() => {
     if (!sharing) return "";
     if (sharing.everyone) return "everyone in this library";
-    const parts: string[] = [];
-    const teamCount = (sharing.teams ?? []).length;
-    if (teamCount > 0)
-      parts.push(`${teamCount} ${teamCount === 1 ? "team" : "teams"}`);
-    if (sharing.other > 0)
-      parts.push(
-        `${sharing.other} other ${sharing.other === 1 ? "place" : "places"}`,
-      );
-    return parts.join(" and ") || "no one yet";
+    const parts = (sharing.installations ?? []).map((i) => {
+      switch (i.kind) {
+        case "org":
+          return "everyone";
+        case "repo":
+          return (i.repo ?? "").replace(/^[a-z+]+:\/\//i, "").replace(/\.git$/, "");
+        case "path":
+          return `${(i.repo ?? "").replace(/^[a-z+]+:\/\//i, "").replace(/\.git$/, "")} (${(i.paths ?? []).length} ${(i.paths ?? []).length === 1 ? "path" : "paths"})`;
+        case "team":
+          return `${i.team} team`;
+        case "user":
+          return i.user ?? "";
+        case "bot":
+          return `${i.bot} bot`;
+        default:
+          return i.kind;
+      }
+    });
+    if (parts.length === 0) return "no one yet";
+    if (parts.length <= 3) return parts.join(", ");
+    return `${parts.slice(0, 3).join(", ")} +${parts.length - 3} more`;
   })();
 
   const files = detail?.files ?? [];
@@ -450,16 +464,16 @@ export default function AssetDetail({
 
         {shareOpen && (
           <ShareModal
-            title={`Share ${name}`}
+            title={`Manage installations — ${name}`}
             teams={teams}
-            getSharing={() => GetAssetSharing(name)}
-            setTeamShared={(team, shared) =>
-              SetAssetTeamSharing(name, team, shared)
+            getInstallations={() => GetAssetInstallations(name)}
+            addInstallation={(inst) => AddAssetInstallation(name, inst)}
+            removeInstallation={(inst) =>
+              RemoveAssetInstallationRow(name, inst)
             }
-            shareEveryone={() => ShareAssetWithEveryone(name)}
             onClose={() => setShareOpen(false)}
             onChanged={() => {
-              GetAssetSharing(name)
+              GetAssetInstallations(name)
                 .then(setSharing)
                 .catch(() => {});
               onCollectionsChanged();

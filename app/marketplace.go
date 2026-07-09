@@ -85,9 +85,21 @@ type MarketplaceExtension struct {
 	Description string   `json:"description"`
 	Author      string   `json:"author"`
 	Permissions []string `json:"permissions"`
-	// Installed means the current vault already has an app-plugin asset
-	// with this name; the UI shows a label instead of an Install button.
-	Installed bool `json:"installed"`
+	// Installs is the global install count from the marketplace's
+	// stats.json (aggregated release-asset downloads). 0 when the
+	// marketplace publishes no stats. There is deliberately no
+	// installed-here flag: the UI derives installed state from the live
+	// plugin registry, because a cached catalog flag goes stale across
+	// library switches (see MarketplaceSection).
+	Installs int `json:"installs"`
+}
+
+// rootFileReader is the optional vault capability behind marketplace
+// catalog and stats files (file-backed vaults implement it). The batch
+// shape matters: a git vault syncs its clone once per call, and the
+// marketplace needs two files per search.
+type rootFileReader interface {
+	ReadRootFiles(ctx context.Context, names []string) (map[string][]byte, error)
 }
 
 func (a *App) marketplaceConfigPath() (string, error) {
@@ -157,47 +169,126 @@ func openMarketplaceVault(rawURL string) (vaultpkg.Vault, error) {
 }
 
 // SearchMarketplace lists the marketplace's extensions matching query
-// (empty lists everything), newest metadata included, flagged with
-// whether each is already installed in the current vault. Entries whose
-// bundles are malformed are skipped with a log — one bad asset must not
-// blank the marketplace.
+// (empty lists everything), newest metadata included, with each entry's
+// global install count when the marketplace publishes stats. Entries
+// whose bundles are malformed are skipped with a log — one bad asset
+// must not blank the marketplace.
 func (a *App) SearchMarketplace(query string) ([]MarketplaceExtension, error) {
 	out := []MarketplaceExtension{}
 	mkt, err := openMarketplaceVault(a.GetMarketplaceURL())
 	if err != nil {
 		return out, err
 	}
+	// Both root files in one read: on a git marketplace each read syncs
+	// the clone, so per-file reads would fetch the same repo twice.
+	files := a.marketplaceRootFiles(mkt)
+	entries, err := a.marketplaceEntries(mkt, files["catalog.json"], query)
+	if err != nil {
+		return out, err
+	}
+	stats := parseMarketplaceStats(files["stats.json"])
+	for i := range entries {
+		entries[i].Installs = stats[entries[i].ID]
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+	return append(out, entries...), nil
+}
+
+// marketplaceRootFiles reads the marketplace's catalog and stats files
+// behind one vault sync. Best-effort: vaults without the capability (or
+// unreadable roots) contribute nothing and callers fall back.
+func (a *App) marketplaceRootFiles(mkt vaultpkg.Vault) map[string][]byte {
+	reader, ok := mkt.(rootFileReader)
+	if !ok {
+		return nil
+	}
+	files, err := reader.ReadRootFiles(a.ctx, []string{"catalog.json", "stats.json"})
+	if err != nil {
+		return nil
+	}
+	return files
+}
+
+// marketplaceEntries prefers the marketplace's CI-generated catalog.json:
+// one root file read instead of unpacking every bundle — and mandatory
+// once version archives live behind HTTP sources, where a per-card bundle
+// fetch would be slow AND count as an install. Marketplaces without a
+// catalog (private or hand-built) fall back to scanning bundles.
+func (a *App) marketplaceEntries(mkt vaultpkg.Vault, catalog []byte, query string) ([]MarketplaceExtension, error) {
+	if entries, ok := entriesFromCatalog(catalog, query); ok {
+		return entries, nil
+	}
 	res, err := mkt.ListAssets(a.ctx, vaultpkg.ListAssetsOptions{
 		Type: asset.TypeAppPlugin.Key, Search: strings.TrimSpace(query), Limit: 100,
 	})
 	if err != nil {
-		return out, fmt.Errorf("couldn't reach the marketplace: %w", err)
+		return nil, fmt.Errorf("couldn't reach the marketplace: %w", err)
 	}
-
-	installed := map[string]bool{}
-	if v, err := a.currentVault(); err == nil {
-		if mine, err := v.ListAssets(a.ctx, vaultpkg.ListAssetsOptions{Type: asset.TypeAppPlugin.Key, Limit: 200}); err == nil {
-			for _, s := range mine.Assets {
-				installed[s.Name] = true
-			}
-		}
-	}
-
+	out := []MarketplaceExtension{}
 	for _, summary := range res.Assets {
 		entry, err := marketplaceEntry(a, mkt, summary.Name)
 		if err != nil {
 			logger.Get().Warn("skipping malformed marketplace extension", "asset", summary.Name, "error", err)
 			continue
 		}
-		// Installed matches on the plugin ID: install republishes under
-		// pm.ID (addExtensionFrom forces the name), so the current vault's
-		// asset names are always ids — the MARKETPLACE's asset name is
-		// whatever its publisher chose and may diverge.
-		entry.Installed = installed[entry.ID]
 		out = append(out, entry)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+// entriesFromCatalog parses catalog.json content. Returns ok=false (fall
+// back to bundle scanning) when there is no catalog or it doesn't parse.
+func entriesFromCatalog(data []byte, query string) ([]MarketplaceExtension, bool) {
+	if len(data) == 0 {
+		return nil, false
+	}
+	var doc struct {
+		Extensions []MarketplaceExtension `json:"extensions"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		logger.Get().Warn("marketplace catalog.json is malformed; scanning bundles instead", "error", err)
+		return nil, false
+	}
+	needle := strings.ToLower(strings.TrimSpace(query))
+	out := []MarketplaceExtension{}
+	for _, e := range doc.Extensions {
+		if e.ID == "" || e.Name == "" || e.Version == "" {
+			continue
+		}
+		if e.AssetName == "" {
+			e.AssetName = e.ID
+		}
+		if e.Permissions == nil {
+			e.Permissions = []string{}
+		}
+		if needle != "" &&
+			!strings.Contains(strings.ToLower(e.Name+" "+e.ID+" "+e.Description), needle) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out, true
+}
+
+// parseMarketplaceStats parses stats.json content (nightly-aggregated
+// release download counts), keyed by plugin id. Best-effort: no stats
+// file, no counts.
+func parseMarketplaceStats(data []byte) map[string]int {
+	if len(data) == 0 {
+		return nil
+	}
+	var doc map[string]struct {
+		Installs int `json:"installs"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		logger.Get().Warn("marketplace stats.json is malformed", "error", err)
+		return nil
+	}
+	out := make(map[string]int, len(doc))
+	for id, s := range doc {
+		out[id] = s.Installs
+	}
+	return out
 }
 
 func marketplaceEntry(a *App, mkt vaultpkg.Vault, name string) (MarketplaceExtension, error) {
@@ -237,12 +328,15 @@ func marketplaceEntry(a *App, mkt vaultpkg.Vault, name string) (MarketplaceExten
 
 // InstallMarketplaceExtension copies one extension from the marketplace
 // into the current vault: fetch the bundle, unpack it, and push it through
-// the exact same validate-and-publish path as "Add extension…". The asset
-// lands disabled at this layer; the frontend then enables it for the
-// installing user (the permission list on the marketplace card is the
-// consent) unless org policy blocks it. For everyone ELSE in the library
-// it appears disabled, gated by their own consent.
-func (a *App) InstallMarketplaceExtension(assetName string) (string, error) {
+// the exact same validate-and-publish path as "Add extension…". Scope is
+// ExtensionScopeMe (just the caller — a personal user scope) or
+// ExtensionScopeOrg (the whole library). The asset lands disabled at this
+// layer; the frontend then enables it for the installing user (the
+// permission list on the marketplace card is the consent) unless org
+// policy blocks it. For anyone else who receives it, it appears disabled,
+// gated by their own consent. Re-installing an extension the vault
+// already has is an update and leaves its sharing untouched.
+func (a *App) InstallMarketplaceExtension(assetName, scope string) (string, error) {
 	if err := validateAssetRef(assetName, ""); err != nil {
 		return "", err
 	}
@@ -257,6 +351,16 @@ func (a *App) InstallMarketplaceExtension(assetName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("couldn't fetch %s from the marketplace: %w", assetName, err)
 	}
+	// The plugin id names the published asset (addExtensionFrom forces
+	// it), so scope and update detection key on it — not on whatever
+	// asset name the marketplace publisher chose.
+	var pm struct {
+		ID      string `json:"id"`
+		Version string `json:"version"`
+	}
+	if manifestBytes, err := utils.ReadZipFile(zipData, "plugin.json"); err == nil {
+		_ = json.Unmarshal(manifestBytes, &pm)
+	}
 	dir, err := os.MkdirTemp("", "sx-marketplace-*")
 	if err != nil {
 		return "", err
@@ -268,5 +372,5 @@ func (a *App) InstallMarketplaceExtension(assetName string) (string, error) {
 	// Publish regenerates metadata from plugin.json (the authoring path);
 	// the marketplace copy's metadata.toml would only fight it.
 	_ = os.Remove(filepath.Join(dir, "metadata.toml"))
-	return a.addExtensionFrom(dir)
+	return a.installExtensionScoped(dir, pm.ID, pm.Version, scope, "marketplace")
 }

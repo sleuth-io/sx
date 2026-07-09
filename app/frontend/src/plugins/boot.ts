@@ -111,7 +111,7 @@ async function doSyncVaultExtensions(): Promise<void> {
   try {
     for (const vp of (await ListVaultPlugins()) ?? []) {
       try {
-        registerVaultPlugin(parseVaultManifest(vp.manifest), vp.source);
+        registerVaultPlugin(parseVaultManifest(vp.manifest), vp.source, vp.scope);
       } catch (e) {
         console.error(`extension asset ${vp.assetName} rejected:`, e);
       }
@@ -153,19 +153,34 @@ async function doSyncVaultExtensions(): Promise<void> {
   }
 }
 
-/** Re-scan the vault for extensions (after "Add extension…"). Already-
- * registered ids are left untouched. */
+/** Re-scan the vault for extensions (after install, remove, or a sharing
+ * change). Upserts what the vault lists and drops vault extensions that
+ * no longer reach this user — a remove or scope change must not leave a
+ * stale row behind. The prune runs ONLY on a successful listing:
+ * ListVaultPlugins throws on a listing failure rather than returning
+ * empty, so a transient backend error lands in the catch below instead
+ * of reading as "no extensions" and tearing down everything running. */
 export async function refreshVaultPlugins(): Promise<void> {
   try {
-    for (const vp of (await ListVaultPlugins()) ?? []) {
+    const listed = (await ListVaultPlugins()) ?? [];
+    const seen = new Set<string>();
+    for (const vp of listed) {
       try {
-        registerVaultPlugin(parseVaultManifest(vp.manifest), vp.source);
+        const manifest = parseVaultManifest(vp.manifest);
+        registerVaultPlugin(manifest, vp.source, vp.scope);
+        seen.add(manifest.id);
       } catch (e) {
         console.error(`extension asset ${vp.assetName} rejected:`, e);
       }
     }
+    for (const p of listPlugins()) {
+      if (!p.builtIn && !seen.has(p.manifest.id)) {
+        unregisterVaultPlugin(p.manifest.id);
+      }
+    }
   } catch {
-    // vault unreachable; the next boot retries
+    // Listing failed — leave the registry as-is; the next boot or
+    // refresh reconciles.
   }
 }
 

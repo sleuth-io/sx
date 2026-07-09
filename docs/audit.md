@@ -45,6 +45,18 @@ conditions hold. `--since` accepts `Nd` (days) or `all`.
 | `install.set` | `installation` | asset name | `kind`, plus one of `repo`/`paths`/`team`/`user`/`bot` |
 | `install.removed` | `installation` | asset name | `kind`, plus one of `repo`/`paths`/`team`/`user`/`bot` (one specific target was removed) |
 | `install.cleared` | `installation` | asset name | every install row was cleared. `Data` is set only on the cascade paths (`kind`, `team`/`bot`, `reason` = `team_deleted`/`bot_deleted`); a direct `ClearAssetInstallations` call carries no `data` |
+| `plugin.installed` | `plugin` | extension id | `version`, `scope` (`personal`/`library`), `source` (`marketplace`/`folder`) |
+| `plugin.updated` | `plugin` | extension id | `version`, `scope`, `source` (a republish of an extension the vault already had) |
+| `plugin.uninstalled` | `plugin` | extension id | `scope` (`personal` = only the caller's install was removed, `library` = deleted for everyone) |
+| `plugin.shared` | `plugin` | extension id | _(none)_ — a personal install promoted to the whole library |
+| `plugin.enabled` | `plugin` | extension id | _(none)_ — per-user enablement in the desktop app |
+| `plugin.disabled` | `plugin` | extension id | _(none)_ |
+| `plugin.policy-changed` | `plugin` | `policy` | `mode`, `allowed` (allowlist mode) |
+
+Extension lifecycle events are appended best-effort from the desktop app
+(fire-and-forget — a git vault append is a pull+commit+push and must not
+block the UI), so a network hiccup can drop one; the vault manifest is
+the durable state.
 
 Cascade events are emitted automatically:
 

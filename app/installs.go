@@ -148,6 +148,27 @@ func (a *App) collectionTargetsForAsset(name string) []vaultpkg.InstallTarget {
 // user: shared = it reaches them without a personal scope (org-wide, or a
 // team they belong to); minePersonally = their own user scope is present.
 func (a *App) assetReachesUser(targets []vaultpkg.InstallTarget, self string) (shared, minePersonally bool) {
+	return assetReachesUserVia(targets, self, a.teamsOnce())
+}
+
+// teamsOnce returns a memoized team fetch: callers resolving reach for
+// many assets in one pass (ListVaultPlugins) pay for ListTeams at most
+// once instead of once per team-scoped asset.
+func (a *App) teamsOnce() func() []TeamInfo {
+	var teams []TeamInfo
+	fetched := false
+	return func() []TeamInfo {
+		if !fetched {
+			fetched = true
+			teams, _ = a.ListTeams()
+		}
+		return teams
+	}
+}
+
+// assetReachesUserVia is assetReachesUser with the team lookup injected;
+// teams is only invoked when a team scope actually needs resolving.
+func assetReachesUserVia(targets []vaultpkg.InstallTarget, self string, teams func() []TeamInfo) (shared, minePersonally bool) {
 	var teamNames []string
 	for _, t := range targets {
 		switch t.Kind {
@@ -171,11 +192,7 @@ func (a *App) assetReachesUser(targets []vaultpkg.InstallTarget, self string) (s
 	if shared || len(teamNames) == 0 {
 		return shared, minePersonally
 	}
-	teams, err := a.ListTeams()
-	if err != nil {
-		return shared, minePersonally
-	}
-	for _, team := range teams {
+	for _, team := range teams() {
 		if !slices.Contains(teamNames, team.Name) {
 			continue
 		}
