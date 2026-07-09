@@ -375,7 +375,18 @@ func (a *App) PluginUsageEventsSince(sinceISO string) ([]PluginUsageEventRecord,
 	if err != nil {
 		return nil, fmt.Errorf("invalid since timestamp %q (want RFC3339)", sinceISO)
 	}
-	return a.usageEventsSince(since)
+	return a.usageEventsSince(clampUsageSince(since))
+}
+
+// clampUsageSince keeps a precise `since` from ever widening the window
+// past the day-count APIs' year cap: the incremental variants may only
+// NARROW, never let an extension force the unbounded history scan
+// usageCutoff guards against.
+func clampUsageSince(since time.Time) time.Time {
+	if floor := usageCutoff(365); since.Before(floor) {
+		return floor
+	}
+	return since
 }
 
 func (a *App) usageEventsSince(cutoff time.Time) ([]PluginUsageEventRecord, error) {
@@ -429,7 +440,7 @@ func (a *App) PluginAuditEventsSince(sinceISO string) ([]PluginAuditEventRecord,
 	if err != nil {
 		return nil, fmt.Errorf("invalid since timestamp %q (want RFC3339)", sinceISO)
 	}
-	return a.auditEventsSince(since)
+	return a.auditEventsSince(clampUsageSince(since))
 }
 
 func (a *App) auditEventsSince(cutoff time.Time) ([]PluginAuditEventRecord, error) {

@@ -246,7 +246,7 @@ adoption.
 
 - `sx.usage.eventsSince(iso)` and `sx.usage.auditEventsSince(iso)` (under
   the existing `usage:read`): the same reads as `events`/`auditEvents`,
-  but bounded by a precise RFC3339 `since` instead of a day count. The
+  but bounded by a precise RFC3339 `since` (e.g. an event's own `timestamp`) instead of a day count. The
   Pulse `assetUsageEvents` field and sx's `UsageFilter` already carry
   `since`/`until`; this surfaces the precise lower bound to extensions so
   an analytics view can cache a window in `storage` and pull only the
@@ -255,7 +255,7 @@ adoption.
   repeats in the delta; dedupe on merge (usage events have no id — key on
   timestamp+actor+asset+version). Feature-detect (`typeof
   sx.usage.eventsSince === "function"`) so an extension still runs on
-  apps predating 1.8.0, falling back to the windowed read.
+  apps predating 1.8.0, falling back to the windowed read. The `since` is clamped to no earlier than the day-count APIs' one-year cap, so it can only narrow the window, never force an unbounded scan.
 
 ### API 1.7.0 additions (team & repo views)
 

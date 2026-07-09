@@ -241,14 +241,14 @@ export interface SxAPI {
   readonly usage: {
     events(sinceDays: number): Promise<UsageEvent[]>;
     auditEvents(sinceDays: number): Promise<AuditEvent[]>;
-    /** Events at or after `since` (ISO-8601), newest first — the
-     * incremental-refresh companion to `events` (API 1.8.0). Cache a
+    /** Events at or after `since` (RFC3339, e.g. an event's own
+     * `timestamp`), newest first — the incremental-refresh companion to `events` (API 1.8.0). Cache a
      * window, then pull only what's newer than your newest cached event
      * (the server filter is `>=`, so the boundary event repeats — dedupe
      * on merge). Feature-detect: `typeof sx.usage.eventsSince ===
      * "function"` before use, for apps predating 1.8.0. */
     eventsSince(since: string): Promise<UsageEvent[]>;
-    /** Audit events at or after `since` (ISO-8601), newest first — the
+    /** Audit events at or after `since` (RFC3339), newest first — the
      * incremental companion to `auditEvents` (API 1.8.0). */
     auditEventsSince(since: string): Promise<AuditEvent[]>;
     /** Per-user adoption: everyone the vault knows plus who used what. */
