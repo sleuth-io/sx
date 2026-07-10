@@ -45,14 +45,17 @@ export default function SettingsModal({
   onClose,
   onProfileChanged,
   onLibrariesChanged,
+  initialTab = "libraries",
 }: {
   onClose: () => void;
   onProfileChanged: () => void;
   onLibrariesChanged?: () => void;
+  /** Deep-link target (sx.ui.openSettings) — which tab opens first. */
+  initialTab?: "libraries" | "extensions" | "ai";
 }) {
   const [settings, setSettings] = useState<main.Settings | null>(null);
   const [tab, setTab] = useState<"libraries" | "extensions" | "ai">(
-    "libraries",
+    initialTab,
   );
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");

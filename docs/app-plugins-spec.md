@@ -252,6 +252,10 @@ adoption.
   model, usage}` back. `sx.llm.provider()` returns the configured
   provider id (`""` when unconfigured) so an extension can show a setup
   hint instead of a failing call.
+- `sx.ui.openSettings(section?)` (always available): open the app's
+  Settings on `"libraries"`, `"extensions"`, or `"ai"` — the deep link
+  an llm:use extension shows when no provider is configured, instead of
+  describing a menu path in prose.
 - **Why core, not `net:` + `secrets`:** the sandbox can't shell out or
   reach localhost, so only core can offer installed-CLI and Ollama
   providers; and one shared provider picker + key store beats every

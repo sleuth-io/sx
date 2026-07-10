@@ -171,6 +171,11 @@ export default function Library({
   const [showCollectionModal, setShowCollectionModal] = useState(false);
   const [showAddAsset, setShowAddAsset] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // Which tab Settings opens on — extensions deep-link via
+  // sx.ui.openSettings("ai"); the plain gear always starts at libraries.
+  const [settingsTab, setSettingsTab] = useState<
+    "libraries" | "extensions" | "ai"
+  >("libraries");
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [newSubOpen, setNewSubOpen] = useState(false);
   const newMenuRef = useRef<HTMLDivElement>(null);
@@ -502,6 +507,10 @@ export default function Library({
       refresh: () => loadRef.current(),
       openAsset: setSelected,
       openView: (key) => setScope({ kind: "plugin-view", name: key }),
+      openSettings: (section) => {
+        setSettingsTab(section ?? "libraries");
+        setShowSettings(true);
+      },
     });
     void bootExtensions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2437,7 +2446,11 @@ export default function Library({
 
       {showSettings && (
         <SettingsModal
-          onClose={() => setShowSettings(false)}
+          initialTab={settingsTab}
+          onClose={() => {
+            setShowSettings(false);
+            setSettingsTab("libraries");
+          }}
           onProfileChanged={() => {
             setShowSettings(false);
             setScope({ kind: "all" });

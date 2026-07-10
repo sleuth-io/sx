@@ -243,6 +243,11 @@ export interface SxAPI {
      * 1.4.0) — how a command routes the user into the extension's
      * full-page surface. Requires views:main. */
     openView(viewId: string): void;
+    /** Open the app's Settings on a specific tab (API 1.9.0) — how an
+     * extension whose feature needs app-level setup (e.g. llm:use with
+     * no AI provider configured) sends the user to the right place
+     * instead of describing a path in prose. */
+    openSettings(section?: "libraries" | "extensions" | "ai"): void;
   };
 
   /** Always available; per plugin, per profile, stored app-side. */

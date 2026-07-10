@@ -67,6 +67,8 @@ interface UIHandlers {
   openAsset(name: string): void;
   /** Navigate to a plugin main view by its "pluginId:viewId" key. */
   openView(key: string): void;
+  /** Open the app Settings modal on the given tab. */
+  openSettings(section?: "libraries" | "extensions" | "ai"): void;
 }
 
 let ui: UIHandlers = {
@@ -75,6 +77,7 @@ let ui: UIHandlers = {
   refresh: () => {},
   openAsset: () => {},
   openView: () => {},
+  openSettings: () => {},
 };
 
 export function setPluginUIHandlers(handlers: UIHandlers): void {
@@ -200,6 +203,7 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
         need("views:main");
         ui.openView(id + ":" + viewId);
       },
+      openSettings: (section) => ui.openSettings(section),
     },
 
     storage: {
