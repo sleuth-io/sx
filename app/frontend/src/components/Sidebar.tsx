@@ -221,7 +221,9 @@ export default function Sidebar({
             accent="amber"
           />
         )}
-        {dashboardWidgets > 0 && (
+        {/* Widgets chart the library, so an empty library has nothing
+            to dash-board: the row waits for the first skill. */}
+        {dashboardWidgets > 0 && totalCount > 0 && (
           <Row
             label="Dashboard"
             count={dashboardWidgets}
