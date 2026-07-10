@@ -257,9 +257,12 @@ export function sweepMessages(docs: SkillDoc[]): LLMMessage[] {
   const lines = docs.map((d) => {
     const excerpt = d.text.slice(0, 280).replace(/\s+/g, " ");
     // One line per skill is the framing — a newline in a description
-    // must not fake extra catalog entries.
+    // must not fake extra catalog entries. The NAME is only stripped of
+    // line breaks (not fully sanitized): the sweep's reply is resolved
+    // against real catalog names, and a rewritten name would never
+    // match, silently exempting that skill from AI grouping.
     const desc = (d.description || "").replace(/\s+/g, " ").slice(0, 160);
-    return `- ${sanitizeName(d.name)}: ${desc} | ${excerpt}`;
+    return `- ${d.name.replace(/[\r\n|]/g, " ")}: ${desc} | ${excerpt}`;
   });
   return [
     {

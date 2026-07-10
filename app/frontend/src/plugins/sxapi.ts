@@ -305,6 +305,7 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
         return {
           movedInstallations: result.movedInstallations,
           retired: result.retired ?? [],
+          kept: result.kept ?? [],
           skipped: result.skipped ?? [],
         };
       },

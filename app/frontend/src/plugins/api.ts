@@ -118,6 +118,9 @@ export interface AssetInstallations {
 export interface ConsolidateResult {
   movedInstallations: number;
   retired: string[];
+  /** Sources NOT retired because part of their reach was refused (see
+   * skipped) — retiring them would have shrunk someone's access. */
+  kept: string[];
   /** Vault-refused install moves (RBAC); the consolidation continued. */
   skipped: string[];
 }

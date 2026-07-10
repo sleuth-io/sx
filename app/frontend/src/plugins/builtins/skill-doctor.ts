@@ -499,11 +499,18 @@ export default class SkillDoctor implements SxPlugin {
         into: survivor,
         from: losers,
       });
-      let outcome = `Merged into “${survivor}” — retired ${result.retired.join(", ")}`;
+      let outcome = `Merged into “${survivor}”`;
+      if (result.retired.length > 0) {
+        outcome += ` — retired ${result.retired.join(", ")}`;
+      }
       if (result.movedInstallations > 0) {
         outcome += `, moved ${result.movedInstallations} installation(s)`;
       }
-      if (result.skipped.length > 0) {
+      if (result.kept.length > 0) {
+        // Loud, not a parenthetical: reach that couldn't move means the
+        // source is still in the library on purpose.
+        outcome += `. KEPT ${result.kept.join(", ")} — their reach couldn't be moved: ${result.skipped.join("; ")}`;
+      } else if (result.skipped.length > 0) {
         outcome += ` (${result.skipped.length} install move(s) refused: ${result.skipped.join("; ")})`;
       }
       this.resolved.set(c.signature, outcome);

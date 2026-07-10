@@ -187,6 +187,7 @@ export namespace main {
 	export class ConsolidateResult {
 	    movedInstallations: number;
 	    retired: string[];
+	    kept: string[];
 	    skipped: string[];
 	
 	    static createFrom(source: any = {}) {
@@ -197,6 +198,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.movedInstallations = source["movedInstallations"];
 	        this.retired = source["retired"];
+	        this.kept = source["kept"];
 	        this.skipped = source["skipped"];
 	    }
 	}

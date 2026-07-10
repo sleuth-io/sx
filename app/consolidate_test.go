@@ -96,6 +96,38 @@ func TestConsolidateAssetsValidation(t *testing.T) {
 	}
 }
 
+// Rows the survivor already has are covered without a write and never
+// counted as moves.
+func TestConsolidateAssetsSharedRowNotRecounted(t *testing.T) {
+	a, _, _ := scopedExtensionApp(t, "alice@example.com")
+	for _, name := range []string{"keeper", "dupe"} {
+		marketplaceWith(t, a, name)
+		if _, err := a.InstallMarketplaceExtension(name, ExtensionScopeOrg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := a.CreateTeam("platform"); err != nil {
+		t.Fatal(err)
+	}
+	// Both narrowed to the SAME team row.
+	for _, name := range []string{"keeper", "dupe"} {
+		if err := a.AddAssetInstallation(name, AssetInstallation{Kind: "team", Team: "platform"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := a.ConsolidateAssets("skill-doctor", "keeper", []string{"dupe"})
+	if err != nil {
+		t.Fatalf("consolidate: %v", err)
+	}
+	if result.MovedInstallations != 0 || len(result.Retired) != 1 || len(result.Kept) != 0 {
+		t.Fatalf("result = %+v; survivor already had the row", result)
+	}
+	view, err := a.GetAssetInstallations("keeper")
+	if err != nil || len(view.Installations) != 1 {
+		t.Fatalf("keeper view = %+v, %v; want the one shared team row", view, err)
+	}
+}
+
 // A typo'd survivor or source must fail BEFORE anything is retired —
 // a missing asset reads as present=false, never as "reaches everyone".
 func TestConsolidateAssetsMissingAssetsFailClosed(t *testing.T) {
