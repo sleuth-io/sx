@@ -112,6 +112,7 @@ export default class SkillDoctor implements SxPlugin {
   private status = "";
   private aiNote = "";
   private needsProvider = false;
+  private providerWatch: number | null = null;
   private rerender: (() => void) | null = null;
 
   onload(sx: SxAPI): void {
@@ -129,23 +130,36 @@ export default class SkillDoctor implements SxPlugin {
     });
   }
 
-  onunload(): void {}
+  onunload(): void {
+    this.stopProviderWatch();
+  }
 
   private async mount(view: ViewMount): Promise<void> {
     let disposed = false;
     view.onDispose(() => {
       disposed = true;
       this.rerender = null;
+      this.stopProviderWatch();
     });
     const root = view.el;
     root.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
-    root.replaceChildren();
-    const body = el("div", "display: flex; flex-direction: column; gap: 10px;");
-    root.append(this.header(), body);
 
+    // The rerender owns the WHOLE view, provider prompt and header
+    // included: the prompt sits above everything (it gates the tool,
+    // not one scan's results), and the header's "Last scan" note stays
+    // current after a rescan.
     this.rerender = () => {
       if (disposed) return;
-      body.replaceChildren(...this.renderBody());
+      const body = el(
+        "div",
+        "display: flex; flex-direction: column; gap: 10px;",
+      );
+      body.append(...this.renderBody());
+      root.replaceChildren(
+        ...(this.needsProvider ? [this.providerPrompt()] : []),
+        this.header(),
+        body,
+      );
     };
     this.rerender();
 
@@ -170,11 +184,39 @@ export default class SkillDoctor implements SxPlugin {
       this.aiNote = cached.aiNote;
       this.needsProvider = cached.needsProvider;
       this.scannedAt = cached.at;
+      if (this.needsProvider) this.watchForProvider();
       await this.loadDismissals();
       this.rerender?.();
       return;
     }
     await this.scan();
+  }
+
+  /** While the no-provider prompt is up, poll for a provider so the
+   * view heals itself the moment one is configured. Settings opens as
+   * a modal OVER this still-mounted view, so no remount ever re-checks
+   * — without the poll the prompt would sit stale until a manual
+   * Rescan. Finding one triggers a fresh scan (the whole point of
+   * configuring was the semantic sweep). Runs only while the prompt
+   * is visible; stopped on dispose. */
+  private watchForProvider(): void {
+    if (this.providerWatch !== null) return;
+    this.providerWatch = window.setInterval(() => {
+      void this.sx.llm
+        .provider()
+        .then((provider) => {
+          if (!provider) return;
+          this.stopProviderWatch();
+          void this.scan();
+        })
+        .catch(() => {});
+    }, 2000);
+  }
+
+  private stopProviderWatch(): void {
+    if (this.providerWatch === null) return;
+    window.clearInterval(this.providerWatch);
+    this.providerWatch = null;
   }
 
   private async loadDismissals(): Promise<void> {
@@ -246,9 +288,6 @@ export default class SkillDoctor implements SxPlugin {
       return [el("div", FAINT + "font-size: 13px; padding: 8px;", this.status)];
     }
     const out: HTMLElement[] = [];
-    if (this.needsProvider) {
-      out.push(this.providerPrompt());
-    }
     if (this.aiNote) {
       out.push(el("div", FAINT + "font-size: 12px;", this.aiNote));
     }
@@ -523,6 +562,8 @@ export default class SkillDoctor implements SxPlugin {
       await this.loadDismissals();
     } finally {
       this.scanning = false;
+      if (this.needsProvider) this.watchForProvider();
+      else this.stopProviderWatch();
       this.rerender?.();
     }
   }
