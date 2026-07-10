@@ -689,6 +689,15 @@ export default function Library({
       .catch(() => setAiClients([]));
   }, []);
 
+  // An empty library has nothing to dash-board: the sidebar hides the
+  // row, and any other route in (the command palette, a stale scope
+  // after the last skill is removed) falls back to Skills.
+  useEffect(() => {
+    if (scope.kind === "dashboard" && assets !== null && assets.length === 0) {
+      setScope({ kind: "all" });
+    }
+  }, [scope, assets]);
+
   useEffect(() => {
     localStorage.setItem("sx-view", view);
   }, [view]);

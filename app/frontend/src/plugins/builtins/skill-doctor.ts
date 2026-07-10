@@ -38,7 +38,7 @@ import {
 export const skillDoctorManifest: PluginManifest = {
   id: "skill-doctor",
   name: "Duplicate detector",
-  version: "1.2.0",
+  version: "1.2.1",
   description:
     "Find duplicate and overlapping skills, then fix them: keep one (installations move onto it) or merge them into a new draft with AI.",
   author: "sx",
@@ -60,13 +60,18 @@ interface SharedDoc {
   dismissed?: Record<string, { by: string; at: string }>;
 }
 
-/** The persisted scan (sx.storage — per plugin, per profile). */
+/** The persisted scan (sx.storage — per plugin, per profile).
+ * hadProvider records whether the scan ran with an AI provider
+ * configured — NOT whether one is configured now. The no-provider
+ * prompt is always derived from a live check, never from the cache:
+ * a cached flag goes stale the moment the user changes Settings. */
 interface CacheDoc {
-  v: 1;
+  v: 3;
   at: number;
   docs: SkillDoc[];
   clusters: Cluster[];
   aiNote: string;
+  hadProvider: boolean;
 }
 
 interface Verdict {
@@ -110,6 +115,8 @@ export default class SkillDoctor implements SxPlugin {
   private scanning = false;
   private status = "";
   private aiNote = "";
+  private needsProvider = false;
+  private providerWatch: number | null = null;
   private rerender: (() => void) | null = null;
 
   onload(sx: SxAPI): void {
@@ -127,33 +134,60 @@ export default class SkillDoctor implements SxPlugin {
     });
   }
 
-  onunload(): void {}
+  onunload(): void {
+    this.stopProviderWatch();
+  }
 
   private async mount(view: ViewMount): Promise<void> {
     let disposed = false;
     view.onDispose(() => {
       disposed = true;
       this.rerender = null;
+      this.stopProviderWatch();
     });
     const root = view.el;
     root.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
-    root.replaceChildren();
-    const body = el("div", "display: flex; flex-direction: column; gap: 10px;");
-    root.append(this.header(), body);
 
+    // The rerender owns the WHOLE view, provider prompt and header
+    // included: the prompt sits above everything (it gates the tool,
+    // not one scan's results), and the header's "Last scan" note stays
+    // current after a rescan.
     this.rerender = () => {
       if (disposed) return;
-      body.replaceChildren(...this.renderBody());
+      const body = el(
+        "div",
+        "display: flex; flex-direction: column; gap: 10px;",
+      );
+      body.append(...this.renderBody());
+      root.replaceChildren(
+        ...(this.needsProvider ? [this.providerPrompt()] : []),
+        this.header(),
+        body,
+      );
     };
     this.rerender();
+
+    // The prompt reflects Settings as they are NOW — checked live, in
+    // parallel with the cache read, never trusted from the cache.
+    const [cached, provider] = await Promise.all([
+      this.sx.storage.loadData<CacheDoc>().catch(() => null),
+      this.sx.llm.provider().catch(() => ""),
+    ]);
+    this.needsProvider = !provider;
+    this.watchProvider();
 
     // The persisted cache is the ONLY fast path: sx.storage is per
     // profile, so it can never serve another vault's clusters. Plain
     // instance state (this.docs) deliberately is NOT trusted here —
     // built-in instances survive library switches, and an in-memory
     // shortcut would replay library A's skills against library B.
-    const cached = await this.sx.storage.loadData<CacheDoc>().catch(() => null);
-    if (cached?.v === 1 && Date.now() - cached.at < CACHE_TTL_MS) {
+    // A local-only cache is stale the moment a provider exists: rescan
+    // so the semantic sweep the user just enabled actually runs.
+    if (
+      cached?.v === 3 &&
+      Date.now() - cached.at < CACHE_TTL_MS &&
+      !(provider && !cached.hadProvider)
+    ) {
       if (cached.at !== this.scannedAt) {
         // Different scan than the one this instance last showed (fresh
         // boot, or a library switch behind our back): transient per-scan
@@ -172,6 +206,36 @@ export default class SkillDoctor implements SxPlugin {
       return;
     }
     await this.scan();
+  }
+
+  /** Poll the provider setting the whole time the view is mounted —
+   * BOTH directions. Settings opens as a modal OVER this still-mounted
+   * view, so no remount ever re-checks: without the poll the prompt
+   * sits stale after the user configures a provider, and stays hidden
+   * after they remove one. Configuring triggers a fresh scan (the
+   * whole point was the semantic sweep); removing just surfaces the
+   * prompt over the existing results. */
+  private watchProvider(): void {
+    if (this.providerWatch !== null) return;
+    this.providerWatch = window.setInterval(() => {
+      if (this.scanning) return;
+      void this.sx.llm
+        .provider()
+        .then((provider) => {
+          const missing = !provider;
+          if (missing === this.needsProvider) return;
+          this.needsProvider = missing;
+          if (missing) this.rerender?.();
+          else void this.scan();
+        })
+        .catch(() => {});
+    }, 2000);
+  }
+
+  private stopProviderWatch(): void {
+    if (this.providerWatch === null) return;
+    window.clearInterval(this.providerWatch);
+    this.providerWatch = null;
   }
 
   private async loadDismissals(): Promise<void> {
@@ -206,6 +270,38 @@ export default class SkillDoctor implements SxPlugin {
     return row;
   }
 
+  /** The no-provider state, in AI assist's words and shape: what's
+   * missing, what qualifies, and a deep link into Settings → AI
+   * provider — not a shrug about zero duplicates. */
+  private providerPrompt(): HTMLElement {
+    const row = el(
+      "div",
+      "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" +
+        "padding: 8px 10px; border: 1px solid var(--color-line); border-radius: 10px;" +
+        "background: var(--color-surface); font-size: 12px;",
+    );
+    const link = el(
+      "a",
+      "color: var(--color-accent); cursor: pointer; text-decoration: underline;",
+      "Open AI settings",
+    );
+    link.onclick = (e) => {
+      e.preventDefault();
+      this.sx.ui.openSettings("ai");
+    };
+    row.append(
+      el(
+        "span",
+        "color: var(--color-ink);",
+        "No AI provider configured yet — pick one (an installed CLI, a local " +
+          "Ollama model, or your own API key) to sweep the catalog for " +
+          "semantic duplicates. Scans without one show local matches only.",
+      ),
+      link,
+    );
+    return row;
+  }
+
   private renderBody(): HTMLElement[] {
     if (this.scanning) {
       return [el("div", FAINT + "font-size: 13px; padding: 8px;", this.status)];
@@ -221,14 +317,19 @@ export default class SkillDoctor implements SxPlugin {
     const hidden =
       this.clusters.length - open.length - done.length;
     if (open.length === 0 && done.length === 0) {
-      out.push(
-        el(
-          "div",
-          FAINT + "font-size: 13px; padding: 8px;",
-          `No duplicates found across ${this.docs.length} skills.` +
-            (hidden > 0 ? ` ${hidden} dismissed cluster(s) hidden.` : ""),
-        ),
-      );
+      // With no provider the interesting fact isn't "nothing found" —
+      // it's that the semantic sweep never ran. The prompt above IS the
+      // empty state, so the count line only appears once AI has swept.
+      if (!this.needsProvider) {
+        out.push(
+          el(
+            "div",
+            FAINT + "font-size: 13px; padding: 8px;",
+            `No duplicates found across ${this.docs.length} skills.` +
+              (hidden > 0 ? ` ${hidden} dismissed cluster(s) hidden.` : ""),
+          ),
+        );
+      }
       return out;
     }
     if (done.length > 0) {
@@ -443,6 +544,7 @@ export default class SkillDoctor implements SxPlugin {
       // Best-effort — no provider or a failed call degrades to local
       // results with a visible note, never a broken scan.
       const provider = await this.sx.llm.provider().catch(() => "");
+      this.needsProvider = !provider;
       if (provider && docs.length >= 2) {
         this.status = `Asking ${provider} to sweep the catalog for semantic duplicates…`;
         this.rerender?.();
@@ -459,9 +561,6 @@ export default class SkillDoctor implements SxPlugin {
         } catch (e) {
           this.aiNote = `AI sweep unavailable (${String((e as Error)?.message || e)}) — showing local matches only.`;
         }
-      } else if (!provider) {
-        this.aiNote =
-          "No AI provider configured — showing local matches only. Configure one in Settings for the semantic sweep.";
       }
 
       this.scannedAt = Date.now();
@@ -469,11 +568,12 @@ export default class SkillDoctor implements SxPlugin {
       // means the next mount rescans.
       void this.sx.storage
         .saveData<CacheDoc>({
-          v: 1,
+          v: 3,
           at: this.scannedAt,
           docs: this.docs,
           clusters: this.clusters,
           aiNote: this.aiNote,
+          hadProvider: provider !== "",
         })
         .catch(() => {});
       await this.loadDismissals();
@@ -526,7 +626,14 @@ export default class SkillDoctor implements SxPlugin {
       // the next mount would reload the pre-consolidation snapshot.
       this.scannedAt = 0;
       void this.sx.storage
-        .saveData<CacheDoc>({ v: 1, at: 0, docs: [], clusters: [], aiNote: "" })
+        .saveData<CacheDoc>({
+          v: 3,
+          at: 0,
+          docs: [],
+          clusters: [],
+          aiNote: "",
+          hadProvider: false,
+        })
         .catch(() => {});
       this.rerender?.();
     } catch (e) {
