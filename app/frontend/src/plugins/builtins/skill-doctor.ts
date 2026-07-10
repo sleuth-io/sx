@@ -38,7 +38,7 @@ import {
 export const skillDoctorManifest: PluginManifest = {
   id: "skill-doctor",
   name: "Duplicate detector",
-  version: "1.2.0",
+  version: "1.2.1",
   description:
     "Find duplicate and overlapping skills, then fix them: keep one (installations move onto it) or merge them into a new draft with AI.",
   author: "sx",
@@ -62,11 +62,12 @@ interface SharedDoc {
 
 /** The persisted scan (sx.storage — per plugin, per profile). */
 interface CacheDoc {
-  v: 1;
+  v: 2;
   at: number;
   docs: SkillDoc[];
   clusters: Cluster[];
   aiNote: string;
+  needsProvider: boolean;
 }
 
 interface Verdict {
@@ -110,6 +111,7 @@ export default class SkillDoctor implements SxPlugin {
   private scanning = false;
   private status = "";
   private aiNote = "";
+  private needsProvider = false;
   private rerender: (() => void) | null = null;
 
   onload(sx: SxAPI): void {
@@ -153,7 +155,7 @@ export default class SkillDoctor implements SxPlugin {
     // built-in instances survive library switches, and an in-memory
     // shortcut would replay library A's skills against library B.
     const cached = await this.sx.storage.loadData<CacheDoc>().catch(() => null);
-    if (cached?.v === 1 && Date.now() - cached.at < CACHE_TTL_MS) {
+    if (cached?.v === 2 && Date.now() - cached.at < CACHE_TTL_MS) {
       if (cached.at !== this.scannedAt) {
         // Different scan than the one this instance last showed (fresh
         // boot, or a library switch behind our back): transient per-scan
@@ -166,6 +168,7 @@ export default class SkillDoctor implements SxPlugin {
       this.docs = cached.docs;
       this.clusters = cached.clusters;
       this.aiNote = cached.aiNote;
+      this.needsProvider = cached.needsProvider;
       this.scannedAt = cached.at;
       await this.loadDismissals();
       this.rerender?.();
@@ -206,11 +209,46 @@ export default class SkillDoctor implements SxPlugin {
     return row;
   }
 
+  /** The no-provider state, in AI assist's words and shape: what's
+   * missing, what qualifies, and a deep link into Settings → AI
+   * provider — not a shrug about zero duplicates. */
+  private providerPrompt(): HTMLElement {
+    const row = el(
+      "div",
+      "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" +
+        "padding: 8px 10px; border: 1px solid var(--color-line); border-radius: 10px;" +
+        "background: var(--color-surface); font-size: 12px;",
+    );
+    const link = el(
+      "a",
+      "color: var(--color-accent); cursor: pointer; text-decoration: underline;",
+      "Open AI settings",
+    );
+    link.onclick = (e) => {
+      e.preventDefault();
+      this.sx.ui.openSettings("ai");
+    };
+    row.append(
+      el(
+        "span",
+        "color: var(--color-ink);",
+        "No AI provider configured yet — pick one (an installed CLI, a local " +
+          "Ollama model, or your own API key) to sweep the catalog for " +
+          "semantic duplicates. Showing local matches only.",
+      ),
+      link,
+    );
+    return row;
+  }
+
   private renderBody(): HTMLElement[] {
     if (this.scanning) {
       return [el("div", FAINT + "font-size: 13px; padding: 8px;", this.status)];
     }
     const out: HTMLElement[] = [];
+    if (this.needsProvider) {
+      out.push(this.providerPrompt());
+    }
     if (this.aiNote) {
       out.push(el("div", FAINT + "font-size: 12px;", this.aiNote));
     }
@@ -221,14 +259,19 @@ export default class SkillDoctor implements SxPlugin {
     const hidden =
       this.clusters.length - open.length - done.length;
     if (open.length === 0 && done.length === 0) {
-      out.push(
-        el(
-          "div",
-          FAINT + "font-size: 13px; padding: 8px;",
-          `No duplicates found across ${this.docs.length} skills.` +
-            (hidden > 0 ? ` ${hidden} dismissed cluster(s) hidden.` : ""),
-        ),
-      );
+      // With no provider the interesting fact isn't "nothing found" —
+      // it's that the semantic sweep never ran. The prompt above IS the
+      // empty state, so the count line only appears once AI has swept.
+      if (!this.needsProvider) {
+        out.push(
+          el(
+            "div",
+            FAINT + "font-size: 13px; padding: 8px;",
+            `No duplicates found across ${this.docs.length} skills.` +
+              (hidden > 0 ? ` ${hidden} dismissed cluster(s) hidden.` : ""),
+          ),
+        );
+      }
       return out;
     }
     if (done.length > 0) {
@@ -390,6 +433,7 @@ export default class SkillDoctor implements SxPlugin {
     this.resolved.clear();
     this.compareOpen.clear();
     this.aiNote = "";
+    this.needsProvider = false;
     this.status = "Reading skills…";
     this.rerender?.();
     try {
@@ -460,8 +504,7 @@ export default class SkillDoctor implements SxPlugin {
           this.aiNote = `AI sweep unavailable (${String((e as Error)?.message || e)}) — showing local matches only.`;
         }
       } else if (!provider) {
-        this.aiNote =
-          "No AI provider configured — showing local matches only. Configure one in Settings for the semantic sweep.";
+        this.needsProvider = true;
       }
 
       this.scannedAt = Date.now();
@@ -469,11 +512,12 @@ export default class SkillDoctor implements SxPlugin {
       // means the next mount rescans.
       void this.sx.storage
         .saveData<CacheDoc>({
-          v: 1,
+          v: 2,
           at: this.scannedAt,
           docs: this.docs,
           clusters: this.clusters,
           aiNote: this.aiNote,
+          needsProvider: this.needsProvider,
         })
         .catch(() => {});
       await this.loadDismissals();
@@ -526,7 +570,14 @@ export default class SkillDoctor implements SxPlugin {
       // the next mount would reload the pre-consolidation snapshot.
       this.scannedAt = 0;
       void this.sx.storage
-        .saveData<CacheDoc>({ v: 1, at: 0, docs: [], clusters: [], aiNote: "" })
+        .saveData<CacheDoc>({
+          v: 2,
+          at: 0,
+          docs: [],
+          clusters: [],
+          aiNote: "",
+          needsProvider: false,
+        })
         .catch(() => {});
       this.rerender?.();
     } catch (e) {
