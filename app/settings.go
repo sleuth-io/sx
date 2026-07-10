@@ -695,9 +695,13 @@ func (a *App) deleteGitHubRepo(repoURL string) error {
 }
 
 // PickDirectory opens the native folder picker (for new local libraries).
+// CanCreateDirectories puts macOS's "New Folder" button in the panel —
+// a new library usually WANTS a fresh empty folder, and without the
+// flag the user has to leave the app to make one.
 func (a *App) PickDirectory() (string, error) {
 	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Choose a folder for the library",
+		Title:                "Choose a folder for the library",
+		CanCreateDirectories: true,
 	})
 	if err != nil {
 		return "", err
