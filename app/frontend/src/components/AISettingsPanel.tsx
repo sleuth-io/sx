@@ -83,6 +83,26 @@ export default function AISettingsPanel() {
     }
   }
 
+  // Back to "no AI": clears the provider selection (extensions with
+  // llm:use show their setup prompts again). Stored API keys stay in
+  // the keychain so re-picking a provider later just works.
+  async function remove() {
+    setError("");
+    setTestResult("");
+    setBusy("remove");
+    try {
+      await LLMSetConfig(
+        llm.Config.createFrom({ provider: "", model: "", baseUrl: "" }),
+      );
+      setApiKey("");
+      await load();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function saveAndTest() {
     if (!(await save())) return;
     setBusy("test");
@@ -296,10 +316,20 @@ export default function AISettingsPanel() {
           {busy === "test" ? "Testing…" : "Save & test"}
         </button>
         {status.config.provider !== "" && (
-          <span className="text-xs text-ink-faint">
-            Current: {status.config.provider}
-            {status.config.model ? ` · ${status.config.model}` : ""}
-          </span>
+          <>
+            <button
+              onClick={() => void remove()}
+              disabled={busy !== ""}
+              title="Stop using an AI provider — extensions that need one will show their setup prompts again. Saved API keys stay in your keychain."
+              className="rounded-lg border border-line px-4 py-1.5 text-xs font-medium text-ink transition hover:bg-canvas disabled:opacity-50"
+            >
+              {busy === "remove" ? "Removing…" : "Remove provider"}
+            </button>
+            <span className="text-xs text-ink-faint">
+              Current: {status.config.provider}
+              {status.config.model ? ` · ${status.config.model}` : ""}
+            </span>
+          </>
         )}
       </div>
     </div>
