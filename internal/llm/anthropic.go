@@ -57,7 +57,7 @@ func (p *anthropicProvider) Complete(ctx context.Context, req Request) (Response
 	if system != "" {
 		body["system"] = system
 	}
-	base := p.baseURL
+	base := strings.TrimRight(p.baseURL, "/")
 	if base == "" {
 		base = anthropicAPIURL
 	}

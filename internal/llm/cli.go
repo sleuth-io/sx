@@ -88,6 +88,27 @@ func (p *cliProvider) Complete(ctx context.Context, req Request) (Response, erro
 	return resp, nil
 }
 
+// boundedBuffer keeps at most limit bytes and drops the rest — enough
+// to parse a reply or surface an error, never unbounded. Write always
+// reports success so the child process never sees a write error.
+type boundedBuffer struct {
+	buf   bytes.Buffer
+	limit int
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	n := len(p)
+	if room := b.limit - b.buf.Len(); room > 0 {
+		if n > room {
+			p = p[:room]
+		}
+		b.buf.Write(p)
+	}
+	return n, nil
+}
+
+func (b *boundedBuffer) String() string { return b.buf.String() }
+
 // run executes the CLI with the prompt on stdin and returns stdout.
 func (p *cliProvider) run(ctx context.Context, stdin string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, p.binPath, args...) // #nosec G204 -- binPath comes from provider detection, args are fixed flags
@@ -104,9 +125,12 @@ func (p *cliProvider) run(ctx context.Context, stdin string, args ...string) (st
 	cmd.Dir = scratch
 	defer func() { _ = os.RemoveAll(scratch) }()
 	cmd.Stdin = strings.NewReader(stdin)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Same output bound as the HTTP path: a wedged CLI streaming
+	// garbage must not grow the app's memory until the timeout.
+	stdout := &boundedBuffer{limit: maxResponseBytes}
+	stderr := &boundedBuffer{limit: 64 << 10}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
 		detail := strings.TrimSpace(stderr.String())
 		if detail == "" {
@@ -122,10 +146,10 @@ func (p *cliProvider) run(ctx context.Context, stdin string, args ...string) (st
 
 func (p *cliProvider) runClaude(ctx context.Context, prompt, model string) (Response, error) {
 	// --tools "" removes every built-in tool: the agent CLI degrades to
-	// a pure completion endpoint, which is all llm:use grants. Verified
-	// against a real CLI: `claude --help` documents `--tools` ("Use ""
-	// to disable all tools") and `echo … | claude -p --output-format
-	// json --tools ""` returns a success envelope.
+	// a pure completion endpoint, which is all llm:use grants. `claude
+	// --help` documents it ("Use \"\" to disable all tools"); the
+	// real-binary substantiation lives in cli_integration_test.go
+	// (`go test -tags llmintegration ./internal/llm/ -run TestRealCLI`).
 	args := []string{"-p", "--output-format", "json", "--tools", ""}
 	if model != "" {
 		args = append(args, "--model", model)

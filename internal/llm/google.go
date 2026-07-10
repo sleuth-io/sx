@@ -66,7 +66,7 @@ func (p *googleProvider) Complete(ctx context.Context, req Request) (Response, e
 	if len(genCfg) > 0 {
 		body["generationConfig"] = genCfg
 	}
-	base := p.baseURL
+	base := strings.TrimRight(p.baseURL, "/")
 	if base == "" {
 		base = googleAPIURL
 	}
