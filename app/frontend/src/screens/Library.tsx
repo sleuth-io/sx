@@ -48,7 +48,7 @@ import DraftSheet, { DraftSheetSkeleton } from "../components/DraftSheet";
 import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
 import ShareModal from "../components/ShareModal";
-import Sidebar, { repoLabel, Scope } from "../components/Sidebar";
+import Sidebar, { PinIcon, repoLabel, Scope } from "../components/Sidebar";
 import CommandPalette from "../components/CommandPalette";
 import Dashboard from "../components/Dashboard";
 import PluginMount from "../components/PluginMount";
@@ -1072,12 +1072,13 @@ export default function Library({
     [repoAssets],
   );
 
-  // Never-pinned libraries default to the first few so the sidebar isn't
-  // empty; an explicit pin/unpin takes over from there.
-  const shownCollectionPins =
-    pinnedCollections ?? collections.slice(0, 5).map((c) => c.name);
-  const shownTeamPins = pinnedTeams ?? teams.slice(0, 5).map((t) => t.name);
-  const shownRepoPins = pinnedRepos ?? repoUrls.slice(0, 5);
+  // Pins are explicit only: a never-pinned library shows no PINNED
+  // section at all (the BROWSE rows are the durable path in), instead
+  // of first-few defaults that read as pins the user never made.
+  // Creating a collection/team still auto-pins it (ensurePinned).
+  const shownCollectionPins = pinnedCollections ?? [];
+  const shownTeamPins = pinnedTeams ?? [];
+  const shownRepoPins = pinnedRepos ?? [];
 
   const teamAssetCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -1117,6 +1118,26 @@ export default function Library({
   function ensurePinned(kind: PinKind, name: string) {
     const current = pinShown[kind];
     if (!current.includes(name)) setPins(kind, [...current, name]);
+  }
+
+  // Pin state lives where you're looking at the thing: each scope's
+  // action bar (beside Rename/Manage/Delete) carries its pin toggle.
+  function scopePinButton(kind: PinKind, name: string) {
+    const isPinned = pinShown[kind].includes(name);
+    return (
+      <button
+        onClick={() => togglePin(kind, name)}
+        title={isPinned ? "Unpin from the sidebar" : "Pin to the sidebar"}
+        className={`flex items-center gap-1 rounded-md border bg-surface px-2.5 py-1 font-medium transition ${
+          isPinned
+            ? "border-accent/40 text-accent hover:border-accent"
+            : "border-line text-ink-soft hover:border-accent hover:text-ink"
+        }`}
+      >
+        <PinIcon filled={isPinned} />
+        {isPinned ? "Pinned" : "Pin"}
+      </button>
+    );
   }
 
   const visible = useMemo(() => {
@@ -1314,6 +1335,7 @@ export default function Library({
         pinnedCollections={shownCollectionPins}
         pinnedTeams={shownTeamPins}
         pinnedRepos={shownRepoPins}
+        onUnpin={togglePin}
         onNewCollection={() => setShowCollectionModal(true)}
         onNewTeam={() => setShowNewTeam(true)}
         onBrowseCollections={() => setBrowse("collections")}
@@ -1662,6 +1684,7 @@ export default function Library({
                   "Assets in this collection can be set up together."}
               </span>
               <div className="flex-1" />
+              {scopePinButton("collections", activeCollection.name)}
               <button
                 disabled={busyAction}
                 onClick={() => startRename("collection", activeCollection.name)}
@@ -1718,6 +1741,7 @@ export default function Library({
                 members
               </span>
               <div className="flex-1" />
+              {scopePinButton("teams", activeTeam.name)}
               <button
                 onClick={() => startRename("team", activeTeam.name)}
                 className="rounded-md border border-line bg-surface px-2.5 py-1 font-medium text-ink-soft transition hover:border-accent hover:text-ink"
@@ -1751,6 +1775,23 @@ export default function Library({
               >
                 Delete
               </button>
+            </div>
+          )}
+
+          {/* Repos have no rename/delete (they exist by being scoped
+              to), but their pin control lives in the same bar position
+              as collections' and teams'. */}
+          {scope.kind === "repo" && (
+            <div
+              className="flex items-center gap-3 border-t border-line bg-accent-soft/50 px-5 py-2 text-xs"
+              style={{ ["--wails-draggable" as never]: "no-drag" }}
+            >
+              <span className="min-w-0 truncate text-ink-soft" title={scope.name}>
+                {scope.name} · assets scoped to this repository install for
+                whoever works in it
+              </span>
+              <div className="flex-1" />
+              {scopePinButton("repos", scope.name)}
             </div>
           )}
         </header>
