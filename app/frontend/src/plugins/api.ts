@@ -178,6 +178,11 @@ export interface AssetTabSpec {
 export interface MainViewSpec {
   id: string;
   title: string;
+  /** Where the view's sidebar row lives (API 1.9.0): "library" (the
+   * default) lists it with the core navigation; "tools" lists it under
+   * the collapsed TOOLS section — for utilities that act ON the library
+   * (dedupe, assistants) rather than views OF it. */
+  section?: "library" | "tools";
   mount(view: ViewMount): void;
 }
 

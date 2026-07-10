@@ -9,10 +9,15 @@ import type { LLMMessage } from "../api";
 
 export const CANDIDATE = 0.82;
 export const NEAR_IDENTICAL = 0.95;
+/** AI-proposed groups below this measured similarity are discarded —
+ * a "6% similar" pair flagged by the sweep is far more likely a
+ * hallucinated grouping than a real duplicate. */
+export const MIN_AI_SCORE = 0.5;
 
 export interface SkillDoc {
   name: string;
   description: string;
+  updatedAt?: string;
   /** Raw markdown — what merge sends (structure and casing intact). */
   raw: string;
   /** Normalized text — what detection hashes and compares. */
@@ -173,11 +178,44 @@ export function mergeSweepGroups(
     const names = idxs.map((i) => docs[i].name);
     if (covered.some((set) => names.every((n) => set.has(n)))) continue;
     const c = makeCluster(docs, idxs, sim);
+    // The sweep's word is not enough on its own: the group must also
+    // clear a measured-similarity floor or it's discarded as noise.
+    if (c.score < MIN_AI_SCORE) continue;
     c.aiReason = g.reason;
     covered.push(new Set(c.members));
     out.push(c);
   }
   return out.sort((a, b) => b.score - a.score);
+}
+
+/** Recommend the survivor: the most recently updated member (they're
+ * duplicates — recency is the best default), longest content breaking
+ * ties. Deterministic so the radio pre-selection never jumps. */
+export function recommendSurvivor(c: Cluster, docs: SkillDoc[]): string {
+  const byName = new Map(docs.map((d) => [d.name, d]));
+  return [...c.members].sort((a, b) => {
+    const da = byName.get(a);
+    const db = byName.get(b);
+    const ta = da?.updatedAt ?? "";
+    const tb = db?.updatedAt ?? "";
+    if (ta !== tb) return tb.localeCompare(ta);
+    return (db?.raw.length ?? 0) - (da?.raw.length ?? 0);
+  })[0];
+}
+
+/** Line sets for the two-column compare view: which of a member's lines
+ * are absent from the other member (the "what's different" highlight).
+ * Only meaningful for 2-member clusters; larger ones skip highlighting. */
+export function uniqueLines(a: string, b: string): Set<number> {
+  const bLines = new Set(
+    b.split("\n").map((l) => l.trim()).filter(Boolean),
+  );
+  const out = new Set<number>();
+  a.split("\n").forEach((line, i) => {
+    const t = line.trim();
+    if (t && !bLines.has(t)) out.add(i);
+  });
+  return out;
 }
 
 // ---- LLM prompts ----

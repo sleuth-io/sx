@@ -1,12 +1,14 @@
-// Skill Doctor — built-in extension, phases 1–2 of
-// docs/skill-dedupe-spec.md: detect duplicate skills (local hash +
-// TF-IDF, plus an LLM catalog sweep for semantic duplicates), then act:
-// KEEP ONE (move every duplicate's installations onto a survivor and
-// retire the rest — recoverable, but destructive enough to confirm
-// loudly) or MERGE WITH AI (compose one definitive SKILL.md as a DRAFT;
-// publishing stays a human action). Dismissals are team-shared. Every
-// scan runs fresh per mount — results are per-library and an instance
-// survives library switches.
+// Duplicate detector — built-in extension, phases 1–2 of
+// docs/skill-dedupe-spec.md. Detects duplicate skills (local hash +
+// TF-IDF, plus an LLM catalog sweep for semantic duplicates) and fixes
+// them. The review flow follows the patterns good dedupe UIs share
+// (Apple Photos, Google Contacts, Salesforce, Ashby): evidence before
+// decision (a compare panel with the survivor picker inside), friction
+// tiered by confidence (exact duplicates get a one-click keep-newest),
+// a recommended survivor pre-selected, one primary action per card, and
+// "Not duplicates" as the cheap, instant dismissal (team-shared).
+// Results are cached for 12 hours per profile (a profile IS a library,
+// so caches can never leak across vaults); Rescan forces a fresh pass.
 
 import type { SxAPI, SxPlugin, ViewMount, PluginManifest } from "../api";
 import {
@@ -16,6 +18,7 @@ import {
   mergeMessages,
   mergeSweepGroups,
   normalizeSkillFiles,
+  recommendSurvivor,
   sha256,
   similarityMatrix,
   sweepMessages,
@@ -27,11 +30,15 @@ import {
   type Cluster,
   type SkillDoc,
 } from "./skill-doctor-core";
+import {
+  buildComparePanel,
+  buildResolvedCard,
+} from "./skill-doctor-compare";
 
 export const skillDoctorManifest: PluginManifest = {
   id: "skill-doctor",
-  name: "Skill Doctor",
-  version: "1.1.0",
+  name: "Duplicate detector",
+  version: "1.2.0",
   description:
     "Find duplicate and overlapping skills, then fix them: keep one (installations move onto it) or merge them into a new draft with AI.",
   author: "sx",
@@ -47,9 +54,19 @@ export const skillDoctorManifest: PluginManifest = {
 };
 
 const READ_CONCURRENCY = 8;
+const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 
 interface SharedDoc {
   dismissed?: Record<string, { by: string; at: string }>;
+}
+
+/** The persisted scan (sx.storage — per plugin, per profile). */
+interface CacheDoc {
+  v: 1;
+  at: number;
+  docs: SkillDoc[];
+  clusters: Cluster[];
+  aiNote: string;
 }
 
 interface Verdict {
@@ -84,10 +101,12 @@ export default class SkillDoctor implements SxPlugin {
   private sx!: SxAPI;
   private docs: SkillDoc[] = [];
   private clusters: Cluster[] = [];
+  private scannedAt = 0;
   private dismissed: Record<string, { by: string; at: string }> = {};
   private verdicts = new Map<string, Verdict | string>();
-  private busy = new Map<string, string>(); // signature -> action label
-  private pickerOpen = new Set<string>(); // signatures with Keep-one open
+  private resolved = new Map<string, string>(); // signature -> outcome line
+  private busy = new Map<string, string>();
+  private compareOpen = new Set<string>();
   private scanning = false;
   private status = "";
   private aiNote = "";
@@ -97,12 +116,13 @@ export default class SkillDoctor implements SxPlugin {
     this.sx = sx;
     sx.registerMainView({
       id: "skill-doctor",
-      title: "Skill Doctor",
+      title: "Duplicate detector",
+      section: "tools",
       mount: (view) => void this.mount(view),
     });
     sx.registerCommand({
       id: "scan-duplicates",
-      title: "Skill Doctor: scan for duplicate skills",
+      title: "Duplicate detector: scan for duplicate skills",
       run: () => sx.ui.openView("skill-doctor"),
     });
   }
@@ -126,9 +146,34 @@ export default class SkillDoctor implements SxPlugin {
       body.replaceChildren(...this.renderBody());
     };
     this.rerender();
-    // Always rescan on mount: this instance outlives library switches,
-    // so cached results may belong to a DIFFERENT vault.
+
+    // Fresh results (this session or the per-profile cache) render
+    // immediately; a full scan only runs when they've gone stale or the
+    // user asks. sx.storage is per profile, so a library switch can
+    // never show another vault's clusters.
+    if (Date.now() - this.scannedAt < CACHE_TTL_MS && this.docs.length > 0) {
+      await this.loadDismissals();
+      this.rerender?.();
+      return;
+    }
+    const cached = await this.sx.storage.loadData<CacheDoc>().catch(() => null);
+    if (cached?.v === 1 && Date.now() - cached.at < CACHE_TTL_MS) {
+      this.docs = cached.docs;
+      this.clusters = cached.clusters;
+      this.aiNote = cached.aiNote;
+      this.scannedAt = cached.at;
+      await this.loadDismissals();
+      this.rerender?.();
+      return;
+    }
     await this.scan();
+  }
+
+  private async loadDismissals(): Promise<void> {
+    const shared = await this.sx.sharedStorage
+      .load<SharedDoc>()
+      .catch(() => null);
+    this.dismissed = shared?.dismissed ?? {};
   }
 
   private header(): HTMLElement {
@@ -137,13 +182,16 @@ export default class SkillDoctor implements SxPlugin {
       "display: flex; gap: 10px; align-items: center; flex-wrap: wrap;",
     );
     const title = el("div", "", "");
+    const scannedNote = this.scannedAt
+      ? ` Last scan ${new Date(this.scannedAt).toLocaleString()}.`
+      : "";
     title.append(
       el("div", "font-weight: 600; font-size: 14px;", "Duplicate skills"),
       el(
         "div",
         FAINT + "font-size: 12px;",
-        "Found by content similarity plus an AI sweep of the whole catalog. " +
-          "Keep one (installations move onto it) or merge them into a new draft.",
+        "Found by content similarity plus an AI sweep of the whole catalog." +
+          scannedNote,
       ),
     );
     const spacer = el("div", "flex: 1;");
@@ -161,9 +209,13 @@ export default class SkillDoctor implements SxPlugin {
     if (this.aiNote) {
       out.push(el("div", FAINT + "font-size: 12px;", this.aiNote));
     }
-    const visible = this.clusters.filter((c) => !this.dismissed[c.signature]);
-    const hidden = this.clusters.length - visible.length;
-    if (visible.length === 0) {
+    const open = this.clusters.filter(
+      (c) => !this.dismissed[c.signature] && !this.resolved.has(c.signature),
+    );
+    const done = this.clusters.filter((c) => this.resolved.has(c.signature));
+    const hidden =
+      this.clusters.length - open.length - done.length;
+    if (open.length === 0 && done.length === 0) {
       out.push(
         el(
           "div",
@@ -174,13 +226,25 @@ export default class SkillDoctor implements SxPlugin {
       );
       return out;
     }
-    for (const c of visible) out.push(this.clusterCard(c));
+    if (done.length > 0) {
+      out.push(
+        el(
+          "div",
+          FAINT + "font-size: 12px;",
+          `${done.length} of ${done.length + open.length} resolved`,
+        ),
+      );
+      for (const c of done) {
+        out.push(buildResolvedCard(this.resolved.get(c.signature) ?? "Resolved"));
+      }
+    }
+    for (const c of open) out.push(this.clusterCard(c));
     if (hidden > 0) {
       out.push(
         el(
           "div",
           FAINT + "font-size: 12px; text-align: center;",
-          `${hidden} dismissed cluster(s) hidden — they stay hidden for the whole team.`,
+          `${hidden} cluster(s) marked not-duplicates — hidden for the whole team.`,
         ),
       );
     }
@@ -249,29 +313,45 @@ export default class SkillDoctor implements SxPlugin {
 
     const verdict = this.verdicts.get(c.signature);
     if (verdict) card.appendChild(this.verdictBlock(verdict));
-    if (this.pickerOpen.has(c.signature)) {
-      card.appendChild(this.keepOnePicker(c));
+    if (this.compareOpen.has(c.signature)) {
+      card.appendChild(
+        buildComparePanel(c, this.docs, recommendSurvivor(c, this.docs), {
+          onConsolidate: (survivor) => void this.consolidate(c, survivor),
+          onAskAI: () => void this.adjudicate(c),
+          onMergeAI: () => void this.mergeCluster(c),
+          openAsset: (name) => this.sx.ui.openAsset(name),
+          installSummary: async (name) => {
+            const v = await this.sx.assets.installations(name);
+            return v.everyone
+              ? "installed for everyone"
+              : `${v.installations.length} install row(s)`;
+          },
+        }),
+      );
     }
 
+    // One primary action, tiered by confidence: exact duplicates are a
+    // one-click keep-newest (their content is identical — comparing is
+    // busywork); everything else opens the compare panel first.
     const busyLabel = this.busy.get(c.signature);
-    const actions = el("div", "display: flex; gap: 8px; flex-wrap: wrap;");
-    const keep = el("button", PRIMARY, "Keep one…");
-    keep.onclick = () => {
-      if (this.pickerOpen.has(c.signature)) this.pickerOpen.delete(c.signature);
-      else this.pickerOpen.add(c.signature);
-      this.rerender?.();
-    };
-    const merge = el("button", BUTTON, "Merge with AI…");
-    merge.onclick = () => void this.mergeCluster(c);
-    const ask = el(
-      "button",
-      BUTTON,
-      verdict ? "Ask AI again" : "Ask AI: same skill?",
-    );
-    ask.onclick = () => void this.adjudicate(c);
-    const dismiss = el("button", BUTTON, "Dismiss for the team");
-    dismiss.onclick = () => void this.dismiss(c);
-    for (const b of [keep, merge, ask, dismiss]) {
+    const actions = el("div", "display: flex; gap: 8px; flex-wrap: wrap; align-items: center;");
+    let primary: HTMLElement;
+    if (c.exact) {
+      const survivor = recommendSurvivor(c, this.docs);
+      primary = el("button", PRIMARY, `Merge — keep newest (${survivor})…`);
+      primary.onclick = () => void this.consolidate(c, survivor);
+    } else {
+      const open = this.compareOpen.has(c.signature);
+      primary = el("button", PRIMARY, open ? "Hide comparison" : "Compare…");
+      primary.onclick = () => {
+        if (open) this.compareOpen.delete(c.signature);
+        else this.compareOpen.add(c.signature);
+        this.rerender?.();
+      };
+    }
+    const notDup = el("button", BUTTON, "Not duplicates");
+    notDup.onclick = () => void this.dismiss(c);
+    for (const b of [primary, notDup]) {
       if (busyLabel) b.setAttribute("disabled", "true");
       actions.appendChild(b);
     }
@@ -296,62 +376,14 @@ export default class SkillDoctor implements SxPlugin {
     return box;
   }
 
-  /** The Keep-one panel: pick the survivor, see each member's reach,
-   * and confirm the (destructive, recoverable) consolidation. */
-  private keepOnePicker(c: Cluster): HTMLElement {
-    const box = el(
-      "div",
-      NOTE + "display: flex; flex-direction: column; gap: 6px;",
-    );
-    box.appendChild(
-      el(
-        "div",
-        "font-weight: 600;",
-        "Keep which one? The others' installations move onto it, then they are retired.",
-      ),
-    );
-    let survivor = c.members[0];
-    for (const name of c.members) {
-      const row = el(
-        "label",
-        "display: flex; gap: 8px; align-items: center; cursor: pointer;",
-      );
-      const radio = document.createElement("input");
-      radio.type = "radio";
-      radio.name = `keep-${c.signature.replace(/\n/g, "-")}`;
-      radio.checked = name === survivor;
-      radio.onchange = () => {
-        survivor = name;
-      };
-      const reach = el("span", FAINT + "font-size: 11px;", "");
-      void this.sx.assets
-        .installations(name)
-        .then((v) => {
-          reach.textContent = v.everyone
-            ? "installed for everyone"
-            : `${v.installations.length} install row(s)`;
-        })
-        .catch(() => {});
-      row.append(radio, el("span", "", name), reach);
-      box.appendChild(row);
-    }
-    const go = el(
-      "button",
-      PRIMARY + "align-self: flex-start;",
-      "Consolidate…",
-    );
-    go.onclick = () => void this.consolidate(c, survivor);
-    box.appendChild(go);
-    return box;
-  }
-
   // ---- Actions ----
 
   private async scan(): Promise<void> {
     if (this.scanning) return;
     this.scanning = true;
     this.verdicts.clear();
-    this.pickerOpen.clear();
+    this.resolved.clear();
+    this.compareOpen.clear();
     this.aiNote = "";
     this.status = "Reading skills…";
     this.rerender?.();
@@ -376,6 +408,7 @@ export default class SkillDoctor implements SxPlugin {
               docs.push({
                 name: a.name,
                 description: a.description,
+                updatedAt: a.updatedAt,
                 raw,
                 text,
                 hash: await sha256(text),
@@ -426,10 +459,19 @@ export default class SkillDoctor implements SxPlugin {
           "No AI provider configured — showing local matches only. Configure one in Settings for the semantic sweep.";
       }
 
-      const shared = await this.sx.sharedStorage
-        .load<SharedDoc>()
-        .catch(() => null);
-      this.dismissed = shared?.dismissed ?? {};
+      this.scannedAt = Date.now();
+      // Persist best-effort: a cache too big for the storage cap just
+      // means the next mount rescans.
+      void this.sx.storage
+        .saveData<CacheDoc>({
+          v: 1,
+          at: this.scannedAt,
+          docs: this.docs,
+          clusters: this.clusters,
+          aiNote: this.aiNote,
+        })
+        .catch(() => {});
+      await this.loadDismissals();
     } finally {
       this.scanning = false;
       this.rerender?.();
@@ -438,15 +480,16 @@ export default class SkillDoctor implements SxPlugin {
 
   /** Consolidate: THE destructive action. Reach is unioned onto the
    * survivor and the rest are retired — recoverable from version
-   * history, but gone from the library, so the confirm says exactly
-   * that and names every asset. */
+   * history, but gone from the library, so the confirm names every
+   * asset and states the consequence. */
   private async consolidate(c: Cluster, survivor: string): Promise<void> {
     const losers = c.members.filter((m) => m !== survivor);
     const ok = await this.sx.ui.confirm(
-      `Keep “${survivor}” and retire ${losers.map((l) => `“${l}”`).join(", ")}? ` +
-        "Their installations move onto the kept skill so nobody loses it. " +
-        "Retired skills leave the library (recoverable from version history).",
-      "Consolidate",
+      `Merge ${c.members.length} skills into “${survivor}”? ` +
+        `${losers.map((l) => `“${l}”`).join(" and ")} will be removed from the ` +
+        "library for everyone — their installations move onto the kept skill, " +
+        "and they stay recoverable from version history.",
+      `Merge into ${survivor}`,
     );
     if (!ok) return;
     this.busy.set(c.signature, "Consolidating…");
@@ -456,16 +499,20 @@ export default class SkillDoctor implements SxPlugin {
         into: survivor,
         from: losers,
       });
-      let msg = `Kept “${survivor}”, retired ${result.retired.length} skill(s)`;
+      let outcome = `Merged into “${survivor}” — retired ${result.retired.join(", ")}`;
       if (result.movedInstallations > 0) {
-        msg += `, moved ${result.movedInstallations} installation(s)`;
+        outcome += `, moved ${result.movedInstallations} installation(s)`;
       }
       if (result.skipped.length > 0) {
-        msg += ` — ${result.skipped.length} install move(s) refused: ${result.skipped.join("; ")}`;
+        outcome += ` (${result.skipped.length} install move(s) refused: ${result.skipped.join("; ")})`;
       }
-      this.sx.ui.notice(msg);
+      this.resolved.set(c.signature, outcome);
+      this.compareOpen.delete(c.signature);
       this.busy.delete(c.signature);
-      await this.scan();
+      this.sx.ui.notice(outcome);
+      // The library changed; refresh the cache in the background.
+      this.scannedAt = 0;
+      this.rerender?.();
     } catch (e) {
       this.busy.delete(c.signature);
       this.verdicts.set(c.signature, String((e as Error)?.message || e));
@@ -500,7 +547,7 @@ export default class SkillDoctor implements SxPlugin {
         files: [{ path: "SKILL.md", content }],
       });
       this.sx.ui.notice(
-        `Draft “${name}” created from ${members.length} variants — review and publish it, then use Keep one to retire the originals onto it.`,
+        `Draft “${name}” created from ${members.length} variants — review and publish it, then merge the originals onto it.`,
       );
     } catch (e) {
       this.verdicts.set(c.signature, String((e as Error)?.message || e));
@@ -509,9 +556,8 @@ export default class SkillDoctor implements SxPlugin {
     this.rerender?.();
   }
 
-  /** Team-shared dismissal: keyed by the cluster's member set, so the
-   * same grouping stays hidden for everyone until its membership
-   * changes (a new near-duplicate re-surfaces it). */
+  /** "Not duplicates": instant, positive, team-shared — the pair never
+   * resurfaces for anyone unless the cluster's membership changes. */
   private async dismiss(c: Cluster): Promise<void> {
     const who = (await this.sx.app.currentUser().catch(() => "")) || "someone";
     const shared =
@@ -520,7 +566,8 @@ export default class SkillDoctor implements SxPlugin {
     shared.dismissed[c.signature] = { by: who, at: new Date().toISOString() };
     await this.sx.sharedStorage.save(shared);
     this.dismissed = shared.dismissed;
-    this.sx.ui.notice("Cluster dismissed for the whole library");
+    this.resolved.set(c.signature, `Marked not-duplicates (${c.members.join(", ")})`);
+    this.sx.ui.notice("Marked as not duplicates for the whole library");
     this.rerender?.();
   }
 

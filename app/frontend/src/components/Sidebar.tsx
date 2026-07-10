@@ -106,6 +106,10 @@ export default function Sidebar({
   const sidebarPanels = useSlot("sidebar-panel");
   const dashboardWidgets = useSlot("dashboard-widget").length;
   const mainViews = useSlot("main-view");
+  // Views split by their declared section: library views sit with core
+  // navigation, tool views live under the collapsed TOOLS section.
+  const libraryViews = mainViews.filter((v) => v.spec.section !== "tools");
+  const toolViews = mainViews.filter((v) => v.spec.section === "tools");
   // Collapsed by default; remembering the choice per machine.
   const [toolsOpen, setToolsOpen] = useState(
     () => localStorage.getItem("sx-tools-open") === "1",
@@ -207,8 +211,9 @@ export default function Sidebar({
             onClick={() => onScope({ kind: "dashboard" })}
           />
         )}
-        {/* Extension-contributed full-page views (views:main). */}
-        {mainViews.map((v) => {
+        {/* Extension-contributed full-page views (views:main) that
+            declare themselves library navigation. */}
+        {libraryViews.map((v) => {
           const key = v.pluginId + ":" + v.spec.id;
           return (
             <Row
@@ -362,13 +367,14 @@ export default function Sidebar({
           </>
         )}
 
-        {/* Extension-contributed sidebar panels (views:sidebar) live
-            under ONE collapsed TOOLS section at the BOTTOM — they're
-            tools that act on the library, not core navigation, and
-            expanded by default they crowd out collections and teams.
-            Collapsed, the tool names still show so the section never
-            reads as an empty header. */}
-        {sidebarPanels.length > 0 && (
+        {/* Extension-contributed tools live under ONE collapsed TOOLS
+            section at the BOTTOM: sidebar panels (views:sidebar) and
+            full-page views declaring section:"tools" — they act ON the
+            library rather than navigate it, and expanded by default
+            they crowd out collections and teams. Collapsed, the tool
+            names still show so the section never reads as an empty
+            header. */}
+        {(sidebarPanels.length > 0 || toolViews.length > 0) && (
           <div className="mt-4" data-tools-section>
             <button
               onClick={() => {
@@ -391,10 +397,24 @@ export default function Sidebar({
               </span>
               {!toolsOpen && (
                 <span className="mt-0.5 block truncate text-xs text-ink-faint">
-                  {sidebarPanels.map((p) => p.spec.title).join(" · ")}
+                  {[...toolViews, ...sidebarPanels]
+                    .map((p) => p.spec.title)
+                    .join(" · ")}
                 </span>
               )}
             </button>
+            {toolsOpen &&
+              toolViews.map((v) => {
+                const key = v.pluginId + ":" + v.spec.id;
+                return (
+                  <Row
+                    key={key}
+                    label={v.spec.title}
+                    active={active === "plugin-view:" + key}
+                    onClick={() => onScope({ kind: "plugin-view", name: key })}
+                  />
+                );
+              })}
             {toolsOpen &&
               sidebarPanels.map((p) => (
                 <div key={p.pluginId + ":" + p.spec.id} className="mt-1">

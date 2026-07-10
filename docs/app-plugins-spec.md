@@ -256,6 +256,10 @@ adoption.
   Settings on `"libraries"`, `"extensions"`, or `"ai"` — the deep link
   an llm:use extension shows when no provider is configured, instead of
   describing a menu path in prose.
+- `MainViewSpec.section?: "library" | "tools"`: where the view's
+  sidebar row lives. `"tools"` lists it under the collapsed TOOLS
+  section — for utilities that act ON the library (dedupe, assistants)
+  rather than views OF it. Default stays `"library"`.
 - `sx.assets.installations(name)` (under `assets:read`): every install
   row on an asset, `everyone: true` when no rows exist.
 - `assets:consolidate` permission + `sx.assets.consolidate({into,
@@ -478,7 +482,7 @@ Chosen by mapping Obsidian's download-mass categories (measured 2026-07-05 from 
 | **Importer** | Importer (1.4M) | Import from existing `.claude/` directories, an Obsidian vault folder, or a folder of loose prompts; batch-create drafts. | `commands`, `drafts:write` |
 | **Related Assets** *(shipped as a marketplace extension, not a built-in — TF-IDF cosine similarity; the embedding-based upgrade still ties to the v1.1 dedup groundwork)* | Smart Connections (1.1M) | Similar-asset tab on the detail view showing the shared terms that drove each match. | `views:asset-tab`, `assets:read` |
 | **Claude Assist** *(shipped 1.4.0 as a marketplace extension; 1.1.0 migrates onto `sx.llm` — provider/key/model move to Settings)* | Copilot (1.5M), Claudian (1.2M — fastest riser) | Ask-the-library chat with clickable `[[asset]]` citations, critique-the-open-draft-as-a-prompt, new-skill-from-description. Completions via `sx.llm` against the user's configured provider. | `views:main`, `commands`, `editor`, `drafts:write`, `assets:read`, `llm:use` |
-| **Skill Doctor** *(API 1.9.0 — phases 1–2 of docs/skill-dedupe-spec.md)* | — | Finds duplicate/overlapping skills (SHA-256 exact + TF-IDF cosine + an LLM catalog sweep for semantic duplicates) and fixes them: **Keep one** consolidates installations onto a survivor and retires the rest (confirmed, recoverable), **Merge with AI** composes one definitive SKILL.md as a draft (publish stays human). Team-shared dismissals. | `views:main`, `commands`, `assets:read`, `assets:consolidate`, `drafts:write`, `llm:use`, `storage:shared` |
+| **Duplicate detector** *(id `skill-doctor`; API 1.9.0 — phases 1–2 of docs/skill-dedupe-spec.md; sidebar TOOLS section)* | — | Finds duplicate/overlapping skills (SHA-256 exact + TF-IDF cosine + an LLM catalog sweep for semantic duplicates) and fixes them: **Keep one** consolidates installations onto a survivor and retires the rest (confirmed, recoverable), **Merge with AI** composes one definitive SKILL.md as a draft (publish stays human). Team-shared dismissals. | `views:main`, `commands`, `assets:read`, `assets:consolidate`, `drafts:write`, `llm:use`, `storage:shared` |
 
 Not translated: sync/git plugins (core product here), canvas/tasks/calendar (wrong domain), theming (deferred).
 
