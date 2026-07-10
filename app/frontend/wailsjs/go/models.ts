@@ -748,6 +748,7 @@ export namespace main {
 	}
 	export class VaultPlugin {
 	    assetName: string;
+	    version: string;
 	    manifest: string;
 	    source: string;
 	    scope: ExtensionScope;
@@ -759,6 +760,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.assetName = source["assetName"];
+	        this.version = source["version"];
 	        this.manifest = source["manifest"];
 	        this.source = source["source"];
 	        this.scope = this.convertValues(source["scope"], ExtensionScope);

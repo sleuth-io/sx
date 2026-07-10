@@ -65,6 +65,7 @@ export default function RepoPicker({
   autoFocus?: boolean;
 }) {
   const [repos, setRepos] = useState<main.GitRepoOption[]>([]);
+  const [loadingRepos, setLoadingRepos] = useState(true);
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -74,7 +75,8 @@ export default function RepoPicker({
   useEffect(() => {
     ListGitRepos()
       .then((r) => setRepos(r ?? []))
-      .catch(() => setRepos([]));
+      .catch(() => setRepos([]))
+      .finally(() => setLoadingRepos(false));
   }, []);
 
   // Close on outside clicks.
@@ -93,7 +95,9 @@ export default function RepoPicker({
   // Once the value is a picked/typed URL, suggestions are done.
   const isURL = q.includes("://") || q.startsWith("git@");
   const hasList = repos.length > 0;
-  const showList = open && !isURL && shown.length > 0;
+  // While the repo list is on the wire the dropdown says so instead of
+  // sitting empty and popping suggestions in seconds later.
+  const showList = open && !isURL && (loadingRepos || shown.length > 0);
 
   function pick(r: main.GitRepoOption) {
     onChange(r.url);
@@ -167,7 +171,7 @@ export default function RepoPicker({
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
         placeholder={
-          hasList
+          hasList || loadingRepos
             ? "Search your repositories or paste a URL"
             : "https://github.com/acme/skills.git"
         }
@@ -209,6 +213,11 @@ export default function RepoPicker({
           role="listbox"
           className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg"
         >
+          {loadingRepos && shown.length === 0 && (
+            <div className="animate-pulse px-3 py-1.5 text-sm text-ink-faint">
+              Loading your repositories…
+            </div>
+          )}
           {shown.map((r, i) => (
             <button
               key={r.name}

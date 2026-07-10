@@ -38,6 +38,14 @@ export function AvailableRepoName(arg1) {
   return window['go']['main']['App']['AvailableRepoName'](arg1);
 }
 
+export function CachedPluginPolicy() {
+  return window['go']['main']['App']['CachedPluginPolicy']();
+}
+
+export function CachedVaultPlugins() {
+  return window['go']['main']['App']['CachedVaultPlugins']();
+}
+
 export function CanInstallForEveryone() {
   return window['go']['main']['App']['CanInstallForEveryone']();
 }

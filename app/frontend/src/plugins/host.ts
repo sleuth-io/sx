@@ -57,6 +57,9 @@ interface Registered {
   enabled: boolean;
   error?: string;
   scope?: ExtensionScope;
+  /** Vault revision the source came from — re-registration with the
+   * same revision is a no-op (same revision = identical bytes). */
+  version?: string;
 }
 
 const plugins = new Map<string, Registered>();
@@ -172,6 +175,7 @@ export function registerVaultPlugin(
   manifest: PluginManifest,
   source: string,
   scope?: ExtensionScope,
+  version?: string,
 ): void {
   const existing = plugins.get(manifest.id);
   if (existing?.builtIn) {
@@ -183,6 +187,16 @@ export function registerVaultPlugin(
     return;
   }
   if (existing) {
+    // Unchanged revision and scope: nothing to apply — skipping keeps
+    // revalidation (cached copy first, fresh listing after) from
+    // re-rendering every extension surface for identical bytes.
+    if (
+      version !== undefined &&
+      existing.version === version &&
+      sameScope(existing.scope, scope)
+    ) {
+      return;
+    }
     // Re-registration of a vault plugin is the normal refresh path
     // (marketplace install, publish, sync) — upsert, don't complain. A
     // running instance keeps its loaded code; the updated manifest and
@@ -191,6 +205,7 @@ export function registerVaultPlugin(
     existing.manifest = manifest;
     existing.make = () => importFromSource(source);
     existing.scope = scope;
+    existing.version = version;
     notify();
     return;
   }
@@ -200,8 +215,16 @@ export function registerVaultPlugin(
     make: () => importFromSource(source),
     enabled: false,
     scope,
+    version,
   });
   notify();
+}
+
+function sameScope(a?: ExtensionScope, b?: ExtensionScope): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.shared === b.shared && a.personal === b.personal && a.label === b.label
+  );
 }
 
 /** Drop a vault extension from the host entirely (its asset was removed

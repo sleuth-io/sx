@@ -44,11 +44,11 @@ import AddAssetModal from "../components/AddAssetModal";
 import AssetDetail from "../components/AssetDetail";
 import BrowseModal from "../components/BrowseModal";
 import CollectionModal from "../components/CollectionModal";
-import DraftSheet from "../components/DraftSheet";
+import DraftSheet, { DraftSheetSkeleton } from "../components/DraftSheet";
 import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
 import ShareModal from "../components/ShareModal";
-import Sidebar, { repoLabel, Scope } from "../components/Sidebar";
+import Sidebar, { PinIcon, repoLabel, Scope } from "../components/Sidebar";
 import CommandPalette from "../components/CommandPalette";
 import Dashboard from "../components/Dashboard";
 import PluginMount from "../components/PluginMount";
@@ -80,6 +80,30 @@ function readPins(kind: PinKind, location: string): string[] | null {
   }
 }
 
+/** The last boot's list data, persisted per library. Seeding state from
+ * it renders the sidebar and list in their final shape immediately —
+ * on a remote vault the fresh responses land seconds apart and would
+ * otherwise assemble the sidebar section by section, shoving everything
+ * below each arrival. Stale entries correct themselves silently when
+ * the fresh data replaces them (identical data changes nothing). */
+interface BootSnapshot {
+  assets: main.AssetCard[];
+  collections: main.Collection[];
+  teams: main.TeamInfo[];
+  teamAssets: Record<string, string[]>;
+  personalAssets: string[];
+  repoAssets: Record<string, string[]> | null;
+}
+
+function readBootSnapshot(location: string): BootSnapshot | null {
+  try {
+    const raw = localStorage.getItem(`sx-boot:${location}`);
+    return raw ? (JSON.parse(raw) as BootSnapshot) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Library: a source-list sidebar (scopes + collections) and one scrollable
  * content pane. List view is the default — dense rows scan better than
@@ -92,17 +116,28 @@ export default function Library({
   vault: main.VaultInfo;
   onVaultChanged: () => void;
 }) {
-  const [assets, setAssets] = useState<main.AssetCard[] | null>(null);
+  // Seed list state from the persisted snapshot (Library remounts per
+  // vault, so the seed always matches this library).
+  const [boot] = useState(() => readBootSnapshot(vault.location));
+  const [assets, setAssets] = useState<main.AssetCard[] | null>(
+    boot?.assets ?? null,
+  );
   const [drafts, setDrafts] = useState<main.Draft[]>([]);
-  const [collections, setCollections] = useState<main.Collection[]>([]);
-  const [teams, setTeams] = useState<main.TeamInfo[]>([]);
-  const [teamAssets, setTeamAssets] = useState<Record<string, string[]>>({});
+  const [collections, setCollections] = useState<main.Collection[]>(
+    boot?.collections ?? [],
+  );
+  const [teams, setTeams] = useState<main.TeamInfo[]>(boot?.teams ?? []);
+  const [teamAssets, setTeamAssets] = useState<Record<string, string[]>>(
+    boot?.teamAssets ?? {},
+  );
   // Assets installed just for this user — drives the sidebar's
   // conditional "My skills" row and its scope filter.
-  const [personalAssets, setPersonalAssets] = useState<string[]>([]);
+  const [personalAssets, setPersonalAssets] = useState<string[]>(
+    boot?.personalAssets ?? [],
+  );
   // Repo URL → asset names; null when this library doesn't track repos.
   const [repoAssets, setRepoAssets] = useState<Record<string, string[]> | null>(
-    null,
+    boot?.repoAssets ?? null,
   );
   const [openTeam, setOpenTeam] = useState<main.TeamInfo | null>(null);
   const [showNewTeam, setShowNewTeam] = useState(false);
@@ -184,6 +219,9 @@ export default function Library({
   const searchRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [openDraft, setOpenDraft] = useState<main.Draft | null>(null);
+  // True while a draft is being created or fetched from the vault —
+  // renders the sheet's skeleton so the click responds immediately.
+  const [openingDraft, setOpeningDraft] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [sidebarWidth, startSidebarResize] = usePanelSize(
     "sx-panel-sidebar",
@@ -439,6 +477,9 @@ export default function Library({
   // only the very first load falls back to empty (with the error shown).
   const loadGen = useRef(0);
   const loadedOnce = useRef(false);
+  // Snapshot-seeded state counts as "something on screen": a failed
+  // first load keeps it (with the error banner) instead of blanking it.
+  const seeded = useRef(boot !== null);
   const load = useCallback(() => {
     const gen = ++loadGen.current;
     const apply =
@@ -449,7 +490,8 @@ export default function Library({
     const applyFallback =
       <T,>(setter: (v: T) => void, fallback: T) =>
       () => {
-        if (gen === loadGen.current && !loadedOnce.current) setter(fallback);
+        if (gen === loadGen.current && !loadedOnce.current && !seeded.current)
+          setter(fallback);
       };
     setError("");
     ListAssets()
@@ -465,7 +507,7 @@ export default function Library({
         if (gen !== loadGen.current) return;
         if (!loadedOnce.current) {
           setError(String(e));
-          setAssets([]);
+          if (!seeded.current) setAssets([]);
         }
       });
     ListDrafts().then(apply(setDrafts)).catch(applyFallback(setDrafts, []));
@@ -496,6 +538,56 @@ export default function Library({
   useEffect(() => {
     loadRef.current = load;
   }, [load]);
+
+  // Write-through for the boot snapshot: whenever the list data settles,
+  // persist it so the NEXT boot paints this shape immediately. Debounced
+  // — the boot fetches land seconds apart and each would otherwise
+  // serialize ~the whole library. Gated on loadedOnce (a REAL listing
+  // succeeded this session): a failed first load sets assets to [] and
+  // must not persist "empty library" over a good snapshot.
+  useEffect(() => {
+    if (assets === null || !loadedOnce.current) return;
+    const timer = setTimeout(() => {
+      const key = `sx-boot:${vault.location}`;
+      const snapshot: BootSnapshot = {
+        assets,
+        collections,
+        teams,
+        teamAssets,
+        personalAssets,
+        repoAssets,
+      };
+      const json = JSON.stringify(snapshot);
+      try {
+        localStorage.setItem(key, json);
+      } catch {
+        // Quota pressure: other libraries' snapshots are the growth
+        // (one per vault, never visited again = never rewritten), so
+        // evict them and retry once. The library in use wins; a second
+        // failure means storage is genuinely unavailable and the next
+        // boot just skeletons.
+        try {
+          for (const k of Object.keys(localStorage)) {
+            if (k.startsWith("sx-boot:") && k !== key) {
+              localStorage.removeItem(k);
+            }
+          }
+          localStorage.setItem(key, json);
+        } catch {
+          // Storage unavailable — nothing to persist.
+        }
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [
+    assets,
+    collections,
+    teams,
+    teamAssets,
+    personalAssets,
+    repoAssets,
+    vault.location,
+  ]);
 
   // Extension system: boot once, and hand extensions the app's real UI
   // services (toast + confirm) so sx.ui works.
@@ -655,12 +747,14 @@ export default function Library({
       // in-app row drags that carry no files — ignore those.
       const real = (paths ?? []).filter((p) => p);
       if (real.length === 0) return;
+      setOpeningDraft(true);
       CreateDraftFromPaths(real)
         .then((draft) => {
           setOpenDraft(draft);
           load();
         })
-        .catch((e) => setToastMessage(String(e)));
+        .catch((e) => setToastMessage(String(e)))
+        .finally(() => setOpeningDraft(false));
     }, false);
     const over = (e: DragEvent) => {
       // Only external file drags get the drop overlay — in-app asset
@@ -978,12 +1072,13 @@ export default function Library({
     [repoAssets],
   );
 
-  // Never-pinned libraries default to the first few so the sidebar isn't
-  // empty; an explicit pin/unpin takes over from there.
-  const shownCollectionPins =
-    pinnedCollections ?? collections.slice(0, 5).map((c) => c.name);
-  const shownTeamPins = pinnedTeams ?? teams.slice(0, 5).map((t) => t.name);
-  const shownRepoPins = pinnedRepos ?? repoUrls.slice(0, 5);
+  // Pins are explicit only: a never-pinned library shows no PINNED
+  // section at all (the BROWSE rows are the durable path in), instead
+  // of first-few defaults that read as pins the user never made.
+  // Creating a collection/team still auto-pins it (ensurePinned).
+  const shownCollectionPins = pinnedCollections ?? [];
+  const shownTeamPins = pinnedTeams ?? [];
+  const shownRepoPins = pinnedRepos ?? [];
 
   const teamAssetCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -1023,6 +1118,26 @@ export default function Library({
   function ensurePinned(kind: PinKind, name: string) {
     const current = pinShown[kind];
     if (!current.includes(name)) setPins(kind, [...current, name]);
+  }
+
+  // Pin state lives where you're looking at the thing: each scope's
+  // action bar (beside Rename/Manage/Delete) carries its pin toggle.
+  function scopePinButton(kind: PinKind, name: string) {
+    const isPinned = pinShown[kind].includes(name);
+    return (
+      <button
+        onClick={() => togglePin(kind, name)}
+        title={isPinned ? "Unpin from the sidebar" : "Pin to the sidebar"}
+        className={`flex items-center gap-1 rounded-md border bg-surface px-2.5 py-1 font-medium transition ${
+          isPinned
+            ? "border-accent/40 text-accent hover:border-accent"
+            : "border-line text-ink-soft hover:border-accent hover:text-ink"
+        }`}
+      >
+        <PinIcon filled={isPinned} />
+        {isPinned ? "Pinned" : "Pin"}
+      </button>
+    );
   }
 
   const visible = useMemo(() => {
@@ -1105,6 +1220,7 @@ export default function Library({
   }, [drafts, query, scope]);
 
   async function editAsset(name: string) {
+    setOpeningDraft(true);
     try {
       const draft = await CreateDraftFromAsset(name);
       setSelected(null);
@@ -1112,14 +1228,19 @@ export default function Library({
       load();
     } catch (e) {
       setToastMessage(String(e));
+    } finally {
+      setOpeningDraft(false);
     }
   }
 
   async function openExistingDraft(id: string) {
+    setOpeningDraft(true);
     try {
       setOpenDraft(await GetDraft(id));
     } catch (e) {
       setToastMessage(String(e));
+    } finally {
+      setOpeningDraft(false);
     }
   }
 
@@ -1214,6 +1335,7 @@ export default function Library({
         pinnedCollections={shownCollectionPins}
         pinnedTeams={shownTeamPins}
         pinnedRepos={shownRepoPins}
+        onUnpin={togglePin}
         onNewCollection={() => setShowCollectionModal(true)}
         onNewTeam={() => setShowNewTeam(true)}
         onBrowseCollections={() => setBrowse("collections")}
@@ -1562,6 +1684,7 @@ export default function Library({
                   "Assets in this collection can be set up together."}
               </span>
               <div className="flex-1" />
+              {scopePinButton("collections", activeCollection.name)}
               <button
                 disabled={busyAction}
                 onClick={() => startRename("collection", activeCollection.name)}
@@ -1618,6 +1741,7 @@ export default function Library({
                 members
               </span>
               <div className="flex-1" />
+              {scopePinButton("teams", activeTeam.name)}
               <button
                 onClick={() => startRename("team", activeTeam.name)}
                 className="rounded-md border border-line bg-surface px-2.5 py-1 font-medium text-ink-soft transition hover:border-accent hover:text-ink"
@@ -1651,6 +1775,23 @@ export default function Library({
               >
                 Delete
               </button>
+            </div>
+          )}
+
+          {/* Repos have no rename/delete (they exist by being scoped
+              to), but their pin control lives in the same bar position
+              as collections' and teams'. */}
+          {scope.kind === "repo" && (
+            <div
+              className="flex items-center gap-3 border-t border-line bg-accent-soft/50 px-5 py-2 text-xs"
+              style={{ ["--wails-draggable" as never]: "no-drag" }}
+            >
+              <span className="min-w-0 truncate text-ink-soft" title={scope.name}>
+                {scope.name} · assets scoped to this repository install for
+                whoever works in it
+              </span>
+              <div className="flex-1" />
+              {scopePinButton("repos", scope.name)}
             </div>
           )}
         </header>
@@ -2217,6 +2358,8 @@ export default function Library({
           onCollectionsChanged={load}
         />
       )}
+
+      {openingDraft && !openDraft && <DraftSheetSkeleton />}
 
       {openDraft && (
         <DraftSheet

@@ -21,6 +21,10 @@ export function AppVersion():Promise<string>;
 
 export function AvailableRepoName(arg1:string):Promise<string>;
 
+export function CachedPluginPolicy():Promise<main.PluginPolicy>;
+
+export function CachedVaultPlugins():Promise<Array<main.VaultPlugin>>;
+
 export function CanInstallForEveryone():Promise<boolean>;
 
 export function CancelSleuthLogin():Promise<void>;

@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
 import type { main } from "../../wailsjs/go/models";
 import { useSlot } from "../plugins/registry";
 import PluginMount from "./PluginMount";
@@ -71,6 +71,7 @@ export default function Sidebar({
   dropRepo,
   onCollectionDragHandle,
   onRepoDragHandle,
+  onUnpin,
   width,
 }: {
   vault: main.VaultInfo;
@@ -100,9 +101,26 @@ export default function Sidebar({
   dropRepo: string;
   onCollectionDragHandle: (name: string, e: MouseEvent) => void;
   onRepoDragHandle: (url: string, e: MouseEvent) => void;
+  onUnpin: (kind: "collections" | "teams" | "repos", name: string) => void;
   width: number;
 }) {
   const active = scopeKey(scope);
+  // One flat PINNED list instead of per-type sections: type icons carry
+  // the collection/team/repo distinction (the Finder/Linear/Notion
+  // favorites pattern). The BROWSE rows below are the durable path to
+  // the full catalogs, so the section can simply vanish when empty.
+  const pinnedCollectionRows = collections.filter((c) =>
+    pinnedCollections.includes(c.name),
+  );
+  const pinnedTeamRows = teams.filter((t) => pinnedTeams.includes(t.name));
+  const pinnedRepoRows = repoAssets
+    ? Object.keys(repoAssets)
+        .filter((url) => pinnedRepos.includes(url))
+        .sort((a, b) => repoLabel(a).localeCompare(repoLabel(b)))
+    : [];
+  const hasPins =
+    pinnedCollectionRows.length + pinnedTeamRows.length + pinnedRepoRows.length >
+    0;
   const sidebarPanels = useSlot("sidebar-panel");
   const dashboardWidgets = useSlot("dashboard-widget").length;
   const mainViews = useSlot("main-view");
@@ -225,146 +243,132 @@ export default function Sidebar({
           );
         })}
 
-        <div className="mt-4 flex items-center justify-between pr-1">
-          <SectionLabel>COLLECTIONS</SectionLabel>
-          <button
-            onClick={onNewCollection}
-            title="New collection"
-            className="rounded px-1.5 text-sm leading-none text-ink-faint transition hover:text-accent"
-          >
-            +
-          </button>
-        </div>
-        {collections.length === 0 ? (
-          <button
-            onClick={onNewCollection}
-            className="mx-1 mt-1 w-[calc(100%-8px)] rounded-lg border border-dashed border-line px-3 py-2.5 text-left text-xs text-ink-faint transition hover:border-accent hover:text-accent"
-          >
-            Group related assets into your first collection
-          </button>
-        ) : (
+        {/* PINNED: quick access the user curated, one flat mixed list —
+            icons carry the type. Drop targets and drag handles are
+            unchanged, so dragging an asset onto a pinned collection/
+            team/repo still works. Vanishes when empty; BROWSE below is
+            always there. */}
+        {hasPins && (
           <>
-            {collections
-              .filter((c) => pinnedCollections.includes(c.name))
-              .map((c) => (
-                <div
-                  key={c.name}
-                  data-drop-collection={c.name}
-                  onMouseDown={(e) => onCollectionDragHandle(c.name, e)}
-                  className={
-                    dropCollection === c.name
-                      ? "rounded-lg ring-2 ring-accent"
-                      : undefined
-                  }
-                >
-                  <Row
-                    label={c.name}
-                    count={(c.assets ?? []).length}
-                    active={active === "collection:" + c.name}
-                    onClick={() =>
-                      onScope({ kind: "collection", name: c.name })
-                    }
-                  />
-                </div>
-              ))}
-            <BrowseRow
-              label={`All collections (${collections.length})…`}
-              onClick={onBrowseCollections}
-            />
-          </>
-        )}
-
-        <div className="mt-4 flex items-center justify-between pr-1">
-          <SectionLabel>TEAMS</SectionLabel>
-          <button
-            onClick={onNewTeam}
-            title="New team"
-            className="rounded px-1.5 text-sm leading-none text-ink-faint transition hover:text-accent"
-          >
-            +
-          </button>
-        </div>
-        {teams.length === 0 ? (
-          <button
-            onClick={onNewTeam}
-            className="mx-1 mt-1 w-[calc(100%-8px)] rounded-lg border border-dashed border-line px-3 py-2.5 text-left text-xs text-ink-faint transition hover:border-accent hover:text-accent"
-          >
-            Create a team to share assets with the right people
-          </button>
-        ) : (
-          <>
-            {teams
-              .filter((t) => pinnedTeams.includes(t.name))
-              .map((t) => (
-                <div
-                  key={t.name}
-                  data-drop-team={t.name}
-                  className={
-                    dropTeam === t.name
-                      ? "rounded-lg ring-2 ring-accent"
-                      : undefined
-                  }
-                >
-                  <Row
-                    label={t.name}
-                    count={teamAssetCounts[t.name] ?? 0}
-                    active={active === "team:" + t.name}
-                    onClick={() => onScope({ kind: "team", name: t.name })}
-                  />
-                </div>
-              ))}
-            <BrowseRow
-              label={`All teams (${teams.length})…`}
-              onClick={onBrowseTeams}
-            />
-          </>
-        )}
-
-        {/* Per-library opt-in (Settings → Track repositories): which repos
-            assets are scoped to. Off means the concept never appears. Like
-            collections and teams, only pinned repos live in the sidebar;
-            the browse row searches and pins the rest. */}
-        {repoAssets !== null && (
-          <>
-            <div className="mt-4 flex items-center justify-between pr-1">
-              <SectionLabel>REPOSITORIES</SectionLabel>
+            <div className="mt-4">
+              <SectionLabel>PINNED</SectionLabel>
             </div>
-            {Object.keys(repoAssets).length === 0 ? (
-              <div className="mx-1 mt-1 rounded-lg border border-dashed border-line px-3 py-2.5 text-xs text-ink-faint">
-                Assets scoped to repositories will show up here
-              </div>
-            ) : (
-              <>
-                {Object.keys(repoAssets)
-                  .filter((url) => pinnedRepos.includes(url))
-                  .sort((a, b) => repoLabel(a).localeCompare(repoLabel(b)))
-                  .map((url) => (
-                    <div
-                      key={url}
-                      title={url}
-                      data-drop-repo={url}
-                      onMouseDown={(e) => onRepoDragHandle(url, e)}
-                      className={
-                        dropRepo === url
-                          ? "rounded-lg ring-2 ring-accent"
-                          : undefined
-                      }
-                    >
-                      <Row
-                        label={repoLabel(url)}
-                        count={(repoAssets[url] ?? []).length}
-                        active={active === "repo:" + url}
-                        onClick={() => onScope({ kind: "repo", name: url })}
-                      />
-                    </div>
-                  ))}
-                <BrowseRow
-                  label={`All repositories (${Object.keys(repoAssets).length})…`}
-                  onClick={onBrowseRepos}
+            {pinnedCollectionRows.map((c) => (
+              <div
+                key={"collection:" + c.name}
+                data-drop-collection={c.name}
+                onMouseDown={(e) => onCollectionDragHandle(c.name, e)}
+                className={`group relative ${
+                  dropCollection === c.name ? "rounded-lg ring-2 ring-accent" : ""
+                }`}
+              >
+                <Row
+                  icon={<CollectionIcon />}
+                  label={c.name}
+                  count={(c.assets ?? []).length}
+                  active={active === "collection:" + c.name}
+                  onClick={() => onScope({ kind: "collection", name: c.name })}
+                  countYieldsOnHover
                 />
-              </>
-            )}
+                <UnpinButton
+                  label={c.name}
+                  onClick={() => onUnpin("collections", c.name)}
+                />
+              </div>
+            ))}
+            {pinnedTeamRows.map((t) => (
+              <div
+                key={"team:" + t.name}
+                data-drop-team={t.name}
+                className={`group relative ${
+                  dropTeam === t.name ? "rounded-lg ring-2 ring-accent" : ""
+                }`}
+              >
+                <Row
+                  icon={<TeamIcon />}
+                  label={t.name}
+                  count={teamAssetCounts[t.name] ?? 0}
+                  active={active === "team:" + t.name}
+                  onClick={() => onScope({ kind: "team", name: t.name })}
+                  countYieldsOnHover
+                />
+                <UnpinButton
+                  label={t.name}
+                  onClick={() => onUnpin("teams", t.name)}
+                />
+              </div>
+            ))}
+            {pinnedRepoRows.map((url) => (
+              <div
+                key={"repo:" + url}
+                title={url}
+                data-drop-repo={url}
+                onMouseDown={(e) => onRepoDragHandle(url, e)}
+                className={`group relative ${
+                  dropRepo === url ? "rounded-lg ring-2 ring-accent" : ""
+                }`}
+              >
+                <Row
+                  icon={<RepoIcon />}
+                  label={repoLabel(url)}
+                  count={(repoAssets?.[url] ?? []).length}
+                  active={active === "repo:" + url}
+                  onClick={() => onScope({ kind: "repo", name: url })}
+                  countYieldsOnHover
+                />
+                <UnpinButton
+                  label={repoLabel(url)}
+                  onClick={() => onUnpin("repos", url)}
+                />
+              </div>
+            ))}
           </>
+        )}
+
+        {/* BROWSE: one count-bearing row per catalog — the counts keep
+            the "how much is there" scope cue that fully hidden
+            navigation loses. An empty catalog's row becomes its own
+            create CTA. Repositories appear only when the library tracks
+            them (Settings → Track repositories). */}
+        <div className="mt-4">
+          <SectionLabel>BROWSE</SectionLabel>
+        </div>
+        <CatalogRow
+          icon={<CollectionIcon />}
+          label="Collections"
+          count={collections.length}
+          onClick={
+            collections.length > 0 ? onBrowseCollections : onNewCollection
+          }
+          title={
+            collections.length === 0
+              ? "Group related assets into your first collection"
+              : "Browse and pin collections"
+          }
+        />
+        <CatalogRow
+          icon={<TeamIcon />}
+          label="Teams"
+          count={teams.length}
+          onClick={teams.length > 0 ? onBrowseTeams : onNewTeam}
+          title={
+            teams.length === 0
+              ? "Create a team to share assets with the right people"
+              : "Browse and pin teams"
+          }
+        />
+        {repoAssets !== null && (
+          <CatalogRow
+            icon={<RepoIcon />}
+            label="Repositories"
+            count={Object.keys(repoAssets).length}
+            onClick={onBrowseRepos}
+            title={
+              Object.keys(repoAssets).length === 0
+                ? "Assets scoped to repositories will show up here"
+                : "Browse and pin repositories"
+            }
+          />
         )}
 
         {/* Extension-contributed tools live under ONE collapsed TOOLS
@@ -455,14 +459,82 @@ export default function Sidebar({
   );
 }
 
-function BrowseRow({ label, onClick }: { label: string; onClick: () => void }) {
+/** One catalog's browse entry: icon, name, count — the whole catalog
+ * (and its create button) lives behind it in the browse view, keeping
+ * the sidebar to pins while the count preserves the at-a-glance scope
+ * cue. An empty catalog's click goes straight to create. */
+function CatalogRow({
+  icon,
+  label,
+  count,
+  onClick,
+  title,
+}: {
+  icon: ReactNode;
+  label: string;
+  count: number;
+  onClick: () => void;
+  title: string;
+}) {
   return (
     <button
       onClick={onClick}
-      className="w-full rounded-lg px-2 py-1.5 text-left text-xs text-ink-faint transition hover:bg-canvas hover:text-ink"
+      title={title}
+      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] text-ink-soft transition hover:bg-canvas hover:text-ink"
     >
-      {label}
+      {icon}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="text-xs tabular-nums text-ink-faint">{count}</span>
     </button>
+  );
+}
+
+// Type icons for the mixed PINNED list (and the matching BROWSE rows):
+// monochrome, inherit the row's text color, familiar shapes only —
+// folder = collection, people = team, branch = repository.
+function typeIcon(children: ReactNode): ReactNode {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-3.5 shrink-0 opacity-70"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function CollectionIcon() {
+  return typeIcon(
+    <path d="M1.75 4.25c0-.55.45-1 1-1h3.1l1.4 1.5h5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z" />,
+  );
+}
+
+function TeamIcon() {
+  return typeIcon(
+    <>
+      <circle cx="5.5" cy="4.5" r="2" />
+      <path d="M1.75 13c.35-2.2 1.9-3.5 3.75-3.5s3.4 1.3 3.75 3.5" />
+      <path d="M10.5 2.9a2 2 0 0 1 0 3.9" />
+      <path d="M11.5 9.7c1.6.4 2.6 1.6 2.85 3.3" />
+    </>,
+  );
+}
+
+function RepoIcon() {
+  return typeIcon(
+    <>
+      <circle cx="4.5" cy="3.5" r="1.75" />
+      <circle cx="4.5" cy="12.5" r="1.75" />
+      <circle cx="11.5" cy="3.5" r="1.75" />
+      <path d="M4.5 5.25v5.5" />
+      <path d="M11.5 5.25c0 2.75-2.75 3.5-4.75 3.75" />
+    </>,
   );
 }
 
@@ -480,12 +552,19 @@ function Row({
   active,
   onClick,
   accent,
+  icon,
+  countYieldsOnHover,
 }: {
   label: string;
   count?: number;
   active: boolean;
   onClick: () => void;
   accent?: "amber";
+  icon?: ReactNode;
+  /** PINNED rows: fade the count on row hover so the sibling
+   * UnpinButton overlay (same spot) reads cleanly. Opacity, not
+   * display — the reserved width means no layout shift. */
+  countYieldsOnHover?: boolean;
 }) {
   return (
     <button
@@ -496,10 +575,13 @@ function Row({
           : "text-ink-soft hover:bg-canvas hover:text-ink"
       }`}
     >
+      {icon}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {count !== undefined && (
         <span
-          className={`text-xs tabular-nums ${
+          className={`text-xs tabular-nums transition-opacity ${
+            countYieldsOnHover ? "group-hover:opacity-0 " : ""
+          }${
             accent === "amber" && !active
               ? "rounded-full bg-amber-50 px-1.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
               : "text-ink-faint"
@@ -509,5 +591,52 @@ function Row({
         </span>
       )}
     </button>
+  );
+}
+
+/** The hover/focus unpin affordance on PINNED rows. A real sibling
+ * button overlaying the count — never nested inside the row button
+ * (invalid interactive nesting), revealed by opacity so it stays in
+ * the tab order. Under keyboard focus it gets an opaque backing chip
+ * instead of fading the count: CSS can't scope the count's fade to
+ * THIS button's focus (it lives in the preceding sibling), and fading
+ * on any focus-within blanks the count when the row itself is tabbed. */
+function UnpinButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      aria-label={`Unpin ${label} from the sidebar`}
+      title="Unpin from sidebar"
+      onClick={onClick}
+      className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-ink-faint opacity-0 transition hover:text-accent focus-visible:pointer-events-auto focus-visible:bg-surface focus-visible:opacity-100 focus-visible:shadow-sm group-hover:pointer-events-auto group-hover:opacity-100"
+    >
+      <PinIcon slashed />
+    </button>
+  );
+}
+
+/** Pin glyph (map-tack). `filled` marks pinned state on the scope
+ * toolbar toggle; `slashed` is the sidebar's hover-unpin affordance. */
+export function PinIcon({
+  filled,
+  slashed,
+}: {
+  filled?: boolean;
+  slashed?: boolean;
+}) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-3.5 shrink-0"
+      viewBox="0 0 16 16"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5.5 2.5h5l-.75 4 2.25 2.5v1h-8v-1L6.25 6.5z" />
+      <path d="M8 10v3.5" />
+      {slashed && <path d="M2.5 2.5l11 11" />}
+    </svg>
   );
 }

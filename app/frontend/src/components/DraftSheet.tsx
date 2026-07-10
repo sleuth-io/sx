@@ -12,6 +12,31 @@ import MarkdownEditor from "./MarkdownEditor";
 import { setPluginEditor } from "../plugins/sxapi";
 import type { EditorView } from "@uiw/react-codemirror";
 
+/**
+ * The sheet's frame, pulsing — shown while a draft is created or fetched
+ * from the vault (seconds, when it's remote) so the user's click has an
+ * immediate response and the real sheet lands without a size jump.
+ */
+export function DraftSheetSkeleton() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative flex h-[85vh] w-[980px] max-w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+        <header className="border-b border-line px-6 py-4">
+          <div className="h-6 w-56 animate-pulse rounded bg-canvas" />
+        </header>
+        <div className="grid gap-3 border-b border-line px-6 py-4 sm:grid-cols-2">
+          <div className="h-[58px] animate-pulse rounded-lg bg-canvas" />
+          <div className="h-[58px] animate-pulse rounded-lg bg-canvas" />
+        </div>
+        <div className="min-h-0 flex-1 p-4">
+          <div className="h-full animate-pulse rounded-lg bg-canvas" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const TYPE_OPTIONS = [
   { key: "skill", label: "Skill" },
   { key: "rule", label: "Rule" },

@@ -6,9 +6,11 @@
 
 import {
   AppVersion,
+  CachedVaultPlugins,
   ListVaultPlugins,
   PluginDecisions,
 } from "../../wailsjs/go/main/App";
+import type { main } from "../../wailsjs/go/models";
 import {
   registerBuiltIn,
   registerVaultPlugin,
@@ -20,7 +22,12 @@ import {
   setAppVersion,
   unregisterVaultPlugin,
 } from "./host";
-import { hasConsent, loadPolicyAndConsents, policyBlocks } from "./policy";
+import {
+  hasConsent,
+  loadCachedPolicyAndConsents,
+  loadPolicyAndConsents,
+  policyBlocks,
+} from "./policy";
 import PublishDoctor, {
   publishDoctorManifest,
 } from "./builtins/publish-doctor";
@@ -101,27 +108,70 @@ export function syncVaultExtensions(): Promise<void> {
 
 async function doSyncVaultExtensions(): Promise<void> {
   // Drop the previous library's vault extensions entirely; built-ins
-  // stay registered and just re-evaluate against the new policy.
+  // stay registered and just re-evaluate against the new policy. (On
+  // plain boot this is a no-op; on a library switch the new profile's
+  // cache repopulates immediately below.)
   for (const p of listPlugins()) {
     if (!p.builtIn) unregisterVaultPlugin(p.manifest.id);
   }
-  await loadPolicyAndConsents();
 
-  // Vault-installed extensions: published like any asset, scoped to this
-  // user, surfaced ONLY in the Extensions screen. Default off; enabling
-  // is consent-gated below like everything else.
+  // FAST PATH: the cached policy plus cached copies of the vault's
+  // extensions register and enable before any vault I/O — built-ins
+  // included, which are otherwise gated on the policy round trip. On a
+  // remote vault the fresh listing below is the chattiest call in boot;
+  // waiting for it lands extension UI last and reflows everything.
+  // Bundles are immutable per revision, so cached copies are exact for
+  // unchanged extensions; staleness lasts one revalidation (an extension
+  // revoked since last boot runs for the seconds until the fresh listing
+  // prunes it — the same window policy-cache.json already accepts).
   try {
-    for (const vp of (await ListVaultPlugins()) ?? []) {
-      try {
-        registerVaultPlugin(parseVaultManifest(vp.manifest), vp.source, vp.scope);
-      } catch (e) {
-        console.error(`extension asset ${vp.assetName} rejected:`, e);
-      }
-    }
+    await loadCachedPolicyAndConsents();
+    registerListing((await CachedVaultPlugins()) ?? []);
+    await applyEnablement();
   } catch {
-    // Vault unreachable — built-ins still work.
+    // An empty cache flows through the success path above; this guards
+    // the bridge itself being unavailable (dev browser without the
+    // backend) — the fresh pass below is then the first paint.
   }
 
+  // REVALIDATE: fresh policy, fresh listing (which rewrites the cache
+  // app-side). Same-revision extensions re-register as no-ops, so an
+  // unchanged vault causes zero UI churn; the enablement pass then
+  // applies the fresh policy (disabling anything newly blocked).
+  await loadPolicyAndConsents();
+  try {
+    registerListing((await ListVaultPlugins()) ?? []);
+  } catch {
+    // Vault unreachable — cached registrations (or built-ins) stand.
+  }
+  await applyEnablement();
+}
+
+/** Register one listing's extensions and prune vault extensions absent
+ * from it. Callers must pass a SUCCESSFUL listing: ListVaultPlugins
+ * throws on failure rather than returning empty, so a transient backend
+ * error never reads as "no extensions" and tears down what's running. */
+function registerListing(listed: main.VaultPlugin[]): void {
+  const seen = new Set<string>();
+  for (const vp of listed) {
+    try {
+      const manifest = parseVaultManifest(vp.manifest);
+      registerVaultPlugin(manifest, vp.source, vp.scope, vp.version);
+      seen.add(manifest.id);
+    } catch (e) {
+      console.error(`extension asset ${vp.assetName} rejected:`, e);
+    }
+  }
+  for (const p of listPlugins()) {
+    if (!p.builtIn && !seen.has(p.manifest.id)) {
+      unregisterVaultPlugin(p.manifest.id);
+    }
+  }
+}
+
+/** Enable/disable every registered extension per the current decisions,
+ * policy, and consents. */
+async function applyEnablement(): Promise<void> {
   let decisions: Record<string, boolean> = {};
   try {
     decisions = (await PluginDecisions()) ?? {};
@@ -158,28 +208,11 @@ async function doSyncVaultExtensions(): Promise<void> {
 /** Re-scan the vault for extensions (after install, remove, or a sharing
  * change). Upserts what the vault lists and drops vault extensions that
  * no longer reach this user — a remove or scope change must not leave a
- * stale row behind. The prune runs ONLY on a successful listing:
- * ListVaultPlugins throws on a listing failure rather than returning
- * empty, so a transient backend error lands in the catch below instead
- * of reading as "no extensions" and tearing down everything running. */
+ * stale row behind. The prune runs ONLY on a successful listing (see
+ * registerListing). */
 export async function refreshVaultPlugins(): Promise<void> {
   try {
-    const listed = (await ListVaultPlugins()) ?? [];
-    const seen = new Set<string>();
-    for (const vp of listed) {
-      try {
-        const manifest = parseVaultManifest(vp.manifest);
-        registerVaultPlugin(manifest, vp.source, vp.scope);
-        seen.add(manifest.id);
-      } catch (e) {
-        console.error(`extension asset ${vp.assetName} rejected:`, e);
-      }
-    }
-    for (const p of listPlugins()) {
-      if (!p.builtIn && !seen.has(p.manifest.id)) {
-        unregisterVaultPlugin(p.manifest.id);
-      }
-    }
+    registerListing((await ListVaultPlugins()) ?? []);
   } catch {
     // Listing failed — leave the registry as-is; the next boot or
     // refresh reconciles.

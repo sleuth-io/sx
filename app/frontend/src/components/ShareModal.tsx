@@ -223,7 +223,13 @@ export default function ShareModal({
   return (
     <Modal title={title} onClose={onClose} width="w-[480px]">
       {!view ? (
-        <div className="h-20 animate-pulse rounded-lg bg-canvas" />
+        // Shaped like the loaded layout (installations list, kind tabs,
+        // picker) so the modal doesn't grow abruptly when data lands.
+        <div className="space-y-3">
+          <div className="h-20 animate-pulse rounded-lg bg-canvas" />
+          <div className="h-7 animate-pulse rounded-lg bg-canvas" />
+          <div className="h-32 animate-pulse rounded-lg bg-canvas" />
+        </div>
       ) : (
         <>
           <div className="mb-1.5 text-xs font-semibold tracking-wide text-ink-faint">

@@ -3,6 +3,7 @@
 // re-prompted whenever an extension's declared permissions change.
 
 import {
+  CachedPluginPolicy,
   GetPluginPolicy,
   PluginConsents,
   SetPluginConsent,
@@ -27,6 +28,27 @@ export async function loadPolicyAndConsents(): Promise<void> {
   } catch {
     policy = { mode: "open", allowed: [] };
   }
+  await loadConsents();
+}
+
+/** The boot fast path's policy: the last successfully read policy from
+ * the local cache, no vault I/O — paired with cached extensions so
+ * enablement gates run before any network round trip. The fresh policy
+ * (loadPolicyAndConsents) re-evaluates seconds later. */
+export async function loadCachedPolicyAndConsents(): Promise<void> {
+  try {
+    const p = await CachedPluginPolicy();
+    policy = {
+      mode: (p.mode as PluginPolicy["mode"]) || "open",
+      allowed: p.allowed ?? [],
+    };
+  } catch {
+    policy = { mode: "open", allowed: [] };
+  }
+  await loadConsents();
+}
+
+async function loadConsents(): Promise<void> {
   try {
     consents = (await PluginConsents()) ?? {};
   } catch {

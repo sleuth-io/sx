@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import {
@@ -52,6 +52,7 @@ export default function AssetDetail({
   onCollectionsChanged: () => void;
 }) {
   const [detail, setDetail] = useState<main.AssetDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState("");
   const [activeFile, setActiveFile] = useState(0);
@@ -64,6 +65,7 @@ export default function AssetDetail({
     (t) => t.pluginId + ":" + t.spec.id === activeTab,
   );
   const [sharing, setSharing] = useState<main.InstallationsView | null>(null);
+  const [sharingLoading, setSharingLoading] = useState(true);
   const [shareOpen, setShareOpen] = useState(false);
   // Right-anchored panel: dragging its left edge outward grows it.
   const [panelWidth, startPanelResize] = usePanelSize(
@@ -74,9 +76,17 @@ export default function AssetDetail({
     true,
   );
 
+  // Switching assets blanks to the skeleton; switching revisions of the
+  // SAME asset keeps the current content on screen (dimmed) while the new
+  // one loads — on a slow remote vault a blank flash reads as data loss.
+  const loadedName = useRef<string | null>(null);
   useEffect(() => {
     let stale = false;
-    setDetail(null);
+    if (loadedName.current !== name) {
+      loadedName.current = name;
+      setDetail(null);
+    }
+    setDetailLoading(true);
     setError("");
     GetAsset(name, revision)
       .then((d) => {
@@ -86,6 +96,9 @@ export default function AssetDetail({
       })
       .catch((e) => {
         if (!stale) setError(String(e));
+      })
+      .finally(() => {
+        if (!stale) setDetailLoading(false);
       });
     return () => {
       stale = true;
@@ -148,12 +161,17 @@ export default function AssetDetail({
 
   useEffect(() => {
     let stale = false;
+    setSharing(null);
+    setSharingLoading(true);
     GetAssetInstallations(name)
       .then((s) => {
         if (!stale) setSharing(s);
       })
       .catch(() => {
         if (!stale) setSharing(null);
+      })
+      .finally(() => {
+        if (!stale) setSharingLoading(false);
       });
     return () => {
       stale = true;
@@ -356,6 +374,13 @@ export default function AssetDetail({
           </div>
         )}
 
+        {/* The row is reserved while installations load so the content
+            below doesn't jump down when a slow vault answers. */}
+        {sharingLoading && (
+          <div className="flex items-center border-b border-line px-6 py-2">
+            <div className="h-[22px] w-64 max-w-full animate-pulse rounded bg-canvas" />
+          </div>
+        )}
         {sharing && (
           <div className="flex items-center gap-2 border-b border-line px-6 py-2 text-xs text-ink-soft">
             <span>
@@ -441,7 +466,11 @@ export default function AssetDetail({
                   onSelect={setActiveFile}
                 />
               )}
-              <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
+              <div
+                className={`min-w-0 flex-1 overflow-y-auto px-6 py-5 transition-opacity ${
+                  detailLoading && detail ? "opacity-50" : ""
+                }`}
+              >
                 {error && (
                   <div className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
                     {error}
