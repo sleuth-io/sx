@@ -243,11 +243,11 @@ export default function Sidebar({
           );
         })}
 
-        {/* PINNED: quick access the user curated (plus the first-few
-            defaults until they pin), one flat mixed list — icons carry
-            the type. Drop targets and drag handles are unchanged, so
-            dragging an asset onto a pinned collection/team/repo still
-            works. Vanishes when empty; BROWSE below is always there. */}
+        {/* PINNED: quick access the user curated, one flat mixed list —
+            icons carry the type. Drop targets and drag handles are
+            unchanged, so dragging an asset onto a pinned collection/
+            team/repo still works. Vanishes when empty; BROWSE below is
+            always there. */}
         {hasPins && (
           <>
             <div className="mt-4">
@@ -580,9 +580,7 @@ function Row({
       {count !== undefined && (
         <span
           className={`text-xs tabular-nums transition-opacity ${
-            countYieldsOnHover
-              ? "group-hover:opacity-0 group-focus-within:opacity-0 "
-              : ""
+            countYieldsOnHover ? "group-hover:opacity-0 " : ""
           }${
             accent === "amber" && !active
               ? "rounded-full bg-amber-50 px-1.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
@@ -599,14 +597,17 @@ function Row({
 /** The hover/focus unpin affordance on PINNED rows. A real sibling
  * button overlaying the count — never nested inside the row button
  * (invalid interactive nesting), revealed by opacity so it stays in
- * the tab order and focus-visible can show it to keyboard users. */
+ * the tab order. Under keyboard focus it gets an opaque backing chip
+ * instead of fading the count: CSS can't scope the count's fade to
+ * THIS button's focus (it lives in the preceding sibling), and fading
+ * on any focus-within blanks the count when the row itself is tabbed. */
 function UnpinButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       aria-label={`Unpin ${label} from the sidebar`}
       title="Unpin from sidebar"
       onClick={onClick}
-      className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-ink-faint opacity-0 transition hover:text-accent focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+      className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-ink-faint opacity-0 transition hover:text-accent focus-visible:pointer-events-auto focus-visible:bg-surface focus-visible:opacity-100 focus-visible:shadow-sm group-hover:pointer-events-auto group-hover:opacity-100"
     >
       <PinIcon slashed />
     </button>
