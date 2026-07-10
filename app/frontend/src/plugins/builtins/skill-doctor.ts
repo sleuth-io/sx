@@ -12,9 +12,10 @@ import type { SxAPI, SxPlugin, ViewMount, PluginManifest } from "../api";
 import {
   adjudicateMessages,
   cluster,
+  membersBySimilarity,
   mergeMessages,
   mergeSweepGroups,
-  normalizeSkillText,
+  normalizeSkillFiles,
   sha256,
   similarityMatrix,
   sweepMessages,
@@ -366,11 +367,11 @@ export default class SkillDoctor implements SxPlugin {
           const a = assets[next++];
           try {
             const files = await this.sx.assets.readFiles(a.name);
-            const raw = files
-              .filter((f) => f.path.toLowerCase().endsWith(".md"))
-              .map((f) => f.content)
-              .join("\n\n");
-            const text = normalizeSkillText(raw);
+            const mdFiles = files.filter((f) =>
+              f.path.toLowerCase().endsWith(".md"),
+            );
+            const raw = mdFiles.map((f) => f.content).join("\n\n");
+            const text = normalizeSkillFiles(mdFiles.map((f) => f.content));
             if (text) {
               docs.push({
                 name: a.name,
@@ -476,7 +477,7 @@ export default class SkillDoctor implements SxPlugin {
    * Nothing is retired here — the user reviews and publishes the draft,
    * then Keep one moves reach onto it. Publish stays a human action. */
   private async mergeCluster(c: Cluster): Promise<void> {
-    const members = c.members
+    const members = membersBySimilarity(c)
       .map((name) => this.docs.find((d) => d.name === name))
       .filter((d): d is SkillDoc => Boolean(d))
       .slice(0, MAX_LLM_MEMBERS);
@@ -528,7 +529,7 @@ export default class SkillDoctor implements SxPlugin {
   private async adjudicate(c: Cluster): Promise<void> {
     this.busy.set(c.signature, "Asking your AI provider…");
     this.rerender?.();
-    const members = c.members
+    const members = membersBySimilarity(c)
       .map((name) => this.docs.find((d) => d.name === name))
       .filter((d): d is SkillDoc => Boolean(d));
     const sent = members.slice(0, MAX_LLM_MEMBERS);

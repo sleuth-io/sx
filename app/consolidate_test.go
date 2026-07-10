@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -92,5 +93,39 @@ func TestConsolidateAssetsValidation(t *testing.T) {
 	}
 	if _, err := a.ConsolidateAssets("skill-doctor", "keeper", nil); err == nil {
 		t.Fatal("empty from list should be rejected")
+	}
+}
+
+// A typo'd survivor or source must fail BEFORE anything is retired —
+// a missing asset reads as present=false, never as "reaches everyone".
+func TestConsolidateAssetsMissingAssetsFailClosed(t *testing.T) {
+	a, _, _ := scopedExtensionApp(t, "alice@example.com")
+	marketplaceWith(t, a, "real-skill")
+	if _, err := a.InstallMarketplaceExtension("real-skill", ExtensionScopeOrg); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := a.ConsolidateAssets("skill-doctor", "no-such-survivor", []string{"real-skill"}); err == nil ||
+		!strings.Contains(err.Error(), "not found") {
+		t.Fatalf("missing survivor must fail closed, got %v", err)
+	}
+	// The source must be untouched by the failed call.
+	assets, err := a.ListAssets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, as := range assets {
+		if as.Name == "real-skill" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("failed consolidation must not retire the source")
+	}
+
+	if _, err := a.ConsolidateAssets("skill-doctor", "real-skill", []string{"no-such-dupe"}); err == nil ||
+		!strings.Contains(err.Error(), "not found") {
+		t.Fatalf("missing source must fail closed, got %v", err)
 	}
 }

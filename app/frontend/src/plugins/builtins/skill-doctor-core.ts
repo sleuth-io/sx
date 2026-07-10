@@ -40,6 +40,13 @@ export function normalizeSkillText(md: string): string {
   return body.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+/** Normalize a multi-file skill: frontmatter is stripped PER FILE (a
+ * skill shipping several markdown files has one per file, and only the
+ * joined string's first block would match otherwise). */
+export function normalizeSkillFiles(contents: string[]): string {
+  return contents.map(normalizeSkillText).filter(Boolean).join(" ");
+}
+
 export function tokenize(text: string): string[] {
   return text.match(/[a-z0-9][a-z0-9_-]{2,}/g) || [];
 }
@@ -95,14 +102,14 @@ function makeCluster(
   sim: number[][],
 ): Cluster {
   let score = 0;
-  let exact = false;
+  let exact = true; // "exact" = EVERY member byte-identical (normalized)
   const pairs: Cluster["pairs"] = [];
   for (let x = 0; x < idxs.length; x++) {
     for (let y = x + 1; y < idxs.length; y++) {
       const [i, j] = [idxs[x], idxs[y]];
       const same = docs[i].hash === docs[j].hash;
       const s = same ? 1 : sim[i][j];
-      if (same) exact = true;
+      if (!same) exact = false;
       score = Math.max(score, s);
       pairs.push({ a: docs[i].name, b: docs[j].name, score: s });
     }
@@ -211,7 +218,10 @@ export const SWEEP_SCHEMA = {
 export function sweepMessages(docs: SkillDoc[]): LLMMessage[] {
   const lines = docs.map((d) => {
     const excerpt = d.text.slice(0, 280).replace(/\s+/g, " ");
-    return `- ${sanitizeName(d.name)}: ${(d.description || "").slice(0, 160)} | ${excerpt}`;
+    // One line per skill is the framing — a newline in a description
+    // must not fake extra catalog entries.
+    const desc = (d.description || "").replace(/\s+/g, " ").slice(0, 160);
+    return `- ${sanitizeName(d.name)}: ${desc} | ${excerpt}`;
   });
   return [
     {
@@ -242,6 +252,20 @@ export const VERDICT_SCHEMA = {
 
 export const MAX_LLM_CHARS = 6000;
 export const MAX_LLM_MEMBERS = 6;
+
+/** Order a cluster's members by how strongly they belong (summed pair
+ * similarity), so a truncated LLM call sends the most central members —
+ * not whichever names sort first alphabetically. */
+export function membersBySimilarity(c: Cluster): string[] {
+  const weight = new Map<string, number>();
+  for (const p of c.pairs) {
+    weight.set(p.a, (weight.get(p.a) ?? 0) + p.score);
+    weight.set(p.b, (weight.get(p.b) ?? 0) + p.score);
+  }
+  return [...c.members].sort(
+    (a, b) => (weight.get(b) ?? 0) - (weight.get(a) ?? 0),
+  );
+}
 
 export function adjudicateMessages(members: SkillDoc[], omitted: number): LLMMessage[] {
   const blocks = members

@@ -77,24 +77,42 @@ func (a *App) ConsolidateAssets(id, into string, from []string) (ConsolidateResu
 	// Read the survivor's reach first: if it is already org-wide there
 	// is nothing to move, and if any source is org-wide the survivor
 	// must become org-wide (an org row is exclusive on every backend).
+	// `present` distinguishes "in the manifest with no rows" (org-wide)
+	// from "no such asset" — a typo'd name must fail HERE, before
+	// anything is retired, never read as "reaches everyone".
 	intoTargets, intoPresent, err := r.CurrentInstallTargets(a.ctx, into)
 	if err != nil {
 		return result, friendlyVaultError(err)
 	}
-	intoEveryone := !intoPresent || len(intoTargets) == 0
+	if !intoPresent {
+		return result, fmt.Errorf("survivor %q not found in this library", into)
+	}
+	intoEveryone := len(intoTargets) == 0
 
 	var toAdd []vaultpkg.InstallTarget
+	seenTarget := map[string]bool{}
 	needsOrg := false
 	for _, name := range sources {
 		targets, present, terr := r.CurrentInstallTargets(a.ctx, name)
 		if terr != nil {
 			return result, friendlyVaultError(terr)
 		}
-		if !present || len(targets) == 0 {
+		if !present {
+			return result, fmt.Errorf("asset %q not found in this library", name)
+		}
+		if len(targets) == 0 {
 			needsOrg = true
 			continue
 		}
-		toAdd = append(toAdd, targets...)
+		// Two sources sharing the same reach must count (and write) once.
+		for _, t := range targets {
+			key := fmt.Sprintf("%s|%s|%v|%s|%s|%s", t.Kind, t.Repo, t.Paths, t.Team, t.User, t.Bot)
+			if seenTarget[key] {
+				continue
+			}
+			seenTarget[key] = true
+			toAdd = append(toAdd, t)
+		}
 	}
 
 	switch {
@@ -140,8 +158,12 @@ func (a *App) ConsolidateAssets(id, into string, from []string) (ConsolidateResu
 	actor := strings.TrimSpace(a.GetVaultInfo().Identity)
 	for _, name := range sources {
 		if rerr := retire(name); rerr != nil {
-			return result, fmt.Errorf("installations moved, but retiring %q failed: %w",
-				name, friendlyVaultError(rerr))
+			done := "none yet"
+			if len(result.Retired) > 0 {
+				done = strings.Join(result.Retired, ", ")
+			}
+			return result, fmt.Errorf("installations moved and retired so far: %s — retiring %q failed: %w",
+				done, name, friendlyVaultError(rerr))
 		}
 		result.Retired = append(result.Retired, name)
 		go a.appendPluginAudit(mgmt.AuditEvent{
