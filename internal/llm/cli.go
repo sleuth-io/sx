@@ -95,11 +95,14 @@ func (p *cliProvider) run(ctx context.Context, stdin string, args ...string) (st
 	// Run in a fresh empty scratch dir: these CLIs are
 	// workspace-oriented, and neither the app bundle's cwd nor the
 	// user's home may be treated as the project an extension-authored
-	// prompt gets to look at.
-	if scratch, err := os.MkdirTemp("", "sx-llm-*"); err == nil {
-		cmd.Dir = scratch
-		defer func() { _ = os.RemoveAll(scratch) }()
+	// prompt gets to look at. Fail closed — the empty dir is part of
+	// the trust boundary, so no scratch dir means no CLI run.
+	scratch, err := os.MkdirTemp("", "sx-llm-*")
+	if err != nil {
+		return "", fmt.Errorf("create scratch dir: %w", err)
 	}
+	cmd.Dir = scratch
+	defer func() { _ = os.RemoveAll(scratch) }()
 	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -119,7 +122,10 @@ func (p *cliProvider) run(ctx context.Context, stdin string, args ...string) (st
 
 func (p *cliProvider) runClaude(ctx context.Context, prompt, model string) (Response, error) {
 	// --tools "" removes every built-in tool: the agent CLI degrades to
-	// a pure completion endpoint, which is all llm:use grants.
+	// a pure completion endpoint, which is all llm:use grants. Verified
+	// against a real CLI: `claude --help` documents `--tools` ("Use ""
+	// to disable all tools") and `echo … | claude -p --output-format
+	// json --tools ""` returns a success envelope.
 	args := []string{"-p", "--output-format", "json", "--tools", ""}
 	if model != "" {
 		args = append(args, "--model", model)

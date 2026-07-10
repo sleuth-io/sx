@@ -28,8 +28,10 @@ func captureServer(t *testing.T, reply string, captured *map[string]any) *httpte
 			*captured = map[string]any{}
 			_ = json.Unmarshal(body, captured)
 			(*captured)["_path"] = r.URL.Path
+			(*captured)["_query"] = r.URL.RawQuery
 			(*captured)["_auth"] = r.Header.Get("Authorization")
 			(*captured)["_apikey"] = r.Header.Get("x-api-key")
+			(*captured)["_googkey"] = r.Header.Get("x-goog-api-key")
 		}
 		_, _ = w.Write([]byte(reply))
 	}))
@@ -237,6 +239,13 @@ func TestGoogleProvider(t *testing.T) {
 	if !strings.Contains(path, "models/gemini-test:generateContent") {
 		t.Fatalf("path = %q", path)
 	}
+	// The key must travel as a header, never in the URL (proxy logs).
+	if got["_googkey"] != "g-key" {
+		t.Fatalf("x-goog-api-key = %v", got["_googkey"])
+	}
+	if q, _ := got["_query"].(string); strings.Contains(q, "key=") {
+		t.Fatalf("API key leaked into the query string: %q", q)
+	}
 	if _, hasSys := got["systemInstruction"]; !hasSys {
 		t.Fatal("system instruction missing")
 	}
@@ -246,8 +255,17 @@ func TestCLIProviderClaude(t *testing.T) {
 	dir := t.TempDir()
 	// Echo the stdin prompt back inside a claude-style JSON envelope so
 	// the test proves both stdin plumbing and envelope parsing.
+	// The fake asserts the no-tools flag is on the command line — the
+	// sandbox hardening must fail LOUDLY if the flag is ever dropped or
+	// renamed, not silently re-enable the agent's tools.
 	bin := fakeBin(t, dir, "claude",
-		`prompt=$(cat | tr '\n' ' ')
+		`ok=0; prev=""
+for a in "$@"; do
+  if [ "$prev" = "--tools" ] && [ -z "$a" ]; then ok=1; fi
+  prev="$a"
+done
+[ "$ok" = 1 ] || { echo 'missing --tools ""' >&2; exit 9; }
+prompt=$(cat | tr '\n' ' ')
 printf '{"result":"got: %s","is_error":false,"usage":{"input_tokens":9,"output_tokens":4}}' "$prompt"`)
 	p := &cliProvider{id: ProviderClaudeCLI, binPath: bin}
 	resp, err := p.Complete(context.Background(), basicReq)
@@ -278,13 +296,16 @@ func TestCLIProviderClaudeError(t *testing.T) {
 func TestCLIProviderCodexLastMessage(t *testing.T) {
 	dir := t.TempDir()
 	// Find the --output-last-message path among the args and write the
-	// final answer there, like codex exec does.
+	// final answer there, like codex exec does — and assert the
+	// read-only sandbox flag is present (hardening must fail loudly).
 	bin := fakeBin(t, dir, "codex",
-		`out=""
+		`out=""; sandbox=""
 while [ $# -gt 0 ]; do
   if [ "$1" = "--output-last-message" ]; then out="$2"; shift; fi
+  if [ "$1" = "--sandbox" ]; then sandbox="$2"; shift; fi
   shift
 done
+[ "$sandbox" = "read-only" ] || { echo 'missing --sandbox read-only' >&2; exit 9; }
 cat > /dev/null
 echo "session log noise"
 printf 'final answer' > "$out"`)
@@ -300,7 +321,15 @@ printf 'final answer' > "$out"`)
 
 func TestCLIProviderGeminiJSONAndFallback(t *testing.T) {
 	dir := t.TempDir()
-	bin := fakeBin(t, dir, "gemini", `cat > /dev/null; printf '{"response":"salut"}'`)
+	// Assert approval-mode is pinned (never yolo) before replying.
+	bin := fakeBin(t, dir, "gemini",
+		`mode=""; prev=""
+for a in "$@"; do
+  if [ "$prev" = "--approval-mode" ]; then mode="$a"; fi
+  prev="$a"
+done
+[ "$mode" = "default" ] || { echo 'missing --approval-mode default' >&2; exit 9; }
+cat > /dev/null; printf '{"response":"salut"}'`)
 	p := &cliProvider{id: ProviderGeminiCLI, binPath: bin}
 	resp, err := p.Complete(context.Background(), basicReq)
 	if err != nil {

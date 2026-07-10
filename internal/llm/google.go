@@ -70,8 +70,11 @@ func (p *googleProvider) Complete(ctx context.Context, req Request) (Response, e
 	if base == "" {
 		base = googleAPIURL
 	}
-	endpoint := fmt.Sprintf("%s/v1beta/models/%s:generateContent?key=%s",
-		base, url.PathEscape(model), url.QueryEscape(p.apiKey))
+	// The key travels in a header, never the URL — query strings land
+	// in proxy and gateway logs (baseURL may point at one).
+	endpoint := fmt.Sprintf("%s/v1beta/models/%s:generateContent",
+		base, url.PathEscape(model))
+	headers := map[string]string{"x-goog-api-key": p.apiKey}
 	var out struct {
 		Candidates []struct {
 			Content struct {
@@ -85,7 +88,7 @@ func (p *googleProvider) Complete(ctx context.Context, req Request) (Response, e
 			CandidatesTokenCount int `json:"candidatesTokenCount"`
 		} `json:"usageMetadata"`
 	}
-	if err := postJSON(ctx, endpoint, nil, body, &out); err != nil {
+	if err := postJSON(ctx, endpoint, headers, body, &out); err != nil {
 		return Response{}, err
 	}
 	var parts []string
