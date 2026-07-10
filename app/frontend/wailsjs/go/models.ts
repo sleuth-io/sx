@@ -184,6 +184,22 @@ export namespace main {
 	        this.assets = source["assets"];
 	    }
 	}
+	export class ConsolidateResult {
+	    movedInstallations: number;
+	    retired: string[];
+	    skipped: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ConsolidateResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.movedInstallations = source["movedInstallations"];
+	        this.retired = source["retired"];
+	        this.skipped = source["skipped"];
+	    }
+	}
 	export class ContentMatch {
 	    name: string;
 	    matches: number;

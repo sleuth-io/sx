@@ -256,6 +256,19 @@ adoption.
   Settings on `"libraries"`, `"extensions"`, or `"ai"` — the deep link
   an llm:use extension shows when no provider is configured, instead of
   describing a menu path in prose.
+- `sx.assets.installations(name)` (under `assets:read`): every install
+  row on an asset, `everyone: true` when no rows exist.
+- `assets:consolidate` permission + `sx.assets.consolidate({into,
+  from[]})`: collapse a duplicate cluster onto one survivor. Every
+  `from` asset's install rows move onto `into` first — reach never
+  shrinks; an org-wide source makes the survivor org-wide — then the
+  `from` assets are RETIRED: removed from the manifest and the
+  browsable root view but keeping their version archive (new
+  `RetireAsset` on file vaults; skills.new's non-delete removal has the
+  same recoverable semantics). The one extension-reachable mutation
+  that removes assets, so it is its own dangerous grant, RBAC-refused
+  moves come back in `skipped`, and callers must confirm with the user
+  first. No raw delete is exposed.
 - **Why core, not `net:` + `secrets`:** the sandbox can't shell out or
   reach localhost, so only core can offer installed-CLI and Ollama
   providers; and one shared provider picker + key store beats every
@@ -465,7 +478,7 @@ Chosen by mapping Obsidian's download-mass categories (measured 2026-07-05 from 
 | **Importer** | Importer (1.4M) | Import from existing `.claude/` directories, an Obsidian vault folder, or a folder of loose prompts; batch-create drafts. | `commands`, `drafts:write` |
 | **Related Assets** *(shipped as a marketplace extension, not a built-in — TF-IDF cosine similarity; the embedding-based upgrade still ties to the v1.1 dedup groundwork)* | Smart Connections (1.1M) | Similar-asset tab on the detail view showing the shared terms that drove each match. | `views:asset-tab`, `assets:read` |
 | **Claude Assist** *(shipped 1.4.0 as a marketplace extension; 1.1.0 migrates onto `sx.llm` — provider/key/model move to Settings)* | Copilot (1.5M), Claudian (1.2M — fastest riser) | Ask-the-library chat with clickable `[[asset]]` citations, critique-the-open-draft-as-a-prompt, new-skill-from-description. Completions via `sx.llm` against the user's configured provider. | `views:main`, `commands`, `editor`, `drafts:write`, `assets:read`, `llm:use` |
-| **Skill Doctor** *(API 1.9.0 — phase 1 of docs/skill-dedupe-spec.md, detection only)* | — | Finds duplicate/overlapping skills: normalize → SHA-256 exact + TF-IDF cosine → cluster, with per-cluster AI adjudication through `sx.llm` (structured output) and team-shared dismissals. Read-only; consolidate/merge are later phases. | `views:main`, `commands`, `assets:read`, `llm:use`, `storage:shared` |
+| **Skill Doctor** *(API 1.9.0 — phases 1–2 of docs/skill-dedupe-spec.md)* | — | Finds duplicate/overlapping skills (SHA-256 exact + TF-IDF cosine + an LLM catalog sweep for semantic duplicates) and fixes them: **Keep one** consolidates installations onto a survivor and retires the rest (confirmed, recoverable), **Merge with AI** composes one definitive SKILL.md as a draft (publish stays human). Team-shared dismissals. | `views:main`, `commands`, `assets:read`, `assets:consolidate`, `drafts:write`, `llm:use`, `storage:shared` |
 
 Not translated: sync/git plugins (core product here), canvas/tasks/calendar (wrong domain), theming (deferred).
 

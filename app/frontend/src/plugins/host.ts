@@ -122,6 +122,7 @@ const KNOWN_PERMISSIONS = new Set([
   "views:repo",
   "export",
   "llm:use",
+  "assets:consolidate",
 ]);
 
 // net:<host> is a parameterized permission family; the host is a bare
