@@ -60,14 +60,18 @@ interface SharedDoc {
   dismissed?: Record<string, { by: string; at: string }>;
 }
 
-/** The persisted scan (sx.storage — per plugin, per profile). */
+/** The persisted scan (sx.storage — per plugin, per profile).
+ * hadProvider records whether the scan ran with an AI provider
+ * configured — NOT whether one is configured now. The no-provider
+ * prompt is always derived from a live check, never from the cache:
+ * a cached flag goes stale the moment the user changes Settings. */
 interface CacheDoc {
-  v: 2;
+  v: 3;
   at: number;
   docs: SkillDoc[];
   clusters: Cluster[];
   aiNote: string;
-  needsProvider: boolean;
+  hadProvider: boolean;
 }
 
 interface Verdict {
@@ -163,13 +167,27 @@ export default class SkillDoctor implements SxPlugin {
     };
     this.rerender();
 
+    // The prompt reflects Settings as they are NOW — checked live, in
+    // parallel with the cache read, never trusted from the cache.
+    const [cached, provider] = await Promise.all([
+      this.sx.storage.loadData<CacheDoc>().catch(() => null),
+      this.sx.llm.provider().catch(() => ""),
+    ]);
+    this.needsProvider = !provider;
+    this.watchProvider();
+
     // The persisted cache is the ONLY fast path: sx.storage is per
     // profile, so it can never serve another vault's clusters. Plain
     // instance state (this.docs) deliberately is NOT trusted here —
     // built-in instances survive library switches, and an in-memory
     // shortcut would replay library A's skills against library B.
-    const cached = await this.sx.storage.loadData<CacheDoc>().catch(() => null);
-    if (cached?.v === 2 && Date.now() - cached.at < CACHE_TTL_MS) {
+    // A local-only cache is stale the moment a provider exists: rescan
+    // so the semantic sweep the user just enabled actually runs.
+    if (
+      cached?.v === 3 &&
+      Date.now() - cached.at < CACHE_TTL_MS &&
+      !(provider && !cached.hadProvider)
+    ) {
       if (cached.at !== this.scannedAt) {
         // Different scan than the one this instance last showed (fresh
         // boot, or a library switch behind our back): transient per-scan
@@ -182,9 +200,7 @@ export default class SkillDoctor implements SxPlugin {
       this.docs = cached.docs;
       this.clusters = cached.clusters;
       this.aiNote = cached.aiNote;
-      this.needsProvider = cached.needsProvider;
       this.scannedAt = cached.at;
-      if (this.needsProvider) this.watchForProvider();
       await this.loadDismissals();
       this.rerender?.();
       return;
@@ -192,22 +208,25 @@ export default class SkillDoctor implements SxPlugin {
     await this.scan();
   }
 
-  /** While the no-provider prompt is up, poll for a provider so the
-   * view heals itself the moment one is configured. Settings opens as
-   * a modal OVER this still-mounted view, so no remount ever re-checks
-   * — without the poll the prompt would sit stale until a manual
-   * Rescan. Finding one triggers a fresh scan (the whole point of
-   * configuring was the semantic sweep). Runs only while the prompt
-   * is visible; stopped on dispose. */
-  private watchForProvider(): void {
+  /** Poll the provider setting the whole time the view is mounted —
+   * BOTH directions. Settings opens as a modal OVER this still-mounted
+   * view, so no remount ever re-checks: without the poll the prompt
+   * sits stale after the user configures a provider, and stays hidden
+   * after they remove one. Configuring triggers a fresh scan (the
+   * whole point was the semantic sweep); removing just surfaces the
+   * prompt over the existing results. */
+  private watchProvider(): void {
     if (this.providerWatch !== null) return;
     this.providerWatch = window.setInterval(() => {
+      if (this.scanning) return;
       void this.sx.llm
         .provider()
         .then((provider) => {
-          if (!provider) return;
-          this.stopProviderWatch();
-          void this.scan();
+          const missing = !provider;
+          if (missing === this.needsProvider) return;
+          this.needsProvider = missing;
+          if (missing) this.rerender?.();
+          else void this.scan();
         })
         .catch(() => {});
     }, 2000);
@@ -276,7 +295,7 @@ export default class SkillDoctor implements SxPlugin {
         "color: var(--color-ink);",
         "No AI provider configured yet — pick one (an installed CLI, a local " +
           "Ollama model, or your own API key) to sweep the catalog for " +
-          "semantic duplicates. Showing local matches only.",
+          "semantic duplicates. Scans without one show local matches only.",
       ),
       link,
     );
@@ -472,7 +491,6 @@ export default class SkillDoctor implements SxPlugin {
     this.resolved.clear();
     this.compareOpen.clear();
     this.aiNote = "";
-    this.needsProvider = false;
     this.status = "Reading skills…";
     this.rerender?.();
     try {
@@ -526,6 +544,7 @@ export default class SkillDoctor implements SxPlugin {
       // Best-effort — no provider or a failed call degrades to local
       // results with a visible note, never a broken scan.
       const provider = await this.sx.llm.provider().catch(() => "");
+      this.needsProvider = !provider;
       if (provider && docs.length >= 2) {
         this.status = `Asking ${provider} to sweep the catalog for semantic duplicates…`;
         this.rerender?.();
@@ -542,8 +561,6 @@ export default class SkillDoctor implements SxPlugin {
         } catch (e) {
           this.aiNote = `AI sweep unavailable (${String((e as Error)?.message || e)}) — showing local matches only.`;
         }
-      } else if (!provider) {
-        this.needsProvider = true;
       }
 
       this.scannedAt = Date.now();
@@ -551,19 +568,17 @@ export default class SkillDoctor implements SxPlugin {
       // means the next mount rescans.
       void this.sx.storage
         .saveData<CacheDoc>({
-          v: 2,
+          v: 3,
           at: this.scannedAt,
           docs: this.docs,
           clusters: this.clusters,
           aiNote: this.aiNote,
-          needsProvider: this.needsProvider,
+          hadProvider: provider !== "",
         })
         .catch(() => {});
       await this.loadDismissals();
     } finally {
       this.scanning = false;
-      if (this.needsProvider) this.watchForProvider();
-      else this.stopProviderWatch();
       this.rerender?.();
     }
   }
@@ -612,12 +627,12 @@ export default class SkillDoctor implements SxPlugin {
       this.scannedAt = 0;
       void this.sx.storage
         .saveData<CacheDoc>({
-          v: 2,
+          v: 3,
           at: 0,
           docs: [],
           clusters: [],
           aiNote: "",
-          needsProvider: false,
+          hadProvider: false,
         })
         .catch(() => {});
       this.rerender?.();
