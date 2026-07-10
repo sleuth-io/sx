@@ -27,6 +27,7 @@ export type Permission =
   | "views:repo"
   | "export"
   | "llm:use"
+  | "assets:consolidate"
   | `net:${string}`;
 
 /** plugin.json — the extension manifest. */
@@ -98,6 +99,32 @@ export interface DraftInput {
   files: AssetFileContent[];
 }
 
+// ---- Installations & consolidation (API 1.9.0) ----
+
+export interface AssetInstallationRow {
+  kind: "org" | "repo" | "path" | "team" | "user" | "bot";
+  repo?: string;
+  paths?: string[];
+  team?: string;
+  user?: string;
+  bot?: string;
+}
+
+export interface AssetInstallations {
+  everyone: boolean;
+  installations: AssetInstallationRow[];
+}
+
+export interface ConsolidateResult {
+  movedInstallations: number;
+  retired: string[];
+  /** Sources NOT retired because part of their reach was refused (see
+   * skipped) — retiring them would have shrunk someone's access. */
+  kept: string[];
+  /** Vault-refused install moves (RBAC); the consolidation continued. */
+  skipped: string[];
+}
+
 // ---- LLM (API 1.9.0) ----
 
 export interface LLMMessage {
@@ -154,6 +181,11 @@ export interface AssetTabSpec {
 export interface MainViewSpec {
   id: string;
   title: string;
+  /** Where the view's sidebar row lives (API 1.9.0): "library" (the
+   * default) lists it with the core navigation; "tools" lists it under
+   * the collapsed TOOLS section — for utilities that act ON the library
+   * (dedupe, assistants) rather than views OF it. */
+  section?: "library" | "tools";
   mount(view: ViewMount): void;
 }
 
@@ -266,11 +298,25 @@ export interface SxAPI {
     save<T>(data: T): Promise<void>;
   };
 
-  /** Requires assets:read. */
+  /** Requires assets:read (consolidate additionally requires
+   * assets:consolidate). */
   readonly assets: {
     list(): Promise<AssetSummary[]>;
     listCollections(): Promise<CollectionSummary[]>;
     readFiles(name: string): Promise<AssetFileContent[]>;
+    /** Every install row on an asset (API 1.9.0). `everyone` means no
+     * rows exist and the whole library receives it. */
+    installations(name: string): Promise<AssetInstallations>;
+    /** Consolidate a duplicate cluster onto one survivor (API 1.9.0,
+     * requires assets:consolidate — the dangerous grant). Moves every
+     * `from` asset's install rows onto `into` (reach never shrinks;
+     * an org-wide source makes the survivor org-wide), then RETIRES
+     * the `from` assets — removed from the library, recoverable from
+     * version history. Always confirm with the user first. */
+    consolidate(req: {
+      into: string;
+      from: string[];
+    }): Promise<ConsolidateResult>;
   };
 
   /** Requires usage:read. */

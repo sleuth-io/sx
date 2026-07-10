@@ -4,7 +4,9 @@
 // tracked per plugin so the host can dispose every DOM trace on disable.
 
 import {
+  ConsolidateAssets,
   ExportCollectionBundle,
+  GetAssetInstallations,
   GetAsset,
   GetDraft,
   ListDrafts,
@@ -33,7 +35,9 @@ import {
   LLMStatus,
 } from "../../wailsjs/go/main/App";
 import type {
+  AssetInstallations,
   AssetTabSpec,
+  ConsolidateResult,
   CollectionExportFormat,
   CollectionViewSpec,
   CommandSpec,
@@ -274,6 +278,36 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
           path: f.path,
           content: f.content,
         }));
+      },
+      async installations(name: string): Promise<AssetInstallations> {
+        need("assets:read");
+        const view = await GetAssetInstallations(name);
+        return {
+          everyone: view.everyone,
+          installations: (view.installations ?? []).map((r) => ({
+            kind: r.kind as AssetInstallations["installations"][number]["kind"],
+            repo: r.repo,
+            paths: r.paths,
+            team: r.team,
+            user: r.user,
+            bot: r.bot,
+          })),
+        };
+      },
+      async consolidate(req: {
+        into: string;
+        from: string[];
+      }): Promise<ConsolidateResult> {
+        // The one extension-reachable mutation that removes assets —
+        // behind its own dangerous grant.
+        need("assets:consolidate");
+        const result = await ConsolidateAssets(id, req.into, req.from);
+        return {
+          movedInstallations: result.movedInstallations,
+          retired: result.retired ?? [],
+          kept: result.kept ?? [],
+          skipped: result.skipped ?? [],
+        };
       },
     },
 

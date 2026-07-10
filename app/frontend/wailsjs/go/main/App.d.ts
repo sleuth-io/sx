@@ -35,6 +35,8 @@ export function ClearLibraryIcon(arg1:string):Promise<void>;
 
 export function CompleteSleuthLogin(arg1:string,arg2:string,arg3:string):Promise<main.VaultInfo>;
 
+export function ConsolidateAssets(arg1:string,arg2:string,arg3:Array<string>):Promise<main.ConsolidateResult>;
+
 export function CreateBlankDraft(arg1:string):Promise<main.Draft>;
 
 export function CreateCollection(arg1:string):Promise<main.Collection>;

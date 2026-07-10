@@ -66,6 +66,10 @@ export function CompleteSleuthLogin(arg1, arg2, arg3) {
   return window['go']['main']['App']['CompleteSleuthLogin'](arg1, arg2, arg3);
 }
 
+export function ConsolidateAssets(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ConsolidateAssets'](arg1, arg2, arg3);
+}
+
 export function CreateBlankDraft(arg1) {
   return window['go']['main']['App']['CreateBlankDraft'](arg1);
 }
