@@ -4,7 +4,7 @@
 // or replace them individually.
 
 import type { PluginManifest, SxAPI, SxPlugin, ViewMount } from "../api";
-import { donut, headline } from "./charts";
+import { donut, headline, loadingSkeleton } from "./charts";
 
 export const adoptionWidgetManifest: PluginManifest = {
   id: "adoption-widget",
@@ -28,6 +28,7 @@ export default class AdoptionWidget implements SxPlugin {
   onunload(): void {}
 
   private async mount(sx: SxAPI, view: ViewMount): Promise<void> {
+    view.el.replaceChildren(loadingSkeleton());
     try {
       const stats = await sx.usage.userStats(30);
       const total = stats.knownUsers.length;

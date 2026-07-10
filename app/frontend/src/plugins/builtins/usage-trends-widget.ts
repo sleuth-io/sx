@@ -9,7 +9,13 @@ import type {
   UsageEvent,
   ViewMount,
 } from "../api";
-import { CHART_COLORS, headline, lineChart, type Series } from "./charts";
+import {
+  CHART_COLORS,
+  headline,
+  lineChart,
+  loadingSkeleton,
+  type Series,
+} from "./charts";
 
 export const usageTrendsWidgetManifest: PluginManifest = {
   id: "usage-trends-widget",
@@ -108,6 +114,7 @@ export default class UsageTrendsWidget implements SxPlugin {
   onunload(): void {}
 
   private async mount(sx: SxAPI, view: ViewMount): Promise<void> {
+    view.el.replaceChildren(loadingSkeleton());
     try {
       const events = await sx.usage.events(WINDOW_DAYS);
       const { labels, series, total, perDay, trendPct } = buildSeries(events);

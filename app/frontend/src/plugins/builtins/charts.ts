@@ -29,6 +29,20 @@ export function headline(text: string): HTMLElement {
   return el;
 }
 
+/** Pulsing placeholder sized like a headline + chart, shown while a
+ * widget's data is on the wire — on a remote vault that's seconds, and
+ * an empty card that suddenly grows reads as broken. */
+export function loadingSkeleton(): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "space-y-3 p-3";
+  const line = document.createElement("div");
+  line.className = "h-4 w-2/3 animate-pulse rounded bg-canvas";
+  const block = document.createElement("div");
+  block.className = "h-36 animate-pulse rounded-lg bg-canvas";
+  wrap.append(line, block);
+  return wrap;
+}
+
 /** Donut with two segments (e.g. with/without usage) plus a legend. */
 export function donut(
   a: { label: string; value: number; color: string; who?: string[] },

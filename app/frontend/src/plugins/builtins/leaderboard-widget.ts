@@ -2,7 +2,7 @@
 // top users by distinct assets used in the last 30 days.
 
 import type { PluginManifest, SxAPI, SxPlugin, ViewMount } from "../api";
-import { barList, CHART_COLORS, headline } from "./charts";
+import { barList, CHART_COLORS, headline, loadingSkeleton } from "./charts";
 
 export const leaderboardWidgetManifest: PluginManifest = {
   id: "leaderboard-widget",
@@ -28,6 +28,7 @@ export default class LeaderboardWidget implements SxPlugin {
   onunload(): void {}
 
   private async mount(sx: SxAPI, view: ViewMount): Promise<void> {
+    view.el.replaceChildren(loadingSkeleton());
     try {
       const stats = await sx.usage.userStats(30);
       const top = stats.active.slice(0, TOP_USERS);

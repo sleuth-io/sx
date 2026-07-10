@@ -44,7 +44,7 @@ import AddAssetModal from "../components/AddAssetModal";
 import AssetDetail from "../components/AssetDetail";
 import BrowseModal from "../components/BrowseModal";
 import CollectionModal from "../components/CollectionModal";
-import DraftSheet from "../components/DraftSheet";
+import DraftSheet, { DraftSheetSkeleton } from "../components/DraftSheet";
 import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
 import ShareModal from "../components/ShareModal";
@@ -184,6 +184,9 @@ export default function Library({
   const searchRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [openDraft, setOpenDraft] = useState<main.Draft | null>(null);
+  // True while a draft is being created or fetched from the vault —
+  // renders the sheet's skeleton so the click responds immediately.
+  const [openingDraft, setOpeningDraft] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [sidebarWidth, startSidebarResize] = usePanelSize(
     "sx-panel-sidebar",
@@ -655,12 +658,14 @@ export default function Library({
       // in-app row drags that carry no files — ignore those.
       const real = (paths ?? []).filter((p) => p);
       if (real.length === 0) return;
+      setOpeningDraft(true);
       CreateDraftFromPaths(real)
         .then((draft) => {
           setOpenDraft(draft);
           load();
         })
-        .catch((e) => setToastMessage(String(e)));
+        .catch((e) => setToastMessage(String(e)))
+        .finally(() => setOpeningDraft(false));
     }, false);
     const over = (e: DragEvent) => {
       // Only external file drags get the drop overlay — in-app asset
@@ -1105,6 +1110,7 @@ export default function Library({
   }, [drafts, query, scope]);
 
   async function editAsset(name: string) {
+    setOpeningDraft(true);
     try {
       const draft = await CreateDraftFromAsset(name);
       setSelected(null);
@@ -1112,14 +1118,19 @@ export default function Library({
       load();
     } catch (e) {
       setToastMessage(String(e));
+    } finally {
+      setOpeningDraft(false);
     }
   }
 
   async function openExistingDraft(id: string) {
+    setOpeningDraft(true);
     try {
       setOpenDraft(await GetDraft(id));
     } catch (e) {
       setToastMessage(String(e));
+    } finally {
+      setOpeningDraft(false);
     }
   }
 
@@ -2217,6 +2228,8 @@ export default function Library({
           onCollectionsChanged={load}
         />
       )}
+
+      {openingDraft && !openDraft && <DraftSheetSkeleton />}
 
       {openDraft && (
         <DraftSheet
