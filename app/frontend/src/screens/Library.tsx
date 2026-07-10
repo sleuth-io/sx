@@ -548,21 +548,34 @@ export default function Library({
   useEffect(() => {
     if (assets === null || !loadedOnce.current) return;
     const timer = setTimeout(() => {
+      const key = `sx-boot:${vault.location}`;
+      const snapshot: BootSnapshot = {
+        assets,
+        collections,
+        teams,
+        teamAssets,
+        personalAssets,
+        repoAssets,
+      };
+      const json = JSON.stringify(snapshot);
       try {
-        const snapshot: BootSnapshot = {
-          assets,
-          collections,
-          teams,
-          teamAssets,
-          personalAssets,
-          repoAssets,
-        };
-        localStorage.setItem(
-          `sx-boot:${vault.location}`,
-          JSON.stringify(snapshot),
-        );
+        localStorage.setItem(key, json);
       } catch {
-        // Storage full or unavailable — the next boot just skeletons.
+        // Quota pressure: other libraries' snapshots are the growth
+        // (one per vault, never visited again = never rewritten), so
+        // evict them and retry once. The library in use wins; a second
+        // failure means storage is genuinely unavailable and the next
+        // boot just skeletons.
+        try {
+          for (const k of Object.keys(localStorage)) {
+            if (k.startsWith("sx-boot:") && k !== key) {
+              localStorage.removeItem(k);
+            }
+          }
+          localStorage.setItem(key, json);
+        } catch {
+          // Storage unavailable — nothing to persist.
+        }
       }
     }, 800);
     return () => clearTimeout(timer);
