@@ -258,11 +258,9 @@ export default function Sidebar({
                 key={"collection:" + c.name}
                 data-drop-collection={c.name}
                 onMouseDown={(e) => onCollectionDragHandle(c.name, e)}
-                className={
-                  dropCollection === c.name
-                    ? "rounded-lg ring-2 ring-accent"
-                    : undefined
-                }
+                className={`group relative ${
+                  dropCollection === c.name ? "rounded-lg ring-2 ring-accent" : ""
+                }`}
               >
                 <Row
                   icon={<CollectionIcon />}
@@ -270,7 +268,11 @@ export default function Sidebar({
                   count={(c.assets ?? []).length}
                   active={active === "collection:" + c.name}
                   onClick={() => onScope({ kind: "collection", name: c.name })}
-                  onUnpin={() => onUnpin("collections", c.name)}
+                  countYieldsOnHover
+                />
+                <UnpinButton
+                  label={c.name}
+                  onClick={() => onUnpin("collections", c.name)}
                 />
               </div>
             ))}
@@ -278,11 +280,9 @@ export default function Sidebar({
               <div
                 key={"team:" + t.name}
                 data-drop-team={t.name}
-                className={
-                  dropTeam === t.name
-                    ? "rounded-lg ring-2 ring-accent"
-                    : undefined
-                }
+                className={`group relative ${
+                  dropTeam === t.name ? "rounded-lg ring-2 ring-accent" : ""
+                }`}
               >
                 <Row
                   icon={<TeamIcon />}
@@ -290,7 +290,11 @@ export default function Sidebar({
                   count={teamAssetCounts[t.name] ?? 0}
                   active={active === "team:" + t.name}
                   onClick={() => onScope({ kind: "team", name: t.name })}
-                  onUnpin={() => onUnpin("teams", t.name)}
+                  countYieldsOnHover
+                />
+                <UnpinButton
+                  label={t.name}
+                  onClick={() => onUnpin("teams", t.name)}
                 />
               </div>
             ))}
@@ -300,11 +304,9 @@ export default function Sidebar({
                 title={url}
                 data-drop-repo={url}
                 onMouseDown={(e) => onRepoDragHandle(url, e)}
-                className={
-                  dropRepo === url
-                    ? "rounded-lg ring-2 ring-accent"
-                    : undefined
-                }
+                className={`group relative ${
+                  dropRepo === url ? "rounded-lg ring-2 ring-accent" : ""
+                }`}
               >
                 <Row
                   icon={<RepoIcon />}
@@ -312,7 +314,11 @@ export default function Sidebar({
                   count={(repoAssets?.[url] ?? []).length}
                   active={active === "repo:" + url}
                   onClick={() => onScope({ kind: "repo", name: url })}
-                  onUnpin={() => onUnpin("repos", url)}
+                  countYieldsOnHover
+                />
+                <UnpinButton
+                  label={repoLabel(url)}
+                  onClick={() => onUnpin("repos", url)}
                 />
               </div>
             ))}
@@ -547,7 +553,7 @@ function Row({
   onClick,
   accent,
   icon,
-  onUnpin,
+  countYieldsOnHover,
 }: {
   label: string;
   count?: number;
@@ -555,14 +561,15 @@ function Row({
   onClick: () => void;
   accent?: "amber";
   icon?: ReactNode;
-  /** Hover affordance on PINNED rows: the count yields to a slashed
-   * pin. A span, not a nested button — buttons can't nest. */
-  onUnpin?: () => void;
+  /** PINNED rows: fade the count on row hover so the sibling
+   * UnpinButton overlay (same spot) reads cleanly. Opacity, not
+   * display — the reserved width means no layout shift. */
+  countYieldsOnHover?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition ${
+      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition ${
         active
           ? "bg-accent-soft font-medium text-accent"
           : "text-ink-soft hover:bg-canvas hover:text-ink"
@@ -572,8 +579,8 @@ function Row({
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {count !== undefined && (
         <span
-          className={`text-xs tabular-nums ${
-            onUnpin ? "group-hover:hidden " : ""
+          className={`text-xs tabular-nums transition-opacity ${
+            countYieldsOnHover ? "group-hover:opacity-0 " : ""
           }${
             accent === "amber" && !active
               ? "rounded-full bg-amber-50 px-1.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
@@ -583,20 +590,23 @@ function Row({
           {count}
         </span>
       )}
-      {onUnpin && (
-        <span
-          role="button"
-          aria-label={`Unpin ${label}`}
-          title="Unpin from sidebar"
-          onClick={(e) => {
-            e.stopPropagation();
-            onUnpin();
-          }}
-          className="hidden text-ink-faint transition hover:text-accent group-hover:inline-flex"
-        >
-          <PinIcon slashed />
-        </span>
-      )}
+    </button>
+  );
+}
+
+/** The hover/focus unpin affordance on PINNED rows. A real sibling
+ * button overlaying the count — never nested inside the row button
+ * (invalid interactive nesting), revealed by opacity so it stays in
+ * the tab order and focus-visible can show it to keyboard users. */
+function UnpinButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      aria-label={`Unpin ${label} from the sidebar`}
+      title="Unpin from sidebar"
+      onClick={onClick}
+      className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-ink-faint opacity-0 transition hover:text-accent focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+    >
+      <PinIcon slashed />
     </button>
   );
 }
