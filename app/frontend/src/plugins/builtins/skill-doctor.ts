@@ -147,17 +147,22 @@ export default class SkillDoctor implements SxPlugin {
     };
     this.rerender();
 
-    // Fresh results (this session or the per-profile cache) render
-    // immediately; a full scan only runs when they've gone stale or the
-    // user asks. sx.storage is per profile, so a library switch can
-    // never show another vault's clusters.
-    if (Date.now() - this.scannedAt < CACHE_TTL_MS && this.docs.length > 0) {
-      await this.loadDismissals();
-      this.rerender?.();
-      return;
-    }
+    // The persisted cache is the ONLY fast path: sx.storage is per
+    // profile, so it can never serve another vault's clusters. Plain
+    // instance state (this.docs) deliberately is NOT trusted here —
+    // built-in instances survive library switches, and an in-memory
+    // shortcut would replay library A's skills against library B.
     const cached = await this.sx.storage.loadData<CacheDoc>().catch(() => null);
     if (cached?.v === 1 && Date.now() - cached.at < CACHE_TTL_MS) {
+      if (cached.at !== this.scannedAt) {
+        // Different scan than the one this instance last showed (fresh
+        // boot, or a library switch behind our back): transient per-scan
+        // state must not carry over — signatures can collide across
+        // libraries when forked skills share names.
+        this.verdicts.clear();
+        this.resolved.clear();
+        this.compareOpen.clear();
+      }
       this.docs = cached.docs;
       this.clusters = cached.clusters;
       this.aiNote = cached.aiNote;
@@ -517,8 +522,12 @@ export default class SkillDoctor implements SxPlugin {
       this.compareOpen.delete(c.signature);
       this.busy.delete(c.signature);
       this.sx.ui.notice(outcome);
-      // The library changed; refresh the cache in the background.
+      // The library changed: invalidate the PERSISTED cache too, or
+      // the next mount would reload the pre-consolidation snapshot.
       this.scannedAt = 0;
+      void this.sx.storage
+        .saveData<CacheDoc>({ v: 1, at: 0, docs: [], clusters: [], aiNote: "" })
+        .catch(() => {});
       this.rerender?.();
     } catch (e) {
       this.busy.delete(c.signature);

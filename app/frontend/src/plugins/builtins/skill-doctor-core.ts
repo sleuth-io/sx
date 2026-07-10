@@ -176,7 +176,15 @@ export function mergeSweepGroups(
       .filter((i): i is number => i !== undefined);
     if (idxs.length < 2) continue; // hallucinated or unknown names
     const names = idxs.map((i) => docs[i].name);
-    if (covered.some((set) => names.every((n) => set.has(n)))) continue;
+    // Skip proposals that substantially restate an existing cluster:
+    // full containment either way, or sharing a pair — a superset like
+    // {a,b,c} over local {a,b} would otherwise spawn an overlapping
+    // card for the same duplicates.
+    const restates = covered.some((set) => {
+      const shared = names.filter((n) => set.has(n)).length;
+      return shared >= 2 || shared === names.length;
+    });
+    if (restates) continue;
     const c = makeCluster(docs, idxs, sim);
     // The sweep's word is not enough on its own: the group must also
     // clear a measured-similarity floor or it's discarded as noise.
