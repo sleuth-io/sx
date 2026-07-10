@@ -673,6 +673,7 @@ func (a *App) addExtensionFrom(dir string) (string, string, error) {
 // receives it (for scope chips and the remove/share actions).
 type VaultPlugin struct {
 	AssetName string         `json:"assetName"`
+	Version   string         `json:"version"`  // vault revision — the extension cache's key
 	Manifest  string         `json:"manifest"` // raw plugin.json
 	Source    string         `json:"source"`   // bundled ES module (entry file)
 	Scope     ExtensionScope `json:"scope"`
@@ -717,7 +718,7 @@ func (a *App) ListVaultPlugins() ([]VaultPlugin, error) {
 		if !scope.Shared && !scope.Personal {
 			continue // installed just for someone else
 		}
-		plugin, err := a.loadVaultPlugin(summary.Name)
+		plugin, err := a.loadVaultPlugin(summary.Name, summary.LatestVersion)
 		if err != nil {
 			logger.Get().Warn("skipping malformed extension asset", "asset", summary.Name, "error", err)
 			continue
@@ -725,11 +726,45 @@ func (a *App) ListVaultPlugins() ([]VaultPlugin, error) {
 		plugin.Scope = scope
 		out = append(out, plugin)
 	}
+	// A successful listing IS the cache: next boot serves these copies
+	// before any vault I/O (CachedVaultPlugins) and revalidates against
+	// a listing like this one.
+	a.writeExtensionCache(out)
 	return out, nil
 }
 
-func (a *App) loadVaultPlugin(name string) (VaultPlugin, error) {
-	zipData, err := a.latestAssetZip(name)
+// vaultPluginZip fetches an extension bundle and reports which revision
+// the bytes are — the extension cache's key. The listing's version skips
+// the per-asset GetVersionList round trip; an empty or stale version
+// falls back to resolving the newest revision, so a listing/fetch
+// mismatch costs an extra round trip instead of a skipped extension.
+func (a *App) vaultPluginZip(name, version string) ([]byte, string, error) {
+	v, err := a.currentVault()
+	if err != nil {
+		return nil, "", err
+	}
+	if version != "" {
+		if zipData, err := v.GetAssetByVersion(a.ctx, name, version); err == nil {
+			return zipData, version, nil
+		}
+	}
+	versions, err := v.GetVersionList(a.ctx, name)
+	if err != nil {
+		return nil, "", friendlyVaultError(err)
+	}
+	if len(versions) == 0 {
+		return nil, "", fmt.Errorf("%s has no versions", name)
+	}
+	latest := versions[len(versions)-1]
+	zipData, err := v.GetAssetByVersion(a.ctx, name, latest)
+	if err != nil {
+		return nil, "", friendlyVaultError(err)
+	}
+	return zipData, latest, nil
+}
+
+func (a *App) loadVaultPlugin(name, version string) (VaultPlugin, error) {
+	zipData, resolved, err := a.vaultPluginZip(name, version)
 	if err != nil {
 		return VaultPlugin{}, err
 	}
@@ -752,6 +787,7 @@ func (a *App) loadVaultPlugin(name string) (VaultPlugin, error) {
 	}
 	return VaultPlugin{
 		AssetName: name,
+		Version:   resolved,
 		Manifest:  string(manifestBytes),
 		Source:    string(source),
 	}, nil
