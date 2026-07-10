@@ -580,7 +580,9 @@ function Row({
       {count !== undefined && (
         <span
           className={`text-xs tabular-nums transition-opacity ${
-            countYieldsOnHover ? "group-hover:opacity-0 " : ""
+            countYieldsOnHover
+              ? "group-hover:opacity-0 group-focus-within:opacity-0 "
+              : ""
           }${
             accent === "amber" && !active
               ? "rounded-full bg-amber-50 px-1.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
