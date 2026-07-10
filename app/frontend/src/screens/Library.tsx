@@ -80,6 +80,30 @@ function readPins(kind: PinKind, location: string): string[] | null {
   }
 }
 
+/** The last boot's list data, persisted per library. Seeding state from
+ * it renders the sidebar and list in their final shape immediately —
+ * on a remote vault the fresh responses land seconds apart and would
+ * otherwise assemble the sidebar section by section, shoving everything
+ * below each arrival. Stale entries correct themselves silently when
+ * the fresh data replaces them (identical data changes nothing). */
+interface BootSnapshot {
+  assets: main.AssetCard[];
+  collections: main.Collection[];
+  teams: main.TeamInfo[];
+  teamAssets: Record<string, string[]>;
+  personalAssets: string[];
+  repoAssets: Record<string, string[]> | null;
+}
+
+function readBootSnapshot(location: string): BootSnapshot | null {
+  try {
+    const raw = localStorage.getItem(`sx-boot:${location}`);
+    return raw ? (JSON.parse(raw) as BootSnapshot) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Library: a source-list sidebar (scopes + collections) and one scrollable
  * content pane. List view is the default — dense rows scan better than
@@ -92,17 +116,28 @@ export default function Library({
   vault: main.VaultInfo;
   onVaultChanged: () => void;
 }) {
-  const [assets, setAssets] = useState<main.AssetCard[] | null>(null);
+  // Seed list state from the persisted snapshot (Library remounts per
+  // vault, so the seed always matches this library).
+  const [boot] = useState(() => readBootSnapshot(vault.location));
+  const [assets, setAssets] = useState<main.AssetCard[] | null>(
+    boot?.assets ?? null,
+  );
   const [drafts, setDrafts] = useState<main.Draft[]>([]);
-  const [collections, setCollections] = useState<main.Collection[]>([]);
-  const [teams, setTeams] = useState<main.TeamInfo[]>([]);
-  const [teamAssets, setTeamAssets] = useState<Record<string, string[]>>({});
+  const [collections, setCollections] = useState<main.Collection[]>(
+    boot?.collections ?? [],
+  );
+  const [teams, setTeams] = useState<main.TeamInfo[]>(boot?.teams ?? []);
+  const [teamAssets, setTeamAssets] = useState<Record<string, string[]>>(
+    boot?.teamAssets ?? {},
+  );
   // Assets installed just for this user — drives the sidebar's
   // conditional "My skills" row and its scope filter.
-  const [personalAssets, setPersonalAssets] = useState<string[]>([]);
+  const [personalAssets, setPersonalAssets] = useState<string[]>(
+    boot?.personalAssets ?? [],
+  );
   // Repo URL → asset names; null when this library doesn't track repos.
   const [repoAssets, setRepoAssets] = useState<Record<string, string[]> | null>(
-    null,
+    boot?.repoAssets ?? null,
   );
   const [openTeam, setOpenTeam] = useState<main.TeamInfo | null>(null);
   const [showNewTeam, setShowNewTeam] = useState(false);
@@ -442,6 +477,9 @@ export default function Library({
   // only the very first load falls back to empty (with the error shown).
   const loadGen = useRef(0);
   const loadedOnce = useRef(false);
+  // Snapshot-seeded state counts as "something on screen": a failed
+  // first load keeps it (with the error banner) instead of blanking it.
+  const seeded = useRef(boot !== null);
   const load = useCallback(() => {
     const gen = ++loadGen.current;
     const apply =
@@ -452,7 +490,8 @@ export default function Library({
     const applyFallback =
       <T,>(setter: (v: T) => void, fallback: T) =>
       () => {
-        if (gen === loadGen.current && !loadedOnce.current) setter(fallback);
+        if (gen === loadGen.current && !loadedOnce.current && !seeded.current)
+          setter(fallback);
       };
     setError("");
     ListAssets()
@@ -468,7 +507,7 @@ export default function Library({
         if (gen !== loadGen.current) return;
         if (!loadedOnce.current) {
           setError(String(e));
-          setAssets([]);
+          if (!seeded.current) setAssets([]);
         }
       });
     ListDrafts().then(apply(setDrafts)).catch(applyFallback(setDrafts, []));
@@ -499,6 +538,43 @@ export default function Library({
   useEffect(() => {
     loadRef.current = load;
   }, [load]);
+
+  // Write-through for the boot snapshot: whenever the list data settles,
+  // persist it so the NEXT boot paints this shape immediately. Debounced
+  // — the boot fetches land seconds apart and each would otherwise
+  // serialize ~the whole library. Gated on loadedOnce (a REAL listing
+  // succeeded this session): a failed first load sets assets to [] and
+  // must not persist "empty library" over a good snapshot.
+  useEffect(() => {
+    if (assets === null || !loadedOnce.current) return;
+    const timer = setTimeout(() => {
+      try {
+        const snapshot: BootSnapshot = {
+          assets,
+          collections,
+          teams,
+          teamAssets,
+          personalAssets,
+          repoAssets,
+        };
+        localStorage.setItem(
+          `sx-boot:${vault.location}`,
+          JSON.stringify(snapshot),
+        );
+      } catch {
+        // Storage full or unavailable — the next boot just skeletons.
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [
+    assets,
+    collections,
+    teams,
+    teamAssets,
+    personalAssets,
+    repoAssets,
+    vault.location,
+  ]);
 
   // Extension system: boot once, and hand extensions the app's real UI
   // services (toast + confirm) so sx.ui works.

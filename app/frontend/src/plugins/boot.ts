@@ -129,7 +129,9 @@ async function doSyncVaultExtensions(): Promise<void> {
     registerListing((await CachedVaultPlugins()) ?? []);
     await applyEnablement();
   } catch {
-    // No usable cache — the fresh pass below is the first paint.
+    // An empty cache flows through the success path above; this guards
+    // the bridge itself being unavailable (dev browser without the
+    // backend) — the fresh pass below is then the first paint.
   }
 
   // REVALIDATE: fresh policy, fresh listing (which rewrites the cache

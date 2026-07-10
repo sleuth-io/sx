@@ -744,9 +744,15 @@ func (a *App) vaultPluginZip(name, version string) ([]byte, string, error) {
 		return nil, "", err
 	}
 	if version != "" {
-		if zipData, err := v.GetAssetByVersion(a.ctx, name, version); err == nil {
+		zipData, err := v.GetAssetByVersion(a.ctx, name, version)
+		if err == nil {
 			return zipData, version, nil
 		}
+		// Fall back to resolving latest — but keep the cause visible: a
+		// persistent auth/network failure here would otherwise hide as a
+		// silent extra round trip on every listing.
+		logger.Get().Debug("extension fetch by listed version failed; resolving latest",
+			"asset", name, "version", version, "error", err)
 	}
 	versions, err := v.GetVersionList(a.ctx, name)
 	if err != nil {
