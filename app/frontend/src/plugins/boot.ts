@@ -35,6 +35,7 @@ import LeaderboardWidget, {
 } from "./builtins/leaderboard-widget";
 import Templates, { templatesManifest } from "./builtins/templates";
 import Importer, { importerManifest } from "./builtins/importer";
+import SkillDoctor, { skillDoctorManifest } from "./builtins/skill-doctor";
 
 let booted = false;
 
@@ -59,6 +60,7 @@ export async function bootExtensions(): Promise<void> {
   );
   registerBuiltIn(templatesManifest, async () => new Templates());
   registerBuiltIn(importerManifest, async () => new Importer());
+  registerBuiltIn(skillDoctorManifest, async () => new SkillDoctor());
 
   void loaderPreflight().then((r) => {
     if (!r.blobImport || !r.cssInjection) {
