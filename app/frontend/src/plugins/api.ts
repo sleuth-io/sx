@@ -3,7 +3,7 @@
 // extension needs something this file doesn't offer, the answer is an API
 // addition, never an escape hatch to app internals.
 
-export const SX_API_VERSION = "1.8.0";
+export const SX_API_VERSION = "1.9.0";
 
 /** Capabilities an extension may declare. Undeclared calls throw.
  * `net:<host>` is a parameterized family (API 1.4.0): each declared
@@ -26,6 +26,7 @@ export type Permission =
   | "views:team"
   | "views:repo"
   | "export"
+  | "llm:use"
   | `net:${string}`;
 
 /** plugin.json — the extension manifest. */
@@ -95,6 +96,36 @@ export interface AuditEvent {
 export interface DraftInput {
   name: string;
   files: AssetFileContent[];
+}
+
+// ---- LLM (API 1.9.0) ----
+
+export interface LLMMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface LLMRequest {
+  messages: LLMMessage[];
+  /** JSON Schema the reply must validate against. When set, the result's
+   * `json` field carries the parsed document. */
+  schema?: Record<string, unknown>;
+  /** Ask the configured provider for a specific model; most extensions
+   * should omit this and respect the user's choice. */
+  model?: string;
+  maxTokens?: number;
+}
+
+export interface LLMResult {
+  /** The reply text; a bare JSON document when `schema` was given. */
+  text: string;
+  /** Parsed JSON reply — present only when the request carried `schema`. */
+  json?: unknown;
+  /** Which provider/model answered (e.g. "ollama" / "llama3:8b"). */
+  provider: string;
+  model: string;
+  /** Zero when the provider can't report token counts (CLI providers). */
+  usage: { inputTokens: number; outputTokens: number };
 }
 
 // ---- View contracts ----
@@ -212,6 +243,11 @@ export interface SxAPI {
      * 1.4.0) — how a command routes the user into the extension's
      * full-page surface. Requires views:main. */
     openView(viewId: string): void;
+    /** Open the app's Settings on a specific tab (API 1.9.0) — how an
+     * extension whose feature needs app-level setup (e.g. llm:use with
+     * no AI provider configured) sends the user to the right place
+     * instead of describing a path in prose. */
+    openSettings(section?: "libraries" | "extensions" | "ai"): void;
   };
 
   /** Always available; per plugin, per profile, stored app-side. */
@@ -301,6 +337,19 @@ export interface SxAPI {
     get(name: string): Promise<string>;
     /** Setting "" deletes the secret. */
     set(name: string, value: string): Promise<void>;
+  };
+
+  /** Requires llm:use (API 1.9.0). One completion against whatever LLM
+   * provider the USER configured in Settings — an installed CLI
+   * (claude/codex/gemini), a local Ollama model, or any hosted API with
+   * their own key. Provider-neutral by design: extensions must not
+   * assume a vendor, a model, or latency. Rejects when no provider is
+   * configured — surface that error, don't retry. */
+  readonly llm: {
+    complete(req: LLMRequest): Promise<LLMResult>;
+    /** The configured provider id ("" when unconfigured) — for showing
+     * setup hints before making a call. */
+    provider(): Promise<string>;
   };
 
   /** Requires a matching net:<host> permission (API 1.4.0). The ONLY

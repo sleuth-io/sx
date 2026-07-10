@@ -29,6 +29,8 @@ import {
   PluginAuditEventsSince,
   PluginCurrentUser,
   PluginUserStats,
+  LLMComplete,
+  LLMStatus,
 } from "../../wailsjs/go/main/App";
 import type {
   AssetTabSpec,
@@ -36,6 +38,8 @@ import type {
   CollectionViewSpec,
   CommandSpec,
   DashboardWidgetSpec,
+  LLMRequest,
+  LLMResult,
   MainViewSpec,
   RepoViewSpec,
   Permission,
@@ -63,6 +67,8 @@ interface UIHandlers {
   openAsset(name: string): void;
   /** Navigate to a plugin main view by its "pluginId:viewId" key. */
   openView(key: string): void;
+  /** Open the app Settings modal on the given tab. */
+  openSettings(section?: "libraries" | "extensions" | "ai"): void;
 }
 
 let ui: UIHandlers = {
@@ -71,6 +77,7 @@ let ui: UIHandlers = {
   refresh: () => {},
   openAsset: () => {},
   openView: () => {},
+  openSettings: () => {},
 };
 
 export function setPluginUIHandlers(handlers: UIHandlers): void {
@@ -196,6 +203,7 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
         need("views:main");
         ui.openView(id + ":" + viewId);
       },
+      openSettings: (section) => ui.openSettings(section),
     },
 
     storage: {
@@ -365,6 +373,27 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
       async set(name: string, value: string) {
         need("secrets");
         await PluginSecretSet(id, name, value);
+      },
+    },
+
+    llm: {
+      async complete(req: LLMRequest): Promise<LLMResult> {
+        need("llm:use");
+        const raw = await LLMComplete(id, JSON.stringify(req));
+        const resp = JSON.parse(raw) as LLMResult;
+        if (req.schema) {
+          // The bridge already extracted and validated a JSON document;
+          // parse it here so extensions never re-implement that.
+          resp.json = JSON.parse(resp.text);
+        }
+        return resp;
+      },
+      async provider(): Promise<string> {
+        need("llm:use");
+        // Only the provider id crosses into the sandbox — never the
+        // full status (base URLs, key presence) meant for settings.
+        const status = await LLMStatus();
+        return status?.config?.provider ?? "";
       },
     },
 

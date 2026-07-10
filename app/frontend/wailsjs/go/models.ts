@@ -1,3 +1,50 @@
+export namespace llm {
+	
+	export class Config {
+	    provider: string;
+	    model?: string;
+	    baseUrl?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Config(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.model = source["model"];
+	        this.baseUrl = source["baseUrl"];
+	    }
+	}
+	export class ProviderInfo {
+	    id: string;
+	    kind: string;
+	    label: string;
+	    detail?: string;
+	    available: boolean;
+	    models?: string[];
+	    needsApiKey: boolean;
+	    needsModel: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProviderInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.kind = source["kind"];
+	        this.label = source["label"];
+	        this.detail = source["detail"];
+	        this.available = source["available"];
+	        this.models = source["models"];
+	        this.needsApiKey = source["needsApiKey"];
+	        this.needsModel = source["needsModel"];
+	    }
+	}
+
+}
+
 export namespace main {
 	
 	export class AIClient {
@@ -306,6 +353,40 @@ export namespace main {
 	        this.version = source["version"];
 	        this.scopes = source["scopes"];
 	    }
+	}
+	export class LLMStatusView {
+	    config: llm.Config;
+	    providers: llm.ProviderInfo[];
+	    keySet: Record<string, boolean>;
+	
+	    static createFrom(source: any = {}) {
+	        return new LLMStatusView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.config = this.convertValues(source["config"], llm.Config);
+	        this.providers = this.convertValues(source["providers"], llm.ProviderInfo);
+	        this.keySet = source["keySet"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class LibraryRemoval {
 	    name: string;

@@ -242,6 +242,55 @@ adoption.
   does it (per-revision markdown cache, AND semantics, heading-weighted,
   excerpt highlighting in result rows).
 
+### API 1.9.0 additions (the sx.llm core service)
+
+- `llm:use` permission + `sx.llm.complete({messages, schema?, model?,
+  maxTokens?})`: one completion against whatever LLM provider **the
+  user** configured in Settings → AI provider. Provider-agnostic by
+  design — extensions never learn a vendor, an endpoint, or a key; they
+  send provider-neutral messages and get `{text, json?, provider,
+  model, usage}` back. `sx.llm.provider()` returns the configured
+  provider id (`""` when unconfigured) so an extension can show a setup
+  hint instead of a failing call.
+- `sx.ui.openSettings(section?)` (always available): open the app's
+  Settings on `"libraries"`, `"extensions"`, or `"ai"` — the deep link
+  an llm:use extension shows when no provider is configured, instead of
+  describing a menu path in prose.
+- **Why core, not `net:` + `secrets`:** the sandbox can't shell out or
+  reach localhost, so only core can offer installed-CLI and Ollama
+  providers; and one shared provider picker + key store beats every
+  extension building its own (the Claude Assist pattern, generalized).
+- **Providers** (`internal/llm`, user-selected in Settings, one for the
+  whole app):
+  1. *Installed CLIs* — `claude`, `codex`, or `gemini`, run headless
+     with the CLI's own login. Detection probes PATH plus the usual GUI
+     blind spots (`/opt/homebrew/bin`, `~/.local/bin`, npm-global…).
+     User-initiated convenience: Anthropic's ToS bars third-party
+     products from routing through a user's subscription, so this is
+     never a default — the user explicitly picks it. **Hardening:**
+     prompts are extension-authored and these CLIs are tool-running
+     agents, so every invocation is pinned to its most restricted mode
+     (`claude --tools ""` = no tools at all, `codex --sandbox
+     read-only`, `gemini --approval-mode default` — headless has no
+     approver) and runs in a fresh empty scratch dir. Residual: codex
+     and gemini's restricted modes still allow reads, so choosing a CLI
+     provider trusts your enabled `llm:use` extensions with read-level
+     local access; the BYO-key and Ollama providers carry no local
+     capabilities at all.
+  2. *Ollama* — any local model; detected via `GET /api/tags`, custom
+     server address supported, native JSON-schema constrained output.
+  3. *Bring-your-own key* — Anthropic, Google, or any OpenAI-compatible
+     endpoint (custom base URL covers OpenRouter, Groq, Mistral, vLLM,
+     LM Studio, …). Keys go straight to the OS keyring (no file
+     fallback) and never cross into the webview: there is a
+     `LLMSetAPIKey` bridge but deliberately no getter.
+- **Structured output:** pass `schema` (JSON Schema) and the reply is a
+  validated JSON document (`result.json` pre-parsed). Ollama enforces
+  it natively; other providers get a schema instruction plus tolerant
+  extraction (fenced/prefixed replies recovered, invalid JSON rejected).
+- **Attribution:** every completion is logged with the calling
+  extension id and token usage — the hook for a future cost meter.
+
 ### API 1.8.0 additions (incremental usage/audit fetch)
 
 - `sx.usage.eventsSince(iso)` and `sx.usage.auditEventsSince(iso)` (under
