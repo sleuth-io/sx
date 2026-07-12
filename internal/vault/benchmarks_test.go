@@ -76,6 +76,9 @@ func TestBenchmarksRoundTrip(t *testing.T) {
 	if err := v.AddBenchmark(ctx, "commit-msgs", `{"summary":1}`); err == nil {
 		t.Fatalf("scalar summary accepted")
 	}
+	if err := v.AddBenchmark(ctx, "commit-msgs", `{"summary":null}`); err == nil {
+		t.Fatalf("null summary accepted")
+	}
 	fat := `{"summary":{},"pad":"` + strings.Repeat("x", maxBenchmarkRecordBytes) + `"}`
 	if err := v.AddBenchmark(ctx, "commit-msgs", fat); err == nil {
 		t.Fatalf("oversized record accepted")

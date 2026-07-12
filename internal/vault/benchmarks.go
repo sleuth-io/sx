@@ -73,8 +73,9 @@ func validateBenchmarkRecord(record string) error {
 	// Downstream readers (the dashboard, the BenchmarkRecord TS type)
 	// assume summary is a stat-block object; on file vaults this is the
 	// only validation gate, so a scalar must be refused here.
+	// summary == nil catches JSON null, which unmarshals without error.
 	var summary map[string]json.RawMessage
-	if raw, ok := obj["summary"]; !ok || json.Unmarshal(raw, &summary) != nil {
+	if raw, ok := obj["summary"]; !ok || json.Unmarshal(raw, &summary) != nil || summary == nil {
 		return errors.New("benchmark record needs a summary object")
 	}
 	return nil
