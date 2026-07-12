@@ -143,6 +143,12 @@ export function PluginAuditEvents(arg1:number):Promise<Array<main.PluginAuditEve
 
 export function PluginAuditEventsSince(arg1:string):Promise<Array<main.PluginAuditEventRecord>>;
 
+export function PluginBenchmarksAdd(arg1:string,arg2:string):Promise<void>;
+
+export function PluginBenchmarksLatest():Promise<string>;
+
+export function PluginBenchmarksList(arg1:string):Promise<string>;
+
 export function PluginConsents():Promise<Record<string, Array<string>>>;
 
 export function PluginCurrentUser():Promise<string>;
@@ -156,12 +162,6 @@ export function PluginSaveData(arg1:string,arg2:string):Promise<void>;
 export function PluginSecretGet(arg1:string,arg2:string):Promise<string>;
 
 export function PluginSecretSet(arg1:string,arg2:string,arg3:string):Promise<void>;
-
-export function PluginBenchmarksAdd(arg1:string,arg2:string):Promise<void>;
-
-export function PluginBenchmarksLatest():Promise<string>;
-
-export function PluginBenchmarksList(arg1:string):Promise<string>;
 
 export function PluginSharedLoad(arg1:string):Promise<string>;
 

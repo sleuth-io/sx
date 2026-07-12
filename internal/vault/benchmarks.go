@@ -70,8 +70,12 @@ func validateBenchmarkRecord(record string) error {
 	if err := json.Unmarshal([]byte(record), &obj); err != nil {
 		return errors.New("benchmark record must be a JSON object")
 	}
-	if _, ok := obj["summary"]; !ok {
-		return errors.New("benchmark record needs a summary")
+	// Downstream readers (the dashboard, the BenchmarkRecord TS type)
+	// assume summary is a stat-block object; on file vaults this is the
+	// only validation gate, so a scalar must be refused here.
+	var summary map[string]json.RawMessage
+	if raw, ok := obj["summary"]; !ok || json.Unmarshal(raw, &summary) != nil {
+		return errors.New("benchmark record needs a summary object")
 	}
 	return nil
 }
@@ -91,10 +95,27 @@ func readBenchmarksDoc(path string) (*benchmarksDoc, error) {
 	doc := &benchmarksDoc{}
 	if err := json.Unmarshal(data, doc); err != nil {
 		// A corrupt file must not brick the asset's benchmarks forever —
-		// start a fresh list; git history still has the old bytes.
+		// treat it as an empty list. Reads never mutate; the write path
+		// preserves the corrupt bytes as <asset>.json.bad first, because
+		// only git vaults have history to fall back on — plain and
+		// synced folders would otherwise lose the records outright.
 		return &benchmarksDoc{}, nil
 	}
 	return doc, nil
+}
+
+// preserveCorruptBenchmarks sets aside an unparseable benchmarks file as
+// <asset>.json.bad (best-effort) so a fresh write can't destroy the only
+// copy on vaults without git history.
+func preserveCorruptBenchmarks(path string) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is under the vault root with a validated name
+	if err != nil {
+		return
+	}
+	if json.Unmarshal(data, &benchmarksDoc{}) == nil {
+		return // parseable — nothing to preserve
+	}
+	_ = os.Rename(path, path+".bad")
 }
 
 func commonListBenchmarks(vaultRoot, asset string) (string, error) {
@@ -121,6 +142,7 @@ func commonAddBenchmark(vaultRoot, asset, record string) error {
 	if err != nil {
 		return err
 	}
+	preserveCorruptBenchmarks(path)
 	doc, err := readBenchmarksDoc(path)
 	if err != nil {
 		return err

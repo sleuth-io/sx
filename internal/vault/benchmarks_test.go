@@ -73,6 +73,9 @@ func TestBenchmarksRoundTrip(t *testing.T) {
 	if err := v.AddBenchmark(ctx, "commit-msgs", `{"no_summary":true}`); err == nil {
 		t.Fatalf("summary-less record accepted")
 	}
+	if err := v.AddBenchmark(ctx, "commit-msgs", `{"summary":1}`); err == nil {
+		t.Fatalf("scalar summary accepted")
+	}
 	fat := `{"summary":{},"pad":"` + strings.Repeat("x", maxBenchmarkRecordBytes) + `"}`
 	if err := v.AddBenchmark(ctx, "commit-msgs", fat); err == nil {
 		t.Fatalf("oversized record accepted")
@@ -133,7 +136,9 @@ func TestLatestBenchmarks(t *testing.T) {
 	}
 }
 
-// A corrupt benchmarks file starts a fresh list instead of bricking the asset.
+// A corrupt benchmarks file starts a fresh list instead of bricking the
+// asset, and the write path preserves the corrupt bytes as .bad first —
+// plain and synced folders have no git history to fall back on.
 func TestBenchmarksCorruptFileRecovers(t *testing.T) {
 	v := appPluginTestVault(t, nil)
 	ctx := context.Background()
@@ -147,14 +152,38 @@ func TestBenchmarksCorruptFileRecovers(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{{corrupt"), 0o644); err != nil {
 		t.Fatalf("corrupt: %v", err)
 	}
+	// Reads are non-destructive: empty list, corrupt bytes untouched.
 	if got, err := v.ListBenchmarks(ctx, "flaky"); err != nil || got != "" {
 		t.Fatalf("corrupt list = %q, %v; want empty, nil", got, err)
 	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("read destroyed the corrupt file: %v", err)
+	}
+
 	if err := v.AddBenchmark(ctx, "flaky", benchmarkRecord(0.5)); err != nil {
 		t.Fatalf("add after corrupt: %v", err)
 	}
 	if got := decodeList(t, mustList(t, v, "flaky")); len(got) != 1 {
 		t.Fatalf("got %d records after recovery, want 1", len(got))
+	}
+	bad, err := os.ReadFile(path + ".bad")
+	if err != nil {
+		t.Fatalf("corrupt bytes not preserved as .bad: %v", err)
+	}
+	if string(bad) != "{{corrupt" {
+		t.Fatalf(".bad content = %q", bad)
+	}
+	// The .bad file is invisible to the latest-per-asset scan.
+	raw, err := v.LatestBenchmarks(ctx)
+	if err != nil {
+		t.Fatalf("latest: %v", err)
+	}
+	var latest map[string]map[string]any
+	if err := json.Unmarshal([]byte(raw), &latest); err != nil {
+		t.Fatalf("latest is not an object: %v", err)
+	}
+	if len(latest) != 1 || latest["flaky"] == nil {
+		t.Fatalf("latest after recovery = %v", latest)
 	}
 }
 
