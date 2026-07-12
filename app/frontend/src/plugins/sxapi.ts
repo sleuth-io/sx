@@ -25,6 +25,9 @@ import {
   PluginSecretSet,
   PluginSharedLoad,
   PluginSharedSave,
+  PluginBenchmarksList,
+  PluginBenchmarksAdd,
+  PluginBenchmarksLatest,
   PluginUsageEvents,
   PluginUsageEventsSince,
   PluginAuditEvents,
@@ -37,6 +40,7 @@ import {
 import type {
   AssetInstallations,
   AssetTabSpec,
+  BenchmarkRecord,
   ConsolidateResult,
   CollectionExportFormat,
   CollectionViewSpec,
@@ -239,6 +243,35 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
       async save<T>(data: T): Promise<void> {
         need("storage:shared");
         await PluginSharedSave(id, JSON.stringify(data));
+      },
+    },
+
+    benchmarks: {
+      async list(assetName: string): Promise<BenchmarkRecord[]> {
+        need("benchmarks");
+        const raw = await PluginBenchmarksList(assetName);
+        if (!raw) return [];
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? (parsed as BenchmarkRecord[]) : [];
+        } catch {
+          return [];
+        }
+      },
+      async add(assetName: string, record: BenchmarkRecord): Promise<void> {
+        need("benchmarks");
+        await PluginBenchmarksAdd(assetName, JSON.stringify(record));
+      },
+      async latest(): Promise<Record<string, BenchmarkRecord>> {
+        need("benchmarks");
+        const raw = await PluginBenchmarksLatest();
+        if (!raw) return {};
+        try {
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === "object" ? (parsed as Record<string, BenchmarkRecord>) : {};
+        } catch {
+          return {};
+        }
       },
     },
 
