@@ -97,6 +97,55 @@ func TestLatestAssetZip(t *testing.T) {
 	}
 }
 
+// Extension-created drafts (sx.drafts.create) over an existing asset must
+// carry TargetAsset — publishing with it unset takes the new-asset branch
+// and resets the asset's sharing to everyone.
+func TestCreateDraftFromFiles_TargetsExistingAsset(t *testing.T) {
+	t.Setenv("SX_CONFIG_DIR", t.TempDir())
+	mgmt.ResetActorCache()
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init")
+	runGitCmd(t, dir, "config", "user.email", "alice@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Alice")
+
+	v, err := vaultpkg.NewPathVault("file://" + dir)
+	if err != nil {
+		t.Fatalf("NewPathVault: %v", err)
+	}
+	a := &App{ctx: context.Background(), vault: v}
+
+	skillZip := zipOf(t, map[string]string{
+		"SKILL.md":      "---\nname: docs-tone\ndescription: Tone.\n---\n\n# docs-tone\n",
+		"metadata.toml": "[asset]\nname = \"docs-tone\"\nversion = \"1\"\ntype = \"skill\"\ndescription = \"Tone.\"\n\n[skill]\nprompt-file = \"SKILL.md\"\n",
+	})
+	if err := v.AddAsset(a.ctx, &lockfile.Asset{
+		Name: "docs-tone", Version: "1", Type: asset.TypeSkill,
+	}, skillZip); err != nil {
+		t.Fatalf("AddAsset: %v", err)
+	}
+
+	files := []AssetFile{
+		{Path: "SKILL.md", Content: "---\nname: docs-tone\ndescription: Tone.\n---\n\n# docs-tone\n\nUpdated.\n"},
+		{Path: "evals/evals.json", Content: `{"evals": []}`},
+	}
+	d, err := a.CreateDraftFromFiles("docs-tone", files)
+	if err != nil {
+		t.Fatalf("CreateDraftFromFiles: %v", err)
+	}
+	if d.TargetAsset != "docs-tone" {
+		t.Fatalf("TargetAsset = %q, want docs-tone", d.TargetAsset)
+	}
+
+	// A name the vault has never seen stays a new-asset draft.
+	fresh, err := a.CreateDraftFromFiles("brand-new-skill", files)
+	if err != nil {
+		t.Fatalf("CreateDraftFromFiles (new name): %v", err)
+	}
+	if fresh.TargetAsset != "" {
+		t.Fatalf("TargetAsset = %q for a new asset, want empty", fresh.TargetAsset)
+	}
+}
+
 func runGitCmd(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)

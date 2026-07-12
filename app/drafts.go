@@ -439,6 +439,16 @@ func (a *App) CreateDraftFromFiles(name string, files []AssetFile) (Draft, error
 		TypeLabel: t.Label,
 		Files:     files,
 	}
+
+	// Does this draft update an existing asset? Without this, publishing an
+	// extension-created draft over an existing asset would take the
+	// new-asset branch and reset its sharing to everyone.
+	if v, err := a.currentVault(); err == nil {
+		if versions, err := v.GetVersionList(a.ctx, draft.Name); err == nil && len(versions) > 0 {
+			draft.TargetAsset = draft.Name
+		}
+	}
+
 	return draft, a.saveDraft(draft)
 }
 
