@@ -354,6 +354,21 @@ func (a *App) CreateDraftFromAsset(name string) (Draft, error) {
 	return draft, a.saveDraft(draft)
 }
 
+// targetAssetFor reports whether a draft named name updates an existing
+// asset: the name itself when the vault has versions for it, "" otherwise.
+// Publish uses this to inherit the asset's installations instead of
+// resetting sharing to everyone. A vault read failure yields "" — same as
+// today's behavior for new-asset drafts; the publish sheet shows what the
+// draft targets, so a wrong "" is visible before it can do harm.
+func (a *App) targetAssetFor(name string) string {
+	if v, err := a.currentVault(); err == nil {
+		if versions, err := v.GetVersionList(a.ctx, name); err == nil && len(versions) > 0 {
+			return name
+		}
+	}
+	return ""
+}
+
 // assembleDraft detects what the dropped files are, matches them against
 // existing assets, and persists the draft.
 func (a *App) assembleDraft(name string, files []AssetFile) (Draft, error) {
@@ -395,12 +410,7 @@ func (a *App) assembleDraft(name string, files []AssetFile) (Draft, error) {
 		Files:       files,
 	}
 
-	// Does this draft update an existing asset?
-	if v, err := a.currentVault(); err == nil {
-		if versions, err := v.GetVersionList(a.ctx, name); err == nil && len(versions) > 0 {
-			draft.TargetAsset = name
-		}
-	}
+	draft.TargetAsset = a.targetAssetFor(name)
 
 	return draft, a.saveDraft(draft)
 }
@@ -440,14 +450,9 @@ func (a *App) CreateDraftFromFiles(name string, files []AssetFile) (Draft, error
 		Files:     files,
 	}
 
-	// Does this draft update an existing asset? Without this, publishing an
-	// extension-created draft over an existing asset would take the
-	// new-asset branch and reset its sharing to everyone.
-	if v, err := a.currentVault(); err == nil {
-		if versions, err := v.GetVersionList(a.ctx, draft.Name); err == nil && len(versions) > 0 {
-			draft.TargetAsset = draft.Name
-		}
-	}
+	// Without this, publishing an extension-created draft over an existing
+	// asset would take the new-asset branch and reset its sharing to everyone.
+	draft.TargetAsset = a.targetAssetFor(draft.Name)
 
 	return draft, a.saveDraft(draft)
 }
@@ -636,12 +641,7 @@ func (a *App) UpdateDraft(d Draft) (Draft, error) {
 	// A stale TargetAsset would either reset an existing asset's sharing or
 	// inherit scopes that don't exist.
 	if d.TargetAsset != d.Name {
-		d.TargetAsset = ""
-		if v, err := a.currentVault(); err == nil {
-			if versions, err := v.GetVersionList(a.ctx, d.Name); err == nil && len(versions) > 0 {
-				d.TargetAsset = d.Name
-			}
-		}
+		d.TargetAsset = a.targetAssetFor(d.Name)
 	}
 	if err := a.saveDraft(d); err != nil {
 		return Draft{}, err
