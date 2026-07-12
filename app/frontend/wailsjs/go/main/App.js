@@ -310,6 +310,18 @@ export function PluginSecretSet(arg1, arg2, arg3) {
   return window['go']['main']['App']['PluginSecretSet'](arg1, arg2, arg3);
 }
 
+export function PluginBenchmarksAdd(arg1, arg2) {
+  return window['go']['main']['App']['PluginBenchmarksAdd'](arg1, arg2);
+}
+
+export function PluginBenchmarksLatest() {
+  return window['go']['main']['App']['PluginBenchmarksLatest']();
+}
+
+export function PluginBenchmarksList(arg1) {
+  return window['go']['main']['App']['PluginBenchmarksList'](arg1);
+}
+
 export function PluginSharedLoad(arg1) {
   return window['go']['main']['App']['PluginSharedLoad'](arg1);
 }

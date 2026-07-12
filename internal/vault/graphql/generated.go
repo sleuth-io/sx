@@ -3382,6 +3382,46 @@ type GetAppPluginStorageVault struct {
 // GetAppPluginStorage returns GetAppPluginStorageVault.AppPluginStorage, and is useful for accessing the field via an interface.
 func (v *GetAppPluginStorageVault) GetAppPluginStorage() *json.RawMessage { return v.AppPluginStorage }
 
+// GetAssetBenchmarksResponse is returned by GetAssetBenchmarks on success.
+type GetAssetBenchmarksResponse struct {
+	Vault GetAssetBenchmarksVault `json:"vault"`
+}
+
+// GetVault returns GetAssetBenchmarksResponse.Vault, and is useful for accessing the field via an interface.
+func (v *GetAssetBenchmarksResponse) GetVault() GetAssetBenchmarksVault { return v.Vault }
+
+// GetAssetBenchmarksVault includes the requested fields of the GraphQL type Vault.
+// The GraphQL type's documentation follows.
+//
+// Vault containing assets.
+type GetAssetBenchmarksVault struct {
+	AssetBenchmarks *json.RawMessage `json:"assetBenchmarks"`
+}
+
+// GetAssetBenchmarks returns GetAssetBenchmarksVault.AssetBenchmarks, and is useful for accessing the field via an interface.
+func (v *GetAssetBenchmarksVault) GetAssetBenchmarks() *json.RawMessage { return v.AssetBenchmarks }
+
+// GetLatestAssetBenchmarksResponse is returned by GetLatestAssetBenchmarks on success.
+type GetLatestAssetBenchmarksResponse struct {
+	Vault GetLatestAssetBenchmarksVault `json:"vault"`
+}
+
+// GetVault returns GetLatestAssetBenchmarksResponse.Vault, and is useful for accessing the field via an interface.
+func (v *GetLatestAssetBenchmarksResponse) GetVault() GetLatestAssetBenchmarksVault { return v.Vault }
+
+// GetLatestAssetBenchmarksVault includes the requested fields of the GraphQL type Vault.
+// The GraphQL type's documentation follows.
+//
+// Vault containing assets.
+type GetLatestAssetBenchmarksVault struct {
+	LatestAssetBenchmarks *json.RawMessage `json:"latestAssetBenchmarks"`
+}
+
+// GetLatestAssetBenchmarks returns GetLatestAssetBenchmarksVault.LatestAssetBenchmarks, and is useful for accessing the field via an interface.
+func (v *GetLatestAssetBenchmarksVault) GetLatestAssetBenchmarks() *json.RawMessage {
+	return v.LatestAssetBenchmarks
+}
+
 // GetMeResponse is returned by GetMe on success.
 type GetMeResponse struct {
 	User *GetMeUser `json:"user"`
@@ -3414,6 +3454,58 @@ func (v *GetMeUser) GetFirstName() string { return v.FirstName }
 
 // GetLastName returns GetMeUser.LastName, and is useful for accessing the field via an interface.
 func (v *GetMeUser) GetLastName() string { return v.LastName }
+
+// ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutation includes the requested fields of the GraphQL type ImportAssetBenchmarkMutation.
+// The GraphQL type's documentation follows.
+//
+// Record a client-run benchmark result. Any vault member may import.
+type ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutation struct {
+	Errors []ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutationErrorsErrorType `json:"errors"`
+}
+
+// GetErrors returns ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutation.Errors, and is useful for accessing the field via an interface.
+func (v *ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutation) GetErrors() []ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutationErrorsErrorType {
+	return v.Errors
+}
+
+// ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+type ImportAssetBenchmarkInput struct {
+	AssetName string `json:"assetName"`
+	// One interchange benchmark record (see docs/benchmarks-spec.md in sx)
+	Benchmark json.RawMessage `json:"benchmark"`
+}
+
+// GetAssetName returns ImportAssetBenchmarkInput.AssetName, and is useful for accessing the field via an interface.
+func (v *ImportAssetBenchmarkInput) GetAssetName() string { return v.AssetName }
+
+// GetBenchmark returns ImportAssetBenchmarkInput.Benchmark, and is useful for accessing the field via an interface.
+func (v *ImportAssetBenchmarkInput) GetBenchmark() json.RawMessage { return v.Benchmark }
+
+// ImportAssetBenchmarkResponse is returned by ImportAssetBenchmark on success.
+type ImportAssetBenchmarkResponse struct {
+	// Record a client-run benchmark result. Any vault member may import.
+	ImportAssetBenchmark *ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutation `json:"importAssetBenchmark"`
+}
+
+// GetImportAssetBenchmark returns ImportAssetBenchmarkResponse.ImportAssetBenchmark, and is useful for accessing the field via an interface.
+func (v *ImportAssetBenchmarkResponse) GetImportAssetBenchmark() *ImportAssetBenchmarkImportAssetBenchmarkImportAssetBenchmarkMutation {
+	return v.ImportAssetBenchmark
+}
 
 type ImportAuditEventInput struct {
 	// When the event occurred (original timestamp)
@@ -7494,6 +7586,26 @@ type __GetAppPluginStorageInput struct {
 // GetPluginId returns __GetAppPluginStorageInput.PluginId, and is useful for accessing the field via an interface.
 func (v *__GetAppPluginStorageInput) GetPluginId() string { return v.PluginId }
 
+// __GetAssetBenchmarksInput is used internally by genqlient
+type __GetAssetBenchmarksInput struct {
+	AssetName string `json:"assetName"`
+	First     *int   `json:"first"`
+}
+
+// GetAssetName returns __GetAssetBenchmarksInput.AssetName, and is useful for accessing the field via an interface.
+func (v *__GetAssetBenchmarksInput) GetAssetName() string { return v.AssetName }
+
+// GetFirst returns __GetAssetBenchmarksInput.First, and is useful for accessing the field via an interface.
+func (v *__GetAssetBenchmarksInput) GetFirst() *int { return v.First }
+
+// __ImportAssetBenchmarkInput is used internally by genqlient
+type __ImportAssetBenchmarkInput struct {
+	Input ImportAssetBenchmarkInput `json:"input"`
+}
+
+// GetInput returns __ImportAssetBenchmarkInput.Input, and is useful for accessing the field via an interface.
+func (v *__ImportAssetBenchmarkInput) GetInput() ImportAssetBenchmarkInput { return v.Input }
+
 // __ImportAuditEventsInput is used internally by genqlient
 type __ImportAuditEventsInput struct {
 	Events []ImportAuditEventInput `json:"events"`
@@ -8719,6 +8831,72 @@ func GetAppPluginStorage(
 	return data_, err_
 }
 
+// The query executed by GetAssetBenchmarks.
+const GetAssetBenchmarks_Operation = `
+query GetAssetBenchmarks ($assetName: String!, $first: Int) {
+	vault {
+		assetBenchmarks(assetName: $assetName, first: $first)
+	}
+}
+`
+
+func GetAssetBenchmarks(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	assetName string,
+	first *int,
+) (data_ *GetAssetBenchmarksResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "GetAssetBenchmarks",
+		Query:  GetAssetBenchmarks_Operation,
+		Variables: &__GetAssetBenchmarksInput{
+			AssetName: assetName,
+			First:     first,
+		},
+	}
+
+	data_ = &GetAssetBenchmarksResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The query executed by GetLatestAssetBenchmarks.
+const GetLatestAssetBenchmarks_Operation = `
+query GetLatestAssetBenchmarks {
+	vault {
+		latestAssetBenchmarks
+	}
+}
+`
+
+func GetLatestAssetBenchmarks(
+	ctx_ context.Context,
+	client_ graphql.Client,
+) (data_ *GetLatestAssetBenchmarksResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "GetLatestAssetBenchmarks",
+		Query:  GetLatestAssetBenchmarks_Operation,
+	}
+
+	data_ = &GetLatestAssetBenchmarksResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
 // The query executed by GetMe.
 const GetMe_Operation = `
 query GetMe {
@@ -8742,6 +8920,43 @@ func GetMe(
 	}
 
 	data_ = &GetMeResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The mutation executed by ImportAssetBenchmark.
+const ImportAssetBenchmark_Operation = `
+mutation ImportAssetBenchmark ($input: ImportAssetBenchmarkInput!) {
+	importAssetBenchmark(input: $input) {
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func ImportAssetBenchmark(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	input ImportAssetBenchmarkInput,
+) (data_ *ImportAssetBenchmarkResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "ImportAssetBenchmark",
+		Query:  ImportAssetBenchmark_Operation,
+		Variables: &__ImportAssetBenchmarkInput{
+			Input: input,
+		},
+	}
+
+	data_ = &ImportAssetBenchmarkResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(

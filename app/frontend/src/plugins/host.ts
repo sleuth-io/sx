@@ -120,6 +120,7 @@ const KNOWN_PERMISSIONS = new Set([
   "assets:write-metadata",
   "secrets",
   "storage:shared",
+  "benchmarks",
   "views:collection",
   "views:team",
   "views:repo",

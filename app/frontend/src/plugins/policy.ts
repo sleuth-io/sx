@@ -114,6 +114,8 @@ const PERMISSION_DESCRIPTIONS: Record<FixedPermission, string> = {
   secrets: "Store its own API keys and tokens in your OS keychain",
   "storage:shared":
     "Keep shared state in this library, visible to everyone who uses it",
+  benchmarks:
+    "Read and record skill benchmark results in this library (on skills.new, shared with server-run benchmarks)",
   "views:collection": "Add tabs to collection views",
   "views:team": "Add tabs to team views",
   "views:repo": "Add tabs to repository views",

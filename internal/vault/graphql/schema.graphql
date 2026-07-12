@@ -201,6 +201,7 @@ type User {
   isBeingImpersonated: Boolean!
   email: String!
   timezone: String
+  personalDescription: String!
   favoriteWorkspaces: [FavoriteWorkspaceType!]!
   notifications(
     """Maximum allowed value is 50."""
@@ -3374,6 +3375,7 @@ type AiScanReport {
   status: String!
   pipelineVersion: String!
   createdAt: DateTime!
+  updatedAt: DateTime!
   periodStart: DateTime!
   periodEnd: DateTime!
   role: [AiScanSubjectRole!]!
@@ -3407,9 +3409,8 @@ type AiScanUpload {
 """
 One subject's role on a report, from the stored snapshot. Survives subject-user deletion.
 
-The role text is private data (it doubles as the user's what-to-exclude-from-analysis note), so
-only ``has_role`` - whether a role was set - is exposed. The reader can see who is missing a role
-without the description itself leaving the server.
+Only ``has_role`` - whether a role was set - is exposed for now; the role text itself is not
+surfaced here. The reader can see who is missing a role without the description leaving the server.
 """
 type AiScanSubjectRole {
   email: String!
@@ -3518,6 +3519,8 @@ type Vault {
   asset(id: ID!): VaultAsset
   appPluginPolicy: AppPluginPolicy!
   appPluginStorage(pluginId: String!): JSONString
+  assetBenchmarks(assetName: String!, first: Int): JSONString
+  latestAssetBenchmarks: JSONString
 }
 
 """Paginated list of vault assets."""
@@ -4745,6 +4748,9 @@ enum SkillsEvalBenchmarkTriggeredByChoices {
 
   """Upload"""
   UPLOAD
+
+  """External"""
+  EXTERNAL
 }
 
 """Lightweight benchmark summary for list views."""
@@ -5845,6 +5851,9 @@ type Mutation {
   Replace a plugin's shared storage document whole. Any vault member may write.
   """
   setAppPluginStorage(input: SetAppPluginStorageInput!): SetAppPluginStorageMutation
+
+  """Record a client-run benchmark result. Any vault member may import."""
+  importAssetBenchmark(input: ImportAssetBenchmarkInput!): ImportAssetBenchmarkMutation
   updateSkillsSettings(input: UpdateSkillsSettingsInput!): UpdateSkillsSettingsMutation
 
   """Import an external (non-managed) asset as a new managed asset."""
@@ -6112,7 +6121,7 @@ type Mutation {
   setNamedWorkPlanning(input: NamedWorkPlanningInputType!): SetNamedWorkPlanningMutation
   markSeen(name: String!, orgSlug: ID): SeenEventType
   resendEmailConfirmation: ResendEmailConfirmationMutation
-  updateUser(email: String, firstName: String, lastName: String, roleDescription: String, timezone: String): UpdateUserMutation
+  updateUser(email: String, firstName: String, lastName: String, personalDescription: String, roleDescription: String, timezone: String): UpdateUserMutation
   createPersonalToken(label: String!): CreatePersonalTokenMutation
   deletePersonalToken(tokenId: ID!): DeletePersonalTokenMutation
   setCurrentUserWorkingHours(input: WorkingHoursInputType!): SetCurrentUserWorkingHoursMutation
@@ -6398,6 +6407,18 @@ input SetAppPluginStorageInput {
 
   """Full document to store; null or empty deletes the stored document"""
   data: JSONString
+}
+
+"""Record a client-run benchmark result. Any vault member may import."""
+type ImportAssetBenchmarkMutation {
+  errors: [ErrorType!]!
+}
+
+input ImportAssetBenchmarkInput {
+  assetName: String!
+
+  """One interchange benchmark record (see docs/benchmarks-spec.md in sx)"""
+  benchmark: JSONString!
 }
 
 type UpdateSkillsSettingsMutation {

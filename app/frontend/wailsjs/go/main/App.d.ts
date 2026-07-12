@@ -157,6 +157,12 @@ export function PluginSecretGet(arg1:string,arg2:string):Promise<string>;
 
 export function PluginSecretSet(arg1:string,arg2:string,arg3:string):Promise<void>;
 
+export function PluginBenchmarksAdd(arg1:string,arg2:string):Promise<void>;
+
+export function PluginBenchmarksLatest():Promise<string>;
+
+export function PluginBenchmarksList(arg1:string):Promise<string>;
+
 export function PluginSharedLoad(arg1:string):Promise<string>;
 
 export function PluginSharedSave(arg1:string,arg2:string):Promise<void>;

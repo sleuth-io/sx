@@ -3,7 +3,7 @@
 // extension needs something this file doesn't offer, the answer is an API
 // addition, never an escape hatch to app internals.
 
-export const SX_API_VERSION = "1.9.0";
+export const SX_API_VERSION = "1.10.0";
 
 /** Capabilities an extension may declare. Undeclared calls throw.
  * `net:<host>` is a parameterized family (API 1.4.0): each declared
@@ -28,6 +28,7 @@ export type Permission =
   | "export"
   | "llm:use"
   | "assets:consolidate"
+  | "benchmarks"
   | `net:${string}`;
 
 /** plugin.json — the extension manifest. */
@@ -123,6 +124,38 @@ export interface ConsolidateResult {
   kept: string[];
   /** Vault-refused install moves (RBAC); the consolidation continued. */
   skipped: string[];
+}
+
+// ---- Benchmarks (API 1.10.0) ----
+
+/** One benchmark result in the interchange shape shared with skills.new
+ * (docs/benchmarks-spec.md). File vaults hold these at
+ * .sx/benchmarks/<asset>.json; skills.new stores them as real benchmark
+ * rows, so records with source "server" are benchmarks skills.new ran
+ * itself. */
+export interface BenchmarkRecord {
+  /** RFC3339 timestamp of the run. */
+  at: string;
+  source: "app" | "server";
+  executor: { provider: string; model: string };
+  runs_per_config: number;
+  /** Who ran it (vault identity or skills.new user). */
+  by?: string;
+  /** Pulse's run_summary shape: with_skill/without_skill stat blocks
+   * ({pass_rate: {mean, stddev, min, max}, ...}) plus a delta block. */
+  summary: {
+    with_skill: Record<string, { mean: number; stddev?: number; min?: number; max?: number }>;
+    without_skill: Record<string, { mean: number; stddev?: number; min?: number; max?: number }>;
+    delta: Record<string, number>;
+  };
+  per_eval?: { eval_key: string; with_pass: number; without_pass: number; status: string }[];
+  notes?: string[];
+  /** App records: the content hash the run was benchmarked against. */
+  skill_hash?: string;
+  /** Server records: the benchmarked version and whether it is still
+   * the asset's current one — the staleness signal. */
+  skill_version?: string | null;
+  is_current_version?: boolean | null;
 }
 
 // ---- LLM (API 1.9.0) ----
@@ -383,6 +416,17 @@ export interface SxAPI {
     get(name: string): Promise<string>;
     /** Setting "" deletes the secret. */
     set(name: string, value: string): Promise<void>;
+  };
+
+  /** Requires benchmarks (API 1.10.0). Per-asset benchmark records,
+   * unified across vault types: .sx/benchmarks/<asset>.json on file
+   * vaults, real benchmark rows on skills.new — so `list` returns
+   * server-run benchmarks too. Records are capped per asset (newest
+   * kept); `latest` is the dashboard's one-call bulk read. */
+  readonly benchmarks: {
+    list(assetName: string): Promise<BenchmarkRecord[]>;
+    add(assetName: string, record: BenchmarkRecord): Promise<void>;
+    latest(): Promise<Record<string, BenchmarkRecord>>;
   };
 
   /** Requires llm:use (API 1.9.0). One completion against whatever LLM
