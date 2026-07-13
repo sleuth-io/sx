@@ -40,8 +40,8 @@ func resolveLockBytesForActor(ctx context.Context, vaultRoot string) ([]byte, er
 
 // upsertAssetInManifest inserts or replaces an asset in the vault's
 // manifest. Scopes on the incoming asset are preserved verbatim —
-// callers that want to inherit existing scopes should call
-// inheritAssetScopesFromManifest before invoking this.
+// callers that want to inherit existing scopes should use
+// upsertAssetInheritingScopes instead.
 func upsertAssetInManifest(vaultRoot string, asset *lockfile.Asset) error {
 	m, err := loadManifest(vaultRoot)
 	if err != nil {
