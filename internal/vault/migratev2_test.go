@@ -484,6 +484,83 @@ func TestMigrateStorageToV2NamespaceByDiskShape(t *testing.T) {
 	mustNotExist(t, filepath.Join(dir, ".sx", "versions", "tools", "list.txt"))
 }
 
+func TestMigrateStorageToV2UndeclaredNamespaceWithoutListTxt(t *testing.T) {
+	dir := t.TempDir()
+	seedV1Vault(t, dir)
+
+	// A namespaced asset neither declared in the manifest nor carrying any
+	// list.txt: classification must fall back to the version-shape signal
+	// (file-less children that hold subdirectories are asset-shaped, so the
+	// parent is a namespace).
+	write := func(rel, content string) {
+		t.Helper()
+		path := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("assets/bare/fmt/1/COMMAND.md", "# bare/fmt")
+	write("assets/bare/lint/1/COMMAND.md", "# bare/lint")
+
+	result, err := migrateStorageToV2(dir, "alice@example.com")
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if result == nil || result.Assets != 4 {
+		t.Fatalf("result = %+v, want 4 assets migrated", result)
+	}
+	for _, rel := range []string{
+		".sx/versions/bare/fmt/1/COMMAND.md",
+		".sx/versions/bare/fmt/list.txt", // synthesized by ensureVersionList
+		".sx/versions/bare/lint/1/COMMAND.md",
+		"assets/bare/fmt/COMMAND.md",
+		"assets/bare/lint/COMMAND.md",
+	} {
+		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
+			t.Errorf("missing after migration: %s (%v)", rel, err)
+		}
+	}
+	// "bare" itself must not have been archived as an asset with fmt/lint
+	// as phantom versions.
+	mustNotExist(t, filepath.Join(dir, ".sx", "versions", "bare", "list.txt"))
+}
+
+func TestMigrateStorageToV2AssetNamespaceConflictErrors(t *testing.T) {
+	dir := t.TempDir()
+	seedV1Vault(t, dir)
+
+	// Declare a name that is both an asset and a namespace prefix. There is
+	// no correct migration for this shape, so both the plan and the
+	// migration must refuse with an actionable error.
+	m, _, err := manifest.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Assets = append(m.Assets,
+		manifest.Asset{Name: "chat/sub", Version: "1", Type: asset.TypeCommand,
+			SourcePath: &manifest.SourcePath{Path: "./assets/chat/sub/1"}},
+	)
+	if err := manifest.Save(dir, m); err != nil {
+		t.Fatal(err)
+	}
+
+	wantErr := func(err error) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), `"chat"`) {
+			t.Fatalf("err = %v, want conflict error naming \"chat\"", err)
+		}
+	}
+	_, err = planStorageMigration(dir)
+	wantErr(err)
+	_, err = migrateStorageToV2(dir, "alice@example.com")
+	wantErr(err)
+	// Refused means untouched: nothing may have been archived.
+	mustNotExist(t, filepath.Join(dir, ".sx", "versions"))
+}
+
 func TestMigrateStorageToV2SkipsSyncConflictDirs(t *testing.T) {
 	dir := t.TempDir()
 	seedV1Vault(t, dir)

@@ -85,12 +85,34 @@ func v1AssetDirNames(vaultRoot string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A name that is simultaneously an asset and a namespace prefix
+	// ("opsx" alongside "opsx/apply") has no correct migration: moving
+	// opsx as an asset archives apply/ as a phantom version, and treating
+	// it as a namespace strands opsx's own versions. Refuse rather than
+	// silently pick one interpretation.
+	if conflict := assetNamespaceConflict(manifestNames); conflict != "" {
+		return nil, fmt.Errorf("manifest declares %q both as an asset and as a namespace prefix of other assets; rename one of them before migrating", conflict)
+	}
 	var names []string
 	if err := collectV1AssetDirNames(vaultRoot, "", manifestNames, &names); err != nil {
 		return nil, err
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+// assetNamespaceConflict returns a declared asset name that is also a
+// namespace prefix of another declared name (e.g. "opsx" when both "opsx"
+// and "opsx/apply" exist), or "" when there is no conflict.
+func assetNamespaceConflict(names map[string]bool) string {
+	for name := range names {
+		for i := len(name) - 1; i > 0; i-- {
+			if name[i] == '/' && names[name[:i]] {
+				return name[:i]
+			}
+		}
+	}
+	return ""
 }
 
 // manifestAssetNameSet returns the set of asset names declared in the
@@ -130,7 +152,7 @@ func collectV1AssetDirNames(vaultRoot, prefix string, manifestNames map[string]b
 		// namespace has an archive directory of its own (holding the
 		// children already moved), which must not hide the children
 		// still waiting under assets/{rel}.
-		if isV1NamespaceDir(vaultRoot, rel, manifestNames) {
+		if isNamespaceDir(filepath.Join(vaultRoot, "assets"), rel, manifestNames) {
 			if err := collectV1AssetDirNames(vaultRoot, rel, manifestNames, names); err != nil {
 				return err
 			}
@@ -158,15 +180,27 @@ func collectV1AssetDirNames(vaultRoot, prefix string, manifestNames map[string]b
 	return nil
 }
 
-// isV1NamespaceDir reports whether assets/{rel} is a namespace directory —
+// isNamespaceDir reports whether {baseDir}/{rel} is a namespace directory —
 // a path segment of namespaced asset names (e.g. "opsx" for "opsx/apply") —
-// rather than an asset directory. The manifest is the primary signal: a
-// declared asset name is always an asset, and declared names nested under
-// rel make it a namespace. On-disk shape settles undeclared directories: a
-// directory holding its own list.txt is an asset, one whose children hold
-// list.txt files is a namespace, and anything else defaults to asset,
-// matching the pre-namespace behavior.
-func isV1NamespaceDir(vaultRoot, rel string, manifestNames map[string]bool) bool {
+// rather than an asset directory. baseDir is the tree being classified:
+// the v1 assets root or the v2 archive root. The manifest is the primary
+// signal: a declared asset name is always an asset, and declared names
+// nested under rel make it a namespace (a name that is both is rejected
+// up front by assetNamespaceConflict). On-disk shape settles undeclared
+// directories:
+//
+//   - rel holding its own list.txt → asset.
+//   - a child holding list.txt → the children are assets → namespace.
+//   - no list.txt anywhere: a version directory holds the asset's files
+//     directly, while an asset directory holds only version
+//     subdirectories. So a child with regular files at its root marks
+//     rel an asset, and file-less children with subdirectories mark it
+//     a namespace. (An asset whose EVERY version dir has no root files
+//     — no metadata.toml, no prompt file — would be misread as a
+//     namespace, but such an asset has nothing recognizable to migrate
+//     anyway.)
+//   - anything else defaults to asset, matching pre-namespace behavior.
+func isNamespaceDir(baseDir, rel string, manifestNames map[string]bool) bool {
 	if manifestNames[rel] {
 		return false
 	}
@@ -175,7 +209,7 @@ func isV1NamespaceDir(vaultRoot, rel string, manifestNames map[string]bool) bool
 			return true
 		}
 	}
-	dir := filepath.Join(vaultRoot, "assets", filepath.FromSlash(rel))
+	dir := filepath.Join(baseDir, filepath.FromSlash(rel))
 	if _, err := os.Stat(filepath.Join(dir, "list.txt")); err == nil {
 		return false
 	}
@@ -183,15 +217,37 @@ func isV1NamespaceDir(vaultRoot, rel string, manifestNames map[string]bool) bool
 	if err != nil {
 		return false
 	}
+	anyChildFile := false
+	anyChildSubdirOnly := false
 	for _, entry := range filterScanEntries(entries) {
 		if !entry.IsDir() {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(dir, entry.Name(), "list.txt")); err == nil {
-			return true
+		childEntries, err := os.ReadDir(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		hasFile, hasSubdir := false, false
+		for _, ce := range filterScanEntries(childEntries) {
+			if ce.IsDir() {
+				hasSubdir = true
+				continue
+			}
+			if ce.Name() == "list.txt" {
+				return true
+			}
+			hasFile = true
+		}
+		if hasFile {
+			anyChildFile = true
+		} else if hasSubdir {
+			anyChildSubdirOnly = true
 		}
 	}
-	return false
+	if anyChildFile {
+		return false
+	}
+	return anyChildSubdirOnly
 }
 
 // dirHasSubdirectories reports whether dir contains at least one
@@ -365,7 +421,7 @@ func refreshRootViewsUnder(vaultRoot string, v2 layout.Layout, prefix string, ma
 			continue
 		}
 		rel := path.Join(prefix, entry.Name())
-		if isArchiveNamespaceDir(vaultRoot, rel, manifestNames) {
+		if isNamespaceDir(filepath.Join(vaultRoot, ".sx", "versions"), rel, manifestNames) {
 			if err := refreshRootViewsUnder(vaultRoot, v2, rel, manifestNames); err != nil {
 				return err
 			}
@@ -376,39 +432,6 @@ func refreshRootViewsUnder(vaultRoot string, v2 layout.Layout, prefix string, ma
 		}
 	}
 	return nil
-}
-
-// isArchiveNamespaceDir reports whether .sx/versions/{rel} is a namespace
-// directory holding nested asset archives rather than an asset's own
-// archive. Mirrors isV1NamespaceDir: manifest names are the primary signal,
-// the directory's own list.txt marks an asset, and children with list.txt
-// mark a namespace.
-func isArchiveNamespaceDir(vaultRoot, rel string, manifestNames map[string]bool) bool {
-	if manifestNames[rel] {
-		return false
-	}
-	for name := range manifestNames {
-		if strings.HasPrefix(name, rel+"/") {
-			return true
-		}
-	}
-	dir := filepath.Join(vaultRoot, ".sx", "versions", filepath.FromSlash(rel))
-	if _, err := os.Stat(filepath.Join(dir, "list.txt")); err == nil {
-		return false
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false
-	}
-	for _, entry := range filterScanEntries(entries) {
-		if !entry.IsDir() {
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(dir, entry.Name(), "list.txt")); err == nil {
-			return true
-		}
-	}
-	return false
 }
 
 // ensureMigrated runs the storage migration on a path vault before a
