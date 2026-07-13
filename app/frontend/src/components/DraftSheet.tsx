@@ -53,10 +53,14 @@ const TYPE_OPTIONS = [
  */
 export default function DraftSheet({
   draft: initial,
+  initialView = "edit",
   onClose,
   onPublished,
 }: {
   draft: main.Draft;
+  /** Which tab the sheet opens on. Editing flows open on "edit"; resuming
+   * a saved draft opens on "changes" to show what publishing would do. */
+  initialView?: "changes" | "edit";
   onClose: () => void;
   onPublished: (name: string) => void;
 }) {
@@ -68,11 +72,7 @@ export default function DraftSheet({
   // Warnings from before-publish extension subscribers (the doctor hook).
   // Non-blocking: the user sees them and chooses "Publish anyway".
   const [warnings, setWarnings] = useState<PublishWarning[] | null>(null);
-  // Updates open on what changed (the skills.new PR-diff treatment); new
-  // assets open in the editor since their diff is trivially "everything".
-  const [view, setView] = useState<"changes" | "edit">(
-    initial.targetAsset ? "changes" : "edit",
-  );
+  const [view, setView] = useState<"changes" | "edit">(initialView);
   const [diff, setDiff] = useState<main.DraftDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
 

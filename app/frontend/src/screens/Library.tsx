@@ -219,6 +219,11 @@ export default function Library({
   const searchRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [openDraft, setOpenDraft] = useState<main.Draft | null>(null);
+  // Resuming a saved draft opens the sheet on its Changes tab; every
+  // editing flow (Edit button, drops, new assets) opens on the editor.
+  const [openDraftView, setOpenDraftView] = useState<"changes" | "edit">(
+    "edit",
+  );
   // True while a draft is being created or fetched from the vault —
   // renders the sheet's skeleton so the click responds immediately.
   const [openingDraft, setOpeningDraft] = useState(false);
@@ -779,6 +784,7 @@ export default function Library({
       setOpeningDraft(true);
       CreateDraftFromPaths(real)
         .then((draft) => {
+          setOpenDraftView("edit");
           setOpenDraft(draft);
           load();
         })
@@ -1253,6 +1259,7 @@ export default function Library({
     try {
       const draft = await CreateDraftFromAsset(name);
       setSelected(null);
+      setOpenDraftView("edit");
       setOpenDraft(draft);
       load();
     } catch (e) {
@@ -1265,7 +1272,9 @@ export default function Library({
   async function openExistingDraft(id: string) {
     setOpeningDraft(true);
     try {
-      setOpenDraft(await GetDraft(id));
+      const draft = await GetDraft(id);
+      setOpenDraftView("changes");
+      setOpenDraft(draft);
     } catch (e) {
       setToastMessage(String(e));
     } finally {
@@ -2394,6 +2403,7 @@ export default function Library({
       {openDraft && (
         <DraftSheet
           draft={openDraft}
+          initialView={openDraftView}
           onClose={() => {
             setOpenDraft(null);
             load();
@@ -2411,6 +2421,7 @@ export default function Library({
           onClose={() => setShowAddAsset(false)}
           onDraft={(draft) => {
             setShowAddAsset(false);
+            setOpenDraftView("edit");
             setOpenDraft(draft);
             load();
           }}
