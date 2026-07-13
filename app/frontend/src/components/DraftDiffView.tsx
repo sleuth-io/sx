@@ -32,11 +32,23 @@ export default function DraftDiffView({
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-  if (loading || !diff) {
+  if (loading) {
     return (
       <div className="space-y-3">
         <div className="h-12 animate-pulse rounded-lg bg-canvas" />
         <div className="h-64 animate-pulse rounded-lg bg-canvas" />
+      </div>
+    );
+  }
+  // Not loading and no diff: the fetch failed (the sheet shows the error
+  // banner). A quiet panel instead of a forever-pulsing skeleton; the
+  // Edit/Changes toggle retries.
+  if (!diff) {
+    return (
+      <div className="flex h-full items-center justify-center rounded-lg border border-line bg-canvas">
+        <p className="px-6 py-10 text-sm text-ink-faint">
+          The changes couldn't be loaded — switch to Edit and back to retry.
+        </p>
       </div>
     );
   }
