@@ -1,8 +1,8 @@
 <div align="center">
 <img src="docs/sx_logo.png" alt="sx" width="360">
 
-### Define your agents once. Distribute them everywhere.
-#### `sx` is the control plane for your team's AI — manage, distribute, and govern every AI asset
+### Skill sharing made easy
+#### Drop a vault in your Dropbox. Your whole team's skills — versioned, in every AI tool.
 
 [![Stars](https://img.shields.io/github/stars/sleuth-io/sx?style=flat&color=F59E0B)](https://github.com/sleuth-io/sx/stargazers)
 [![Star History](https://img.shields.io/badge/Star_History-chart-8B5CF6)](https://star-history.com/#sleuth-io/sx&Date)
@@ -13,17 +13,32 @@
 
 </div>
 
-![Demo](docs/demo.gif)
+![Creating a shared vault and publishing a skill in under 30 seconds](docs/app-demo.gif)
+
+## The 30-second version
+
+1. **[Download the app](https://github.com/sleuth-io/sx/releases)** (`sx-app-*` for macOS, Windows, Linux) and open it — it asks one question and sets up your library.
+2. **Point it at a folder your team already syncs** — Dropbox, Google Drive, iCloud, OneDrive. That folder *is* the team vault. No server, no git, no accounts.
+3. **Drag a skill in.** It's published. Teammates who point at the same folder get it on their machine, in every AI tool they use.
+
+Command-line person? The same thing, three lines (npm-style manifest + lock under the hood):
+
+```bash
+brew install sleuth-io/tap/sx
+sx init --type path --path ~/Dropbox/sx-vault
+sx add ~/.claude/skills/my-skill
+```
 
 ## Why sx?
 
 AI assets — skills, MCPs, agents, rules, commands, hooks — usually live inside a single Git repo. The moment you want them in another repo you copy-paste, and they drift out of sync with no source of truth. `sx` manages complex sharing and distribution of AI assets for real-world teams:
 
-- **Share across projects and teams** — manage an asset once, install it into any repos or teams
-- **Share across clients, including the web ones** — one asset installs into every major AI assistant
-- **No Git knowledge required** — gives non-technical users easy access; the plumbing stays hidden
-- **Install the right assets, not all of them** — scope to an org, repo, path, team, bot, or user, no context bloat
-- **Version, observe, and govern** — update once; track adoption with `sx stats`; audit access with `sx audit`
+- **Zero infrastructure** — a folder your team already syncs is a full vault; no server, no accounts
+- **No Git knowledge required** — non-technical teammates share skills too; the plumbing stays hidden
+- **Every AI tool, including the web ones** — one asset installs into every major AI assistant
+- **Share across projects and teams** — manage an asset once, install it into any repo or team
+- **The right assets, not all of them** — scope to an org, repo, path, team, bot, or user; no context bloat
+- **Grows with you** — versioning, adoption stats (`sx stats`), and an audit trail (`sx audit`) when you need them
 
 ## App or command line — your choice
 
@@ -60,7 +75,9 @@ Then initialize in your vault or project:
 sx init
 ```
 
-From here the workflow is three steps — **manage** your assets, **distribute** them, and **govern** what ships.
+From here: **add** skills, **share** them with the right people, and **see** what's used.
+
+![CLI demo](docs/demo.gif)
 
 ### Manage — capture, version, and observe
 
@@ -162,14 +179,6 @@ An AI agent is only as good as what it knows and what it's allowed to do. `sx` l
 
 Choose the right distribution model for your team:
 
-### Local (Personal)
-
-Perfect for easily sharing personal tools across multiple personal projects
-
-```bash
-sx init --type path --path my/vault/path
-```
-
 ### Shared folder (Small teams, zero infrastructure)
 
 Put the vault in a folder your team already syncs — Dropbox, Google Drive,
@@ -178,6 +187,14 @@ OneDrive, or iCloud. No git, no GitHub account, no server. See
 
 ```bash
 sx init --type path --path ~/Dropbox/sx-vault
+```
+
+### Local (Personal)
+
+Perfect for easily sharing personal tools across multiple personal projects
+
+```bash
+sx init --type path --path my/vault/path
 ```
 
 ### Git vault (Small teams)
