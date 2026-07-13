@@ -43,6 +43,8 @@ export function ConsolidateAssets(arg1:string,arg2:string,arg3:Array<string>):Pr
 
 export function CreateBlankDraft(arg1:string):Promise<main.Draft>;
 
+export function CreateBot(arg1:string,arg2:string):Promise<main.BotCreated>;
+
 export function CreateCollection(arg1:string):Promise<main.Collection>;
 
 export function CreateDraftFromAsset(arg1:string):Promise<main.Draft>;
@@ -56,6 +58,8 @@ export function CreateGitRepo(arg1:string):Promise<main.GitRepoOption>;
 export function CreateTeam(arg1:string):Promise<main.TeamInfo>;
 
 export function DeleteAssets(arg1:Array<string>):Promise<void>;
+
+export function DeleteBot(arg1:string):Promise<void>;
 
 export function DeleteCollection(arg1:string):Promise<void>;
 
@@ -114,6 +118,8 @@ export function LLMTest():Promise<string>;
 export function ListAIClients():Promise<Array<main.AIClient>>;
 
 export function ListAssets():Promise<Array<main.AssetCard>>;
+
+export function ListBots():Promise<Array<main.BotInfo>>;
 
 export function ListCollections():Promise<Array<main.Collection>>;
 
@@ -209,6 +215,8 @@ export function SetAssetPersonal(arg1:string,arg2:boolean):Promise<string>;
 
 export function SetAssetTeamSharing(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
+export function SetBotTeam(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
 export function SetCollectionMembership(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function SetCollectionMembershipBulk(arg1:string,arg2:Array<string>,arg3:boolean):Promise<void>;
@@ -246,6 +254,8 @@ export function SwitchProfile(arg1:string):Promise<main.VaultInfo>;
 export function SyncAITools():Promise<string>;
 
 export function TeamAssets():Promise<Record<string, Array<string>>>;
+
+export function UpdateBotDescription(arg1:string,arg2:string):Promise<void>;
 
 export function UpdateDraft(arg1:main.Draft):Promise<main.Draft>;
 

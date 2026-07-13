@@ -12,13 +12,15 @@ export type Scope =
   | { kind: "plugin-view"; name: string }
   | { kind: "collection"; name: string }
   | { kind: "team"; name: string }
-  | { kind: "repo"; name: string };
+  | { kind: "repo"; name: string }
+  | { kind: "bot"; name: string };
 
 function scopeKey(s: Scope): string {
   if (s.kind === "plugin-view") return "plugin-view:" + s.name;
   if (s.kind === "collection") return "collection:" + s.name;
   if (s.kind === "team") return "team:" + s.name;
   if (s.kind === "repo") return "repo:" + s.name;
+  if (s.kind === "bot") return "bot:" + s.name;
   return s.kind;
 }
 
@@ -57,18 +59,23 @@ export default function Sidebar({
   teams,
   teamAssetCounts,
   repoAssets,
+  botAssets,
   pinnedCollections,
   pinnedTeams,
   pinnedRepos,
+  pinnedBots,
   onNewCollection,
   onNewTeam,
+  onNewBot,
   onBrowseCollections,
   onBrowseTeams,
   onBrowseRepos,
+  onBrowseBots,
   onSettings,
   dropCollection,
   dropTeam,
   dropRepo,
+  dropBot,
   onCollectionDragHandle,
   onRepoDragHandle,
   onUnpin,
@@ -87,21 +94,31 @@ export default function Sidebar({
   // Repo URL → asset names; null when this library doesn't track repos
   // (the section is absent entirely).
   repoAssets: Record<string, string[]> | null;
+  // Bot name → resolved asset names; null when the library doesn't track
+  // repos & bots (same opt-in as repositories).
+  botAssets: Record<string, string[]> | null;
   pinnedCollections: string[];
   pinnedTeams: string[];
   pinnedRepos: string[];
+  pinnedBots: string[];
   onNewCollection: () => void;
   onNewTeam: () => void;
+  onNewBot: () => void;
   onBrowseCollections: () => void;
   onBrowseTeams: () => void;
   onBrowseRepos: () => void;
+  onBrowseBots: () => void;
   onSettings: () => void;
   dropCollection: string;
   dropTeam: string;
   dropRepo: string;
+  dropBot: string;
   onCollectionDragHandle: (name: string, e: MouseEvent) => void;
   onRepoDragHandle: (url: string, e: MouseEvent) => void;
-  onUnpin: (kind: "collections" | "teams" | "repos", name: string) => void;
+  onUnpin: (
+    kind: "collections" | "teams" | "repos" | "bots",
+    name: string,
+  ) => void;
   width: number;
 }) {
   const active = scopeKey(scope);
@@ -118,8 +135,16 @@ export default function Sidebar({
         .filter((url) => pinnedRepos.includes(url))
         .sort((a, b) => repoLabel(a).localeCompare(repoLabel(b)))
     : [];
+  const pinnedBotRows = botAssets
+    ? Object.keys(botAssets)
+        .filter((name) => pinnedBots.includes(name))
+        .sort()
+    : [];
   const hasPins =
-    pinnedCollectionRows.length + pinnedTeamRows.length + pinnedRepoRows.length >
+    pinnedCollectionRows.length +
+      pinnedTeamRows.length +
+      pinnedRepoRows.length +
+      pinnedBotRows.length >
     0;
   const sidebarPanels = useSlot("sidebar-panel");
   const dashboardWidgets = useSlot("dashboard-widget").length;
@@ -324,14 +349,36 @@ export default function Sidebar({
                 />
               </div>
             ))}
+            {pinnedBotRows.map((name) => (
+              <div
+                key={"bot:" + name}
+                data-drop-bot={name}
+                className={`group relative ${
+                  dropBot === name ? "rounded-lg ring-2 ring-accent" : ""
+                }`}
+              >
+                <Row
+                  icon={<BotIcon />}
+                  label={name}
+                  count={(botAssets?.[name] ?? []).length}
+                  active={active === "bot:" + name}
+                  onClick={() => onScope({ kind: "bot", name })}
+                  countYieldsOnHover
+                />
+                <UnpinButton
+                  label={name}
+                  onClick={() => onUnpin("bots", name)}
+                />
+              </div>
+            ))}
           </>
         )}
 
         {/* BROWSE: one count-bearing row per catalog — the counts keep
             the "how much is there" scope cue that fully hidden
             navigation loses. An empty catalog's row becomes its own
-            create CTA. Repositories appear only when the library tracks
-            them (Settings → Track repositories). */}
+            create CTA. Repositories and bots appear only when the
+            library tracks them (Settings → Track repositories & bots). */}
         <div className="mt-4">
           <SectionLabel>BROWSE</SectionLabel>
         </div>
@@ -369,6 +416,21 @@ export default function Sidebar({
               Object.keys(repoAssets).length === 0
                 ? "Assets scoped to repositories will show up here"
                 : "Browse and pin repositories"
+            }
+          />
+        )}
+        {botAssets !== null && (
+          <CatalogRow
+            icon={<BotIcon />}
+            label="Bots"
+            count={Object.keys(botAssets).length}
+            onClick={
+              Object.keys(botAssets).length > 0 ? onBrowseBots : onNewBot
+            }
+            title={
+              Object.keys(botAssets).length === 0
+                ? "Create a bot to install skills for a non-human identity"
+                : "Browse and pin bots"
             }
           />
         )}
@@ -536,6 +598,17 @@ function RepoIcon() {
       <circle cx="11.5" cy="3.5" r="1.75" />
       <path d="M4.5 5.25v5.5" />
       <path d="M11.5 5.25c0 2.75-2.75 3.5-4.75 3.75" />
+    </>,
+  );
+}
+
+export function BotIcon() {
+  return typeIcon(
+    <>
+      <rect x="3" y="5.5" width="10" height="7.5" rx="1.5" />
+      <path d="M8 3v2.5M6 3h4" />
+      <path d="M5.75 9h.01M10.25 9h.01" strokeWidth="2" />
+      <path d="M6.25 11h3.5" />
     </>,
   );
 }

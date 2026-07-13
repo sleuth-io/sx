@@ -82,6 +82,10 @@ export function CreateBlankDraft(arg1) {
   return window['go']['main']['App']['CreateBlankDraft'](arg1);
 }
 
+export function CreateBot(arg1, arg2) {
+  return window['go']['main']['App']['CreateBot'](arg1, arg2);
+}
+
 export function CreateCollection(arg1) {
   return window['go']['main']['App']['CreateCollection'](arg1);
 }
@@ -108,6 +112,10 @@ export function CreateTeam(arg1) {
 
 export function DeleteAssets(arg1) {
   return window['go']['main']['App']['DeleteAssets'](arg1);
+}
+
+export function DeleteBot(arg1) {
+  return window['go']['main']['App']['DeleteBot'](arg1);
 }
 
 export function DeleteCollection(arg1) {
@@ -224,6 +232,10 @@ export function ListAIClients() {
 
 export function ListAssets() {
   return window['go']['main']['App']['ListAssets']();
+}
+
+export function ListBots() {
+  return window['go']['main']['App']['ListBots']();
 }
 
 export function ListCollections() {
@@ -414,6 +426,10 @@ export function SetAssetTeamSharing(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetAssetTeamSharing'](arg1, arg2, arg3);
 }
 
+export function SetBotTeam(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetBotTeam'](arg1, arg2, arg3);
+}
+
 export function SetCollectionMembership(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetCollectionMembership'](arg1, arg2, arg3);
 }
@@ -488,6 +504,10 @@ export function SyncAITools() {
 
 export function TeamAssets() {
   return window['go']['main']['App']['TeamAssets']();
+}
+
+export function UpdateBotDescription(arg1, arg2) {
+  return window['go']['main']['App']['UpdateBotDescription'](arg1, arg2);
 }
 
 export function UpdateDraft(arg1) {
