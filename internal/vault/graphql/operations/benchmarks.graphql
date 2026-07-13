@@ -1,0 +1,20 @@
+query GetAssetBenchmarks($assetName: String!, $first: Int) {
+  vault {
+    assetBenchmarks(assetName: $assetName, first: $first)
+  }
+}
+
+query GetLatestAssetBenchmarks {
+  vault {
+    latestAssetBenchmarks
+  }
+}
+
+mutation ImportAssetBenchmark($input: ImportAssetBenchmarkInput!) {
+  importAssetBenchmark(input: $input) {
+    errors {
+      field
+      messages
+    }
+  }
+}

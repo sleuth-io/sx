@@ -45,6 +45,8 @@ stores assets server-side behind an API and is not covered by this layout.)
   .sx/
     audit/YYYY-MM.jsonl                   # Audit event stream (append-only)
     usage/YYYY-MM.jsonl                   # Usage event stream (append-only)
+    app-plugins/{extension-id}.json       # Shared extension state (256 KB cap)
+    benchmarks/{asset-name}.json          # Benchmark records, newest first, capped (benchmarks-spec.md)
     versions/
       {asset-name}/
         list.txt                          # Version listing

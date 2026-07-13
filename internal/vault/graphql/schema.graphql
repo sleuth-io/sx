@@ -3518,6 +3518,8 @@ type Vault {
   asset(id: ID!): VaultAsset
   appPluginPolicy: AppPluginPolicy!
   appPluginStorage(pluginId: String!): JSONString
+  assetBenchmarks(assetName: String!, first: Int): JSONString
+  latestAssetBenchmarks: JSONString
 }
 
 """Paginated list of vault assets."""
@@ -4745,6 +4747,9 @@ enum SkillsEvalBenchmarkTriggeredByChoices {
 
   """Upload"""
   UPLOAD
+
+  """External"""
+  EXTERNAL
 }
 
 """Lightweight benchmark summary for list views."""
@@ -5845,6 +5850,9 @@ type Mutation {
   Replace a plugin's shared storage document whole. Any vault member may write.
   """
   setAppPluginStorage(input: SetAppPluginStorageInput!): SetAppPluginStorageMutation
+
+  """Record a client-run benchmark result. Any vault member may import."""
+  importAssetBenchmark(input: ImportAssetBenchmarkInput!): ImportAssetBenchmarkMutation
   updateSkillsSettings(input: UpdateSkillsSettingsInput!): UpdateSkillsSettingsMutation
 
   """Import an external (non-managed) asset as a new managed asset."""
@@ -6398,6 +6406,18 @@ input SetAppPluginStorageInput {
 
   """Full document to store; null or empty deletes the stored document"""
   data: JSONString
+}
+
+"""Record a client-run benchmark result. Any vault member may import."""
+type ImportAssetBenchmarkMutation {
+  errors: [ErrorType!]!
+}
+
+input ImportAssetBenchmarkInput {
+  assetName: String!
+
+  """One interchange benchmark record (see docs/benchmarks-spec.md in sx)"""
+  benchmark: JSONString!
 }
 
 type UpdateSkillsSettingsMutation {

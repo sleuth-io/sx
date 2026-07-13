@@ -25,6 +25,9 @@ import {
   PluginSecretSet,
   PluginSharedLoad,
   PluginSharedSave,
+  PluginBenchmarksList,
+  PluginBenchmarksAdd,
+  PluginBenchmarksLatest,
   PluginUsageEvents,
   PluginUsageEventsSince,
   PluginAuditEvents,
@@ -37,6 +40,7 @@ import {
 import type {
   AssetInstallations,
   AssetTabSpec,
+  BenchmarkRecord,
   ConsolidateResult,
   CollectionExportFormat,
   CollectionViewSpec,
@@ -67,8 +71,9 @@ interface UIHandlers {
   confirm(message: string, action: string): Promise<boolean>;
   /** Reload the app's data views (drafts/assets lists). */
   refresh(): void;
-  /** Open the named asset's detail panel. */
-  openAsset(name: string): void;
+  /** Open the named asset's detail panel, optionally on a specific
+   * extension tab ("pluginId:tabId"; API 1.11.0). */
+  openAsset(name: string, tab?: string): void;
   /** Navigate to a plugin main view by its "pluginId:viewId" key. */
   openView(key: string): void;
   /** Open the app Settings modal on the given tab. */
@@ -200,7 +205,10 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
     ui: {
       notice: (message) => ui.notice(message),
       confirm: (message, action) => ui.confirm(message, action),
-      openAsset: (name) => ui.openAsset(name),
+      openAsset: (name, opts) =>
+        // Extensions deep-link to their OWN tabs only — the id is
+        // namespaced with the calling extension's plugin id.
+        ui.openAsset(name, opts?.tab ? id + ":" + opts.tab : undefined),
       openView: (viewId) => {
         // Namespaced by the caller's id: an extension can open only its
         // OWN main views, never navigate the user into someone else's.
@@ -239,6 +247,35 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
       async save<T>(data: T): Promise<void> {
         need("storage:shared");
         await PluginSharedSave(id, JSON.stringify(data));
+      },
+    },
+
+    benchmarks: {
+      async list(assetName: string): Promise<BenchmarkRecord[]> {
+        need("benchmarks");
+        const raw = await PluginBenchmarksList(assetName);
+        if (!raw) return [];
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? (parsed as BenchmarkRecord[]) : [];
+        } catch {
+          return [];
+        }
+      },
+      async add(assetName: string, record: BenchmarkRecord): Promise<void> {
+        need("benchmarks");
+        await PluginBenchmarksAdd(assetName, JSON.stringify(record));
+      },
+      async latest(): Promise<Record<string, BenchmarkRecord>> {
+        need("benchmarks");
+        const raw = await PluginBenchmarksLatest();
+        if (!raw) return {};
+        try {
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === "object" ? (parsed as Record<string, BenchmarkRecord>) : {};
+        } catch {
+          return {};
+        }
       },
     },
 
