@@ -122,6 +122,10 @@ export function DescribeLibraryRemoval(arg1) {
   return window['go']['main']['App']['DescribeLibraryRemoval'](arg1);
 }
 
+export function DiffDraft(arg1) {
+  return window['go']['main']['App']['DiffDraft'](arg1);
+}
+
 export function DiscardDraft(arg1) {
   return window['go']['main']['App']['DiscardDraft'](arg1);
 }

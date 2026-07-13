@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  DiffDraft,
   DiscardDraft,
   PublishDraft,
   UpdateDraft,
@@ -7,6 +8,7 @@ import {
 import type { main } from "../../wailsjs/go/models";
 import { collectPublishWarnings, emitEvent } from "../plugins/events";
 import type { PublishWarning } from "../plugins/api";
+import DraftDiffView from "./DraftDiffView";
 import FileRail from "./FileRail";
 import MarkdownEditor from "./MarkdownEditor";
 import { setPluginEditor } from "../plugins/sxapi";
@@ -66,6 +68,37 @@ export default function DraftSheet({
   // Warnings from before-publish extension subscribers (the doctor hook).
   // Non-blocking: the user sees them and chooses "Publish anyway".
   const [warnings, setWarnings] = useState<PublishWarning[] | null>(null);
+  // Updates open on what changed (the skills.new PR-diff treatment); new
+  // assets open in the editor since their diff is trivially "everything".
+  const [view, setView] = useState<"changes" | "edit">(
+    initial.targetAsset ? "changes" : "edit",
+  );
+  const [diff, setDiff] = useState<main.DraftDiff | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+
+  // Recomputed every time the Changes view is entered — edits since the
+  // last look must show. The draft ref keeps the effect off the keystroke
+  // path (draft changes on every edit; the diff only matters when shown).
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  useEffect(() => {
+    if (view !== "changes") return;
+    let stale = false;
+    setDiffLoading(true);
+    DiffDraft(draftRef.current)
+      .then((d) => {
+        if (!stale) setDiff(d);
+      })
+      .catch((e) => {
+        if (!stale) setError(String(e));
+      })
+      .finally(() => {
+        if (!stale) setDiffLoading(false);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [view]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -214,6 +247,21 @@ export default function DraftSheet({
               </span>
             </div>
           </div>
+          <div className="flex rounded-lg border border-line p-0.5 text-xs font-medium">
+            {(["changes", "edit"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`rounded-md px-2.5 py-1 transition ${
+                  view === v
+                    ? "bg-accent-soft text-accent"
+                    : "text-ink-faint hover:text-ink"
+                }`}
+              >
+                {v === "changes" ? "Changes" : "Edit"}
+              </button>
+            ))}
+          </div>
           <button
             onClick={() => void saveAndClose()}
             disabled={busy}
@@ -270,7 +318,7 @@ export default function DraftSheet({
         </div>
 
         <div className="flex min-h-0 flex-1">
-          {draft.files.length > 1 && (
+          {view === "edit" && draft.files.length > 1 && (
             <FileRail
               files={draft.files}
               active={activeFile}
@@ -278,13 +326,23 @@ export default function DraftSheet({
             />
           )}
           <div className="min-h-0 min-w-0 flex-1 p-4">
-            {draft.files[activeFile] && (
-              <MarkdownEditor
-                value={draft.files[activeFile].content}
-                onChange={(content) => updateFileContent(activeFile, content)}
-                readOnly={busy}
-                onView={registerEditorView}
-              />
+            {/* The editor stays mounted (hidden) under the Changes view so
+                the extension editor handle keeps pointing at a live
+                CodeMirror instead of a destroyed one. */}
+            <div className={view === "edit" ? "h-full" : "hidden"}>
+              {draft.files[activeFile] && (
+                <MarkdownEditor
+                  value={draft.files[activeFile].content}
+                  onChange={(content) =>
+                    updateFileContent(activeFile, content)
+                  }
+                  readOnly={busy}
+                  onView={registerEditorView}
+                />
+              )}
+            </div>
+            {view === "changes" && (
+              <DraftDiffView diff={diff} loading={diffLoading} />
             )}
           </div>
         </div>

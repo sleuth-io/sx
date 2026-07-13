@@ -63,6 +63,8 @@ export function DeleteTeam(arg1:string):Promise<void>;
 
 export function DescribeLibraryRemoval(arg1:string):Promise<main.LibraryRemoval>;
 
+export function DiffDraft(arg1:main.Draft):Promise<main.DraftDiff>;
+
 export function DiscardDraft(arg1:string):Promise<void>;
 
 export function DownloadAsset(arg1:string):Promise<string>;
