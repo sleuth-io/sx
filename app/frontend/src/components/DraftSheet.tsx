@@ -76,18 +76,22 @@ export default function DraftSheet({
   const [diff, setDiff] = useState<main.DraftDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
 
-  // Recomputed every time the Changes view is entered — edits since the
-  // last look must show. The draft ref keeps the effect off the keystroke
-  // path (draft changes on every edit; the diff only matters when shown).
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
+  // The diff recomputes when the Changes view is showing and the draft it
+  // last reflected isn't the current one — so edits (including extension
+  // edits landing while Changes is visible) always show, while toggling
+  // back and forth over an unchanged draft never re-pays the vault
+  // round-trip. Keystrokes in the Edit view change `draft` but bail on
+  // the view check, so typing stays cheap.
+  const lastDiffedRef = useRef<main.Draft | null>(null);
   useEffect(() => {
-    if (view !== "changes") return;
+    if (view !== "changes" || lastDiffedRef.current === draft) return;
     let stale = false;
     setDiffLoading(true);
-    DiffDraft(draftRef.current)
+    DiffDraft(draft)
       .then((d) => {
-        if (!stale) setDiff(d);
+        if (stale) return;
+        setDiff(d);
+        lastDiffedRef.current = draft;
       })
       .catch((e) => {
         if (!stale) setError(String(e));
@@ -98,7 +102,7 @@ export default function DraftSheet({
     return () => {
       stale = true;
     };
-  }, [view]);
+  }, [view, draft]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

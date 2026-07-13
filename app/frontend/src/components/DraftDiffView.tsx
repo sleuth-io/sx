@@ -195,7 +195,7 @@ function Line({ line }: { line: main.DiffLine }) {
       <td className={`w-5 select-none text-center ${markerClass}`}>
         {line.kind === "add" ? "+" : line.kind === "del" ? "−" : ""}
       </td>
-      <td className="whitespace-pre-wrap break-all px-3 text-ink">
+      <td className="whitespace-pre-wrap break-words px-3 text-ink">
         {line.text || " "}
       </td>
     </tr>
