@@ -87,11 +87,11 @@ func TestWriteLockFileForNoInstall(t *testing.T) {
 		}
 	})
 
-	t.Run("plain --no-install (Remove branch) falls back to global", func(t *testing.T) {
+	t.Run("plain --no-install (Remove branch) inherits existing scopes", func(t *testing.T) {
 		// --no-install with no --yes and no scope flag puts getScopes()
-		// in the Remove branch, which the helper deliberately treats as
-		// global. Locks in the explicit fallback so a future change to
-		// Remove semantics doesn't silently regress this path.
+		// in the Remove branch. No scope was expressed, so the asset's
+		// existing scopes must be preserved via InheritInstallations —
+		// republishing must not silently re-scope to global (issue #190).
 		spy := &spyVault{}
 		out := &outputHelper{}
 		asset := &lockfile.Asset{Name: "my-skill", Version: "1.0.0"}
@@ -101,23 +101,18 @@ func TestWriteLockFileForNoInstall(t *testing.T) {
 			t.Fatalf("writeLockFileForNoInstall: %v", err)
 		}
 
-		if len(spy.setCalls) != 1 {
-			t.Fatalf("SetInstallations calls = %d, want 1", len(spy.setCalls))
+		if len(spy.setCalls) != 0 {
+			t.Fatalf("SetInstallations calls = %d, want 0 (no scope expressed)", len(spy.setCalls))
 		}
-		if spy.setCalls[0].scopeEntity != "" {
-			t.Errorf("scopeEntity = %q, want \"\" (no entity flag)", spy.setCalls[0].scopeEntity)
-		}
-		// Global is represented by an empty (but non-nil) Scopes slice.
-		if spy.setCalls[0].asset.Scopes == nil {
-			t.Errorf("Scopes = nil, want empty slice (Remove fallback should produce global)")
-		}
-		if len(spy.setCalls[0].asset.Scopes) != 0 {
-			t.Errorf("Scopes = %v, want empty slice (global)", spy.setCalls[0].asset.Scopes)
+		if len(spy.inheritCalls) != 1 {
+			t.Fatalf("InheritInstallations calls = %d, want 1", len(spy.inheritCalls))
 		}
 	})
 
-	t.Run("--yes --no-install (Inherit branch) falls back to global", func(t *testing.T) {
-		// Same fallback as Remove, different getScopes branch.
+	t.Run("--yes --no-install (Inherit branch) inherits existing scopes", func(t *testing.T) {
+		// Same as Remove, different getScopes branch. A brand-new asset
+		// has nothing to inherit and still lands global (the vault's
+		// inherit is a no-op upsert with no scopes).
 		spy := &spyVault{}
 		out := &outputHelper{}
 		asset := &lockfile.Asset{Name: "my-skill", Version: "1.0.0"}
@@ -127,11 +122,11 @@ func TestWriteLockFileForNoInstall(t *testing.T) {
 			t.Fatalf("writeLockFileForNoInstall: %v", err)
 		}
 
-		if len(spy.setCalls) != 1 {
-			t.Fatalf("SetInstallations calls = %d, want 1", len(spy.setCalls))
+		if len(spy.setCalls) != 0 {
+			t.Fatalf("SetInstallations calls = %d, want 0 (no scope expressed)", len(spy.setCalls))
 		}
-		if spy.setCalls[0].asset.Scopes == nil || len(spy.setCalls[0].asset.Scopes) != 0 {
-			t.Errorf("Scopes = %v, want empty slice (global)", spy.setCalls[0].asset.Scopes)
+		if len(spy.inheritCalls) != 1 {
+			t.Fatalf("InheritInstallations calls = %d, want 1", len(spy.inheritCalls))
 		}
 	})
 

@@ -67,39 +67,42 @@ func upsertAssetInManifest(vaultRoot string, asset *lockfile.Asset) error {
 	return manifest.Save(vaultRoot, m)
 }
 
-// inheritAssetScopesFromManifest copies the scope list from any existing
-// entry for asset.Name into the incoming asset. No-op if the asset is
-// not present. Produces lockfile scopes (the caller typically turns
-// around and passes the asset back to upsert, which converts both the
-// asset and its scopes into manifest form).
-func inheritAssetScopesFromManifest(vaultRoot string, asset *lockfile.Asset) error {
+// upsertAssetInheritingScopes inserts or replaces an asset in the vault's
+// manifest, carrying any existing entry's scope rows through verbatim —
+// every kind included. Converting scopes through the lockfile.Scope shape
+// here would silently drop team/user/bot rows (that shape can only express
+// repo/path) and thereby GLOBALIZE a team- or user-scoped asset on every
+// republish. Used when publishing a new version with no scope change
+// requested: the asset's sharing must survive the version bump. The RBAC
+// edit gate (docs/rbac.md) has already vetted that the caller may
+// republish the asset.
+func upsertAssetInheritingScopes(vaultRoot string, asset *lockfile.Asset) error {
 	m, err := loadManifest(vaultRoot)
 	if err != nil {
 		return err
 	}
-	existing := m.FindAsset(asset.Name)
-	if existing == nil {
-		return nil
+	var preserved []manifest.Scope
+	inherit := false
+	if existing := m.FindAsset(asset.Name); existing != nil {
+		inherit = true
+		preserved = append([]manifest.Scope(nil), existing.Scopes...)
 	}
-	// Inherited scopes carry across kinds (repo, path, team, user). Convert
-	// them through a trivial Resolve against the no-op actor so they land
-	// in lockfile.Scope form. We intentionally skip team/user rows because
-	// those are identity-dependent and the new owner may not be in the
-	// same teams; keep only the structural (repo/path) scopes.
-	asset.Scopes = nil
-	for _, s := range existing.Scopes {
-		switch s.Kind {
-		case manifest.ScopeKindRepo:
-			asset.Scopes = append(asset.Scopes, lockfile.Scope{Repo: s.Repo})
-		case manifest.ScopeKindPath:
-			asset.Scopes = append(asset.Scopes, lockfile.Scope{Repo: s.Repo, Paths: append([]string(nil), s.Paths...)})
-		case manifest.ScopeKindOrg, manifest.ScopeKindTeam, manifest.ScopeKindUser, manifest.ScopeKindBot:
-			// Identity-dependent scopes do not inherit — the new
-			// owner may not be in the same teams or bot identities,
-			// and a blanket carry-over would leak access.
+	ma := lockfileAssetToManifest(*asset)
+	// Preserve Clients from any existing same name+version entry when the
+	// incoming asset declares none (mirrors upsertAssetInManifest).
+	if len(ma.Clients) == 0 {
+		for i := range m.Assets {
+			if m.Assets[i].Name == ma.Name && m.Assets[i].Version == ma.Version && len(m.Assets[i].Clients) > 0 {
+				ma.Clients = append([]string(nil), m.Assets[i].Clients...)
+				break
+			}
 		}
 	}
-	return nil
+	row := m.UpsertAsset(ma)
+	if inherit {
+		row.Scopes = preserved
+	}
+	return manifest.Save(vaultRoot, m)
 }
 
 // removeAssetFromManifest deletes every entry for the named asset, or

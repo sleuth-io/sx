@@ -42,15 +42,22 @@ func writeLockFileForNoInstall(ctx context.Context, out *outputHelper, repo vaul
 	if err != nil {
 		return err
 	}
+	// No scope flags at all (Inherit with --yes, Remove without): keep any
+	// existing scopes. Republishing an already-scoped asset with a plain
+	// `--no-install` must not silently re-scope it to global; a brand-new
+	// asset has nothing to inherit and still lands global, preserving the
+	// long-standing --no-install default.
+	if result.Inherit || result.Remove {
+		if err := inheritLockFile(ctx, out, repo, asset); err != nil {
+			return fmt.Errorf("failed to update lock file: %w", err)
+		}
+		return nil
+	}
 	asset.Scopes = result.Scopes
 	if asset.Scopes == nil {
-		// Three getScopes branches produce nil Scopes:
-		//   - Inherit / Remove (no scope flag set) — fall back to global
-		//     to match pre-fix behavior; strict inherit semantics under
-		//     --no-install would be a broader change.
-		//   - --scope=<entity> — the entity is forwarded via
-		//     result.ScopeEntity to updateLockFile / SetInstallations;
-		//     an empty Scopes slice is the correct payload.
+		// --scope=<entity> produces nil Scopes: the entity is forwarded via
+		// result.ScopeEntity to updateLockFile / SetInstallations; an empty
+		// Scopes slice is the correct payload.
 		asset.Scopes = []lockfile.Scope{}
 	}
 	if err := updateLockFile(ctx, out, repo, asset, result); err != nil {

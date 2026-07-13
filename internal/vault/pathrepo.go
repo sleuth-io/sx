@@ -266,17 +266,14 @@ func (p *PathVault) SetInstallations(ctx context.Context, asset *lockfile.Asset,
 	return commonSetInstallations(p.repoPath, actor, asset)
 }
 
-// InheritInstallations copies scopes from any existing entry of this
-// asset in the manifest, then upserts. Used when adding a new version of
-// an asset so its install scopes are preserved.
+// InheritInstallations upserts the asset into the manifest, carrying any
+// existing entry's scopes through verbatim. Used when adding a new version
+// of an asset so its install scopes are preserved.
 func (p *PathVault) InheritInstallations(ctx context.Context, asset *lockfile.Asset) error {
 	if err := p.ensureMigrated(ctx); err != nil {
 		return err
 	}
-	if err := inheritAssetScopesFromManifest(p.repoPath, asset); err != nil {
-		return err
-	}
-	return upsertAssetInManifest(p.repoPath, asset)
+	return upsertAssetInheritingScopes(p.repoPath, asset)
 }
 
 // RemoveAsset removes an asset from the manifest. If delete is true, the

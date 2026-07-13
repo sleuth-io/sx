@@ -23,6 +23,40 @@ import (
 // the absence of the bug's wording, so that future copy changes don't
 // silently regress the behavior.
 
+// assertRepublishedVersion asserts the manifest/archive state after
+// republishing an edited asset: the manifest holds exactly ONE row for the
+// asset (a republish updates the row in place — a second [[assets]] block
+// for the same name would make lock resolution ambiguous), pinned at
+// wantVersion, while the archive retains every published version.
+func assertRepublishedVersion(t *testing.T, env *TestEnv, vaultDir, name, wantVersion string) {
+	t.Helper()
+	lf, ok := env.ReadVaultAssets(vaultDir)
+	if !ok {
+		t.Fatal("vault manifest missing")
+	}
+	count := 0
+	gotVersion := ""
+	for _, a := range lf.Assets {
+		if a.Name == name {
+			count++
+			gotVersion = a.Version
+		}
+	}
+	if count != 1 {
+		t.Fatalf("manifest rows for %s = %d, want exactly 1 (no duplicate blocks)", name, count)
+	}
+	if gotVersion != wantVersion {
+		t.Errorf("manifest pins %s@%s, want @%s", name, gotVersion, wantVersion)
+	}
+	listData, err := os.ReadFile(filepath.Join(vaultDir, ".sx", "versions", name, "list.txt"))
+	if err != nil {
+		t.Fatalf("read archive version list: %v", err)
+	}
+	if !strings.Contains(string(listData), wantVersion) {
+		t.Errorf("archive list.txt %q does not record version %s", string(listData), wantVersion)
+	}
+}
+
 // assertOutput fails the test if any of want is missing or any of notWant is
 // present in output. Reports the full output once on failure.
 func assertOutput(t *testing.T, output string, want, notWant []string) {
@@ -279,20 +313,9 @@ func TestAddAlreadyInstalled(t *testing.T) {
 			t.Fatalf("add edited: %v", err)
 		}
 
-		// Vault must hold two versions of editable-skill.
-		lf, ok := env.ReadVaultAssets(vaultDir)
-		if !ok {
-			t.Fatal("vault manifest missing")
-		}
-		count := 0
-		for _, a := range lf.Assets {
-			if a.Name == "editable-skill" {
-				count++
-			}
-		}
-		if count < 2 {
-			t.Errorf("expected at least 2 versions of editable-skill in vault, got %d", count)
-		}
+		// The vault archive must hold two versions, and the manifest's
+		// single row for the asset must be pinned at the new one.
+		assertRepublishedVersion(t, env, vaultDir, "editable-skill", "2")
 	})
 
 	// Scenario 5d: name-form equivalent of 5c. `sx add <name>` must resolve
@@ -314,19 +337,7 @@ func TestAddAlreadyInstalled(t *testing.T) {
 			t.Fatalf("add by name after edit: %v", err)
 		}
 
-		lf, ok := env.ReadVaultAssets(vaultDir)
-		if !ok {
-			t.Fatal("vault manifest missing")
-		}
-		count := 0
-		for _, a := range lf.Assets {
-			if a.Name == "named-editable" {
-				count++
-			}
-		}
-		if count < 2 {
-			t.Errorf("expected at least 2 versions after edit-then-add-by-name, got %d", count)
-		}
+		assertRepublishedVersion(t, env, vaultDir, "named-editable", "2")
 	})
 
 	// Scenario 5e: after a new-version upload, the scope data feeding the

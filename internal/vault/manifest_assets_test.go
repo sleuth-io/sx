@@ -107,6 +107,64 @@ func TestUpsertAssetInManifest_NewVersionDoesNotInherit(t *testing.T) {
 	}
 }
 
+// TestUpsertAssetInheritingScopes_PreservesAllScopeKinds covers the
+// republish path (issue #190): publishing a new version of an existing
+// asset must update the row in place — one row per name — and carry every
+// scope kind through verbatim, including team/user scopes that the
+// lockfile.Scope shape cannot express.
+func TestUpsertAssetInheritingScopes_PreservesAllScopeKinds(t *testing.T) {
+	vaultRoot := t.TempDir()
+
+	m := &manifest.Manifest{}
+	m.UpsertAsset(manifest.Asset{
+		Name:    "shared-skill",
+		Version: "1",
+		Type:    asset.TypeSkill,
+		Scopes: []manifest.Scope{
+			{Kind: manifest.ScopeKindRepo, Repo: "github.com/org/consumer"},
+			{Kind: manifest.ScopeKindTeam, Team: "core"},
+			{Kind: manifest.ScopeKindUser, User: "alice@example.com"},
+		},
+	})
+	if err := manifest.Save(vaultRoot, m); err != nil {
+		t.Fatalf("seed save: %v", err)
+	}
+
+	v2 := &lockfile.Asset{
+		Name:       "shared-skill",
+		Version:    "2",
+		Type:       asset.TypeSkill,
+		SourcePath: &lockfile.SourcePath{Path: ".sx/versions/shared-skill/2"},
+	}
+	if err := upsertAssetInheritingScopes(vaultRoot, v2); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	m2, err := loadManifest(vaultRoot)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	var rows []manifest.Asset
+	for _, a := range m2.Assets {
+		if a.Name == "shared-skill" {
+			rows = append(rows, a)
+		}
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want exactly 1 (no duplicate blocks)", len(rows))
+	}
+	got := rows[0]
+	if got.Version != "2" {
+		t.Errorf("version = %q, want 2", got.Version)
+	}
+	if len(got.Scopes) != 3 ||
+		got.Scopes[0].Kind != manifest.ScopeKindRepo ||
+		got.Scopes[1].Kind != manifest.ScopeKindTeam || got.Scopes[1].Team != "core" ||
+		got.Scopes[2].Kind != manifest.ScopeKindUser || got.Scopes[2].User != "alice@example.com" {
+		t.Errorf("scopes = %+v, want repo+team+user preserved verbatim", got.Scopes)
+	}
+}
+
 // TestUpsertAssetInManifest_IncomingClientsWins covers the inverse: when
 // the incoming asset *does* carry Clients (the addNewAsset path now does
 // this), the upsert should write that value rather than inherit from the

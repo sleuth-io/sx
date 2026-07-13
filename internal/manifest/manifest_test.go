@@ -296,29 +296,56 @@ func TestAssetUpsertRemove(t *testing.T) {
 	m := &Manifest{SchemaVersion: CurrentSchemaVersion}
 
 	m.UpsertAsset(Asset{Name: "foo", Version: "1.0.0", Type: asset.TypeSkill})
-	m.UpsertAsset(Asset{Name: "foo", Version: "2.0.0", Type: asset.TypeSkill})
 	m.UpsertAsset(Asset{Name: "bar", Version: "1.0.0", Type: asset.TypeSkill})
 
-	if len(m.Assets) != 3 {
-		t.Fatalf("assets: got %d want 3", len(m.Assets))
+	// Publishing a new version replaces the name's row in place — the
+	// manifest pins one live version per asset name.
+	m.UpsertAsset(Asset{Name: "foo", Version: "2.0.0", Type: asset.TypeSkill})
+	if len(m.Assets) != 2 {
+		t.Fatalf("assets: got %d want 2", len(m.Assets))
+	}
+	if m.Assets[0].Name != "foo" || m.Assets[0].Version != "2.0.0" {
+		t.Errorf("version bump must update the row in place: %+v", m.Assets[0])
 	}
 
-	// Replace existing (name, version) tuple.
-	m.UpsertAsset(Asset{Name: "foo", Version: "1.0.0", Type: asset.TypeSkill, Clients: []string{"claude"}})
-	if len(m.Assets) != 3 {
+	// Replace same name+version too.
+	m.UpsertAsset(Asset{Name: "foo", Version: "2.0.0", Type: asset.TypeSkill, Clients: []string{"claude"}})
+	if len(m.Assets) != 2 {
 		t.Errorf("replace should not grow: got %d", len(m.Assets))
 	}
 	if len(m.FindAsset("foo").Clients) != 1 {
 		t.Error("upsert did not replace asset body")
 	}
 
-	// Remove all versions of foo.
 	removed := m.RemoveAsset("foo", "")
-	if removed != 2 {
-		t.Errorf("removed: got %d want 2", removed)
+	if removed != 1 {
+		t.Errorf("removed: got %d want 1", removed)
 	}
 	if len(m.Assets) != 1 {
 		t.Errorf("remaining: got %d want 1", len(m.Assets))
+	}
+}
+
+func TestUpsertAssetPrunesDuplicateNameRows(t *testing.T) {
+	// Manifests written by older builds can carry duplicate [[assets]]
+	// blocks for one name; an upsert heals them down to a single row.
+	m := &Manifest{
+		SchemaVersion: CurrentSchemaVersion,
+		Assets: []Asset{
+			{Name: "foo", Version: "1.0.0", Type: asset.TypeSkill},
+			{Name: "bar", Version: "1.0.0", Type: asset.TypeSkill},
+			{Name: "foo", Version: "2.0.0", Type: asset.TypeSkill},
+		},
+	}
+	m.UpsertAsset(Asset{Name: "foo", Version: "3.0.0", Type: asset.TypeSkill})
+	if len(m.Assets) != 2 {
+		t.Fatalf("assets: got %d want 2 (duplicates pruned)", len(m.Assets))
+	}
+	if m.Assets[0].Name != "foo" || m.Assets[0].Version != "3.0.0" {
+		t.Errorf("first row = %+v, want foo@3.0.0 in place", m.Assets[0])
+	}
+	if m.Assets[1].Name != "bar" {
+		t.Errorf("unrelated row disturbed: %+v", m.Assets[1])
 	}
 }
 

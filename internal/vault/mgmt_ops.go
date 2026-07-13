@@ -955,9 +955,8 @@ func commonRemoveAssetInstallation(vaultRoot string, actor mgmt.Actor, assetName
 			}
 		}
 		// Walk every entry for assetName, not just FindAsset's first match:
-		// repo/path scopes are inherited onto each new version row
-		// (inheritAssetScopesFromManifest), so the same scope can live on
-		// multiple same-name rows and all must be cleared. A row left with
+		// manifests written by older builds can carry duplicate same-name
+		// rows sharing a scope, and all must be cleared. A row left with
 		// no scopes is dropped rather than reinterpreted as global.
 		changed := false
 		kept := m.Assets[:0]
