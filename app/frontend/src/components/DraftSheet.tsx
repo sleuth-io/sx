@@ -87,6 +87,10 @@ export default function DraftSheet({
     if (view !== "changes" || lastDiffedRef.current === draft) return;
     let stale = false;
     setDiffLoading(true);
+    // Each run owns the error banner and the shown diff: a retry that
+    // succeeds must drop the old error, and a refresh that fails must
+    // drop the old diff — otherwise the two signals contradict.
+    setError("");
     DiffDraft(draft)
       .then((d) => {
         if (stale) return;
@@ -94,7 +98,9 @@ export default function DraftSheet({
         lastDiffedRef.current = draft;
       })
       .catch((e) => {
-        if (!stale) setError(String(e));
+        if (stale) return;
+        setDiff(null);
+        setError(String(e));
       })
       .finally(() => {
         if (!stale) setDiffLoading(false);
