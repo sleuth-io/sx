@@ -107,6 +107,65 @@ func TestUpsertAssetInManifest_NewVersionDoesNotInherit(t *testing.T) {
 	}
 }
 
+// TestUpsertAssetInheritingScopes_UnionsLegacyDuplicateRows covers manifests
+// written by older builds that hold duplicate same-name rows with divergent
+// scopes. The asset's effective reach is the union across those rows (see
+// commonCurrentInstallTargets), so collapsing them on republish must
+// preserve the union — seeding from the first row alone would silently
+// drop scopes that live only on a later row.
+func TestUpsertAssetInheritingScopes_UnionsLegacyDuplicateRows(t *testing.T) {
+	vaultRoot := t.TempDir()
+
+	m := &manifest.Manifest{
+		Assets: []manifest.Asset{
+			{
+				Name: "dup-skill", Version: "1", Type: asset.TypeSkill,
+				Scopes: []manifest.Scope{
+					{Kind: manifest.ScopeKindRepo, Repo: "github.com/org/repo-a"},
+				},
+			},
+			{
+				Name: "dup-skill", Version: "2", Type: asset.TypeSkill,
+				Scopes: []manifest.Scope{
+					{Kind: manifest.ScopeKindRepo, Repo: "github.com/org/repo-a"}, // duplicate — must not double
+					{Kind: manifest.ScopeKindRepo, Repo: "github.com/org/repo-b"},
+				},
+			},
+		},
+	}
+	if err := manifest.Save(vaultRoot, m); err != nil {
+		t.Fatalf("seed save: %v", err)
+	}
+
+	v3 := &lockfile.Asset{Name: "dup-skill", Version: "3", Type: asset.TypeSkill}
+	if err := upsertAssetInheritingScopes(vaultRoot, v3); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	m2, err := loadManifest(vaultRoot)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	var rows []manifest.Asset
+	for _, a := range m2.Assets {
+		if a.Name == "dup-skill" {
+			rows = append(rows, a)
+		}
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1 (duplicates collapsed)", len(rows))
+	}
+	got := rows[0]
+	if got.Version != "3" {
+		t.Errorf("version = %q, want 3", got.Version)
+	}
+	if len(got.Scopes) != 2 ||
+		got.Scopes[0].Repo != "github.com/org/repo-a" ||
+		got.Scopes[1].Repo != "github.com/org/repo-b" {
+		t.Errorf("scopes = %+v, want deduped union of repo-a + repo-b", got.Scopes)
+	}
+}
+
 // TestUpsertAssetInheritingScopes_PreservesAllScopeKinds covers the
 // republish path (issue #190): publishing a new version of an existing
 // asset must update the row in place — one row per name — and carry every

@@ -81,11 +81,25 @@ func upsertAssetInheritingScopes(vaultRoot string, asset *lockfile.Asset) error 
 	if err != nil {
 		return err
 	}
+	// Gather scopes from EVERY same-name row, not just FindAsset's first
+	// match: the rest of the system treats an asset's effective scopes as
+	// the union across legacy duplicate rows (see commonCurrentInstallTargets),
+	// and the upsert below prunes those rows — seeding from the first row
+	// alone would silently drop any scope that lives only on a later one.
 	var preserved []manifest.Scope
 	inherit := false
-	if existing := m.FindAsset(asset.Name); existing != nil {
+	seen := map[string]bool{}
+	for i := range m.Assets {
+		if m.Assets[i].Name != asset.Name {
+			continue
+		}
 		inherit = true
-		preserved = append([]manifest.Scope(nil), existing.Scopes...)
+		for _, s := range m.Assets[i].Scopes {
+			if k := scopeDedupKey(s); !seen[k] {
+				seen[k] = true
+				preserved = append(preserved, s)
+			}
+		}
 	}
 	ma := lockfileAssetToManifest(*asset)
 	// Preserve Clients from any existing same name+version entry when the
