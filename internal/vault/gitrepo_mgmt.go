@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sleuth-io/sx/internal/cache"
+	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/logger"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
@@ -355,7 +356,22 @@ func (g *GitVault) SetAssetInstallations(ctx context.Context, assetName string, 
 	}
 	msg := verb + assetName
 	err = g.runInVaultTx(ctx, msg, func(root string, actor mgmt.Actor) error {
-		skipped, err = commonSetAssetInstallations(ctx, root, actor, assetName, targets, appendMode)
+		skipped, err = commonSetAssetInstallations(ctx, root, actor, assetName, targets, appendMode, nil)
+		return err
+	})
+	return skipped, err
+}
+
+// SetPublishedAssetInstallations is SetAssetInstallations for a just-published
+// asset version: the manifest row advances to asset's version (existing scopes
+// carried through) in the SAME transaction — and so the same commit/push — the
+// targets apply in. A scoped republish therefore lands as one commit, and the
+// version and scopes change together or not at all. Satisfies
+// publishedInstallSetter.
+func (g *GitVault) SetPublishedAssetInstallations(ctx context.Context, asset *lockfile.Asset, targets []InstallTarget, appendMode bool) (skipped []SkippedTarget, err error) {
+	msg := fmt.Sprintf("Set %s %s installations", asset.Name, asset.Version)
+	err = g.runInVaultTx(ctx, msg, func(root string, actor mgmt.Actor) error {
+		skipped, err = commonSetAssetInstallations(ctx, root, actor, asset.Name, targets, appendMode, asset)
 		return err
 	})
 	return skipped, err
