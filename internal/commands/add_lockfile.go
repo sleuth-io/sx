@@ -132,6 +132,21 @@ func updateLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, as
 		return applyScopeEdit(ctx, out, repo, asset.Name, result.Added, result.Removed)
 	}
 	if result.ApplyTargets || result.Append || hasIdentityScope(result.Targets) {
+		// The bulk installer keys on the asset NAME only, so it adjusts
+		// scopes on whatever version the manifest already pins. When this
+		// call follows a fresh publish, the manifest row must first advance
+		// to the just-published version (preserving its scopes) or the
+		// vault desyncs: archive and root view at the new version, manifest
+		// still resolving the old one. File-backed vaults upsert the row
+		// here; the Sleuth vault registers versions at upload and its
+		// InheritInstallations is a no-op. Scope-only callers (`sx install
+		// --repo X asset`) pass a bare name with no version — nothing was
+		// published, so there is no row to advance.
+		if asset.Version != "" {
+			if err := repo.InheritInstallations(ctx, asset); err != nil {
+				return fmt.Errorf("failed to update asset version in manifest: %w", err)
+			}
+		}
 		return bulkSetInstallTargets(ctx, out, repo, asset.Name, result.Targets, result.Append)
 	}
 
