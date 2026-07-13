@@ -836,9 +836,8 @@ func (g *GitVault) SetInstallations(ctx context.Context, asset *lockfile.Asset, 
 	return nil
 }
 
-// InheritInstallations copies scopes from any existing entry of this
-// asset in the manifest, upserts the asset with those scopes, and
-// commits/pushes.
+// InheritInstallations upserts the asset into the manifest, carrying any
+// existing entry's scopes through verbatim, and commits/pushes.
 func (g *GitVault) InheritInstallations(ctx context.Context, asset *lockfile.Asset) error {
 	fileLock, err := g.acquireFileLock(ctx)
 	if err != nil {
@@ -853,10 +852,7 @@ func (g *GitVault) InheritInstallations(ctx context.Context, asset *lockfile.Ass
 		return err
 	}
 
-	if err := inheritAssetScopesFromManifest(g.repoPath, asset); err != nil {
-		return fmt.Errorf("failed to inherit scopes: %w", err)
-	}
-	if err := upsertAssetInManifest(g.repoPath, asset); err != nil {
+	if err := upsertAssetInheritingScopes(g.repoPath, asset); err != nil {
 		return fmt.Errorf("failed to update manifest: %w", err)
 	}
 

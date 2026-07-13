@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofrs/flock"
 
+	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/mgmt"
 )
 
@@ -230,7 +231,20 @@ func (p *PathVault) ClearAssetInstallations(ctx context.Context, assetName strin
 // the unified scope flow works against path vaults, not just the Sleuth vault.
 func (p *PathVault) SetAssetInstallations(ctx context.Context, assetName string, targets []InstallTarget, appendMode bool) (skipped []SkippedTarget, err error) {
 	err = p.withLock(ctx, func(actor mgmt.Actor) error {
-		skipped, err = commonSetAssetInstallations(ctx, p.repoPath, actor, assetName, targets, appendMode)
+		skipped, err = commonSetAssetInstallations(ctx, p.repoPath, actor, assetName, targets, appendMode, nil)
+		return err
+	})
+	return skipped, err
+}
+
+// SetPublishedAssetInstallations is SetAssetInstallations for a just-published
+// asset version: the manifest row advances to asset's version (existing scopes
+// carried through) in the SAME transaction the targets apply in, so a scoped
+// republish is atomic — the version and scopes change together or not at all.
+// Satisfies publishedInstallSetter.
+func (p *PathVault) SetPublishedAssetInstallations(ctx context.Context, asset *lockfile.Asset, targets []InstallTarget, appendMode bool) (skipped []SkippedTarget, err error) {
+	err = p.withLock(ctx, func(actor mgmt.Actor) error {
+		skipped, err = commonSetAssetInstallations(ctx, p.repoPath, actor, asset.Name, targets, appendMode, asset)
 		return err
 	})
 	return skipped, err

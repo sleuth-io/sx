@@ -482,17 +482,37 @@ func (m *Manifest) FindAsset(name string) *Asset {
 	return nil
 }
 
-// UpsertAsset replaces an asset by (name, version) or appends if missing.
-// Returns the pointer into the manifest's slice.
+// UpsertAsset replaces the asset with the same name or appends if missing.
+// The manifest pins one live version per asset name, so publishing a new
+// version updates the existing row in place (keeping its position and
+// bumping its version) rather than appending a second [[assets]] block for
+// the same name — a duplicate would make lock resolution ambiguous. Any
+// legacy duplicate rows for the name are pruned. Note the match key is the
+// NAME alone (it was name+version before schema v2 hardening): no caller
+// keeps multiple versions of one name as separate rows — callers that need
+// per-version granularity (RemoveAsset, findAssetVersionInManifest) take an
+// explicit version instead. Returns the pointer into the manifest's slice.
 func (m *Manifest) UpsertAsset(a Asset) *Asset {
+	idx := -1
 	for i := range m.Assets {
-		if m.Assets[i].Name == a.Name && m.Assets[i].Version == a.Version {
-			m.Assets[i] = a
-			return &m.Assets[i]
+		if m.Assets[i].Name == a.Name {
+			idx = i
+			break
 		}
 	}
-	m.Assets = append(m.Assets, a)
-	return &m.Assets[len(m.Assets)-1]
+	if idx == -1 {
+		m.Assets = append(m.Assets, a)
+		return &m.Assets[len(m.Assets)-1]
+	}
+	m.Assets[idx] = a
+	kept := m.Assets[:idx+1]
+	for _, other := range m.Assets[idx+1:] {
+		if other.Name != a.Name {
+			kept = append(kept, other)
+		}
+	}
+	m.Assets = kept
+	return &m.Assets[idx]
 }
 
 // RemoveAsset removes every entry matching name. If version is non-empty,

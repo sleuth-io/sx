@@ -42,15 +42,22 @@ func writeLockFileForNoInstall(ctx context.Context, out *outputHelper, repo vaul
 	if err != nil {
 		return err
 	}
+	// No scope flags at all (Inherit with --yes, Remove without): keep any
+	// existing scopes. Republishing an already-scoped asset with a plain
+	// `--no-install` must not silently re-scope it to global; a brand-new
+	// asset has nothing to inherit and still lands global, preserving the
+	// long-standing --no-install default.
+	if result.Inherit || result.Remove {
+		if err := inheritLockFile(ctx, out, repo, asset); err != nil {
+			return fmt.Errorf("failed to update lock file: %w", err)
+		}
+		return nil
+	}
 	asset.Scopes = result.Scopes
 	if asset.Scopes == nil {
-		// Three getScopes branches produce nil Scopes:
-		//   - Inherit / Remove (no scope flag set) — fall back to global
-		//     to match pre-fix behavior; strict inherit semantics under
-		//     --no-install would be a broader change.
-		//   - --scope=<entity> — the entity is forwarded via
-		//     result.ScopeEntity to updateLockFile / SetInstallations;
-		//     an empty Scopes slice is the correct payload.
+		// --scope=<entity> produces nil Scopes: the entity is forwarded via
+		// result.ScopeEntity to updateLockFile / SetInstallations; an empty
+		// Scopes slice is the correct payload.
 		asset.Scopes = []lockfile.Scope{}
 	}
 	if err := updateLockFile(ctx, out, repo, asset, result); err != nil {
@@ -108,6 +115,16 @@ type installSetter interface {
 	SetAssetInstallations(ctx context.Context, assetName string, targets []vault.InstallTarget, appendMode bool) (skipped []vault.SkippedTarget, err error)
 }
 
+// publishedInstallSetter is implemented by vaults whose manifest row must
+// advance when scopes are applied right after a publish (the file-backed
+// git/path vaults). The version bump and the scope apply happen in ONE
+// transaction — one commit on git vaults — so they land together or not at
+// all. The Sleuth vault doesn't implement it: the server registers versions
+// at upload, so its name-only installSetter path is already correct.
+type publishedInstallSetter interface {
+	SetPublishedAssetInstallations(ctx context.Context, asset *lockfile.Asset, targets []vault.InstallTarget, appendMode bool) (skipped []vault.SkippedTarget, err error)
+}
+
 // targetUninstaller is implemented by vaults that can remove specific
 // installations by server GID in one best-effort call (the Sleuth/skills.new
 // vault). It returns how many installs were removed and a per-target failure
@@ -125,7 +142,21 @@ func updateLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, as
 		return applyScopeEdit(ctx, out, repo, asset.Name, result.Added, result.Removed)
 	}
 	if result.ApplyTargets || result.Append || hasIdentityScope(result.Targets) {
-		return bulkSetInstallTargets(ctx, out, repo, asset.Name, result.Targets, result.Append)
+		// The plain bulk installer keys on the asset NAME only, so it
+		// adjusts scopes on whatever version the manifest already pins.
+		// When this call follows a fresh publish, the manifest row must
+		// also advance to the just-published version (preserving its
+		// scopes) or the vault desyncs: archive and root view at the new
+		// version, manifest still resolving the old one. Passing the asset
+		// through lets file-backed vaults fold that advance into the same
+		// transaction as the scope apply. Scope-only callers (`sx install
+		// --repo X asset`) carry no version — nothing was published, so
+		// there is no row to advance.
+		var published *lockfile.Asset
+		if asset.Version != "" {
+			published = asset
+		}
+		return bulkSetInstallTargets(ctx, out, repo, asset.Name, published, result.Targets, result.Append)
 	}
 
 	// SetInstallations updates the vault's lock file with the installation configuration
@@ -139,8 +170,11 @@ func updateLockFile(ctx context.Context, out *outputHelper, repo vault.Vault, as
 
 // bulkSetInstallTargets resolves the "me" alias and persists targets via the
 // vault's bulk installer. appendMode merges with the asset's existing
-// installations server-side; otherwise the set is replaced.
-func bulkSetInstallTargets(ctx context.Context, out *outputHelper, repo vault.Vault, assetName string, targets []vault.InstallTarget, appendMode bool) error {
+// installations server-side; otherwise the set is replaced. A non-nil
+// published asset routes through the vault's published-aware installer when
+// it has one, advancing the manifest row to that version in the same
+// transaction (see publishedInstallSetter).
+func bulkSetInstallTargets(ctx context.Context, out *outputHelper, repo vault.Vault, assetName string, published *lockfile.Asset, targets []vault.InstallTarget, appendMode bool) error {
 	setter, ok := repo.(installSetter)
 	if !ok {
 		return errors.New("this vault does not support team/user/bot scopes")
@@ -149,7 +183,12 @@ func bulkSetInstallTargets(ctx context.Context, out *outputHelper, repo vault.Va
 	if err != nil {
 		return err
 	}
-	skipped, err := setter.SetAssetInstallations(ctx, assetName, resolved, appendMode)
+	var skipped []vault.SkippedTarget
+	if ps, isPublished := repo.(publishedInstallSetter); isPublished && published != nil {
+		skipped, err = ps.SetPublishedAssetInstallations(ctx, published, resolved, appendMode)
+	} else {
+		skipped, err = setter.SetAssetInstallations(ctx, assetName, resolved, appendMode)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to set installations: %w", err)
 	}
@@ -200,7 +239,9 @@ func applyScopeEdit(ctx context.Context, out *outputHelper, repo vault.Vault, as
 	if len(added) > 0 {
 		// Append the new targets; resolveSelfUserScopes ("me") and entity
 		// resolution happen inside bulkSetInstallTargets.
-		if err := bulkSetInstallTargets(ctx, out, repo, assetName, added, true); err != nil {
+		// Scope edits adjust an existing installation; no publish precedes
+		// them, so there is no version row to advance (published = nil).
+		if err := bulkSetInstallTargets(ctx, out, repo, assetName, nil, added, true); err != nil {
 			return err
 		}
 	}
