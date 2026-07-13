@@ -312,6 +312,178 @@ func TestMigrateStorageToV2LeavesNonAssetDirsInPlace(t *testing.T) {
 	}
 }
 
+// seedV1NamespacedVault builds a v1 vault whose manifest declares namespaced
+// asset names (names with a "/", e.g. "opsx/apply") plus one top-level asset.
+// There is no bare "opsx" asset: assets/opsx is only a namespace directory.
+func seedV1NamespacedVault(t *testing.T, dir string) {
+	t.Helper()
+	write := func(rel, content string) {
+		t.Helper()
+		path := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var assets []manifest.Asset
+	for _, c := range []string{"apply", "archive", "explore", "propose"} {
+		write("assets/opsx/"+c+"/1/COMMAND.md", "# opsx/"+c)
+		write("assets/opsx/"+c+"/1/metadata.toml", "[asset]\nname = \"opsx/"+c+"\"\nversion = \"1\"\ntype = \"command\"\n")
+		write("assets/opsx/"+c+"/list.txt", "1\n")
+		assets = append(assets, manifest.Asset{
+			Name: "opsx/" + c, Version: "1", Type: asset.TypeCommand,
+			SourcePath: &manifest.SourcePath{Path: "./assets/opsx/" + c + "/1"},
+		})
+	}
+	write("assets/plain/1/SKILL.md", "# plain")
+	write("assets/plain/1/metadata.toml", "[asset]\nname = \"plain\"\nversion = \"1\"\ntype = \"skill\"\n")
+	write("assets/plain/list.txt", "1\n")
+	assets = append(assets, manifest.Asset{
+		Name: "plain", Version: "1", Type: asset.TypeSkill,
+		SourcePath: &manifest.SourcePath{Path: "./assets/plain/1"},
+	})
+
+	if err := manifest.Save(dir, &manifest.Manifest{SchemaVersion: 1, Assets: assets}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMigrateStorageToV2NamespacedAssets(t *testing.T) {
+	dir := t.TempDir()
+	seedV1NamespacedVault(t, dir)
+
+	plan, err := planStorageMigration(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(plan.Assets, ",") != "opsx/apply,opsx/archive,opsx/explore,opsx/propose,plain" {
+		t.Errorf("plan assets = %v", plan.Assets)
+	}
+
+	result, err := migrateStorageToV2(dir, "alice@example.com")
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if result == nil || result.Assets != 5 {
+		t.Fatalf("result = %+v, want 5 assets migrated", result)
+	}
+
+	// Each namespaced asset is archived individually with its own list.txt,
+	// and gets a root view like every top-level asset.
+	for _, c := range []string{"apply", "archive", "explore", "propose"} {
+		for _, rel := range []string{
+			".sx/versions/opsx/" + c + "/1/COMMAND.md",
+			".sx/versions/opsx/" + c + "/list.txt",
+			"assets/opsx/" + c + "/COMMAND.md",
+		} {
+			if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
+				t.Errorf("missing after migration: %s (%v)", rel, err)
+			}
+		}
+	}
+
+	// The namespace directory itself must not be treated as an asset: no
+	// version list of asset names, no phantom root view.
+	mustNotExist(t, filepath.Join(dir, ".sx", "versions", "opsx", "list.txt"))
+	mustNotExist(t, filepath.Join(dir, "assets", "opsx", "list.txt"))
+	mustNotExist(t, filepath.Join(dir, "assets", "opsx", "1"))
+
+	// Manifest source paths follow the archive.
+	m, _, err := manifest.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []string{"apply", "archive", "explore", "propose"} {
+		a := m.FindAsset("opsx/" + c)
+		if a == nil || a.SourcePath == nil || a.SourcePath.Path != ".sx/versions/opsx/"+c+"/1" {
+			t.Errorf("opsx/%s source path = %+v", c, a)
+		}
+	}
+
+	// A rerun (which re-refreshes all root views) reports up-to-date and
+	// must not delete the namespaced root views.
+	if _, err := migrateStorageToV2(dir, "alice@example.com"); !errors.Is(err, ErrStorageUpToDate) {
+		t.Errorf("second migration err = %v, want ErrStorageUpToDate", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "assets", "opsx", "apply", "COMMAND.md")); err != nil {
+		t.Errorf("namespaced root view lost on rerun: %v", err)
+	}
+}
+
+func TestMigrateStorageToV2NamespacedResume(t *testing.T) {
+	dir := t.TempDir()
+	seedV1NamespacedVault(t, dir)
+
+	// Simulate an interrupted earlier run: "opsx/apply" was archived but the
+	// process died before its root view was materialized.
+	if err := os.MkdirAll(filepath.Join(dir, ".sx", "versions", "opsx"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(
+		filepath.Join(dir, "assets", "opsx", "apply"),
+		filepath.Join(dir, ".sx", "versions", "opsx", "apply"),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := migrateStorageToV2(dir, "alice@example.com")
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	// apply was already moved; the other four are fresh moves.
+	if result == nil || result.Assets != 4 {
+		t.Fatalf("result = %+v, want 4 freshly moved assets", result)
+	}
+	for _, c := range []string{"apply", "archive", "explore", "propose"} {
+		if _, err := os.Stat(filepath.Join(dir, "assets", "opsx", c, "COMMAND.md")); err != nil {
+			t.Errorf("opsx/%s root view missing after resume: %v", c, err)
+		}
+	}
+	mustNotExist(t, filepath.Join(dir, ".sx", "versions", "opsx", "list.txt"))
+}
+
+func TestMigrateStorageToV2NamespaceByDiskShape(t *testing.T) {
+	dir := t.TempDir()
+	seedV1Vault(t, dir)
+
+	// A namespaced asset present on disk but NOT declared in the manifest:
+	// classification must fall back to shape (children holding list.txt).
+	write := func(rel, content string) {
+		t.Helper()
+		path := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("assets/tools/fmt/1/COMMAND.md", "# tools/fmt")
+	write("assets/tools/fmt/1/metadata.toml", "[asset]\nname = \"tools/fmt\"\nversion = \"1\"\ntype = \"command\"\n")
+	write("assets/tools/fmt/list.txt", "1\n")
+
+	result, err := migrateStorageToV2(dir, "alice@example.com")
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if result == nil || result.Assets != 3 {
+		t.Fatalf("result = %+v, want 3 assets migrated", result)
+	}
+	for _, rel := range []string{
+		".sx/versions/tools/fmt/1/COMMAND.md",
+		".sx/versions/tools/fmt/list.txt",
+		"assets/tools/fmt/COMMAND.md",
+	} {
+		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
+			t.Errorf("missing after migration: %s (%v)", rel, err)
+		}
+	}
+	mustNotExist(t, filepath.Join(dir, ".sx", "versions", "tools", "list.txt"))
+}
+
 func TestMigrateStorageToV2SkipsSyncConflictDirs(t *testing.T) {
 	dir := t.TempDir()
 	seedV1Vault(t, dir)
