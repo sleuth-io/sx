@@ -103,7 +103,11 @@ func upsertAssetInheritingScopes(vaultRoot string, asset *lockfile.Asset) error 
 	}
 	ma := lockfileAssetToManifest(*asset)
 	// Preserve Clients from any existing same name+version entry when the
-	// incoming asset declares none (mirrors upsertAssetInManifest).
+	// incoming asset declares none (mirrors upsertAssetInManifest). This
+	// fires only on same-version re-adds (the handleIdenticalAsset inherit
+	// path builds the asset without metadata in scope); on a new-version
+	// republish the version differs and the loop is deliberately inert, so
+	// a version that drops [asset].clients does not inherit the old filter.
 	if len(ma.Clients) == 0 {
 		for i := range m.Assets {
 			if m.Assets[i].Name == ma.Name && m.Assets[i].Version == ma.Version && len(m.Assets[i].Clients) > 0 {

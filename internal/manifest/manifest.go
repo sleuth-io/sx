@@ -487,8 +487,11 @@ func (m *Manifest) FindAsset(name string) *Asset {
 // version updates the existing row in place (keeping its position and
 // bumping its version) rather than appending a second [[assets]] block for
 // the same name — a duplicate would make lock resolution ambiguous. Any
-// legacy duplicate rows for the name are pruned. Returns the pointer into
-// the manifest's slice.
+// legacy duplicate rows for the name are pruned. Note the match key is the
+// NAME alone (it was name+version before schema v2 hardening): no caller
+// keeps multiple versions of one name as separate rows — callers that need
+// per-version granularity (RemoveAsset, findAssetVersionInManifest) take an
+// explicit version instead. Returns the pointer into the manifest's slice.
 func (m *Manifest) UpsertAsset(a Asset) *Asset {
 	idx := -1
 	for i := range m.Assets {
