@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -74,22 +75,92 @@ func planStorageMigration(vaultRoot string) (*MigrationPlan, error) {
 
 // v1AssetDirNames lists the asset directories under assets/ that hold v1
 // version storage (i.e. have not been converted to a v2 root view yet).
+// Namespaced asset names ("opsx/apply") live in nested directories: each
+// directory is classified as an asset or a namespace segment, and namespaces
+// are recursed into rather than migrated as assets themselves — treating a
+// namespace directory as an asset would archive its child assets as phantom
+// versions.
 func v1AssetDirNames(vaultRoot string) ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(vaultRoot, "assets"))
+	manifestNames, err := manifestAssetNameSet(vaultRoot)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to read assets directory: %w", err)
+		return nil, err
+	}
+	// A name that is simultaneously an asset and a namespace prefix
+	// ("opsx" alongside "opsx/apply") has no correct migration: moving
+	// opsx as an asset archives apply/ as a phantom version, and treating
+	// it as a namespace strands opsx's own versions. Refuse rather than
+	// silently pick one interpretation.
+	if conflict := assetNamespaceConflict(manifestNames); conflict != "" {
+		return nil, fmt.Errorf("manifest declares %q both as an asset and as a namespace prefix of other assets; rename one of them before migrating", conflict)
 	}
 	var names []string
+	if err := collectV1AssetDirNames(vaultRoot, "", manifestNames, &names); err != nil {
+		return nil, err
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// assetNamespaceConflict returns a declared asset name that is also a
+// namespace prefix of another declared name (e.g. "opsx" when both "opsx"
+// and "opsx/apply" exist), or "" when there is no conflict.
+func assetNamespaceConflict(names map[string]bool) string {
+	for name := range names {
+		for i := len(name) - 1; i > 0; i-- {
+			if name[i] == '/' && names[name[:i]] {
+				return name[:i]
+			}
+		}
+	}
+	return ""
+}
+
+// manifestAssetNameSet returns the set of asset names declared in the
+// vault's manifest, or an empty set when there is no manifest.
+func manifestAssetNameSet(vaultRoot string) (map[string]bool, error) {
+	m, ok, err := manifest.Load(vaultRoot)
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[string]bool)
+	if ok {
+		for i := range m.Assets {
+			names[m.Assets[i].Name] = true
+		}
+	}
+	return names, nil
+}
+
+// collectV1AssetDirNames scans one level of the assets/ tree, appending the
+// slash-separated names of migratable v1 asset directories and recursing
+// into namespace directories. prefix is the slash-separated path scanned so
+// far ("" for the assets/ root).
+func collectV1AssetDirNames(vaultRoot, prefix string, manifestNames map[string]bool, names *[]string) error {
+	entries, err := os.ReadDir(filepath.Join(vaultRoot, "assets", filepath.FromSlash(prefix)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to read assets directory: %w", err)
+	}
 	for _, entry := range filterScanEntries(entries) {
 		if !entry.IsDir() {
 			continue
 		}
+		rel := path.Join(prefix, entry.Name())
+		// Classify before the archived check: a partially migrated
+		// namespace has an archive directory of its own (holding the
+		// children already moved), which must not hide the children
+		// still waiting under assets/{rel}.
+		if isNamespaceDir(filepath.Join(vaultRoot, "assets"), rel, manifestNames) {
+			if err := collectV1AssetDirNames(vaultRoot, rel, manifestNames, names); err != nil {
+				return err
+			}
+			continue
+		}
 		// An existing archive for this asset means a prior (interrupted)
-		// migration already moved it; assets/{name} is its root view now.
-		archived := filepath.Join(vaultRoot, ".sx", "versions", entry.Name())
+		// migration already moved it; assets/{rel} is its root view now.
+		archived := filepath.Join(vaultRoot, ".sx", "versions", filepath.FromSlash(rel))
 		if _, err := os.Stat(archived); err == nil {
 			continue
 		}
@@ -97,17 +168,98 @@ func v1AssetDirNames(vaultRoot string) ([]string, error) {
 		// are migratable. Anything else — an empty folder, a hand-made
 		// directory of loose files — is left in place untouched rather
 		// than moved somewhere it can never be completed from.
-		hasVersions, err := dirHasSubdirectories(filepath.Join(vaultRoot, "assets", entry.Name()))
+		hasVersions, err := dirHasSubdirectories(filepath.Join(vaultRoot, "assets", filepath.FromSlash(rel)))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if !hasVersions {
 			continue
 		}
-		names = append(names, entry.Name())
+		*names = append(*names, rel)
 	}
-	sort.Strings(names)
-	return names, nil
+	return nil
+}
+
+// isNamespaceDir reports whether {baseDir}/{rel} is a namespace directory —
+// a path segment of namespaced asset names (e.g. "opsx" for "opsx/apply") —
+// rather than an asset directory. baseDir is the tree being classified:
+// the v1 assets root or the v2 archive root. The manifest is the primary
+// signal: a declared asset name is always an asset, and declared names
+// nested under rel make it a namespace (a name that is both is rejected
+// up front by assetNamespaceConflict). On-disk shape settles undeclared
+// directories:
+//
+//   - rel holding its own list.txt → asset.
+//   - a child holding list.txt BESIDE subdirectories (the v1 asset-dir
+//     signature) → the children are assets → namespace. A lone list.txt
+//     with no sibling subdirectories is treated as version-dir payload,
+//     not a signal — though an undeclared version dir that bundles both
+//     a payload list.txt and payload subdirectories can still trip this.
+//   - no list.txt anywhere: a version directory holds the asset's files
+//     directly, while an asset directory holds only version
+//     subdirectories. So a child with regular files at its root marks
+//     rel an asset, and file-less children with subdirectories mark it
+//     a namespace. (An asset whose EVERY version dir has no root files
+//     — no metadata.toml, no prompt file — would be misread as a
+//     namespace, but such an asset has nothing recognizable to migrate
+//     anyway.)
+//   - anything else defaults to asset, matching pre-namespace behavior.
+func isNamespaceDir(baseDir, rel string, manifestNames map[string]bool) bool {
+	if manifestNames[rel] {
+		return false
+	}
+	for name := range manifestNames {
+		if strings.HasPrefix(name, rel+"/") {
+			return true
+		}
+	}
+	dir := filepath.Join(baseDir, filepath.FromSlash(rel))
+	if _, err := os.Stat(filepath.Join(dir, "list.txt")); err == nil {
+		return false
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	anyChildFile := false
+	anyChildSubdirOnly := false
+	for _, entry := range filterScanEntries(entries) {
+		if !entry.IsDir() {
+			continue
+		}
+		childEntries, err := os.ReadDir(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		hasFile, hasSubdir, hasList := false, false, false
+		for _, ce := range filterScanEntries(childEntries) {
+			if ce.IsDir() {
+				hasSubdir = true
+				continue
+			}
+			if ce.Name() == "list.txt" {
+				hasList = true
+				continue
+			}
+			hasFile = true
+		}
+		// A list.txt BESIDE version subdirectories is the v1 asset-dir
+		// signature — the child is an asset, so rel is a namespace. A
+		// list.txt with no subdirectories next to it is just a payload
+		// file inside a version directory and counts as a regular file.
+		if hasList && hasSubdir {
+			return true
+		}
+		if hasFile || hasList {
+			anyChildFile = true
+		} else if hasSubdir {
+			anyChildSubdirOnly = true
+		}
+	}
+	if anyChildFile {
+		return false
+	}
+	return anyChildSubdirOnly
 }
 
 // dirHasSubdirectories reports whether dir contains at least one
@@ -255,18 +407,43 @@ func ensureVersionList(vaultRoot string, v2 layout.Layout, name string) error {
 // refreshAllRootViews re-materializes the root view of every archived asset.
 // Used to complete interrupted migrations and repair root-view drift.
 func refreshAllRootViews(vaultRoot string, v2 layout.Layout) error {
-	entries, err := os.ReadDir(filepath.Join(vaultRoot, ".sx", "versions"))
+	manifestNames, err := manifestAssetNameSet(vaultRoot)
+	if err != nil {
+		return err
+	}
+	return refreshRootViewsUnder(vaultRoot, v2, "", manifestNames)
+}
+
+// refreshRootViewsUnder refreshes the root views of the archived assets one
+// level below .sx/versions/{prefix}, recursing into namespace directories.
+// A namespace directory (a segment of namespaced asset names like "opsx"
+// for "opsx/apply") must never be refreshed as an asset itself: it has no
+// list.txt, so refreshRootView would read an empty version list and delete
+// every child root view under assets/{prefix}.
+func refreshRootViewsUnder(vaultRoot string, v2 layout.Layout, prefix string, manifestNames map[string]bool) error {
+	entries, err := os.ReadDir(filepath.Join(vaultRoot, ".sx", "versions", filepath.FromSlash(prefix)))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return err
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() || utils.IsSyncArtifact(entry.Name()) {
+	// filterScanEntries, not just an IsSyncArtifact check: the scan side
+	// uses it too, and it additionally skips numbered sync-conflict copies
+	// ("apply 2") — refreshing one of those would materialize a phantom
+	// root view for the conflict copy.
+	for _, entry := range filterScanEntries(entries) {
+		if !entry.IsDir() {
 			continue
 		}
-		if err := refreshRootView(vaultRoot, v2, entry.Name()); err != nil {
+		rel := path.Join(prefix, entry.Name())
+		if isNamespaceDir(filepath.Join(vaultRoot, ".sx", "versions"), rel, manifestNames) {
+			if err := refreshRootViewsUnder(vaultRoot, v2, rel, manifestNames); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := refreshRootView(vaultRoot, v2, rel); err != nil {
 			return err
 		}
 	}

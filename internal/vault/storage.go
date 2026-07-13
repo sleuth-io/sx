@@ -84,8 +84,10 @@ func refreshRootView(vaultRoot string, l layout.Layout, name string) error {
 		}
 	}
 	// PID-suffixed so two processes sharing a path vault never fight over
-	// the same staging directory.
-	stagingDir := filepath.Join(vaultRoot, l.AssetsRoot(), fmt.Sprintf(".%s.staging-%d", name, os.Getpid()))
+	// the same staging directory. Namespaced names ("opsx/apply") are
+	// flattened so the staging dir stays directly under assets/.
+	stagingName := strings.ReplaceAll(name, "/", "-")
+	stagingDir := filepath.Join(vaultRoot, l.AssetsRoot(), fmt.Sprintf(".%s.staging-%d", stagingName, os.Getpid()))
 	if err := os.RemoveAll(stagingDir); err != nil {
 		return err
 	}
@@ -94,6 +96,12 @@ func refreshRootView(vaultRoot string, l layout.Layout, name string) error {
 		return fmt.Errorf("failed to stage root view for %s: %w", name, err)
 	}
 	if err := os.RemoveAll(viewDir); err != nil {
+		_ = os.RemoveAll(stagingDir)
+		return err
+	}
+	// A namespaced asset's view lives in a nested directory that may not
+	// exist yet (assets/opsx/ for "opsx/apply").
+	if err := os.MkdirAll(filepath.Dir(viewDir), 0755); err != nil {
 		_ = os.RemoveAll(stagingDir)
 		return err
 	}
