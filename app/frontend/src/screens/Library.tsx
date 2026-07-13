@@ -2345,7 +2345,10 @@ export default function Library({
           teams={teams}
           installed={installed.has(selected)}
           installedScopes={installedScopes.get(selected) ?? []}
-          onClose={() => setSelected(null)}
+          onClose={() => {
+            setSelected(null);
+            setPluginTab(null);
+          }}
           onEdit={() => void editAsset(selected)}
           onDelete={() => {
             const name = selected;
