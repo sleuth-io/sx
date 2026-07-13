@@ -42,17 +42,10 @@ AI assets — skills, MCPs, agents, rules, commands, hooks — usually live insi
 
 ## App or command line — your choice
 
-sx has two front doors to the same libraries: a **desktop app** and a **command line**. They share one configuration, so a library added in one shows up in the other — engineers can live in the CLI while everyone else uses the app, and nothing drifts.
+Two front doors, one library. The app and the CLI share a single configuration, so a library added in one shows up in the other — mixed teams never drift.
 
-**If you're not a command-line person, start with the app.** It covers the whole workflow without a terminal: create and edit skills in a built-in editor (or just drag files in), publish them to your team's library, install them into your AI tools with one click, and organize everything with collections and teams. Technical users can turn on per-library repository views to see exactly which repos each skill is scoped to.
-
-<p align="center"><img src="docs/app-library.png" alt="The sx desktop app — your team's skill library" width="800"></p>
-
-First launch asks one question — how will you use it? — and sets the library up to match:
-
-<p align="center"><img src="docs/app-onboarding.png" alt="First-launch setup" width="560"></p>
-
-Download the app for macOS, Windows, or Linux from [Releases](https://github.com/sleuth-io/sx/releases) (the `sx-app-*` artifacts). Power users: keep reading for the CLI.
+- **The app** — for everyone. Create and edit skills in a built-in editor (or drag files in), publish to your team, install into your AI tools with one click. No terminal anywhere. [Download for macOS, Windows, or Linux](https://github.com/sleuth-io/sx/releases) (the `sx-app-*` artifacts).
+- **The CLI** — for engineers and automation. The same operations, scriptable: pin it in CI, wire it into hooks, drive it from your own tools. Install below.
 
 ## Quickstart
 
