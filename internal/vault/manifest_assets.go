@@ -81,6 +81,16 @@ func upsertAssetInheritingScopes(vaultRoot string, asset *lockfile.Asset) error 
 	if err != nil {
 		return err
 	}
+	upsertAssetInheritingScopesTx(m, asset)
+	return manifest.Save(vaultRoot, m)
+}
+
+// upsertAssetInheritingScopesTx is upsertAssetInheritingScopes against an
+// already-loaded manifest, for callers composing it into a larger
+// transaction (commonSetAssetInstallations folds the version advance and
+// the scope apply into one manifest write — and one commit on git vaults).
+// Returns the upserted row.
+func upsertAssetInheritingScopesTx(m *manifest.Manifest, asset *lockfile.Asset) *manifest.Asset {
 	// Gather scopes from EVERY same-name row, not just FindAsset's first
 	// match: the rest of the system treats an asset's effective scopes as
 	// the union across legacy duplicate rows (see commonCurrentInstallTargets),
@@ -120,7 +130,7 @@ func upsertAssetInheritingScopes(vaultRoot string, asset *lockfile.Asset) error 
 	if inherit {
 		row.Scopes = preserved
 	}
-	return manifest.Save(vaultRoot, m)
+	return row
 }
 
 // removeAssetFromManifest deletes every entry for the named asset, or

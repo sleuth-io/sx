@@ -5,10 +5,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/sleuth-io/sx/internal/asset"
+	"github.com/sleuth-io/sx/internal/lockfile"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
 )
@@ -306,5 +311,168 @@ func TestSleuthOrgInstallAlwaysReplaces(t *testing.T) {
 	}
 	if gotAppend == nil || *gotAppend {
 		t.Fatalf("org install sent append=%v, want explicit false (replace)", gotAppend)
+	}
+}
+
+// TestPathVault_SetPublishedAssetInstallations_AdvancesRow pins issue #191's
+// single-transaction fix: applying scopes for a just-published version must
+// advance the manifest row to that version in the same write, carrying
+// existing scopes through and then applying the new targets.
+func TestPathVault_SetPublishedAssetInstallations_AdvancesRow(t *testing.T) {
+	v, dir := seedBulkInstallVault(t)
+	ctx := context.Background()
+
+	published := &lockfile.Asset{
+		Name: "my-skill", Version: "2.0.0", Type: asset.TypeSkill,
+		SourcePath: &lockfile.SourcePath{Path: ".sx/versions/my-skill/2.0.0"},
+	}
+	skipped, err := v.SetPublishedAssetInstallations(ctx, published, []InstallTarget{
+		{Kind: InstallKindRepo, Repo: "github.com/acme/extra"},
+	}, true)
+	if err != nil || len(skipped) != 0 {
+		t.Fatalf("SetPublishedAssetInstallations: skipped=%v err=%v", skipped, err)
+	}
+
+	m, _, err := manifest.LoadOrMigrate(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := m.FindAsset("my-skill")
+	if a == nil || a.Version != "2.0.0" {
+		t.Fatalf("row = %+v, want version 2.0.0", a)
+	}
+	if a.SourcePath == nil || a.SourcePath.Path != ".sx/versions/my-skill/2.0.0" {
+		t.Errorf("source path = %+v, want the published archive path", a.SourcePath)
+	}
+	if len(a.Scopes) != 2 {
+		t.Errorf("scopes = %+v, want baseline repo scope + appended repo scope", a.Scopes)
+	}
+}
+
+// TestPathVault_SetPublishedAssetInstallations_AllSkippedLeavesRow pins the
+// atomicity half of the fix: when every requested target is skipped, the
+// version must NOT advance either — the manifest stays exactly as it was,
+// rather than committing a version bump whose scope change never landed.
+func TestPathVault_SetPublishedAssetInstallations_AllSkippedLeavesRow(t *testing.T) {
+	v, dir := seedBulkInstallVault(t)
+	ctx := context.Background()
+
+	published := &lockfile.Asset{
+		Name: "my-skill", Version: "2.0.0", Type: asset.TypeSkill,
+		SourcePath: &lockfile.SourcePath{Path: ".sx/versions/my-skill/2.0.0"},
+	}
+	skipped, err := v.SetPublishedAssetInstallations(ctx, published, []InstallTarget{
+		{Kind: InstallKindTeam, Team: "ghost-team"},
+	}, false)
+	if err != nil {
+		t.Fatalf("SetPublishedAssetInstallations: %v", err)
+	}
+	if len(skipped) != 1 {
+		t.Fatalf("skipped = %+v, want the unknown team reported", skipped)
+	}
+
+	m, _, err := manifest.LoadOrMigrate(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := m.FindAsset("my-skill")
+	if a == nil || a.Version != "1.0.0" {
+		t.Fatalf("row = %+v, want version still 1.0.0 (nothing applied, nothing advanced)", a)
+	}
+	if len(a.Scopes) != 1 || a.Scopes[0].Kind != manifest.ScopeKindRepo {
+		t.Errorf("scopes = %+v, want the baseline repo scope untouched", a.Scopes)
+	}
+}
+
+// TestGitVault_SetPublishedAssetInstallations_OneCommit pins the other half
+// of the issue #191 review feedback: a scoped republish must land the version
+// advance and the scope change as ONE commit on git vaults, not a version
+// commit followed by a separate scope commit.
+func TestGitVault_SetPublishedAssetInstallations_OneCommit(t *testing.T) {
+	mgmt.ResetActorCache()
+	t.Setenv("SX_CACHE_DIR", t.TempDir())
+
+	remoteDir := filepath.Join(t.TempDir(), "vault.git")
+	gitRun(t, "", "init", "--bare", "-b", "main", remoteDir)
+
+	seedDir := filepath.Join(t.TempDir(), "seed")
+	gitRun(t, "", "init", "-b", "main", seedDir)
+	gitRun(t, seedDir, "config", "user.email", "seed@example.com")
+	gitRun(t, seedDir, "config", "user.name", "Seed")
+	for _, rel := range []string{
+		".sx/versions/my-skill/1/SKILL.md",
+		"assets/my-skill/SKILL.md",
+	} {
+		path := filepath.Join(seedDir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("# my-skill"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(seedDir, ".sx", "versions", "my-skill", "list.txt"), []byte("1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := manifest.Save(seedDir, &manifest.Manifest{
+		SchemaVersion: manifest.CurrentSchemaVersion,
+		Assets: []manifest.Asset{{
+			Name: "my-skill", Version: "1", Type: asset.TypeSkill,
+			SourcePath: &manifest.SourcePath{Path: ".sx/versions/my-skill/1"},
+			Scopes: []manifest.Scope{
+				{Kind: manifest.ScopeKindRepo, Repo: "github.com/acme/baseline"},
+			},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, seedDir, "add", ".")
+	gitRun(t, seedDir, "commit", "-m", "seed v2 vault")
+	gitRun(t, seedDir, "remote", "add", "origin", remoteDir)
+	gitRun(t, seedDir, "push", "origin", "main")
+
+	v, err := NewGitVault("file://" + remoteDir)
+	if err != nil {
+		t.Fatalf("NewGitVault: %v", err)
+	}
+	if _, _, _, err := v.GetLockFile(context.Background(), ""); err != nil {
+		t.Fatalf("GetLockFile (forces clone): %v", err)
+	}
+	gitRun(t, v.repoPath, "config", "user.email", "alice@example.com")
+	gitRun(t, v.repoPath, "config", "user.name", "Alice")
+	mgmt.ResetActorCache()
+
+	before := strings.TrimSpace(gitOut(t, "", "--git-dir", remoteDir, "rev-list", "--count", "main"))
+
+	published := &lockfile.Asset{
+		Name: "my-skill", Version: "2", Type: asset.TypeSkill,
+		SourcePath: &lockfile.SourcePath{Path: ".sx/versions/my-skill/2"},
+	}
+	skipped, err := v.SetPublishedAssetInstallations(context.Background(), published,
+		[]InstallTarget{{Kind: InstallKindOrg}}, false)
+	if err != nil || len(skipped) != 0 {
+		t.Fatalf("SetPublishedAssetInstallations: skipped=%v err=%v", skipped, err)
+	}
+
+	after := strings.TrimSpace(gitOut(t, "", "--git-dir", remoteDir, "rev-list", "--count", "main"))
+	beforeN, _ := strconv.Atoi(before)
+	afterN, _ := strconv.Atoi(after)
+	if afterN != beforeN+1 {
+		log := gitOut(t, "", "--git-dir", remoteDir, "log", "--format=%s", "main")
+		t.Fatalf("commits: before=%d after=%d, want exactly one new commit; log:\n%s", beforeN, afterN, log)
+	}
+
+	verify := filepath.Join(t.TempDir(), "verify")
+	gitRun(t, "", "clone", remoteDir, verify)
+	m, _, err := manifest.Load(verify)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := m.FindAsset("my-skill")
+	if a == nil || a.Version != "2" {
+		t.Fatalf("row = %+v, want version 2 on the remote", a)
+	}
+	if len(a.Scopes) != 0 {
+		t.Errorf("scopes = %+v, want none (org-wide replace)", a.Scopes)
 	}
 }

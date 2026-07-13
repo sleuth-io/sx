@@ -1022,7 +1022,14 @@ func commonClearAssetInstallations(vaultRoot string, actor mgmt.Actor, assetName
 // caller to surface — it never aborts the whole batch on one bad target. If
 // NOTHING resolves, the asset is left untouched rather than cleared, so a
 // REPLACE whose targets all fail can't silently globalize the asset.
-func commonSetAssetInstallations(ctx context.Context, vaultRoot string, actor mgmt.Actor, assetName string, targets []InstallTarget, appendMode bool) ([]SkippedTarget, error) {
+//
+// published, when non-nil, is a just-published asset version whose manifest
+// row must advance as part of the same transaction (scopes carried through
+// before the targets apply). Folding the advance in here keeps a scoped
+// republish to ONE manifest write — one commit/push on git vaults — and
+// makes it atomic: when every target is skipped, neither the version nor
+// the scopes change.
+func commonSetAssetInstallations(ctx context.Context, vaultRoot string, actor mgmt.Actor, assetName string, targets []InstallTarget, appendMode bool, published *lockfile.Asset) ([]SkippedTarget, error) {
 	if len(targets) == 0 {
 		return nil, nil
 	}
@@ -1077,9 +1084,16 @@ func commonSetAssetInstallations(ctx context.Context, vaultRoot string, actor mg
 			}
 		}
 
-		asset := m.FindAsset(assetName)
+		// Past the early returns: at least one target will apply, so the
+		// just-published version (when given) advances in the same write.
+		// Its upsert inserts or replaces the row and carries existing
+		// scopes through, so the storage-recovery path below is only for
+		// scope-only callers.
+		var asset *manifest.Asset
 		var recoveredAuditData map[string]any
-		if asset == nil {
+		if published != nil {
+			asset = upsertAssetInheritingScopesTx(m, published)
+		} else if asset = m.FindAsset(assetName); asset == nil {
 			recovered, ok, err := assetFromStorage(vaultRoot, assetName)
 			if err != nil {
 				return nil, err
