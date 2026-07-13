@@ -28,6 +28,7 @@ import TypeBadge from "./TypeBadge";
  */
 export default function AssetDetail({
   name,
+  pluginTab,
   collections,
   teams,
   installed,
@@ -40,6 +41,9 @@ export default function AssetDetail({
   onCollectionsChanged,
 }: {
   name: string;
+  /** An extension's openAsset deep-link target ("pluginId:tabId"), consumed
+   * once per nonce — see Library's plugin UI handlers. */
+  pluginTab?: { name: string; tab: string; nonce: number } | null;
   collections: main.Collection[];
   teams: main.TeamInfo[];
   installed: boolean;
@@ -60,7 +64,26 @@ export default function AssetDetail({
   // content view; a missing key (extension disabled mid-view) falls back.
   const assetTabs = useSlot("asset-tab");
   const [activeTab, setActiveTab] = useState("");
-  useEffect(() => setActiveTab(""), [name]);
+  // A deep-link nonce is consumed exactly once: a name change without a
+  // fresh nonce resets to the content view, so plain list clicks never
+  // inherit a previously-requested tab.
+  const consumedTabNonce = useRef(0);
+  useEffect(() => {
+    if (pluginTab && pluginTab.name === name && pluginTab.nonce !== consumedTabNonce.current) {
+      consumedTabNonce.current = pluginTab.nonce;
+      setActiveTab(pluginTab.tab);
+    } else {
+      setActiveTab("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name]);
+  useEffect(() => {
+    if (pluginTab && pluginTab.name === name && pluginTab.nonce !== consumedTabNonce.current) {
+      consumedTabNonce.current = pluginTab.nonce;
+      setActiveTab(pluginTab.tab);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pluginTab?.nonce]);
   const currentTab = assetTabs.find(
     (t) => t.pluginId + ":" + t.spec.id === activeTab,
   );

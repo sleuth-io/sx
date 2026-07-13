@@ -3,7 +3,7 @@
 // extension needs something this file doesn't offer, the answer is an API
 // addition, never an escape hatch to app internals.
 
-export const SX_API_VERSION = "1.10.0";
+export const SX_API_VERSION = "1.11.0";
 
 /** Capabilities an extension may declare. Undeclared calls throw.
  * `net:<host>` is a parameterized family (API 1.4.0): each declared
@@ -302,8 +302,10 @@ export interface SxAPI {
     confirm(message: string, action: string): Promise<boolean>;
     /** Open an asset's detail panel — how list-shaped extensions
      * (search results, related assets) make rows navigable. Added in
-     * API 1.1.0. */
-    openAsset(name: string): void;
+     * API 1.1.0. `opts.tab` (API 1.11.0) opens one of THIS extension's
+     * own asset tabs (by its registered id) instead of the content
+     * view; older apps ignore it. */
+    openAsset(name: string, opts?: { tab?: string }): void;
     /** Navigate to one of THIS extension's registered main views (API
      * 1.4.0) — how a command routes the user into the extension's
      * full-page surface. Requires views:main. */

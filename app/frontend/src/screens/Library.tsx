@@ -592,12 +592,22 @@ export default function Library({
   // Extension system: boot once, and hand extensions the app's real UI
   // services (toast + confirm) so sx.ui works.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // An extension's openAsset(name, tab) deep-link: consumed by AssetDetail
+  // once per nonce, so plain list clicks never inherit a stale tab.
+  const [pluginTab, setPluginTab] = useState<{
+    name: string;
+    tab: string;
+    nonce: number;
+  } | null>(null);
   useEffect(() => {
     setPluginUIHandlers({
       notice: setToastMessage,
       confirm: confirmAction,
       refresh: () => loadRef.current(),
-      openAsset: setSelected,
+      openAsset: (name, tab) => {
+        setPluginTab(tab ? { name, tab, nonce: Date.now() } : null);
+        setSelected(name);
+      },
       openView: (key) => setScope({ kind: "plugin-view", name: key }),
       openSettings: (section) => {
         setSettingsTab(section ?? "libraries");
@@ -2330,6 +2340,7 @@ export default function Library({
       {selected && (
         <AssetDetail
           name={selected}
+          pluginTab={pluginTab}
           collections={collections}
           teams={teams}
           installed={installed.has(selected)}
