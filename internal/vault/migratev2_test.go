@@ -11,6 +11,7 @@ import (
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/manifest"
 	"github.com/sleuth-io/sx/internal/mgmt"
+	"github.com/sleuth-io/sx/internal/vault/layout"
 )
 
 // seedV1Vault builds a v1-format vault: exploded version dirs + list.txt
@@ -588,4 +589,86 @@ func TestMigrateStorageToV2SkipsSyncConflictDirs(t *testing.T) {
 		t.Errorf("conflicted dir was moved or lost: %v", err)
 	}
 	mustNotExist(t, filepath.Join(dir, ".sx", "versions", conflictDir))
+}
+
+func TestRefreshRootViewsSkipsNumberedConflictCopies(t *testing.T) {
+	dir := t.TempDir()
+	seedV1Vault(t, dir)
+	if _, err := migrateStorageToV2(dir, "alice@example.com"); err != nil {
+		t.Fatal(err)
+	}
+
+	// A numbered sync-conflict copy of an asset's archive ("chat (2)") left
+	// by a cloud-sync client. The root-view refresh must skip it with the
+	// same filtering the scan side uses — refreshing it would materialize
+	// a phantom root view at assets/chat (2).
+	if err := os.MkdirAll(filepath.Join(dir, ".sx", "versions", "chat (2)", "1.0"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".sx", "versions", "chat (2)", "list.txt"), []byte("1.0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".sx", "versions", "chat (2)", "1.0", "SKILL.md"), []byte("junk"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	v2, err := layout.ForVersion(layout.V2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := refreshAllRootViews(dir, v2); err != nil {
+		t.Fatalf("refreshAllRootViews: %v", err)
+	}
+	mustNotExist(t, filepath.Join(dir, "assets", "chat (2)"))
+	// Real assets still refresh normally.
+	if _, err := os.Stat(filepath.Join(dir, "assets", "chat", "SKILL.md")); err != nil {
+		t.Errorf("real root view lost: %v", err)
+	}
+}
+
+func TestMigrateStorageToV2PayloadListTxtIsNotNamespaceSignal(t *testing.T) {
+	dir := t.TempDir()
+	seedV1Vault(t, dir)
+
+	// An undeclared asset with no top-level list.txt whose version dir
+	// bundles a payload file literally named list.txt. The lone list.txt
+	// (no sibling subdirectories) must read as version-dir payload, so
+	// "bundler" migrates as ONE asset — not as a namespace with "1" as a
+	// phantom sub-asset.
+	write := func(rel, content string) {
+		t.Helper()
+		path := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("assets/bundler/1/SKILL.md", "# bundler")
+	write("assets/bundler/1/list.txt", "payload, not a version list")
+
+	result, err := migrateStorageToV2(dir, "alice@example.com")
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if result == nil || result.Assets != 3 {
+		t.Fatalf("result = %+v, want 3 assets migrated", result)
+	}
+	for _, rel := range []string{
+		".sx/versions/bundler/1/SKILL.md",
+		".sx/versions/bundler/1/list.txt",
+		".sx/versions/bundler/list.txt",
+		"assets/bundler/SKILL.md",
+	} {
+		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
+			t.Errorf("missing after migration: %s (%v)", rel, err)
+		}
+	}
+	// The version dir must not have become a phantom sub-asset with its
+	// own root view.
+	mustNotExist(t, filepath.Join(dir, ".sx", "versions", "bundler", "1", "1"))
+	if _, err := os.Stat(filepath.Join(dir, "assets", "bundler", "1", "SKILL.md")); !os.IsNotExist(err) {
+		t.Errorf("assets/bundler/1 root view should not exist (err=%v)", err)
+	}
 }

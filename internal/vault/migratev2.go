@@ -190,7 +190,11 @@ func collectV1AssetDirNames(vaultRoot, prefix string, manifestNames map[string]b
 // directories:
 //
 //   - rel holding its own list.txt → asset.
-//   - a child holding list.txt → the children are assets → namespace.
+//   - a child holding list.txt BESIDE subdirectories (the v1 asset-dir
+//     signature) → the children are assets → namespace. A lone list.txt
+//     with no sibling subdirectories is treated as version-dir payload,
+//     not a signal — though an undeclared version dir that bundles both
+//     a payload list.txt and payload subdirectories can still trip this.
 //   - no list.txt anywhere: a version directory holds the asset's files
 //     directly, while an asset directory holds only version
 //     subdirectories. So a child with regular files at its root marks
@@ -227,18 +231,26 @@ func isNamespaceDir(baseDir, rel string, manifestNames map[string]bool) bool {
 		if err != nil {
 			continue
 		}
-		hasFile, hasSubdir := false, false
+		hasFile, hasSubdir, hasList := false, false, false
 		for _, ce := range filterScanEntries(childEntries) {
 			if ce.IsDir() {
 				hasSubdir = true
 				continue
 			}
 			if ce.Name() == "list.txt" {
-				return true
+				hasList = true
+				continue
 			}
 			hasFile = true
 		}
-		if hasFile {
+		// A list.txt BESIDE version subdirectories is the v1 asset-dir
+		// signature — the child is an asset, so rel is a namespace. A
+		// list.txt with no subdirectories next to it is just a payload
+		// file inside a version directory and counts as a regular file.
+		if hasList && hasSubdir {
+			return true
+		}
+		if hasFile || hasList {
 			anyChildFile = true
 		} else if hasSubdir {
 			anyChildSubdirOnly = true
@@ -416,8 +428,12 @@ func refreshRootViewsUnder(vaultRoot string, v2 layout.Layout, prefix string, ma
 		}
 		return err
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() || utils.IsSyncArtifact(entry.Name()) {
+	// filterScanEntries, not just an IsSyncArtifact check: the scan side
+	// uses it too, and it additionally skips numbered sync-conflict copies
+	// ("apply 2") — refreshing one of those would materialize a phantom
+	// root view for the conflict copy.
+	for _, entry := range filterScanEntries(entries) {
+		if !entry.IsDir() {
 			continue
 		}
 		rel := path.Join(prefix, entry.Name())
