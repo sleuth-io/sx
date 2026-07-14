@@ -28,10 +28,11 @@ export default function BotModal({
   const [savedDescription, setSavedDescription] = useState(
     bot.description ?? "",
   );
-  // The description's own failure flag — the shared `error` banner also
-  // carries team-op failures, which must not turn a later close into a
-  // silent discard of an unsaved description.
-  const [saveFailed, setSaveFailed] = useState(false);
+  // The description's own error, rendered beside its input. Fully
+  // decoupled from the shared `error` banner (team ops): team ops can
+  // neither hide a save failure nor be mistaken for one, so the
+  // discard-on-second-dismiss gate below can trust "the user saw it".
+  const [descError, setDescError] = useState("");
 
   const joinable = teams
     .map((t) => t.name)
@@ -40,16 +41,14 @@ export default function BotModal({
   async function saveDescription(): Promise<boolean> {
     if (description === savedDescription) return true;
     setBusy(true);
-    setError("");
-    setSaveFailed(false);
+    setDescError("");
     try {
       await UpdateBotDescription(bot.name, description);
       setSavedDescription(description);
       onChanged();
       return true;
     } catch (e) {
-      setError(String(e));
-      setSaveFailed(true);
+      setDescError(String(e));
       return false;
     } finally {
       setBusy(false);
@@ -63,7 +62,7 @@ export default function BotModal({
   // deliberate discard, so a persistently failing save never traps the
   // user here.
   async function close() {
-    if (saveFailed || (await saveDescription())) onClose();
+    if (descError || (await saveDescription())) onClose();
   }
 
   async function addTeam() {
@@ -117,13 +116,19 @@ export default function BotModal({
           onChange={(e) => {
             setDescription(e.target.value);
             // A fresh edit deserves a fresh save attempt on close.
-            setSaveFailed(false);
+            setDescError("");
           }}
           onBlur={() => void saveDescription()}
           placeholder="What this bot does"
           disabled={busy}
           className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
         />
+        {descError && (
+          <p className="mt-1.5 break-words text-xs text-danger">
+            Couldn't save the description: {descError} — close again to
+            discard the edit.
+          </p>
+        )}
       </form>
 
       <div className="mb-2 mt-5 text-xs font-semibold tracking-wide text-ink-faint">
