@@ -183,15 +183,23 @@ func normalizeServerEvaluation(
 		var bare float64
 		switch {
 		case json.Unmarshal(raw, &scored) == nil && scored.Score != nil:
-			categories[name] = int(math.Round(*scored.Score))
+			categories[name] = clampScore(*scored.Score)
 		case json.Unmarshal(raw, &bare) == nil:
-			categories[name] = int(math.Round(bare))
+			categories[name] = clampScore(bare)
 		}
 	}
 
+	// overall_confidence is 0-1 today, but tolerate percentage-shaped
+	// documents the same way the categories code tolerates legacy bare
+	// numbers, and clamp — file vaults enforce [0,100] via
+	// validateQualityRecord, so the server path must too.
+	overall := eval.OverallConfidence
+	if overall <= 1 {
+		overall *= 100
+	}
 	record := map[string]any{
 		"source":     "server",
-		"overall":    int(math.Round(eval.OverallConfidence * 100)),
+		"overall":    clampScore(overall),
 		"categories": categories,
 		"summary":    eval.Reasoning,
 		"insights": map[string]any{
@@ -231,4 +239,10 @@ func emptyIfNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// clampScore rounds a server-supplied score into the interchange
+// record's documented 0-100 range.
+func clampScore(score float64) int {
+	return int(math.Round(math.Max(0, math.Min(100, score))))
 }

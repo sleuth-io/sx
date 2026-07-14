@@ -1,8 +1,6 @@
 package main
 
 import (
-	"errors"
-
 	vaultpkg "github.com/sleuth-io/sx/internal/vault"
 )
 
@@ -11,9 +9,6 @@ import (
 // types — .sx/quality/<asset>.json on file vaults, the server's own
 // evaluation document on skills.new.
 
-var errQualityUnsupported = errors.New(
-	"this library's backend doesn't support quality storage yet")
-
 func (a *App) qualityStore() (vaultpkg.QualityStore, error) {
 	v, err := a.currentVault()
 	if err != nil {
@@ -21,7 +16,10 @@ func (a *App) qualityStore() (vaultpkg.QualityStore, error) {
 	}
 	store, ok := v.(vaultpkg.QualityStore)
 	if !ok {
-		return nil, errQualityUnsupported
+		// Same sentinel the sleuth vault uses for an old server, so the
+		// user-facing message is one string regardless of which layer
+		// noticed.
+		return nil, vaultpkg.ErrQualityUnsupported
 	}
 	return store, nil
 }

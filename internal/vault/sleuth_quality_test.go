@@ -133,6 +133,34 @@ func TestSleuthQualityGetBareCategoryScores(t *testing.T) {
 	}
 }
 
+// Malformed or percentage-shaped server documents can't emit records
+// outside the interchange contract's 0-100 range (file vaults enforce
+// it via validateQualityRecord; the server path must clamp).
+func TestSleuthQualityGetClampsOutOfRange(t *testing.T) {
+	doc := `{"overall_confidence": 82.46, "category_scores": {"structure": 105, "content_quality": -3}, "reasoning": "drifted"}`
+	srv, _ := mockSleuthGraphQL(t, map[string]func(map[string]any) any{
+		"GetAssetQuality": func(map[string]any) any {
+			return qualityAssetsResponse(qualityNode("drifted", false, &doc))
+		},
+	})
+	v := NewSleuthVault(srv.URL, "test-token")
+	raw, err := v.GetQuality(context.Background(), "drifted")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	_, records := decodeQualityWrapper(t, raw)
+	rec := records[0]
+	// A percentage-shaped overall_confidence reads as a percentage, not
+	// as confidence×100 = 8246.
+	if rec["overall"].(float64) != 82 {
+		t.Fatalf("overall = %v, want 82", rec["overall"])
+	}
+	cats := rec["categories"].(map[string]any)
+	if cats["structure"].(float64) != 100 || cats["content"].(float64) != 0 {
+		t.Fatalf("categories not clamped: %v", cats)
+	}
+}
+
 // While the server evaluates, the flag surfaces so callers can poll; a
 // never-evaluated asset yields empty records, not an error.
 func TestSleuthQualityGetEvaluatingAndEmpty(t *testing.T) {
