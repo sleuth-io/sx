@@ -53,9 +53,11 @@ export default function BotModal({
   // Escape/backdrop dismissal doesn't reliably blur the description
   // input first — flush an unsaved edit on the way out. A failed save
   // keeps the modal open with the error visible instead of silently
-  // losing the write.
+  // losing the write; dismissing again with that error showing is a
+  // deliberate discard, so a persistently failing save never traps the
+  // user here.
   async function close() {
-    if (await saveDescription()) onClose();
+    if (error || (await saveDescription())) onClose();
   }
 
   async function addTeam() {
