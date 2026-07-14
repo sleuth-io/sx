@@ -28,6 +28,10 @@ export default function BotModal({
   const [savedDescription, setSavedDescription] = useState(
     bot.description ?? "",
   );
+  // The description's own failure flag — the shared `error` banner also
+  // carries team-op failures, which must not turn a later close into a
+  // silent discard of an unsaved description.
+  const [saveFailed, setSaveFailed] = useState(false);
 
   const joinable = teams
     .map((t) => t.name)
@@ -37,6 +41,7 @@ export default function BotModal({
     if (description === savedDescription) return true;
     setBusy(true);
     setError("");
+    setSaveFailed(false);
     try {
       await UpdateBotDescription(bot.name, description);
       setSavedDescription(description);
@@ -44,6 +49,7 @@ export default function BotModal({
       return true;
     } catch (e) {
       setError(String(e));
+      setSaveFailed(true);
       return false;
     } finally {
       setBusy(false);
@@ -53,11 +59,11 @@ export default function BotModal({
   // Escape/backdrop dismissal doesn't reliably blur the description
   // input first — flush an unsaved edit on the way out. A failed save
   // keeps the modal open with the error visible instead of silently
-  // losing the write; dismissing again with that error showing is a
+  // losing the write; dismissing again after seeing THAT failure is a
   // deliberate discard, so a persistently failing save never traps the
   // user here.
   async function close() {
-    if (error || (await saveDescription())) onClose();
+    if (saveFailed || (await saveDescription())) onClose();
   }
 
   async function addTeam() {
@@ -108,7 +114,11 @@ export default function BotModal({
       >
         <input
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(e) => {
+            setDescription(e.target.value);
+            // A fresh edit deserves a fresh save attempt on close.
+            setSaveFailed(false);
+          }}
           onBlur={() => void saveDescription()}
           placeholder="What this bot does"
           disabled={busy}
