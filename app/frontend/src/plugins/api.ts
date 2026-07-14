@@ -3,7 +3,7 @@
 // extension needs something this file doesn't offer, the answer is an API
 // addition, never an escape hatch to app internals.
 
-export const SX_API_VERSION = "1.11.0";
+export const SX_API_VERSION = "1.12.0";
 
 /** Capabilities an extension may declare. Undeclared calls throw.
  * `net:<host>` is a parameterized family (API 1.4.0): each declared
@@ -29,6 +29,7 @@ export type Permission =
   | "llm:use"
   | "assets:consolidate"
   | "benchmarks"
+  | "quality"
   | `net:${string}`;
 
 /** plugin.json — the extension manifest. */
@@ -156,6 +157,59 @@ export interface BenchmarkRecord {
    * the asset's current one — the staleness signal. */
   skill_version?: string | null;
   is_current_version?: boolean | null;
+}
+
+// ---- Quality (API 1.12.0) ----
+
+/** One quality evaluation in the interchange shape shared with
+ * skills.new (docs/quality-spec.md). File vaults hold these at
+ * .sx/quality/<asset>.json; skills.new keeps its own evaluation document
+ * per asset, so records with source "server" are evaluations skills.new
+ * ran itself (and the only kind that vault ever returns). */
+export interface QualityRecord {
+  /** RFC3339 timestamp of the evaluation (server records: approximated
+   * from the asset's update time). */
+  at?: string;
+  source: "app" | "server";
+  /** Who ran it (vault identity or skills.new user). */
+  by?: string;
+  /** App records: which provider/model evaluated. */
+  executor?: { provider: string; model: string };
+  /** Overall score, 0-100. */
+  overall: number;
+  /** Category scores, 0-100 each. */
+  categories: {
+    structure?: number;
+    actionability?: number;
+    content?: number;
+    completeness?: number;
+  };
+  /** Per-factor breakdown ({score, tier, justification} each). */
+  factors?: Record<string, { score: number; tier: string; justification?: string }>;
+  /** One-paragraph assessment. */
+  summary?: string;
+  insights?: {
+    strengths: string[];
+    improvements: string[];
+    recommendations: string[];
+  };
+  stats?: { file_count?: number; word_count?: number };
+  /** App records: the content hash evaluated — the staleness signal. */
+  skill_hash?: string;
+}
+
+/** What sx.quality.get returns: the record history plus whether the
+ * vault backend is evaluating right now (skills.new only — poll get()
+ * until it flips false, then read the fresh record). */
+export interface QualityDoc {
+  evaluating: boolean;
+  records: QualityRecord[];
+}
+
+/** Who runs a requested re-evaluation: the vault backend ("server",
+ * poll get()) or the extension itself ("local", evaluate then add()). */
+export interface QualityReevaluateResult {
+  mode: "server" | "local";
 }
 
 // ---- LLM (API 1.9.0) ----
@@ -429,6 +483,20 @@ export interface SxAPI {
     list(assetName: string): Promise<BenchmarkRecord[]>;
     add(assetName: string, record: BenchmarkRecord): Promise<void>;
     latest(): Promise<Record<string, BenchmarkRecord>>;
+  };
+
+  /** Requires quality (API 1.12.0). Per-asset quality evaluations,
+   * unified across vault types: .sx/quality/<asset>.json on file vaults
+   * (extension-run, stored via `add`), the server's own evaluation
+   * document on skills.new (read-only there — `add` rejects).
+   * `reevaluate` dispatches: "server" means the backend is evaluating
+   * (poll `get` until evaluating flips false); "local" means the
+   * extension must evaluate via sx.llm and store the record itself. */
+  readonly quality: {
+    get(assetName: string): Promise<QualityDoc>;
+    add(assetName: string, record: QualityRecord): Promise<void>;
+    latest(): Promise<Record<string, QualityRecord>>;
+    reevaluate(assetName: string): Promise<QualityReevaluateResult>;
   };
 
   /** Requires llm:use (API 1.9.0). One completion against whatever LLM

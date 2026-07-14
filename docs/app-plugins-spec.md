@@ -242,6 +242,16 @@ adoption.
   does it (per-revision markdown cache, AND semantics, heading-weighted,
   excerpt highlighting in result rows).
 
+### API 1.12.0 additions (quality storage)
+
+- `quality` permission + `sx.quality.get/add/latest/reevaluate`:
+  per-asset quality evaluations (overall 0–100, category scores,
+  summary, insights) unified across vault types —
+  `.sx/quality/<asset>.json` on file vaults, the server's own
+  evaluation document on skills.new (read-only there; `reevaluate`
+  fires the server's evaluator and `get` polls its `evaluating`
+  flag). Full contract in `docs/quality-spec.md`.
+
 ### API 1.9.0 additions (the sx.llm core service)
 
 - `llm:use` permission + `sx.llm.complete({messages, schema?, model?,

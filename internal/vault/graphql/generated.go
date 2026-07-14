@@ -3279,6 +3279,46 @@ func (v *DeleteTeamResponse) GetDeleteTeam() *DeleteTeamDeleteTeamDeleteTeamMuta
 	return v.DeleteTeam
 }
 
+// EvaluateAssetEvaluateAssetEvaluateAssetMutation includes the requested fields of the GraphQL type EvaluateAssetMutation.
+// The GraphQL type's documentation follows.
+//
+// Evaluate an asset's quality, actionability, and completeness.
+type EvaluateAssetEvaluateAssetEvaluateAssetMutation struct {
+	Errors []EvaluateAssetEvaluateAssetEvaluateAssetMutationErrorsErrorType `json:"errors"`
+}
+
+// GetErrors returns EvaluateAssetEvaluateAssetEvaluateAssetMutation.Errors, and is useful for accessing the field via an interface.
+func (v *EvaluateAssetEvaluateAssetEvaluateAssetMutation) GetErrors() []EvaluateAssetEvaluateAssetEvaluateAssetMutationErrorsErrorType {
+	return v.Errors
+}
+
+// EvaluateAssetEvaluateAssetEvaluateAssetMutationErrorsErrorType includes the requested fields of the GraphQL type ErrorType.
+type EvaluateAssetEvaluateAssetEvaluateAssetMutationErrorsErrorType struct {
+	Field    string   `json:"field"`
+	Messages []string `json:"messages"`
+}
+
+// GetField returns EvaluateAssetEvaluateAssetEvaluateAssetMutationErrorsErrorType.Field, and is useful for accessing the field via an interface.
+func (v *EvaluateAssetEvaluateAssetEvaluateAssetMutationErrorsErrorType) GetField() string {
+	return v.Field
+}
+
+// GetMessages returns EvaluateAssetEvaluateAssetEvaluateAssetMutationErrorsErrorType.Messages, and is useful for accessing the field via an interface.
+func (v *EvaluateAssetEvaluateAssetEvaluateAssetMutationErrorsErrorType) GetMessages() []string {
+	return v.Messages
+}
+
+// EvaluateAssetResponse is returned by EvaluateAsset on success.
+type EvaluateAssetResponse struct {
+	// Evaluate an asset's quality, actionability, and completeness.
+	EvaluateAsset *EvaluateAssetEvaluateAssetEvaluateAssetMutation `json:"evaluateAsset"`
+}
+
+// GetEvaluateAsset returns EvaluateAssetResponse.EvaluateAsset, and is useful for accessing the field via an interface.
+func (v *EvaluateAssetResponse) GetEvaluateAsset() *EvaluateAssetEvaluateAssetEvaluateAssetMutation {
+	return v.EvaluateAsset
+}
+
 // FindUserOrganizationOrganizationType includes the requested fields of the GraphQL type OrganizationType.
 type FindUserOrganizationOrganizationType struct {
 	Users FindUserOrganizationOrganizationTypeUsersUserConnection `json:"users"`
@@ -3400,6 +3440,1407 @@ type GetAssetBenchmarksVault struct {
 
 // GetAssetBenchmarks returns GetAssetBenchmarksVault.AssetBenchmarks, and is useful for accessing the field via an interface.
 func (v *GetAssetBenchmarksVault) GetAssetBenchmarks() *json.RawMessage { return v.AssetBenchmarks }
+
+// GetAssetQualityResponse is returned by GetAssetQuality on success.
+type GetAssetQualityResponse struct {
+	Vault GetAssetQualityVault `json:"vault"`
+}
+
+// GetVault returns GetAssetQualityResponse.Vault, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityResponse) GetVault() GetAssetQualityVault { return v.Vault }
+
+// GetAssetQualityVault includes the requested fields of the GraphQL type Vault.
+// The GraphQL type's documentation follows.
+//
+// Vault containing assets.
+type GetAssetQualityVault struct {
+	Assets GetAssetQualityVaultAssetsVaultAssetsConnection `json:"assets"`
+}
+
+// GetAssets returns GetAssetQualityVault.Assets, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVault) GetAssets() GetAssetQualityVaultAssetsVaultAssetsConnection {
+	return v.Assets
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnection includes the requested fields of the GraphQL type VaultAssetsConnection.
+// The GraphQL type's documentation follows.
+//
+// Paginated list of vault assets.
+type GetAssetQualityVaultAssetsVaultAssetsConnection struct {
+	// Pagination data for this connection.
+	PageInfo GetAssetQualityVaultAssetsVaultAssetsConnectionPageInfo          `json:"pageInfo"`
+	Nodes    []GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset `json:"-"`
+}
+
+// GetPageInfo returns GetAssetQualityVaultAssetsVaultAssetsConnection.PageInfo, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnection) GetPageInfo() GetAssetQualityVaultAssetsVaultAssetsConnectionPageInfo {
+	return v.PageInfo
+}
+
+// GetNodes returns GetAssetQualityVaultAssetsVaultAssetsConnection.Nodes, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnection) GetNodes() []GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset {
+	return v.Nodes
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnection) UnmarshalJSON(b []byte) error {
+
+	if string(b) == "null" {
+		return nil
+	}
+
+	var firstPass struct {
+		*GetAssetQualityVaultAssetsVaultAssetsConnection
+		Nodes []json.RawMessage `json:"nodes"`
+		graphql.NoUnmarshalJSON
+	}
+	firstPass.GetAssetQualityVaultAssetsVaultAssetsConnection = v
+
+	err := json.Unmarshal(b, &firstPass)
+	if err != nil {
+		return err
+	}
+
+	{
+		dst := &v.Nodes
+		src := firstPass.Nodes
+		*dst = make(
+			[]GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset,
+			len(src))
+		for i, src := range src {
+			dst := &(*dst)[i]
+			if len(src) != 0 && string(src) != "null" {
+				err = __unmarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset(
+					src, dst)
+				if err != nil {
+					return fmt.Errorf(
+						"unable to unmarshal GetAssetQualityVaultAssetsVaultAssetsConnection.Nodes: %w", err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+type __premarshalGetAssetQualityVaultAssetsVaultAssetsConnection struct {
+	PageInfo GetAssetQualityVaultAssetsVaultAssetsConnectionPageInfo `json:"pageInfo"`
+
+	Nodes []json.RawMessage `json:"nodes"`
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnection) MarshalJSON() ([]byte, error) {
+	premarshaled, err := v.__premarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(premarshaled)
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnection) __premarshalJSON() (*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnection, error) {
+	var retval __premarshalGetAssetQualityVaultAssetsVaultAssetsConnection
+
+	retval.PageInfo = v.PageInfo
+	{
+
+		dst := &retval.Nodes
+		src := v.Nodes
+		*dst = make(
+			[]json.RawMessage,
+			len(src))
+		for i, src := range src {
+			dst := &(*dst)[i]
+			var err error
+			*dst, err = __marshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset(
+				&src)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"unable to marshal GetAssetQualityVaultAssetsVaultAssetsConnection.Nodes: %w", err)
+			}
+		}
+	}
+	return &retval, nil
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent includes the requested fields of the GraphQL type Agent.
+type GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent struct {
+	Typename  *string   `json:"__typename"`
+	Id        string    `json:"id"`
+	Slug      string    `json:"slug"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	// Whether an evaluation is currently in progress for this asset
+	Evaluating bool `json:"evaluating"`
+	// Asset source metadata
+	Source GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource `json:"-"`
+}
+
+// GetTypename returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent.Typename, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent.Id, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent) GetId() string { return v.Id }
+
+// GetSlug returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent.Slug, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent) GetSlug() string { return v.Slug }
+
+// GetUpdatedAt returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent) GetUpdatedAt() time.Time {
+	return v.UpdatedAt
+}
+
+// GetEvaluating returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent.Evaluating, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent) GetEvaluating() bool {
+	return v.Evaluating
+}
+
+// GetSource returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent.Source, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent) GetSource() GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource {
+	return v.Source
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent) UnmarshalJSON(b []byte) error {
+
+	if string(b) == "null" {
+		return nil
+	}
+
+	var firstPass struct {
+		*GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent
+		Source json.RawMessage `json:"source"`
+		graphql.NoUnmarshalJSON
+	}
+	firstPass.GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent = v
+
+	err := json.Unmarshal(b, &firstPass)
+	if err != nil {
+		return err
+	}
+
+	{
+		dst := &v.Source
+		src := firstPass.Source
+		if len(src) != 0 && string(src) != "null" {
+			err = __unmarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+				src, dst)
+			if err != nil {
+				return fmt.Errorf(
+					"unable to unmarshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent.Source: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+type __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent struct {
+	Typename *string `json:"__typename"`
+
+	Id string `json:"id"`
+
+	Slug string `json:"slug"`
+
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	Evaluating bool `json:"evaluating"`
+
+	Source json.RawMessage `json:"source"`
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent) MarshalJSON() ([]byte, error) {
+	premarshaled, err := v.__premarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(premarshaled)
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent) __premarshalJSON() (*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent, error) {
+	var retval __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent
+
+	retval.Typename = v.Typename
+	retval.Id = v.Id
+	retval.Slug = v.Slug
+	retval.UpdatedAt = v.UpdatedAt
+	retval.Evaluating = v.Evaluating
+	{
+
+		dst := &retval.Source
+		src := v.Source
+		var err error
+		*dst, err = __marshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+			&src)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"unable to marshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent.Source: %w", err)
+		}
+	}
+	return &retval, nil
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin includes the requested fields of the GraphQL type AppPlugin.
+type GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin struct {
+	Typename  *string   `json:"__typename"`
+	Id        string    `json:"id"`
+	Slug      string    `json:"slug"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	// Whether an evaluation is currently in progress for this asset
+	Evaluating bool `json:"evaluating"`
+	// Asset source metadata
+	Source GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource `json:"-"`
+}
+
+// GetTypename returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin.Typename, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin.Id, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetId() string { return v.Id }
+
+// GetSlug returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin.Slug, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetSlug() string {
+	return v.Slug
+}
+
+// GetUpdatedAt returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetUpdatedAt() time.Time {
+	return v.UpdatedAt
+}
+
+// GetEvaluating returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin.Evaluating, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetEvaluating() bool {
+	return v.Evaluating
+}
+
+// GetSource returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin.Source, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin) GetSource() GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource {
+	return v.Source
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin) UnmarshalJSON(b []byte) error {
+
+	if string(b) == "null" {
+		return nil
+	}
+
+	var firstPass struct {
+		*GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin
+		Source json.RawMessage `json:"source"`
+		graphql.NoUnmarshalJSON
+	}
+	firstPass.GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin = v
+
+	err := json.Unmarshal(b, &firstPass)
+	if err != nil {
+		return err
+	}
+
+	{
+		dst := &v.Source
+		src := firstPass.Source
+		if len(src) != 0 && string(src) != "null" {
+			err = __unmarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+				src, dst)
+			if err != nil {
+				return fmt.Errorf(
+					"unable to unmarshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin.Source: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+type __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin struct {
+	Typename *string `json:"__typename"`
+
+	Id string `json:"id"`
+
+	Slug string `json:"slug"`
+
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	Evaluating bool `json:"evaluating"`
+
+	Source json.RawMessage `json:"source"`
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin) MarshalJSON() ([]byte, error) {
+	premarshaled, err := v.__premarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(premarshaled)
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin) __premarshalJSON() (*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin, error) {
+	var retval __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin
+
+	retval.Typename = v.Typename
+	retval.Id = v.Id
+	retval.Slug = v.Slug
+	retval.UpdatedAt = v.UpdatedAt
+	retval.Evaluating = v.Evaluating
+	{
+
+		dst := &retval.Source
+		src := v.Source
+		var err error
+		*dst, err = __marshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+			&src)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"unable to marshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin.Source: %w", err)
+		}
+	}
+	return &retval, nil
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin includes the requested fields of the GraphQL type ClaudeCodePlugin.
+type GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin struct {
+	Typename  *string   `json:"__typename"`
+	Id        string    `json:"id"`
+	Slug      string    `json:"slug"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	// Whether an evaluation is currently in progress for this asset
+	Evaluating bool `json:"evaluating"`
+	// Asset source metadata
+	Source GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource `json:"-"`
+}
+
+// GetTypename returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Typename, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Id, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetId() string {
+	return v.Id
+}
+
+// GetSlug returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Slug, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetSlug() string {
+	return v.Slug
+}
+
+// GetUpdatedAt returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetUpdatedAt() time.Time {
+	return v.UpdatedAt
+}
+
+// GetEvaluating returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Evaluating, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetEvaluating() bool {
+	return v.Evaluating
+}
+
+// GetSource returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Source, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) GetSource() GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource {
+	return v.Source
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) UnmarshalJSON(b []byte) error {
+
+	if string(b) == "null" {
+		return nil
+	}
+
+	var firstPass struct {
+		*GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
+		Source json.RawMessage `json:"source"`
+		graphql.NoUnmarshalJSON
+	}
+	firstPass.GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin = v
+
+	err := json.Unmarshal(b, &firstPass)
+	if err != nil {
+		return err
+	}
+
+	{
+		dst := &v.Source
+		src := firstPass.Source
+		if len(src) != 0 && string(src) != "null" {
+			err = __unmarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+				src, dst)
+			if err != nil {
+				return fmt.Errorf(
+					"unable to unmarshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Source: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+type __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin struct {
+	Typename *string `json:"__typename"`
+
+	Id string `json:"id"`
+
+	Slug string `json:"slug"`
+
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	Evaluating bool `json:"evaluating"`
+
+	Source json.RawMessage `json:"source"`
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) MarshalJSON() ([]byte, error) {
+	premarshaled, err := v.__premarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(premarshaled)
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) __premarshalJSON() (*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin, error) {
+	var retval __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
+
+	retval.Typename = v.Typename
+	retval.Id = v.Id
+	retval.Slug = v.Slug
+	retval.UpdatedAt = v.UpdatedAt
+	retval.Evaluating = v.Evaluating
+	{
+
+		dst := &retval.Source
+		src := v.Source
+		var err error
+		*dst, err = __marshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+			&src)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"unable to marshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin.Source: %w", err)
+		}
+	}
+	return &retval, nil
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand includes the requested fields of the GraphQL type Command.
+type GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand struct {
+	Typename  *string   `json:"__typename"`
+	Id        string    `json:"id"`
+	Slug      string    `json:"slug"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	// Whether an evaluation is currently in progress for this asset
+	Evaluating bool `json:"evaluating"`
+	// Asset source metadata
+	Source GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource `json:"-"`
+}
+
+// GetTypename returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand.Typename, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand.Id, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand) GetId() string { return v.Id }
+
+// GetSlug returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand.Slug, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand) GetSlug() string { return v.Slug }
+
+// GetUpdatedAt returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand) GetUpdatedAt() time.Time {
+	return v.UpdatedAt
+}
+
+// GetEvaluating returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand.Evaluating, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand) GetEvaluating() bool {
+	return v.Evaluating
+}
+
+// GetSource returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand.Source, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand) GetSource() GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource {
+	return v.Source
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand) UnmarshalJSON(b []byte) error {
+
+	if string(b) == "null" {
+		return nil
+	}
+
+	var firstPass struct {
+		*GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand
+		Source json.RawMessage `json:"source"`
+		graphql.NoUnmarshalJSON
+	}
+	firstPass.GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand = v
+
+	err := json.Unmarshal(b, &firstPass)
+	if err != nil {
+		return err
+	}
+
+	{
+		dst := &v.Source
+		src := firstPass.Source
+		if len(src) != 0 && string(src) != "null" {
+			err = __unmarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+				src, dst)
+			if err != nil {
+				return fmt.Errorf(
+					"unable to unmarshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand.Source: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+type __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand struct {
+	Typename *string `json:"__typename"`
+
+	Id string `json:"id"`
+
+	Slug string `json:"slug"`
+
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	Evaluating bool `json:"evaluating"`
+
+	Source json.RawMessage `json:"source"`
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand) MarshalJSON() ([]byte, error) {
+	premarshaled, err := v.__premarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(premarshaled)
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand) __premarshalJSON() (*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand, error) {
+	var retval __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand
+
+	retval.Typename = v.Typename
+	retval.Id = v.Id
+	retval.Slug = v.Slug
+	retval.UpdatedAt = v.UpdatedAt
+	retval.Evaluating = v.Evaluating
+	{
+
+		dst := &retval.Source
+		src := v.Source
+		var err error
+		*dst, err = __marshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+			&src)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"unable to marshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand.Source: %w", err)
+		}
+	}
+	return &retval, nil
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook includes the requested fields of the GraphQL type Hook.
+type GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook struct {
+	Typename  *string   `json:"__typename"`
+	Id        string    `json:"id"`
+	Slug      string    `json:"slug"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	// Whether an evaluation is currently in progress for this asset
+	Evaluating bool `json:"evaluating"`
+	// Asset source metadata
+	Source GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource `json:"-"`
+}
+
+// GetTypename returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook.Typename, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook.Id, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook) GetId() string { return v.Id }
+
+// GetSlug returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook.Slug, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook) GetSlug() string { return v.Slug }
+
+// GetUpdatedAt returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook) GetUpdatedAt() time.Time {
+	return v.UpdatedAt
+}
+
+// GetEvaluating returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook.Evaluating, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook) GetEvaluating() bool {
+	return v.Evaluating
+}
+
+// GetSource returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook.Source, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook) GetSource() GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource {
+	return v.Source
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook) UnmarshalJSON(b []byte) error {
+
+	if string(b) == "null" {
+		return nil
+	}
+
+	var firstPass struct {
+		*GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook
+		Source json.RawMessage `json:"source"`
+		graphql.NoUnmarshalJSON
+	}
+	firstPass.GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook = v
+
+	err := json.Unmarshal(b, &firstPass)
+	if err != nil {
+		return err
+	}
+
+	{
+		dst := &v.Source
+		src := firstPass.Source
+		if len(src) != 0 && string(src) != "null" {
+			err = __unmarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+				src, dst)
+			if err != nil {
+				return fmt.Errorf(
+					"unable to unmarshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook.Source: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+type __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook struct {
+	Typename *string `json:"__typename"`
+
+	Id string `json:"id"`
+
+	Slug string `json:"slug"`
+
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	Evaluating bool `json:"evaluating"`
+
+	Source json.RawMessage `json:"source"`
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook) MarshalJSON() ([]byte, error) {
+	premarshaled, err := v.__premarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(premarshaled)
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook) __premarshalJSON() (*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook, error) {
+	var retval __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook
+
+	retval.Typename = v.Typename
+	retval.Id = v.Id
+	retval.Slug = v.Slug
+	retval.UpdatedAt = v.UpdatedAt
+	retval.Evaluating = v.Evaluating
+	{
+
+		dst := &retval.Source
+		src := v.Source
+		var err error
+		*dst, err = __marshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+			&src)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"unable to marshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook.Source: %w", err)
+		}
+	}
+	return &retval, nil
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer includes the requested fields of the GraphQL type McpServer.
+type GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer struct {
+	Typename  *string   `json:"__typename"`
+	Id        string    `json:"id"`
+	Slug      string    `json:"slug"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	// Whether an evaluation is currently in progress for this asset
+	Evaluating bool `json:"evaluating"`
+	// Asset source metadata
+	Source GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource `json:"-"`
+}
+
+// GetTypename returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer.Typename, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer.Id, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer) GetId() string { return v.Id }
+
+// GetSlug returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer.Slug, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer) GetSlug() string {
+	return v.Slug
+}
+
+// GetUpdatedAt returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer) GetUpdatedAt() time.Time {
+	return v.UpdatedAt
+}
+
+// GetEvaluating returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer.Evaluating, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer) GetEvaluating() bool {
+	return v.Evaluating
+}
+
+// GetSource returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer.Source, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer) GetSource() GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource {
+	return v.Source
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer) UnmarshalJSON(b []byte) error {
+
+	if string(b) == "null" {
+		return nil
+	}
+
+	var firstPass struct {
+		*GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer
+		Source json.RawMessage `json:"source"`
+		graphql.NoUnmarshalJSON
+	}
+	firstPass.GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer = v
+
+	err := json.Unmarshal(b, &firstPass)
+	if err != nil {
+		return err
+	}
+
+	{
+		dst := &v.Source
+		src := firstPass.Source
+		if len(src) != 0 && string(src) != "null" {
+			err = __unmarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+				src, dst)
+			if err != nil {
+				return fmt.Errorf(
+					"unable to unmarshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer.Source: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+type __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer struct {
+	Typename *string `json:"__typename"`
+
+	Id string `json:"id"`
+
+	Slug string `json:"slug"`
+
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	Evaluating bool `json:"evaluating"`
+
+	Source json.RawMessage `json:"source"`
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer) MarshalJSON() ([]byte, error) {
+	premarshaled, err := v.__premarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(premarshaled)
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer) __premarshalJSON() (*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer, error) {
+	var retval __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer
+
+	retval.Typename = v.Typename
+	retval.Id = v.Id
+	retval.Slug = v.Slug
+	retval.UpdatedAt = v.UpdatedAt
+	retval.Evaluating = v.Evaluating
+	{
+
+		dst := &retval.Source
+		src := v.Source
+		var err error
+		*dst, err = __marshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+			&src)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"unable to marshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer.Source: %w", err)
+		}
+	}
+	return &retval, nil
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule includes the requested fields of the GraphQL type Rule.
+type GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule struct {
+	Typename  *string   `json:"__typename"`
+	Id        string    `json:"id"`
+	Slug      string    `json:"slug"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	// Whether an evaluation is currently in progress for this asset
+	Evaluating bool `json:"evaluating"`
+	// Asset source metadata
+	Source GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource `json:"-"`
+}
+
+// GetTypename returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule.Typename, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule.Id, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule) GetId() string { return v.Id }
+
+// GetSlug returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule.Slug, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule) GetSlug() string { return v.Slug }
+
+// GetUpdatedAt returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule) GetUpdatedAt() time.Time {
+	return v.UpdatedAt
+}
+
+// GetEvaluating returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule.Evaluating, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule) GetEvaluating() bool {
+	return v.Evaluating
+}
+
+// GetSource returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule.Source, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule) GetSource() GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource {
+	return v.Source
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule) UnmarshalJSON(b []byte) error {
+
+	if string(b) == "null" {
+		return nil
+	}
+
+	var firstPass struct {
+		*GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule
+		Source json.RawMessage `json:"source"`
+		graphql.NoUnmarshalJSON
+	}
+	firstPass.GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule = v
+
+	err := json.Unmarshal(b, &firstPass)
+	if err != nil {
+		return err
+	}
+
+	{
+		dst := &v.Source
+		src := firstPass.Source
+		if len(src) != 0 && string(src) != "null" {
+			err = __unmarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+				src, dst)
+			if err != nil {
+				return fmt.Errorf(
+					"unable to unmarshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule.Source: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+type __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule struct {
+	Typename *string `json:"__typename"`
+
+	Id string `json:"id"`
+
+	Slug string `json:"slug"`
+
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	Evaluating bool `json:"evaluating"`
+
+	Source json.RawMessage `json:"source"`
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule) MarshalJSON() ([]byte, error) {
+	premarshaled, err := v.__premarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(premarshaled)
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule) __premarshalJSON() (*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule, error) {
+	var retval __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule
+
+	retval.Typename = v.Typename
+	retval.Id = v.Id
+	retval.Slug = v.Slug
+	retval.UpdatedAt = v.UpdatedAt
+	retval.Evaluating = v.Evaluating
+	{
+
+		dst := &retval.Source
+		src := v.Source
+		var err error
+		*dst, err = __marshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+			&src)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"unable to marshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule.Source: %w", err)
+		}
+	}
+	return &retval, nil
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill includes the requested fields of the GraphQL type Skill.
+// The GraphQL type's documentation follows.
+//
+// GraphQL type for skill.
+type GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill struct {
+	Typename  *string   `json:"__typename"`
+	Id        string    `json:"id"`
+	Slug      string    `json:"slug"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	// Whether an evaluation is currently in progress for this asset
+	Evaluating bool `json:"evaluating"`
+	// Asset source metadata
+	Source GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource `json:"-"`
+}
+
+// GetTypename returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill.Typename, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill) GetTypename() *string {
+	return v.Typename
+}
+
+// GetId returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill.Id, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill) GetId() string { return v.Id }
+
+// GetSlug returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill.Slug, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill) GetSlug() string { return v.Slug }
+
+// GetUpdatedAt returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill.UpdatedAt, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill) GetUpdatedAt() time.Time {
+	return v.UpdatedAt
+}
+
+// GetEvaluating returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill.Evaluating, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill) GetEvaluating() bool {
+	return v.Evaluating
+}
+
+// GetSource returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill.Source, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill) GetSource() GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource {
+	return v.Source
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill) UnmarshalJSON(b []byte) error {
+
+	if string(b) == "null" {
+		return nil
+	}
+
+	var firstPass struct {
+		*GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill
+		Source json.RawMessage `json:"source"`
+		graphql.NoUnmarshalJSON
+	}
+	firstPass.GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill = v
+
+	err := json.Unmarshal(b, &firstPass)
+	if err != nil {
+		return err
+	}
+
+	{
+		dst := &v.Source
+		src := firstPass.Source
+		if len(src) != 0 && string(src) != "null" {
+			err = __unmarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+				src, dst)
+			if err != nil {
+				return fmt.Errorf(
+					"unable to unmarshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill.Source: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+type __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill struct {
+	Typename *string `json:"__typename"`
+
+	Id string `json:"id"`
+
+	Slug string `json:"slug"`
+
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	Evaluating bool `json:"evaluating"`
+
+	Source json.RawMessage `json:"source"`
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill) MarshalJSON() ([]byte, error) {
+	premarshaled, err := v.__premarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(premarshaled)
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill) __premarshalJSON() (*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill, error) {
+	var retval __premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill
+
+	retval.Typename = v.Typename
+	retval.Id = v.Id
+	retval.Slug = v.Slug
+	retval.UpdatedAt = v.UpdatedAt
+	retval.Evaluating = v.Evaluating
+	{
+
+		dst := &retval.Source
+		src := v.Source
+		var err error
+		*dst, err = __marshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(
+			&src)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"unable to marshal GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill.Source: %w", err)
+		}
+	}
+	return &retval, nil
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset includes the requested fields of the GraphQL interface VaultAsset.
+//
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset is implemented by the following types:
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill
+// The GraphQL type's documentation follows.
+//
+// Asset in the vault (Skill, MCP, Agent, etc.).
+type GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset interface {
+	implementsGraphQLInterfaceGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset()
+	// GetTypename returns the receiver's concrete GraphQL type-name (see interface doc for possible values).
+	GetTypename() *string
+	// GetId returns the interface-field "id" from its implementation.
+	GetId() string
+	// GetSlug returns the interface-field "slug" from its implementation.
+	GetSlug() string
+	// GetUpdatedAt returns the interface-field "updatedAt" from its implementation.
+	GetUpdatedAt() time.Time
+	// GetEvaluating returns the interface-field "evaluating" from its implementation.
+	// The GraphQL interface field's documentation follows.
+	//
+	// Whether an evaluation is currently in progress for this asset
+	GetEvaluating() bool
+	// GetSource returns the interface-field "source" from its implementation.
+	// The GraphQL interface field's documentation follows.
+	//
+	// Asset source metadata
+	GetSource() GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent) implementsGraphQLInterfaceGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin) implementsGraphQLInterfaceGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin) implementsGraphQLInterfaceGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand) implementsGraphQLInterfaceGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook) implementsGraphQLInterfaceGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer) implementsGraphQLInterfaceGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule) implementsGraphQLInterfaceGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill) implementsGraphQLInterfaceGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset() {
+}
+
+func __unmarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset(b []byte, v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset) error {
+	if string(b) == "null" {
+		return nil
+	}
+
+	var tn struct {
+		TypeName string `json:"__typename"`
+	}
+	err := json.Unmarshal(b, &tn)
+	if err != nil {
+		return err
+	}
+
+	switch tn.TypeName {
+	case "Agent":
+		*v = new(GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent)
+		return json.Unmarshal(b, *v)
+	case "AppPlugin":
+		*v = new(GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin)
+		return json.Unmarshal(b, *v)
+	case "ClaudeCodePlugin":
+		*v = new(GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin)
+		return json.Unmarshal(b, *v)
+	case "Command":
+		*v = new(GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand)
+		return json.Unmarshal(b, *v)
+	case "Hook":
+		*v = new(GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook)
+		return json.Unmarshal(b, *v)
+	case "McpServer":
+		*v = new(GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer)
+		return json.Unmarshal(b, *v)
+	case "Rule":
+		*v = new(GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule)
+		return json.Unmarshal(b, *v)
+	case "Skill":
+		*v = new(GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill)
+		return json.Unmarshal(b, *v)
+	case "":
+		return fmt.Errorf(
+			"response was missing VaultAsset.__typename")
+	default:
+		return fmt.Errorf(
+			`unexpected concrete type for GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset: "%v"`, tn.TypeName)
+	}
+}
+
+func __marshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset(v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset) ([]byte, error) {
+
+	var typename string
+	switch v := (*v).(type) {
+	case *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent:
+		typename = "Agent"
+
+		premarshaled, err := v.__premarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		result := struct {
+			TypeName string `json:"__typename"`
+			*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesAgent
+		}{typename, premarshaled}
+		return json.Marshal(result)
+	case *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin:
+		typename = "AppPlugin"
+
+		premarshaled, err := v.__premarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		result := struct {
+			TypeName string `json:"__typename"`
+			*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesAppPlugin
+		}{typename, premarshaled}
+		return json.Marshal(result)
+	case *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin:
+		typename = "ClaudeCodePlugin"
+
+		premarshaled, err := v.__premarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		result := struct {
+			TypeName string `json:"__typename"`
+			*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesClaudeCodePlugin
+		}{typename, premarshaled}
+		return json.Marshal(result)
+	case *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand:
+		typename = "Command"
+
+		premarshaled, err := v.__premarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		result := struct {
+			TypeName string `json:"__typename"`
+			*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesCommand
+		}{typename, premarshaled}
+		return json.Marshal(result)
+	case *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook:
+		typename = "Hook"
+
+		premarshaled, err := v.__premarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		result := struct {
+			TypeName string `json:"__typename"`
+			*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesHook
+		}{typename, premarshaled}
+		return json.Marshal(result)
+	case *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer:
+		typename = "McpServer"
+
+		premarshaled, err := v.__premarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		result := struct {
+			TypeName string `json:"__typename"`
+			*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesMcpServer
+		}{typename, premarshaled}
+		return json.Marshal(result)
+	case *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule:
+		typename = "Rule"
+
+		premarshaled, err := v.__premarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		result := struct {
+			TypeName string `json:"__typename"`
+			*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesRule
+		}{typename, premarshaled}
+		return json.Marshal(result)
+	case *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill:
+		typename = "Skill"
+
+		premarshaled, err := v.__premarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		result := struct {
+			TypeName string `json:"__typename"`
+			*__premarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesSkill
+		}{typename, premarshaled}
+		return json.Marshal(result)
+	case nil:
+		return []byte("null"), nil
+	default:
+		return nil, fmt.Errorf(
+			`unexpected concrete type for GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAsset: "%T"`, v)
+	}
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource includes the requested fields of the GraphQL interface AssetSource.
+//
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource is implemented by the following types:
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetGitSource
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource
+// The GraphQL type's documentation follows.
+//
+// Base interface for asset source metadata.
+type GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource interface {
+	implementsGraphQLInterfaceGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource()
+	// GetTypename returns the receiver's concrete GraphQL type-name (see interface doc for possible values).
+	GetTypename() *string
+}
+
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetGitSource) implementsGraphQLInterfaceGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource() {
+}
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource) implementsGraphQLInterfaceGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource() {
+}
+
+func __unmarshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(b []byte, v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource) error {
+	if string(b) == "null" {
+		return nil
+	}
+
+	var tn struct {
+		TypeName string `json:"__typename"`
+	}
+	err := json.Unmarshal(b, &tn)
+	if err != nil {
+		return err
+	}
+
+	switch tn.TypeName {
+	case "AssetGitSource":
+		*v = new(GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetGitSource)
+		return json.Unmarshal(b, *v)
+	case "AssetManagedSource":
+		*v = new(GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource)
+		return json.Unmarshal(b, *v)
+	case "":
+		return fmt.Errorf(
+			"response was missing AssetSource.__typename")
+	default:
+		return fmt.Errorf(
+			`unexpected concrete type for GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource: "%v"`, tn.TypeName)
+	}
+}
+
+func __marshalGetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource(v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource) ([]byte, error) {
+
+	var typename string
+	switch v := (*v).(type) {
+	case *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetGitSource:
+		typename = "AssetGitSource"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetGitSource
+		}{typename, v}
+		return json.Marshal(result)
+	case *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource:
+		typename = "AssetManagedSource"
+
+		result := struct {
+			TypeName string `json:"__typename"`
+			*GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource
+		}{typename, v}
+		return json.Marshal(result)
+	case nil:
+		return []byte("null"), nil
+	default:
+		return nil, fmt.Errorf(
+			`unexpected concrete type for GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSource: "%T"`, v)
+	}
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetGitSource includes the requested fields of the GraphQL type AssetGitSource.
+// The GraphQL type's documentation follows.
+//
+// Source metadata for a git-sourced asset.
+type GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetGitSource struct {
+	Typename *string `json:"__typename"`
+}
+
+// GetTypename returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetGitSource.Typename, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetGitSource) GetTypename() *string {
+	return v.Typename
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource includes the requested fields of the GraphQL type AssetManagedSource.
+// The GraphQL type's documentation follows.
+//
+// Source metadata for a Pulse-managed asset.
+type GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource struct {
+	Typename         *string  `json:"__typename"`
+	ConfidenceScore  *float64 `json:"confidenceScore"`
+	EvaluationResult *string  `json:"evaluationResult"`
+}
+
+// GetTypename returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource.Typename, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource) GetTypename() *string {
+	return v.Typename
+}
+
+// GetConfidenceScore returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource.ConfidenceScore, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource) GetConfidenceScore() *float64 {
+	return v.ConfidenceScore
+}
+
+// GetEvaluationResult returns GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource.EvaluationResult, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionNodesVaultAssetSourceAssetManagedSource) GetEvaluationResult() *string {
+	return v.EvaluationResult
+}
+
+// GetAssetQualityVaultAssetsVaultAssetsConnectionPageInfo includes the requested fields of the GraphQL type PageInfo.
+// The GraphQL type's documentation follows.
+//
+// The Relay compliant `PageInfo` type, containing data necessary to paginate this connection.
+type GetAssetQualityVaultAssetsVaultAssetsConnectionPageInfo struct {
+	// When paginating forwards, are there more items?
+	HasNextPage bool `json:"hasNextPage"`
+	// When paginating forwards, the cursor to continue.
+	EndCursor *string `json:"endCursor"`
+}
+
+// GetHasNextPage returns GetAssetQualityVaultAssetsVaultAssetsConnectionPageInfo.HasNextPage, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionPageInfo) GetHasNextPage() bool {
+	return v.HasNextPage
+}
+
+// GetEndCursor returns GetAssetQualityVaultAssetsVaultAssetsConnectionPageInfo.EndCursor, and is useful for accessing the field via an interface.
+func (v *GetAssetQualityVaultAssetsVaultAssetsConnectionPageInfo) GetEndCursor() *string {
+	return v.EndCursor
+}
 
 // GetLatestAssetBenchmarksResponse is returned by GetLatestAssetBenchmarks on success.
 type GetLatestAssetBenchmarksResponse struct {
@@ -7570,6 +9011,14 @@ type __DeleteTeamInput struct {
 // GetId returns __DeleteTeamInput.Id, and is useful for accessing the field via an interface.
 func (v *__DeleteTeamInput) GetId() string { return v.Id }
 
+// __EvaluateAssetInput is used internally by genqlient
+type __EvaluateAssetInput struct {
+	Id string `json:"id"`
+}
+
+// GetId returns __EvaluateAssetInput.Id, and is useful for accessing the field via an interface.
+func (v *__EvaluateAssetInput) GetId() string { return v.Id }
+
 // __FindUserInput is used internally by genqlient
 type __FindUserInput struct {
 	Term string `json:"term"`
@@ -7597,6 +9046,22 @@ func (v *__GetAssetBenchmarksInput) GetAssetName() string { return v.AssetName }
 
 // GetFirst returns __GetAssetBenchmarksInput.First, and is useful for accessing the field via an interface.
 func (v *__GetAssetBenchmarksInput) GetFirst() *int { return v.First }
+
+// __GetAssetQualityInput is used internally by genqlient
+type __GetAssetQualityInput struct {
+	Slug  *string `json:"slug"`
+	First *int    `json:"first"`
+	After *string `json:"after"`
+}
+
+// GetSlug returns __GetAssetQualityInput.Slug, and is useful for accessing the field via an interface.
+func (v *__GetAssetQualityInput) GetSlug() *string { return v.Slug }
+
+// GetFirst returns __GetAssetQualityInput.First, and is useful for accessing the field via an interface.
+func (v *__GetAssetQualityInput) GetFirst() *int { return v.First }
+
+// GetAfter returns __GetAssetQualityInput.After, and is useful for accessing the field via an interface.
+func (v *__GetAssetQualityInput) GetAfter() *string { return v.After }
 
 // __ImportAssetBenchmarkInput is used internally by genqlient
 type __ImportAssetBenchmarkInput struct {
@@ -8725,6 +10190,43 @@ func DeleteTeam(
 	return data_, err_
 }
 
+// The mutation executed by EvaluateAsset.
+const EvaluateAsset_Operation = `
+mutation EvaluateAsset ($id: ID!) {
+	evaluateAsset(id: $id) {
+		errors {
+			field
+			messages
+		}
+	}
+}
+`
+
+func EvaluateAsset(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	id string,
+) (data_ *EvaluateAssetResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "EvaluateAsset",
+		Query:  EvaluateAsset_Operation,
+		Variables: &__EvaluateAssetInput{
+			Id: id,
+		},
+	}
+
+	data_ = &EvaluateAssetResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
 // The query executed by FindUser.
 const FindUser_Operation = `
 query FindUser ($term: String!) {
@@ -8856,6 +10358,63 @@ func GetAssetBenchmarks(
 	}
 
 	data_ = &GetAssetBenchmarksResponse{}
+	resp_ := &graphql.Response{Data: data_}
+
+	err_ = client_.MakeRequest(
+		ctx_,
+		req_,
+		resp_,
+	)
+
+	return data_, err_
+}
+
+// The query executed by GetAssetQuality.
+const GetAssetQuality_Operation = `
+query GetAssetQuality ($slug: String, $first: Int, $after: String) {
+	vault {
+		assets(slug: $slug, first: $first, after: $after) {
+			pageInfo {
+				hasNextPage
+				endCursor
+			}
+			nodes {
+				__typename
+				id
+				slug
+				updatedAt
+				evaluating
+				source {
+					__typename
+					... on AssetManagedSource {
+						confidenceScore
+						evaluationResult
+					}
+				}
+			}
+		}
+	}
+}
+`
+
+func GetAssetQuality(
+	ctx_ context.Context,
+	client_ graphql.Client,
+	slug *string,
+	first *int,
+	after *string,
+) (data_ *GetAssetQualityResponse, err_ error) {
+	req_ := &graphql.Request{
+		OpName: "GetAssetQuality",
+		Query:  GetAssetQuality_Operation,
+		Variables: &__GetAssetQualityInput{
+			Slug:  slug,
+			First: first,
+			After: after,
+		},
+	}
+
+	data_ = &GetAssetQualityResponse{}
 	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(

@@ -1,0 +1,32 @@
+query GetAssetQuality($slug: String, $first: Int, $after: String) {
+  vault {
+    assets(slug: $slug, first: $first, after: $after) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        id
+        slug
+        updatedAt
+        evaluating
+        source {
+          __typename
+          ... on AssetManagedSource {
+            confidenceScore
+            evaluationResult
+          }
+        }
+      }
+    }
+  }
+}
+
+mutation EvaluateAsset($id: ID!) {
+  evaluateAsset(id: $id) {
+    errors {
+      field
+      messages
+    }
+  }
+}

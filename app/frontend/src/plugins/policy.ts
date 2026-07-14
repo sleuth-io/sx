@@ -116,6 +116,8 @@ const PERMISSION_DESCRIPTIONS: Record<FixedPermission, string> = {
     "Keep shared state in this library, visible to everyone who uses it",
   benchmarks:
     "Read and record skill benchmark results in this library (on skills.new, shared with server-run benchmarks)",
+  quality:
+    "Read and record skill quality evaluations in this library (on skills.new, surfaces the server's own scores)",
   "views:collection": "Add tabs to collection views",
   "views:team": "Add tabs to team views",
   "views:repo": "Add tabs to repository views",
