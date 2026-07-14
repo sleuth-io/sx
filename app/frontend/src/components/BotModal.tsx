@@ -33,27 +33,29 @@ export default function BotModal({
     .map((t) => t.name)
     .filter((name) => !botTeams.includes(name));
 
-  async function saveDescription() {
-    if (description === savedDescription) return;
+  async function saveDescription(): Promise<boolean> {
+    if (description === savedDescription) return true;
     setBusy(true);
     setError("");
     try {
       await UpdateBotDescription(bot.name, description);
       setSavedDescription(description);
       onChanged();
+      return true;
     } catch (e) {
       setError(String(e));
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
   // Escape/backdrop dismissal doesn't reliably blur the description
-  // input first — flush an unsaved edit on the way out so closing the
-  // modal never silently drops it.
-  function close() {
-    void saveDescription();
-    onClose();
+  // input first — flush an unsaved edit on the way out. A failed save
+  // keeps the modal open with the error visible instead of silently
+  // losing the write.
+  async function close() {
+    if (await saveDescription()) onClose();
   }
 
   async function addTeam() {
@@ -88,7 +90,11 @@ export default function BotModal({
   }
 
   return (
-    <Modal title={`Bot: ${bot.name}`} onClose={close} width="w-[480px]">
+    <Modal
+      title={`Bot: ${bot.name}`}
+      onClose={() => void close()}
+      width="w-[480px]"
+    >
       <div className="mb-2 text-xs font-semibold tracking-wide text-ink-faint">
         DESCRIPTION
       </div>
