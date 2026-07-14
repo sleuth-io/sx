@@ -41,10 +41,7 @@ func scopedExtensionApp(t *testing.T, email string) (*App, string, string) {
 	if err != nil {
 		t.Fatalf("NewPathVault: %v", err)
 	}
-	a := &App{ctx: context.Background(), vault: v}
-	// Cleanups run LIFO: this Wait runs before the TempDir removals above,
-	// so an in-flight audit/usage writer can never race vault cleanup.
-	t.Cleanup(a.eventWrites.Wait)
+	a := newTestAppWithVault(t, v)
 	return a, cfgDir, vdir
 }
 

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -152,7 +151,7 @@ func TestDiffFiles_StatusesAndTotals(t *testing.T) {
 // A draft with no target asset diffs against nothing — every file is added
 // and no vault access happens.
 func TestDiffDraft_NewAsset(t *testing.T) {
-	a := &App{}
+	a := newTestApp(t)
 	d, err := a.DiffDraft(Draft{
 		Name:  "brand-new",
 		Files: []AssetFile{{Path: "SKILL.md", Content: "one\ntwo\n"}},
@@ -182,7 +181,7 @@ func TestDiffDraft_AgainstPublishedAsset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPathVault: %v", err)
 	}
-	a := &App{ctx: context.Background(), vault: v}
+	a := newTestAppWithVault(t, v)
 
 	skillZip := zipOf(t, map[string]string{
 		"SKILL.md":      "---\nname: docs-tone\n---\n\n# docs-tone\nold body\n",

@@ -33,19 +33,23 @@ func newExtensionVault(t *testing.T, a *App, id, name, description string) strin
 	// Publish through the app pointed temporarily at this vault. In-flight
 	// event writers read a.vault via currentVault (under a.mu) — drain them
 	// around each swap and hold the lock, so a swap never races a reader
-	// and no event lands in the wrong vault.
+	// and no event lands in the wrong vault. The restore is deferred:
+	// t.Fatalf in the publish path Goexits, and the fixture vault must not
+	// leak into the rest of the test.
 	a.eventWrites.Wait()
 	a.mu.Lock()
 	prev := a.vault
 	a.vault = v
 	a.mu.Unlock()
+	defer func() {
+		a.eventWrites.Wait()
+		a.mu.Lock()
+		a.vault = prev
+		a.mu.Unlock()
+	}()
 	if _, _, err := a.addExtensionFrom(src); err != nil {
 		t.Fatalf("publish fixture extension: %v", err)
 	}
-	a.eventWrites.Wait()
-	a.mu.Lock()
-	a.vault = prev
-	a.mu.Unlock()
 	return vdir
 }
 
