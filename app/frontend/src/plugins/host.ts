@@ -127,6 +127,7 @@ const KNOWN_PERMISSIONS = new Set([
   "export",
   "llm:use",
   "assets:consolidate",
+  "quality",
 ]);
 
 // net:<host> is a parameterized permission family; the host is a bare

@@ -28,6 +28,10 @@ import {
   PluginBenchmarksList,
   PluginBenchmarksAdd,
   PluginBenchmarksLatest,
+  PluginQualityGet,
+  PluginQualityAdd,
+  PluginQualityLatest,
+  PluginQualityReevaluate,
   PluginUsageEvents,
   PluginUsageEventsSince,
   PluginAuditEvents,
@@ -49,6 +53,9 @@ import type {
   LLMRequest,
   LLMResult,
   MainViewSpec,
+  QualityDoc,
+  QualityRecord,
+  QualityReevaluateResult,
   RepoViewSpec,
   Permission,
   PluginManifest,
@@ -276,6 +283,45 @@ export function buildSxAPI(manifest: PluginManifest): SxAPI {
         } catch {
           return {};
         }
+      },
+    },
+
+    quality: {
+      async get(assetName: string): Promise<QualityDoc> {
+        need("quality");
+        const raw = await PluginQualityGet(assetName);
+        const empty: QualityDoc = { evaluating: false, records: [] };
+        if (!raw) return empty;
+        try {
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== "object") return empty;
+          return {
+            evaluating: parsed.evaluating === true,
+            records: Array.isArray(parsed.records) ? (parsed.records as QualityRecord[]) : [],
+          };
+        } catch {
+          return empty;
+        }
+      },
+      async add(assetName: string, record: QualityRecord): Promise<void> {
+        need("quality");
+        await PluginQualityAdd(assetName, JSON.stringify(record));
+      },
+      async latest(): Promise<Record<string, QualityRecord>> {
+        need("quality");
+        const raw = await PluginQualityLatest();
+        if (!raw) return {};
+        try {
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === "object" ? (parsed as Record<string, QualityRecord>) : {};
+        } catch {
+          return {};
+        }
+      },
+      async reevaluate(assetName: string): Promise<QualityReevaluateResult> {
+        need("quality");
+        const mode = await PluginQualityReevaluate(assetName);
+        return { mode: mode === "server" ? "server" : "local" };
       },
     },
 

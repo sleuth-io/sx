@@ -165,6 +165,14 @@ export function PluginDecisions():Promise<Record<string, boolean>>;
 
 export function PluginLoadData(arg1:string):Promise<string>;
 
+export function PluginQualityAdd(arg1:string,arg2:string):Promise<void>;
+
+export function PluginQualityGet(arg1:string):Promise<string>;
+
+export function PluginQualityLatest():Promise<string>;
+
+export function PluginQualityReevaluate(arg1:string):Promise<string>;
+
 export function PluginSaveData(arg1:string,arg2:string):Promise<void>;
 
 export function PluginSecretGet(arg1:string,arg2:string):Promise<string>;

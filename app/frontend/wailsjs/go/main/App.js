@@ -326,6 +326,22 @@ export function PluginLoadData(arg1) {
   return window['go']['main']['App']['PluginLoadData'](arg1);
 }
 
+export function PluginQualityAdd(arg1, arg2) {
+  return window['go']['main']['App']['PluginQualityAdd'](arg1, arg2);
+}
+
+export function PluginQualityGet(arg1) {
+  return window['go']['main']['App']['PluginQualityGet'](arg1);
+}
+
+export function PluginQualityLatest() {
+  return window['go']['main']['App']['PluginQualityLatest']();
+}
+
+export function PluginQualityReevaluate(arg1) {
+  return window['go']['main']['App']['PluginQualityReevaluate'](arg1);
+}
+
 export function PluginSaveData(arg1, arg2) {
   return window['go']['main']['App']['PluginSaveData'](arg1, arg2);
 }
