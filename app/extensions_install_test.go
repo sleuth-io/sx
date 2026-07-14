@@ -41,7 +41,7 @@ func scopedExtensionApp(t *testing.T, email string) (*App, string, string) {
 	if err != nil {
 		t.Fatalf("NewPathVault: %v", err)
 	}
-	a := &App{ctx: context.Background(), vault: v}
+	a := newTestAppWithVault(t, v)
 	return a, cfgDir, vdir
 }
 

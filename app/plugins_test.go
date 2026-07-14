@@ -17,7 +17,7 @@ func pluginTestApp(t *testing.T) *App {
 	t.Setenv("SX_CONFIG_DIR", dir)
 	// pluginDataDir needs a loadable config; seed a minimal path profile.
 	seedConfig(t, dir)
-	return &App{}
+	return newTestApp(t)
 }
 
 func seedConfig(t *testing.T, dir string) {
@@ -101,7 +101,7 @@ func TestPluginConsents(t *testing.T) {
 }
 
 func TestAppVersionNonEmpty(t *testing.T) {
-	a := &App{}
+	a := newTestApp(t)
 	if a.AppVersion() == "" {
 		t.Fatalf("AppVersion must never be empty (sx.app.version contract)")
 	}

@@ -54,6 +54,18 @@ type App struct {
 	// updateMu serializes update checks (startup + menu) so two
 	// tryAutoUpdate runs can never interleave the bundle swap.
 	updateMu sync.Mutex
+
+	// eventWrites tracks in-flight fire-and-forget audit/usage writers
+	// (goEvent). Tests wait on it so a still-running writer can't race
+	// the temp vault's cleanup — a long-standing CI flake.
+	eventWrites sync.WaitGroup
+}
+
+// goEvent runs a fire-and-forget vault event write on its own goroutine,
+// tracked by eventWrites. Production behavior is unchanged (nothing
+// waits); tests drain the group before their temp vaults are removed.
+func (a *App) goEvent(fn func()) {
+	a.eventWrites.Go(fn)
 }
 
 func NewApp() *App {

@@ -3,7 +3,6 @@ package main
 import (
 	"archive/zip"
 	"bytes"
-	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -23,7 +22,7 @@ import (
 // publish ("unknown asset type").
 func TestLoadDraft_RepairsMissingType(t *testing.T) {
 	t.Setenv("SX_CONFIG_DIR", t.TempDir())
-	a := &App{}
+	a := newTestApp(t)
 
 	root, err := draftsRoot()
 	if err != nil {
@@ -68,7 +67,7 @@ func TestLatestAssetZip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPathVault: %v", err)
 	}
-	a := &App{ctx: context.Background(), vault: v}
+	a := newTestAppWithVault(t, v)
 
 	skillZip := zipOf(t, map[string]string{
 		"SKILL.md":      "---\nname: docs-tone\ndescription: Tone.\n---\n\n# docs-tone\n",
@@ -112,7 +111,7 @@ func TestCreateDraftFromFiles_TargetsExistingAsset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPathVault: %v", err)
 	}
-	a := &App{ctx: context.Background(), vault: v}
+	a := newTestAppWithVault(t, v)
 
 	skillZip := zipOf(t, map[string]string{
 		"SKILL.md":      "---\nname: docs-tone\ndescription: Tone.\n---\n\n# docs-tone\n",
