@@ -37,7 +37,7 @@ type ProfileInfo struct {
 	// Active: part of the active set — Sync installs this library's assets
 	// too. More than one library can be active at a time (sx multi-profile).
 	Active bool `json:"active"`
-	// TrackRepos: repository views are enabled for this library.
+	// TrackRepos: repository and bot views are enabled for this library.
 	TrackRepos bool `json:"trackRepos"`
 	// Icon is the library's uploaded icon as a data URL ("" = none).
 	Icon string `json:"icon"`

@@ -20,6 +20,19 @@
     monospace;
 }
 
+/* Syntax token colors for highlighted code blocks in rendered markdown
+   (rehype-highlight emits hljs-* classes). Kept beside the design tokens so
+   both palettes flip together in dark mode. */
+:root {
+  --hl-keyword: #cf222e;
+  --hl-string: #0a3069;
+  --hl-comment: #6e7781;
+  --hl-number: #0550ae;
+  --hl-title: #8250df;
+  --hl-attr: #953800;
+  --hl-meta: #116329;
+}
+
 /* Dark mode: Linear-style neutral near-black — cool grays, hairline
    borders, soft (not pure-white) text. */
 @media (prefers-color-scheme: dark) {
@@ -34,6 +47,14 @@
     --color-accent-soft: #1d1f33;
     --color-danger: #f47c7c;
     --color-danger-soft: #2d1a1a;
+
+    --hl-keyword: #ff7b72;
+    --hl-string: #a5d6ff;
+    --hl-comment: #8b949e;
+    --hl-number: #79c0ff;
+    --hl-title: #d2a8ff;
+    --hl-attr: #ffa657;
+    --hl-meta: #7ee787;
   }
 }
 
@@ -101,6 +122,63 @@ body {
   background: none;
   padding: 0;
   font-size: 0.8rem;
+}
+
+/* highlight.js token classes → the theme's syntax palette. */
+.prose-sx .hljs-keyword,
+.prose-sx .hljs-selector-tag,
+.prose-sx .hljs-type,
+.prose-sx .hljs-tag,
+.prose-sx .hljs-name,
+.prose-sx .hljs-doctag {
+  color: var(--hl-keyword);
+}
+.prose-sx .hljs-string,
+.prose-sx .hljs-regexp,
+.prose-sx .hljs-char.escape_ {
+  color: var(--hl-string);
+}
+.prose-sx .hljs-comment,
+.prose-sx .hljs-quote {
+  color: var(--hl-comment);
+  font-style: italic;
+}
+.prose-sx .hljs-number,
+.prose-sx .hljs-literal,
+.prose-sx .hljs-symbol,
+.prose-sx .hljs-bullet,
+.prose-sx .hljs-built_in,
+.prose-sx .hljs-variable.constant_ {
+  color: var(--hl-number);
+}
+.prose-sx .hljs-title,
+.prose-sx .hljs-section,
+.prose-sx .hljs-title.function_,
+.prose-sx .hljs-title.class_ {
+  color: var(--hl-title);
+}
+.prose-sx .hljs-attr,
+.prose-sx .hljs-attribute,
+.prose-sx .hljs-variable,
+.prose-sx .hljs-template-variable,
+.prose-sx .hljs-property,
+.prose-sx .hljs-params {
+  color: var(--hl-attr);
+}
+.prose-sx .hljs-meta,
+.prose-sx .hljs-selector-id,
+.prose-sx .hljs-selector-class,
+.prose-sx .hljs-addition {
+  color: var(--hl-meta);
+}
+.prose-sx .hljs-deletion {
+  color: var(--color-danger);
+}
+.prose-sx .hljs-emphasis {
+  font-style: italic;
+}
+.prose-sx .hljs-strong {
+  font-weight: 600;
 }
 .prose-sx blockquote {
   border-left: 3px solid var(--color-line);

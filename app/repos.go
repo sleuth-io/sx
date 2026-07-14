@@ -10,7 +10,7 @@ import (
 
 // Repository views are a per-library opt-in (Profile.TrackRepos): technical
 // users see which repositories assets are scoped to; everyone else never
-// pays for the concept.
+// pays for the concept. Bots ride the same opt-in (app/bots.go).
 
 // RepoAssets maps repository URL → asset names scoped to it, for the
 // sidebar's REPOSITORIES section. Vaults that can't report this return an
@@ -37,8 +37,8 @@ func (a *App) RepoAssets() (map[string][]string, error) {
 	return out, nil
 }
 
-// SetLibraryRepoTracking turns repository views on or off for one library.
-// An empty name means the active library.
+// SetLibraryRepoTracking turns repository and bot views on or off for one
+// library. An empty name means the active library.
 func (a *App) SetLibraryRepoTracking(name string, enabled bool) (VaultInfo, error) {
 	mpc, err := config.LoadMultiProfile()
 	if err != nil {

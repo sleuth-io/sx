@@ -531,9 +531,11 @@ export default function SettingsModal({
                           {p.trackRepos ? "✓" : ""}
                         </span>
                         <span className="flex-1">
-                          <span className="block">Track repositories</span>
+                          <span className="block">
+                            Track repositories & bots
+                          </span>
                           <span className="block text-xs text-ink-faint">
-                            See which repos assets are scoped to
+                            See which repos and bots assets are scoped to
                           </span>
                         </span>
                       </button>

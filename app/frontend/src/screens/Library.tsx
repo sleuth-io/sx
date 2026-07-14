@@ -4,10 +4,12 @@ import {
   AddAssetRepoScope,
   AddCollectionInstallation,
   AddCollectionRepoScope,
+  CreateBot,
   CreateDraftFromAsset,
   CreateDraftFromPaths,
   CreateTeam,
   DeleteAssets,
+  DeleteBot,
   DeleteCollection,
   DeleteTeam,
   GetAssetInstallations,
@@ -16,6 +18,7 @@ import {
   InstalledAssets,
   ListAIClients,
   ListAssets,
+  ListBots,
   ListCollections,
   ListDrafts,
   ListTeams,
@@ -42,6 +45,7 @@ import {
 import type { main } from "../../wailsjs/go/models";
 import AddAssetModal from "../components/AddAssetModal";
 import AssetDetail from "../components/AssetDetail";
+import BotModal from "../components/BotModal";
 import BrowseModal from "../components/BrowseModal";
 import CollectionModal from "../components/CollectionModal";
 import DraftSheet, { DraftSheetSkeleton } from "../components/DraftSheet";
@@ -69,7 +73,7 @@ import TypeBadge from "../components/TypeBadge";
 
 type ViewMode = "list" | "grid";
 type SortMode = "updated" | "name";
-type PinKind = "collections" | "teams" | "repos";
+type PinKind = "collections" | "teams" | "repos" | "bots";
 
 function readPins(kind: PinKind, location: string): string[] | null {
   try {
@@ -93,6 +97,7 @@ interface BootSnapshot {
   teamAssets: Record<string, string[]>;
   personalAssets: string[];
   repoAssets: Record<string, string[]> | null;
+  bots: main.BotInfo[] | null;
 }
 
 function readBootSnapshot(location: string): BootSnapshot | null {
@@ -139,12 +144,20 @@ export default function Library({
   const [repoAssets, setRepoAssets] = useState<Record<string, string[]> | null>(
     boot?.repoAssets ?? null,
   );
+  // Bots ride the same opt-in as repositories; null while not tracking.
+  const [bots, setBots] = useState<main.BotInfo[] | null>(boot?.bots ?? null);
   const [openTeam, setOpenTeam] = useState<main.TeamInfo | null>(null);
   const [showNewTeam, setShowNewTeam] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
-  const [browse, setBrowse] = useState<"" | "collections" | "teams" | "repos">(
-    "",
-  );
+  const [openBot, setOpenBot] = useState<main.BotInfo | null>(null);
+  const [showNewBot, setShowNewBot] = useState(false);
+  const [newBotName, setNewBotName] = useState("");
+  // A Sleuth vault auto-issues an API key with a new bot; the raw token
+  // is only ever available here, so it gets its own show-once modal.
+  const [newBotToken, setNewBotToken] = useState("");
+  const [browse, setBrowse] = useState<
+    "" | "collections" | "teams" | "repos" | "bots"
+  >("");
   const [shareCollection, setShareCollection] = useState("");
   // Pins are per-library. null = the user never pinned anything, so the
   // sidebar defaults to the first few; once they pin/unpin we persist.
@@ -156,6 +169,9 @@ export default function Library({
   );
   const [pinnedRepos, setPinnedRepos] = useState<string[] | null>(() =>
     readPins("repos", vault.location),
+  );
+  const [pinnedBots, setPinnedBots] = useState<string[] | null>(() =>
+    readPins("bots", vault.location),
   );
   const [typeFilter, setTypeFilter] = useState("");
   const [installedInfo, setInstalledInfo] = useState<main.InstalledAssetInfo[]>(
@@ -219,6 +235,11 @@ export default function Library({
   const searchRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [openDraft, setOpenDraft] = useState<main.Draft | null>(null);
+  // Resuming a saved draft opens the sheet on its Changes tab; every
+  // editing flow (Edit button, drops, new assets) opens on the editor.
+  const [openDraftView, setOpenDraftView] = useState<"changes" | "edit">(
+    "edit",
+  );
   // True while a draft is being created or fetched from the vault —
   // renders the sheet's skeleton so the click responds immediately.
   const [openingDraft, setOpeningDraft] = useState(false);
@@ -244,6 +265,7 @@ export default function Library({
   const [dropCollection, setDropCollection] = useState("");
   const [dropTeam, setDropTeam] = useState("");
   const [dropRepo, setDropRepo] = useState("");
+  const [dropBot, setDropBot] = useState("");
   // names carries a multi-selection when the dragged row is part of one;
   // label overrides name in the ghost chip when the payload isn't
   // presentable as-is (a repo drag carries the full URL in name).
@@ -264,6 +286,7 @@ export default function Library({
   const dropCollectionRef = useRef("");
   const dropTeamRef = useRef("");
   const dropRepoRef = useRef("");
+  const dropBotRef = useRef("");
   const dragHappenedRef = useRef(false);
   const [toast, setToast] = useState("");
   const [busyAction, setBusyAction] = useState(false);
@@ -528,8 +551,12 @@ export default function Library({
       RepoAssets()
         .then((m) => apply(setRepoAssets)(m ?? {}))
         .catch(applyFallback(setRepoAssets, {}));
+      ListBots()
+        .then((v) => apply(setBots)(v ?? []))
+        .catch(applyFallback(setBots, []));
     } else {
       apply(setRepoAssets)(null);
+      apply(setBots)(null);
     }
   }, [vault.trackRepos]);
 
@@ -556,6 +583,7 @@ export default function Library({
         teamAssets,
         personalAssets,
         repoAssets,
+        bots,
       };
       const json = JSON.stringify(snapshot);
       try {
@@ -586,6 +614,7 @@ export default function Library({
     teamAssets,
     personalAssets,
     repoAssets,
+    bots,
     vault.location,
   ]);
 
@@ -779,6 +808,7 @@ export default function Library({
       setOpeningDraft(true);
       CreateDraftFromPaths(real)
         .then((draft) => {
+          setOpenDraftView("edit");
           setOpenDraft(draft);
           load();
         })
@@ -815,10 +845,12 @@ export default function Library({
       dropCollectionRef.current = "";
       dropTeamRef.current = "";
       dropRepoRef.current = "";
+      dropBotRef.current = "";
       setAssetDrag(null);
       setDropCollection("");
       setDropTeam("");
       setDropRepo("");
+      setDropBot("");
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
     };
@@ -846,7 +878,7 @@ export default function Library({
       });
       const selector =
         drag.kind === "asset"
-          ? "[data-drop-collection], [data-drop-team], [data-drop-repo]"
+          ? "[data-drop-collection], [data-drop-team], [data-drop-repo], [data-drop-bot]"
           : drag.kind === "collection"
             ? "[data-drop-team], [data-drop-repo]"
             : "[data-drop-team]";
@@ -857,18 +889,22 @@ export default function Library({
       const collection = hit?.getAttribute("data-drop-collection") ?? "";
       const team = hit?.getAttribute("data-drop-team") ?? "";
       const repo = hit?.getAttribute("data-drop-repo") ?? "";
+      const bot = hit?.getAttribute("data-drop-bot") ?? "";
       dropCollectionRef.current = collection;
       dropTeamRef.current = team;
       dropRepoRef.current = repo;
+      dropBotRef.current = bot;
       setDropCollection(collection);
       setDropTeam(team);
       setDropRepo(repo);
+      setDropBot(bot);
     };
     const onUp = () => {
       const drag = dragRef.current;
       const collection = dropCollectionRef.current;
       const team = dropTeamRef.current;
       const repo = dropRepoRef.current;
+      const bot = dropBotRef.current;
       finish();
       // The click event (if any) fires synchronously after mouseup; clear
       // the suppress flag right after so the NEXT click isn't swallowed
@@ -960,6 +996,16 @@ export default function Library({
           (label) => `${label} now installs in ${repoLabel(repo)}`,
           (label) => `Install ${label} in ${repoLabel(repo)}`,
         );
+      } else if (drag.kind === "asset" && bot) {
+        dropAssets(
+          (n) =>
+            AddAssetInstallation(n, {
+              kind: "bot",
+              bot,
+            } as main.AssetInstallation),
+          (label) => `Installed ${label} for ${bot}`,
+          (label) => `Install ${label} for ${bot}`,
+        );
       } else if (drag.kind === "collection" && repo) {
         AddCollectionRepoScope(drag.name, repo)
           .then(() => {
@@ -1045,9 +1091,10 @@ export default function Library({
     return m;
   }, [installedInfo]);
 
-  // A repo view can't outlive repo tracking being switched off.
+  // A repo or bot view can't outlive the tracking being switched off.
   useEffect(() => {
-    if (!vault.trackRepos && scope.kind === "repo") setScope({ kind: "all" });
+    if (!vault.trackRepos && (scope.kind === "repo" || scope.kind === "bot"))
+      setScope({ kind: "all" });
   }, [vault.trackRepos, scope]);
 
   // Native menu → frontend views (Settings Cmd+,; File → New …)
@@ -1091,6 +1138,14 @@ export default function Library({
     [teams, scope],
   );
 
+  const activeBot = useMemo(
+    () =>
+      scope.kind === "bot"
+        ? ((bots ?? []).find((b) => b.name === scope.name) ?? null)
+        : null,
+    [bots, scope],
+  );
+
   // Repo URLs, sorted by their display label so the sidebar and browse
   // list read alphabetically.
   const repoUrls = useMemo(
@@ -1101,6 +1156,15 @@ export default function Library({
     [repoAssets],
   );
 
+  // Bot name → resolved asset names, in repoAssets' shape so the sidebar
+  // and scope filter treat both the same way. null while not tracking.
+  const botAssets = useMemo(() => {
+    if (bots === null) return null;
+    const out: Record<string, string[]> = {};
+    for (const b of bots) out[b.name] = b.skills ?? [];
+    return out;
+  }, [bots]);
+
   // Pins are explicit only: a never-pinned library shows no PINNED
   // section at all (the BROWSE rows are the durable path in), instead
   // of first-few defaults that read as pins the user never made.
@@ -1108,6 +1172,7 @@ export default function Library({
   const shownCollectionPins = pinnedCollections ?? [];
   const shownTeamPins = pinnedTeams ?? [];
   const shownRepoPins = pinnedRepos ?? [];
+  const shownBotPins = pinnedBots ?? [];
 
   const teamAssetCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -1119,11 +1184,13 @@ export default function Library({
     collections: shownCollectionPins,
     teams: shownTeamPins,
     repos: shownRepoPins,
+    bots: shownBotPins,
   };
   const pinSetters: Record<PinKind, (v: string[]) => void> = {
     collections: setPinnedCollections,
     teams: setPinnedTeams,
     repos: setPinnedRepos,
+    bots: setPinnedBots,
   };
 
   function setPins(kind: PinKind, next: string[]) {
@@ -1191,6 +1258,9 @@ export default function Library({
         case "repo":
           if (!(repoAssets?.[scope.name] ?? []).includes(a.name)) return false;
           break;
+        case "bot":
+          if (!(botAssets?.[scope.name] ?? []).includes(a.name)) return false;
+          break;
         case "all":
           break;
       }
@@ -1216,6 +1286,7 @@ export default function Library({
     teamAssets,
     personalAssets,
     repoAssets,
+    botAssets,
     sort,
     typeFilter,
   ]);
@@ -1253,6 +1324,7 @@ export default function Library({
     try {
       const draft = await CreateDraftFromAsset(name);
       setSelected(null);
+      setOpenDraftView("edit");
       setOpenDraft(draft);
       load();
     } catch (e) {
@@ -1265,7 +1337,9 @@ export default function Library({
   async function openExistingDraft(id: string) {
     setOpeningDraft(true);
     try {
-      setOpenDraft(await GetDraft(id));
+      const draft = await GetDraft(id);
+      setOpenDraftView("changes");
+      setOpenDraft(draft);
     } catch (e) {
       setToastMessage(String(e));
     } finally {
@@ -1294,6 +1368,8 @@ export default function Library({
         return scope.name;
       case "repo":
         return repoLabel(scope.name);
+      case "bot":
+        return scope.name;
     }
   })();
 
@@ -1308,6 +1384,25 @@ export default function Library({
       ensurePinned("teams", team.name);
       setScope({ kind: "team", name: team.name });
       setSelected(null);
+    } catch (e) {
+      setToastMessage(String(e));
+    }
+  }
+
+  async function createBot() {
+    const name = newBotName.trim();
+    if (!name) return;
+    try {
+      const created = await CreateBot(name, "");
+      setShowNewBot(false);
+      setNewBotName("");
+      load();
+      ensurePinned("bots", created.bot.name);
+      setScope({ kind: "bot", name: created.bot.name });
+      setSelected(null);
+      // Sleuth vaults auto-issue an API key; the raw token exists only
+      // now, so it gets a show-once modal instead of a toast.
+      if (created.token) setNewBotToken(created.token);
     } catch (e) {
       setToastMessage(String(e));
     }
@@ -1361,19 +1456,24 @@ export default function Library({
         teams={teams}
         teamAssetCounts={teamAssetCounts}
         repoAssets={vault.trackRepos ? (repoAssets ?? {}) : null}
+        botAssets={vault.trackRepos ? (botAssets ?? {}) : null}
         pinnedCollections={shownCollectionPins}
         pinnedTeams={shownTeamPins}
         pinnedRepos={shownRepoPins}
+        pinnedBots={shownBotPins}
         onUnpin={togglePin}
         onNewCollection={() => setShowCollectionModal(true)}
         onNewTeam={() => setShowNewTeam(true)}
+        onNewBot={() => setShowNewBot(true)}
         onBrowseCollections={() => setBrowse("collections")}
         onBrowseTeams={() => setBrowse("teams")}
         onBrowseRepos={() => setBrowse("repos")}
+        onBrowseBots={() => setBrowse("bots")}
         onSettings={() => setShowSettings(true)}
         dropCollection={dropCollection}
         dropTeam={dropTeam}
         dropRepo={dropRepo}
+        dropBot={dropBot}
         onCollectionDragHandle={(name, e) => {
           if (e.button !== 0) return;
           dragHappenedRef.current = false;
@@ -1821,6 +1921,47 @@ export default function Library({
               </span>
               <div className="flex-1" />
               {scopePinButton("repos", scope.name)}
+            </div>
+          )}
+
+          {activeBot && (
+            <div
+              className="flex items-center gap-3 border-t border-line bg-accent-soft/50 px-5 py-2 text-xs"
+              style={{ ["--wails-draggable" as never]: "no-drag" }}
+            >
+              <span className="min-w-0 truncate text-ink-soft">
+                {activeBot.description ||
+                  "Skills installed for this bot, directly or through its teams"}
+              </span>
+              <div className="flex-1" />
+              {scopePinButton("bots", activeBot.name)}
+              <button
+                onClick={() => setOpenBot(activeBot)}
+                className="rounded-md border border-line bg-surface px-2.5 py-1 font-medium text-ink-soft transition hover:border-accent hover:text-ink"
+              >
+                Manage bot…
+              </button>
+              <button
+                onClick={() => {
+                  void (async () => {
+                    const ok = await confirmAction(
+                      `Delete bot ${activeBot.name}? Assets stay in the library, but anything installed only for this bot stops resolving`,
+                      "Delete",
+                    );
+                    if (!ok) return;
+                    DeleteBot(activeBot.name)
+                      .then(() => {
+                        setScope({ kind: "all" });
+                        load();
+                        setToastMessage(`Bot ${activeBot.name} deleted`);
+                      })
+                      .catch((e) => setToastMessage(String(e)));
+                  })();
+                }}
+                className="rounded-md px-2 py-1 font-medium text-ink-faint transition hover:text-danger"
+              >
+                Delete
+              </button>
             </div>
           )}
         </header>
@@ -2394,6 +2535,7 @@ export default function Library({
       {openDraft && (
         <DraftSheet
           draft={openDraft}
+          initialView={openDraftView}
           onClose={() => {
             setOpenDraft(null);
             load();
@@ -2411,6 +2553,7 @@ export default function Library({
           onClose={() => setShowAddAsset(false)}
           onDraft={(draft) => {
             setShowAddAsset(false);
+            setOpenDraftView("edit");
             setOpenDraft(draft);
             load();
           }}
@@ -2523,11 +2666,47 @@ export default function Library({
         />
       )}
 
+      {browse === "bots" && (
+        <BrowseModal
+          title="All bots"
+          items={(bots ?? []).map((b) => {
+            const count = (b.skills ?? []).length;
+            return {
+              name: b.name,
+              count,
+              countLabel: count === 1 ? "asset" : "assets",
+            };
+          })}
+          pinned={shownBotPins}
+          onTogglePin={(name) => togglePin("bots", name)}
+          onSelect={(name) => {
+            setBrowse("");
+            setScope({ kind: "bot", name });
+            setSelected(null);
+          }}
+          onCreate={() => {
+            setBrowse("");
+            setShowNewBot(true);
+          }}
+          createLabel="New bot"
+          onClose={() => setBrowse("")}
+        />
+      )}
+
       {openTeam && (
         <TeamModal
           team={openTeam}
           showRepos={vault.trackRepos}
           onClose={() => setOpenTeam(null)}
+          onChanged={load}
+        />
+      )}
+
+      {openBot && (
+        <BotModal
+          bot={openBot}
+          teams={teams}
+          onClose={() => setOpenBot(null)}
           onChanged={load}
         />
       )}
@@ -2568,6 +2747,76 @@ export default function Library({
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {showNewBot && (
+        <Modal title="New bot" onClose={() => setShowNewBot(false)}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void createBot();
+            }}
+          >
+            <input
+              autoFocus
+              value={newBotName}
+              onChange={(e) => setNewBotName(e.target.value)}
+              placeholder="ci-bot, deploy-bot, support-bot…"
+              className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+            <p className="mt-2 text-xs text-ink-faint">
+              A bot is a non-human identity — install skills for it directly
+              or by adding it to teams.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowNewBot(false)}
+                className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink-soft transition hover:text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!newBotName.trim()}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                Create
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {newBotToken && (
+        <Modal title="Bot API key" onClose={() => setNewBotToken("")}>
+          <p className="text-sm text-ink-soft">
+            This key was issued with the bot and is shown only once — copy it
+            somewhere safe now.
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-lg border border-line bg-canvas px-3 py-2 font-mono text-xs">
+              {newBotToken}
+            </code>
+            <button
+              onClick={() => {
+                void navigator.clipboard.writeText(newBotToken);
+                setToastMessage("Bot API key copied");
+              }}
+              className="shrink-0 rounded-lg border border-line px-3 py-2 text-sm font-medium text-ink-soft transition hover:border-accent hover:text-ink"
+            >
+              Copy
+            </button>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => setNewBotToken("")}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+            >
+              Done
+            </button>
+          </div>
         </Modal>
       )}
 
@@ -2857,6 +3106,20 @@ function EmptyState({
           Open an asset and use{" "}
           <span className="font-medium text-ink-soft">Share…</span> to send it
           to {scope.name} — it installs automatically for every member.
+        </div>
+      </Centered>
+    );
+  }
+  if (scope.kind === "bot") {
+    return (
+      <Centered>
+        <div className="text-sm font-medium">
+          Nothing installed for this bot yet
+        </div>
+        <div className="mt-1 max-w-sm text-sm text-ink-faint">
+          Drag an asset onto {scope.name} in the sidebar, or open an asset and
+          use <span className="font-medium text-ink-soft">Share…</span> and
+          pick Bot. Adding the bot to a team gives it the team's skills too.
         </div>
       </Centered>
     );

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
+import { languages } from "@codemirror/language-data";
 import { EditorView } from "@uiw/react-codemirror";
 
 const baseTheme = EditorView.theme({
@@ -55,7 +56,13 @@ export default function MarkdownEditor({
       readOnly={readOnly}
       onCreateEditor={(view) => onView?.(view)}
       theme={dark ? "dark" : "light"}
-      extensions={[markdown(), baseTheme, EditorView.lineWrapping]}
+      extensions={[
+        // codeLanguages lights up fenced code blocks (```go, ```ts, …)
+        // with each language's own grammar while editing.
+        markdown({ codeLanguages: languages }),
+        baseTheme,
+        EditorView.lineWrapping,
+      ]}
       basicSetup={{
         lineNumbers: true,
         foldGutter: false,

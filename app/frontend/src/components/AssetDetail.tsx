@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import {
   AddAssetInstallation,
@@ -608,7 +609,12 @@ function FileView({ file }: { file: main.AssetFile }) {
           </div>
         )}
         <article className="prose-sx">
-          <ReactMarkdown components={markdownComponents}>{body}</ReactMarkdown>
+          <ReactMarkdown
+            components={markdownComponents}
+            rehypePlugins={[rehypeHighlight]}
+          >
+            {body}
+          </ReactMarkdown>
         </article>
       </div>
     );
