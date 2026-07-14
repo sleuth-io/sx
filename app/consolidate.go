@@ -209,11 +209,11 @@ func (a *App) retireSources(v vaultpkg.Vault, id, into string, sources []string,
 	}
 	// One fire-and-forget writer for all events, not one goroutine per
 	// retire — sequential appends can't interleave in the audit log.
-	go func() {
+	a.goEvent(func() {
 		for _, event := range audits {
 			a.appendPluginAudit(event)
 		}
-	}()
+	})
 	return retireErr
 }
 

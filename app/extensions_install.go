@@ -247,7 +247,7 @@ func (a *App) ShareExtensionWithLibrary(id string) error {
 		TargetType: mgmt.TargetTypePlugin,
 		Target:     id,
 	}
-	go a.appendPluginAudit(event)
+	a.goEvent(func() { a.appendPluginAudit(event) })
 	return nil
 }
 
@@ -335,7 +335,7 @@ func (a *App) emitExtensionInstall(id, version, scope, source string, wasUpdate 
 	if wasUpdate {
 		event.Event = mgmt.EventPluginUpdated
 	}
-	go a.appendPluginAudit(event)
+	a.goEvent(func() { a.appendPluginAudit(event) })
 	usage := mgmt.UsageEvent{
 		Timestamp:    event.Timestamp,
 		Actor:        actor,
@@ -343,7 +343,7 @@ func (a *App) emitExtensionInstall(id, version, scope, source string, wasUpdate 
 		AssetVersion: version,
 		AssetType:    asset.TypeAppPlugin.Key,
 	}
-	go a.recordPluginUsage(usage)
+	a.goEvent(func() { a.recordPluginUsage(usage) })
 }
 
 // emitExtensionRemove appends the uninstall audit event (fire-and-forget,
@@ -357,7 +357,7 @@ func (a *App) emitExtensionRemove(id, scope string) {
 		Target:     id,
 		Data:       map[string]any{"scope": scope},
 	}
-	go a.appendPluginAudit(event)
+	a.goEvent(func() { a.appendPluginAudit(event) })
 }
 
 // recordPluginUsage writes one usage event to the vault's usage stream,

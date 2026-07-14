@@ -209,7 +209,7 @@ func (a *App) SetPluginDecision(id string, enabled bool) error {
 	if !enabled {
 		event.Event = mgmt.EventPluginDisabled
 	}
-	go a.appendPluginAudit(event)
+	a.goEvent(func() { a.appendPluginAudit(event) })
 	return nil
 }
 

@@ -30,13 +30,22 @@ func newExtensionVault(t *testing.T, a *App, id, name, description string) strin
 	if err := os.WriteFile(src+"/main.js", []byte("export default class { onload(sx) {} }"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Publish through the app pointed temporarily at this vault.
+	// Publish through the app pointed temporarily at this vault. In-flight
+	// event writers read a.vault via currentVault (under a.mu) — drain them
+	// around each swap and hold the lock, so a swap never races a reader
+	// and no event lands in the wrong vault.
+	a.eventWrites.Wait()
+	a.mu.Lock()
 	prev := a.vault
 	a.vault = v
+	a.mu.Unlock()
 	if _, _, err := a.addExtensionFrom(src); err != nil {
 		t.Fatalf("publish fixture extension: %v", err)
 	}
+	a.eventWrites.Wait()
+	a.mu.Lock()
 	a.vault = prev
+	a.mu.Unlock()
 	return vdir
 }
 
