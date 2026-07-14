@@ -26,9 +26,13 @@ const STATUS_STYLES: Record<string, { label: string; className: string }> = {
 export default function DraftDiffView({
   diff,
   loading,
+  error,
 }: {
   diff: main.DraftDiff | null;
   loading: boolean;
+  /** Why the diff couldn't be computed (the diff's own channel — never
+   * the sheet's shared publish/persist banner). */
+  error?: string;
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
@@ -40,15 +44,19 @@ export default function DraftDiffView({
       </div>
     );
   }
-  // Not loading and no diff: the fetch failed (the sheet shows the error
-  // banner). A quiet panel instead of a forever-pulsing skeleton; the
-  // Edit/Changes toggle retries.
+  // Not loading and no diff: the fetch failed. A quiet panel with the
+  // reason instead of a forever-pulsing skeleton; the Edit/Changes
+  // toggle retries.
   if (!diff) {
     return (
       <div className="flex h-full items-center justify-center rounded-lg border border-line bg-canvas">
-        <p className="px-6 py-10 text-sm text-ink-faint">
-          The changes couldn't be loaded — switch to Edit and back to retry.
-        </p>
+        <div className="max-w-md px-6 py-10 text-center text-sm">
+          <p className="text-ink-soft">The changes couldn't be loaded.</p>
+          {error && <p className="mt-1 break-words text-danger">{error}</p>}
+          <p className="mt-1 text-ink-faint">
+            Switch to Edit and back to retry.
+          </p>
+        </div>
       </div>
     );
   }

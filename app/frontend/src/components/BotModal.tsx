@@ -48,6 +48,14 @@ export default function BotModal({
     }
   }
 
+  // Escape/backdrop dismissal doesn't reliably blur the description
+  // input first — flush an unsaved edit on the way out so closing the
+  // modal never silently drops it.
+  function close() {
+    void saveDescription();
+    onClose();
+  }
+
   async function addTeam() {
     const team = newTeam.trim();
     if (!team) return;
@@ -80,18 +88,25 @@ export default function BotModal({
   }
 
   return (
-    <Modal title={`Bot: ${bot.name}`} onClose={onClose} width="w-[480px]">
+    <Modal title={`Bot: ${bot.name}`} onClose={close} width="w-[480px]">
       <div className="mb-2 text-xs font-semibold tracking-wide text-ink-faint">
         DESCRIPTION
       </div>
-      <input
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        onBlur={() => void saveDescription()}
-        placeholder="What this bot does"
-        disabled={busy}
-        className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
-      />
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void saveDescription();
+        }}
+      >
+        <input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          onBlur={() => void saveDescription()}
+          placeholder="What this bot does"
+          disabled={busy}
+          className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+        />
+      </form>
 
       <div className="mb-2 mt-5 text-xs font-semibold tracking-wide text-ink-faint">
         TEAMS

@@ -75,6 +75,9 @@ export default function DraftSheet({
   const [view, setView] = useState<"changes" | "edit">(initialView);
   const [diff, setDiff] = useState<main.DraftDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
+  // The diff's own error channel — the shared `error` banner belongs to
+  // publish/persist/discard, and a diff run must not stomp it.
+  const [diffError, setDiffError] = useState("");
 
   // The diff recomputes when the Changes view is showing and the draft it
   // last reflected isn't the current one — so edits (including extension
@@ -87,10 +90,10 @@ export default function DraftSheet({
     if (view !== "changes" || lastDiffedRef.current === draft) return;
     let stale = false;
     setDiffLoading(true);
-    // Each run owns the error banner and the shown diff: a retry that
+    // Each run owns the diff error and the shown diff: a retry that
     // succeeds must drop the old error, and a refresh that fails must
     // drop the old diff — otherwise the two signals contradict.
-    setError("");
+    setDiffError("");
     DiffDraft(draft)
       .then((d) => {
         if (stale) return;
@@ -100,7 +103,7 @@ export default function DraftSheet({
       .catch((e) => {
         if (stale) return;
         setDiff(null);
-        setError(String(e));
+        setDiffError(String(e));
       })
       .finally(() => {
         if (!stale) setDiffLoading(false);
@@ -352,7 +355,11 @@ export default function DraftSheet({
               )}
             </div>
             {view === "changes" && (
-              <DraftDiffView diff={diff} loading={diffLoading} />
+              <DraftDiffView
+                diff={diff}
+                loading={diffLoading}
+                error={diffError}
+              />
             )}
           </div>
         </div>
