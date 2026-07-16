@@ -9,9 +9,10 @@ import (
 	"sort"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/sleuth-io/sx/internal/metadata"
 	"github.com/sleuth-io/sx/internal/utils"
-	"gopkg.in/yaml.v3"
 )
 
 // AgentHandler handles agent asset installation for Kiro.
@@ -110,7 +111,7 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 		if val, ok := kiro[key]; ok {
 			if sl, isList := val.([]any); !isList || len(sl) > 0 {
 				if out, err := yaml.Marshal(map[string]any{key: val}); err == nil {
-					sb.WriteString(string(out))
+					sb.Write(out)
 				}
 			}
 		}
@@ -119,14 +120,14 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 	if mcpServers, ok := kiro["mcpServers"]; ok {
 		if m, isMap := mcpServers.(map[string]any); !isMap || len(m) > 0 {
 			if out, err := yaml.Marshal(map[string]any{"mcpServers": mcpServers}); err == nil {
-				sb.WriteString(string(out))
+				sb.Write(out)
 			}
 		}
 	}
 
 	if wm, ok := kiro["welcomeMessage"].(string); ok && wm != "" {
 		if out, err := yaml.Marshal(map[string]any{"welcomeMessage": wm}); err == nil {
-			sb.WriteString(string(out))
+			sb.Write(out)
 		}
 	}
 
@@ -134,7 +135,7 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 		if sl, isList := permissions.([]any); !isList || len(sl) > 0 {
 			// Kiro expects permissions as an object with a "rules" key: { rules: [...] }
 			if out, err := yaml.Marshal(map[string]any{"permissions": map[string]any{"rules": permissions}}); err == nil {
-				sb.WriteString(string(out))
+				sb.Write(out)
 			}
 		}
 	}
@@ -158,7 +159,7 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 			continue
 		}
 		if out, err := yaml.Marshal(map[string]any{key: val}); err == nil {
-			sb.WriteString(string(out))
+			sb.Write(out)
 		}
 	}
 
