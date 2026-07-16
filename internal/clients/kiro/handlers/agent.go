@@ -36,6 +36,20 @@ type AgentHandler struct {
 	metadata *metadata.Metadata
 }
 
+// v2Only lists fields that only apply to the CLI v2 JSON format and must be
+// excluded from the .md frontmatter (which targets both the IDE and CLI v3).
+var v2Only = map[string]bool{
+	"allowedTools": true, "toolAliases": true, "toolsSettings": true,
+	"hooks": true, "includeMcpJson": true, "keyboardShortcut": true,
+}
+
+// knownHandled lists fields given explicit handling earlier in writeIDEFormat;
+// they must not be emitted again by the generic pass-through loop.
+var knownHandled = map[string]bool{
+	"model": true, "tools": true, "resources": true,
+	"mcpServers": true, "welcomeMessage": true, "permissions": true,
+}
+
 // NewAgentHandler creates a new agent handler
 func NewAgentHandler(meta *metadata.Metadata) *AgentHandler {
 	return &AgentHandler{metadata: meta}
@@ -103,13 +117,13 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 	kiro := h.getKiroFields()
 
 	if model, ok := kiro["model"].(string); ok && model != "" {
-		fmt.Fprintf(&sb, "model: %s\n", model)
+		fmt.Fprintf(&sb, "model: %q\n", model)
 	}
 
 	// Known collection fields — skip if empty to avoid no-op keys
 	for _, key := range []string{"tools", "resources"} {
 		if val, ok := kiro[key]; ok {
-			if sl, isList := val.([]any); !isList || len(sl) > 0 {
+			if sl, isList := val.([]any); isList && len(sl) > 0 {
 				if out, err := yaml.Marshal(map[string]any{key: val}); err == nil {
 					sb.Write(out)
 				}
@@ -118,7 +132,7 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 	}
 
 	if mcpServers, ok := kiro["mcpServers"]; ok {
-		if m, isMap := mcpServers.(map[string]any); !isMap || len(m) > 0 {
+		if m, isMap := mcpServers.(map[string]any); isMap && len(m) > 0 {
 			if out, err := yaml.Marshal(map[string]any{"mcpServers": mcpServers}); err == nil {
 				sb.Write(out)
 			}
@@ -132,7 +146,10 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 	}
 
 	if permissions, ok := kiro["permissions"]; ok {
-		if sl, isList := permissions.([]any); !isList || len(sl) > 0 {
+		// Only wrap a non-empty []any — a TOML table ([agent.kiro.permissions]) decodes
+		// as map[string]any and must not be passed through: it would produce the wrong
+		// schema shape {rules:{key:val}} instead of {rules:[...]}.
+		if sl, isList := permissions.([]any); isList && len(sl) > 0 {
 			// Kiro expects permissions as an object with a "rules" key: { rules: [...] }
 			if out, err := yaml.Marshal(map[string]any{"permissions": map[string]any{"rules": permissions}}); err == nil {
 				sb.Write(out)
@@ -142,14 +159,6 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 
 	// Pass through unknown fields for forward compatibility; exclude v2-only fields
 	// that have no meaning in the IDE / v3 format.
-	v2Only := map[string]bool{
-		"allowedTools": true, "toolAliases": true, "toolsSettings": true,
-		"hooks": true, "includeMcpJson": true, "keyboardShortcut": true,
-	}
-	knownHandled := map[string]bool{
-		"model": true, "tools": true, "resources": true,
-		"mcpServers": true, "welcomeMessage": true, "permissions": true,
-	}
 	for _, key := range sortedKeys(kiro) {
 		if knownHandled[key] || v2Only[key] {
 			continue
@@ -173,9 +182,11 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 
 // writeCLIFormat writes the Kiro CLI v2 agent JSON file.
 // All [agent.kiro] fields pass through to JSON except permissions (CLI v2 has no
-// permissions model). Unknown fields are preserved for forward compatibility —
-// CLI v2 JSON tolerates extra keys (verified by live harness test).
-// CLI v3 (kiro-cli --v3) reads the .md file written by writeIDEFormat directly.
+// permissions model) and the reserved top-level keys (name, prompt, description)
+// which are set from Asset metadata and zip content. Unknown fields are preserved
+// for forward compatibility — CLI v2 JSON tolerates extra keys (verified by live
+// harness test). CLI v3 (kiro-cli --v3) reads the .md file written by writeIDEFormat
+// directly.
 func (h *AgentHandler) writeCLIFormat(agentsDir string, content string) error {
 	config := map[string]any{
 		"name":   h.metadata.Asset.Name,
@@ -186,11 +197,12 @@ func (h *AgentHandler) writeCLIFormat(agentsDir string, content string) error {
 		config["description"] = desc
 	}
 
-	// Pass all [agent.kiro] fields through to v2 JSON except permissions.
-	// Unknown fields are preserved (sx forward-compat principle).
+	// Pass all [agent.kiro] fields through to v2 JSON except the reserved top-level
+	// keys (name, prompt, description) set above, and permissions (no v2 permissions
+	// model). Unknown fields are preserved (sx forward-compat principle).
 	kiro := h.getKiroFields()
 	for key, val := range kiro {
-		if key == "permissions" {
+		if key == "permissions" || key == "name" || key == "prompt" || key == "description" {
 			continue
 		}
 		if isEmptyValue(val) {
@@ -252,9 +264,13 @@ func (h *AgentHandler) readAgentContent(zipData []byte) (string, error) {
 
 	content, err := utils.ReadZipFile(zipData, promptFile)
 	if err != nil {
-		content, err = utils.ReadZipFile(zipData, "agent.md")
+		// Fall back to the canonical default name. Use the same casing as
+		// getPromptFile's default so the fallback is consistent on case-sensitive
+		// archives. Mirror the error format from opencode/handlers/rule.go.
+		const fallback = "AGENT.md"
+		content, err = utils.ReadZipFile(zipData, fallback)
 		if err != nil {
-			return "", fmt.Errorf("prompt file not found: %s", promptFile)
+			return "", fmt.Errorf("prompt file not found (tried %q and %q)", promptFile, fallback)
 		}
 	}
 

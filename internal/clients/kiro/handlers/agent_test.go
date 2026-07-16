@@ -121,7 +121,7 @@ func TestAgentHandler_Install_WithKiroFields(t *testing.T) {
 		t.Fatalf("Failed to read IDE file: %v", err)
 	}
 	ideContent := string(ideData)
-	if !strings.Contains(ideContent, "model: claude-sonnet-4") {
+	if !strings.Contains(ideContent, `model: "claude-sonnet-4"`) {
 		t.Errorf("expected model in IDE frontmatter, got:\n%s", ideContent)
 	}
 	if !strings.Contains(ideContent, "tools:") {
@@ -323,7 +323,7 @@ func TestAgentHandler_Install_EmptyCollectionsOmitted(t *testing.T) {
 			t.Errorf("IDE file should not contain %q when value is empty, got:\n%s", key, ideContent)
 		}
 	}
-	if !strings.Contains(ideContent, "model: claude-sonnet-4") {
+	if !strings.Contains(ideContent, `model: "claude-sonnet-4"`) {
 		t.Errorf("IDE file should still contain non-empty fields, got:\n%s", ideContent)
 	}
 
