@@ -182,6 +182,89 @@ description = "Agent for API development and testing"
 prompt-file = "AGENT.md"
 ```
 
+**Client-Specific Configuration**:
+
+Agents can have client-specific settings in `[agent.<client>]` sections:
+
+- `[agent.kiro]`: Kiro-specific fields (see below)
+
+**`[agent.kiro]` Fields**:
+
+Any field in `[agent.kiro]` is accepted. Unknown fields are preserved and passed to the output format(s), enabling forward compatibility with future Kiro schema additions. Known fields and their routing:
+
+| Field | `.md` (IDE / CLI v3) | `.json` (CLI v2) | Notes |
+|-------|----------------------|------------------|-------|
+| `model` | ✅ | ✅ | |
+| `tools` | ✅ | ✅ | |
+| `mcpServers` | ✅ | ✅ | |
+| `resources` | ✅ | ✅ | File/skill URIs loaded into context |
+| `welcomeMessage` | ✅ | ✅ | Shown when agent starts |
+| `permissions` | ✅ | ❌ | CLI v2 has no permissions model |
+| `allowedTools` | ❌ | ✅ | v2-only; tools that skip confirmation |
+| `toolAliases` | ❌ | ✅ | v2-only; name remappings |
+| `toolsSettings` | ❌ | ✅ | v2-only; per-tool configuration |
+| `hooks` | ❌ | ✅ | v2-only; lifecycle trigger commands |
+| `includeMcpJson` | ❌ | ✅ | v2-only; inherit from `mcp.json` |
+| `keyboardShortcut` | ❌ | ✅ | v2-only; agent launch shortcut |
+| *(unknown)* | ✅ | ✅ | Passed through for forward compat |
+
+**`permissions` object fields**: `capability` (string), `effect` (`"allow"` / `"deny"` / `"ask"`), `match` (optional list of glob strings).
+
+**Available `capability` values**:
+
+| Capability | Controls |
+|------------|----------|
+| `fs_read` | Reading files, listing directories, searching |
+| `fs_write` | Writing, editing, deleting files |
+| `filesystem` | Shorthand for both `fs_read` and `fs_write` |
+| `shell` | Executing commands |
+| `web_fetch` | Fetching URLs |
+| `web_search` | Web search |
+| `mcp` | MCP server tool calls (pattern: `server/tool`) |
+| `subagent` | Subagent delegation |
+| `skill` | Skills activation |
+| `diagnostics` | Diagnostics tools |
+| `context` | Context and steering tools |
+| `builtin` | All built-in tools |
+| `all` | Every capability |
+
+> **Output format note**: In `metadata.toml`, permissions are declared as a TOML array-of-tables (`[[agent.kiro.permissions]]`). sx transforms this into the structure Kiro expects in the installed `.md` file: `permissions: { rules: [...] }`. The TOML input format and the YAML output format differ — this is handled automatically.
+
+```toml
+[[agent.kiro.permissions]]
+capability = "filesystem"
+effect = "allow"
+match = ["src/**"]
+
+[[agent.kiro.permissions]]
+capability = "shell"
+effect = "deny"
+```
+
+> **Note**: Kiro supports two CLI agent formats: v2 (`.json`, default) and v3 (`.md`, opt-in). sx dual-writes both so the agent works regardless of which version is active. v2-only fields are excluded from `.md`; `permissions` is excluded from `.json` (CLI v2 has no permissions model). Unknown fields pass through to both formats — both the Kiro IDE and CLI v2/v3 tolerate extra keys, enabling forward compatibility.
+
+**Example with Kiro fields**:
+
+```toml
+[asset]
+name = "api-helper"
+version = "0.5.0"
+type = "agent"
+description = "Agent for API development and testing"
+
+[agent]
+prompt-file = "AGENT.md"
+
+[agent.kiro]
+model = "claude-sonnet-4"
+tools = ["read", "write", "web"]
+
+[[agent.kiro.permissions]]
+capability = "filesystem"
+effect = "allow"
+match = ["src/**"]
+```
+
 **Package Structure**:
 
 ```
