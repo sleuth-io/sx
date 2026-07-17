@@ -598,3 +598,57 @@ func TestCopilotMCPHandler_VerifyInstalled_MissingCLIMirror(t *testing.T) {
 		t.Error("missing CLI mirror entry should fail verification")
 	}
 }
+
+func TestCopilotMCPHandler_PreservesUnknownTopLevelKeys(t *testing.T) {
+	// VS Code's mcp.json supports sibling keys like "inputs" (prompted
+	// secrets); rewrites must not drop them. Same for the CLI config.
+	targetBase := t.TempDir()
+	cliConfigPath := filepath.Join(t.TempDir(), "mcp-config.json")
+	if err := os.MkdirAll(targetBase, 0755); err != nil {
+		t.Fatal(err)
+	}
+	vscodeSeed := `{
+  "inputs": [{"id": "api-key", "type": "promptString", "password": true}],
+  "servers": {}
+}`
+	if err := os.WriteFile(filepath.Join(targetBase, "mcp.json"), []byte(vscodeSeed), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cliSeed := `{
+  "customSetting": {"foo": "bar"},
+  "mcpServers": {}
+}`
+	if err := os.WriteFile(cliConfigPath, []byte(cliSeed), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	meta := remoteMCPMeta("keys-test", "http", "https://example.com/mcp")
+	zipData := remoteMCPZip(t, "keys-test", "http", "https://example.com/mcp")
+
+	handler := NewMCPHandler(meta)
+	handler.CLIConfigPath = cliConfigPath
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+	if err := handler.Remove(context.Background(), targetBase); err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+
+	vscodeData, _ := os.ReadFile(filepath.Join(targetBase, "mcp.json"))
+	var vscodeDoc map[string]any
+	if err := json.Unmarshal(vscodeData, &vscodeDoc); err != nil {
+		t.Fatalf("Failed to parse mcp.json: %v", err)
+	}
+	if _, ok := vscodeDoc["inputs"]; !ok {
+		t.Errorf("mcp.json should preserve the inputs key across install/remove, got: %s", vscodeData)
+	}
+
+	cliData, _ := os.ReadFile(cliConfigPath)
+	var cliDoc map[string]any
+	if err := json.Unmarshal(cliData, &cliDoc); err != nil {
+		t.Fatalf("Failed to parse CLI config: %v", err)
+	}
+	if _, ok := cliDoc["customSetting"]; !ok {
+		t.Errorf("CLI config should preserve unknown top-level keys, got: %s", cliData)
+	}
+}

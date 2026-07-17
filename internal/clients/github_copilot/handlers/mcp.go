@@ -226,15 +226,18 @@ func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
 	return entry
 }
 
-// mcpConfig represents VS Code's .vscode/mcp.json structure
+// mcpConfig represents VS Code's .vscode/mcp.json structure. Extra holds any
+// other top-level keys (e.g. "inputs") so rewrites don't drop them.
 type mcpConfig struct {
-	Servers map[string]any `json:"servers"`
+	Servers map[string]any
+	Extra   map[string]any
 }
 
 // readMCPConfig reads VS Code's mcp.json file
 func readMCPConfig(path string) (*mcpConfig, error) {
 	config := &mcpConfig{
 		Servers: make(map[string]any),
+		Extra:   make(map[string]any),
 	}
 
 	data, err := os.ReadFile(path)
@@ -245,9 +248,15 @@ func readMCPConfig(path string) (*mcpConfig, error) {
 		return nil, err
 	}
 
-	if err := utils.UnmarshalJSONC(data, config); err != nil {
+	doc := make(map[string]any)
+	if err := utils.UnmarshalJSONC(data, &doc); err != nil {
 		return nil, err
 	}
+	if servers, ok := doc["servers"].(map[string]any); ok {
+		config.Servers = servers
+	}
+	delete(doc, "servers")
+	config.Extra = doc
 
 	return config, nil
 }
@@ -259,7 +268,11 @@ func writeMCPConfig(path string, config *mcpConfig) error {
 		return err
 	}
 
-	data, err := json.MarshalIndent(config, "", "  ")
+	doc := make(map[string]any, len(config.Extra)+1)
+	maps.Copy(doc, config.Extra)
+	doc["servers"] = config.Servers
+
+	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -388,9 +401,12 @@ func RemoveMCPServer(vscodeDir, name string) error {
 	return nil
 }
 
-// copilotCLIMCPConfig represents Copilot CLI's ~/.copilot/mcp-config.json structure
+// copilotCLIMCPConfig represents Copilot CLI's ~/.copilot/mcp-config.json
+// structure (also used for the repo-level .github/mcp.json mirror). Extra
+// holds any other top-level keys so rewrites don't drop them.
 type copilotCLIMCPConfig struct {
-	MCPServers map[string]any `json:"mcpServers"`
+	MCPServers map[string]any
+	Extra      map[string]any
 }
 
 // AddCopilotCLIMCPServer adds an MCP server entry to ~/.copilot/mcp-config.json
@@ -451,6 +467,7 @@ func RemoveCopilotCLIMCPServer(copilotDir, name string) error {
 func readCopilotCLIMCPConfig(path string) (*copilotCLIMCPConfig, error) {
 	config := &copilotCLIMCPConfig{
 		MCPServers: make(map[string]any),
+		Extra:      make(map[string]any),
 	}
 
 	data, err := os.ReadFile(path)
@@ -461,9 +478,15 @@ func readCopilotCLIMCPConfig(path string) (*copilotCLIMCPConfig, error) {
 		return nil, err
 	}
 
-	if err := utils.UnmarshalJSONC(data, config); err != nil {
+	doc := make(map[string]any)
+	if err := utils.UnmarshalJSONC(data, &doc); err != nil {
 		return nil, err
 	}
+	if servers, ok := doc["mcpServers"].(map[string]any); ok {
+		config.MCPServers = servers
+	}
+	delete(doc, "mcpServers")
+	config.Extra = doc
 
 	return config, nil
 }
@@ -475,7 +498,11 @@ func writeCopilotCLIMCPConfig(path string, config *copilotCLIMCPConfig) error {
 		return err
 	}
 
-	data, err := json.MarshalIndent(config, "", "  ")
+	doc := make(map[string]any, len(config.Extra)+1)
+	maps.Copy(doc, config.Extra)
+	doc["mcpServers"] = config.MCPServers
+
+	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return err
 	}
