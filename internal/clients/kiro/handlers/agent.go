@@ -44,19 +44,14 @@ var v2Only = map[string]bool{
 	"hooks": true, "includeMcpJson": true, "keyboardShortcut": true,
 }
 
-// knownHandled lists fields given explicit handling earlier in writeIDEFormat;
-// they must not be emitted again by the generic pass-through loop.
-var knownHandled = map[string]bool{
-	"model": true, "tools": true, "resources": true,
-	"mcpServers": true, "welcomeMessage": true, "permissions": true,
-}
-
 // NewAgentHandler creates a new agent handler
 func NewAgentHandler(meta *metadata.Metadata) *AgentHandler {
 	return &AgentHandler{metadata: meta}
 }
 
-// Install writes both IDE (.md) and CLI (.json) agent files to {targetBase}/agents/
+// Install writes both IDE (.md) and CLI (.json) agent files to {targetBase}/agents/.
+// The two writes are not atomic; a failure between them leaves a half-installed
+// agent, which VerifyInstalled reports as broken so --repair rewrites both files.
 func (h *AgentHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
 	// {targetBase}/agents/default.json is the sx-managed Kiro CLI hooks config;
 	// an agent with that name would clobber it on install and delete it on remove.
@@ -136,34 +131,52 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 
 	kiro := h.getKiroFields()
 
-	if model, ok := kiro["model"].(string); ok && model != "" {
-		if err := writeYAMLField(&sb, "model", model); err != nil {
-			return err
+	// handled tracks fields consumed by the field-specific logic below
+	// (whether emitted or intentionally omitted when empty). A known field
+	// with an unexpected type is left unhandled so the generic pass-through
+	// still emits it rather than dropping it silently.
+	handled := map[string]bool{"permissions": true}
+
+	if model, ok := kiro["model"].(string); ok {
+		handled["model"] = true
+		if model != "" {
+			if err := writeYAMLField(&sb, "model", model); err != nil {
+				return err
+			}
 		}
 	}
 
 	// Known collection fields — skip if empty to avoid no-op keys
 	for _, key := range []string{"tools", "resources"} {
 		if val, ok := kiro[key]; ok {
-			if sl, isList := val.([]any); isList && len(sl) > 0 {
-				if err := writeYAMLField(&sb, key, val); err != nil {
-					return err
+			if sl, isList := val.([]any); isList {
+				handled[key] = true
+				if len(sl) > 0 {
+					if err := writeYAMLField(&sb, key, val); err != nil {
+						return err
+					}
 				}
 			}
 		}
 	}
 
 	if mcpServers, ok := kiro["mcpServers"]; ok {
-		if m, isMap := mcpServers.(map[string]any); isMap && len(m) > 0 {
-			if err := writeYAMLField(&sb, "mcpServers", mcpServers); err != nil {
-				return err
+		if m, isMap := mcpServers.(map[string]any); isMap {
+			handled["mcpServers"] = true
+			if len(m) > 0 {
+				if err := writeYAMLField(&sb, "mcpServers", mcpServers); err != nil {
+					return err
+				}
 			}
 		}
 	}
 
-	if wm, ok := kiro["welcomeMessage"].(string); ok && wm != "" {
-		if err := writeYAMLField(&sb, "welcomeMessage", wm); err != nil {
-			return err
+	if wm, ok := kiro["welcomeMessage"].(string); ok {
+		handled["welcomeMessage"] = true
+		if wm != "" {
+			if err := writeYAMLField(&sb, "welcomeMessage", wm); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -183,7 +196,7 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 	// Pass through unknown fields for forward compatibility; exclude v2-only fields
 	// that have no meaning in the IDE / v3 format.
 	for _, key := range sortedKeys(kiro) {
-		if knownHandled[key] || v2Only[key] {
+		if handled[key] || v2Only[key] {
 			continue
 		}
 		val := kiro[key]
@@ -321,10 +334,12 @@ func (h *AgentHandler) readAgentContent(zipData []byte) (string, error) {
 
 	content, err := utils.ReadZipFile(zipData, promptFile)
 	if err != nil {
-		// Fall back to the canonical default name. Use the same casing as
-		// getPromptFile's default so the fallback is consistent on case-sensitive
-		// archives. Mirror the error format from opencode/handlers/rule.go.
+		// Fall back to the canonical default name for assets that declare a
+		// custom prompt-file but ship the default layout.
 		const fallback = "AGENT.md"
+		if promptFile == fallback {
+			return "", fmt.Errorf("prompt file %q not found in asset", promptFile)
+		}
 		content, err = utils.ReadZipFile(zipData, fallback)
 		if err != nil {
 			return "", fmt.Errorf("prompt file not found (tried %q and %q)", promptFile, fallback)
