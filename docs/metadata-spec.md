@@ -396,22 +396,30 @@ description = "Go standards - applies to Go files only"
 
 **Required Section**: `[mcp]`
 
-**Required Fields**:
+**Required Fields** (local servers):
 
 - `command`: Command to run the MCP server
 - `args`: Array of command arguments
 
+**Required Fields** (remote servers):
+
+- `transport`: `"http"` or `"sse"` (defaults to `"stdio"` when omitted)
+- `url`: The remote server endpoint
+
 **Optional Fields**:
 
-- `env`: Map of environment variables
+- `env`: Map of environment variables (stdio servers only — clients that
+  distinguish remote entries, like Copilot, drop `env` on them since remote
+  servers authenticate via headers)
 - `timeout`: Timeout in milliseconds
 
 **Important**: All MCP configuration is in metadata.toml. No separate JSON config file is needed.
 
-MCP assets operate in two modes, determined automatically by zip contents:
+MCP assets operate in three modes:
 
 - **Packaged mode**: Zip contains server code files beyond `metadata.toml`. Files are extracted and command paths are resolved relative to the install directory.
 - **Config-only mode**: Zip contains only `metadata.toml`. No extraction needed - commands are used as-is (e.g., `npx`, `docker`).
+- **Remote mode**: `transport` is `"http"` or `"sse"`. Nothing runs locally; the client connects to `url` directly.
 
 **Example - Packaged MCP** (includes server code):
 
@@ -475,6 +483,20 @@ env = {
 hosted-github/
   metadata.toml
   (that's it!)
+```
+
+**Example - Remote MCP** (hosted service, no local process):
+
+```toml
+[asset]
+name = "deepwiki"
+version = "1.0.0"
+type = "mcp"
+description = "DeepWiki hosted MCP service"
+
+[mcp]
+transport = "http"
+url = "https://mcp.deepwiki.com/mcp"
 ```
 
 > **Migration note**: The legacy type `mcp-remote` is accepted as an alias for `mcp`. Existing lock files and vaults using `type = "mcp-remote"` continue to work without changes.

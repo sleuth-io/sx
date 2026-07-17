@@ -22,7 +22,7 @@ Many AI tools ship in two forms: a **desktop IDE** and a **CLI**. These often ha
 | Codex          | CLI     | Full support                                                                                   |
 | Cursor         | IDE     | Full support                                                                                   |
 | Gemini         | CLI/IDE | Full support for CLI/VS Code; rules and MCP only (JetBrains); MCP-remote only (Android Studio) |
-| GitHub Copilot | IDE ext | Full support                                                                                   |
+| GitHub Copilot | IDE+CLI | Full support, including remote (http/sse) MCP. MCP servers are written to `.vscode/mcp.json` for VS Code and mirrored into the Copilot CLI config: `~/.copilot/mcp-config.json` (global scope) or `.github/mcp.json` (repo/path scope). Packaged servers are not mirrored into `.github/mcp.json` — their entries carry machine-absolute paths and that file is typically committed. Root `.mcp.json` is left to the Claude Code client. |
 | Kiro           | CLI+IDE | Full support. See [Kiro-specific docs](kiro.md) for hook setup.                                |
 | OpenCode       | CLI     | Skills, commands, agents, rules, MCP servers. Config at `~/.config/opencode/` (or `.opencode/` per-repo). Rules are written to `rules/<name>.md` and registered via the `instructions` array in `opencode.json`. |
 

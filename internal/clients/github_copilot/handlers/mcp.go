@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
@@ -18,6 +20,17 @@ var mcpOps = dirasset.NewOperations(DirMCPServers, &asset.TypeMCP)
 // MCPHandler handles MCP asset installation for GitHub Copilot (VS Code)
 type MCPHandler struct {
 	metadata *metadata.Metadata
+
+	// CLIConfigPath is the Copilot CLI MCP config file to mirror entries into
+	// (~/.copilot/mcp-config.json for global scope, {repoRoot}/.github/mcp.json
+	// for repo/path scopes). Empty disables the CLI mirror.
+	CLIConfigPath string
+
+	// CLIConfigShared marks CLIConfigPath as a shared, typically committed file
+	// ({repoRoot}/.github/mcp.json). Packaged servers are not mirrored there:
+	// their entries carry machine-absolute paths under .vscode/mcp-servers/
+	// that won't resolve on teammates' machines.
+	CLIConfigShared bool
 }
 
 // NewMCPHandler creates a new MCP handler
@@ -36,22 +49,29 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 		return fmt.Errorf("failed to read mcp.json: %w", err)
 	}
 
-	hasContent, err := utils.HasContentFiles(zipData)
-	if err != nil {
-		return fmt.Errorf("failed to inspect zip contents: %w", err)
-	}
-
 	var entry map[string]any
-	if hasContent {
-		// Packaged mode: extract MCP server files to .vscode/mcp-servers/{name}/
-		serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
-		if err := utils.ExtractZip(zipData, serverDir); err != nil {
-			return fmt.Errorf("failed to extract MCP server: %w", err)
-		}
-		entry = h.generateMCPEntry(serverDir)
+	packaged := false
+	if h.metadata.MCP != nil && h.metadata.MCP.IsRemote() {
+		// Remote mode: nothing runs locally, so never extract — just register the URL
+		entry = h.generateRemoteMCPEntry()
 	} else {
-		// Config-only mode: no extraction, register commands as-is
-		entry = h.generateConfigOnlyMCPEntry()
+		hasContent, err := utils.HasContentFiles(zipData)
+		if err != nil {
+			return fmt.Errorf("failed to inspect zip contents: %w", err)
+		}
+
+		if hasContent {
+			// Packaged mode: extract MCP server files to .vscode/mcp-servers/{name}/
+			packaged = true
+			serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
+			if err := utils.ExtractZip(zipData, serverDir); err != nil {
+				return fmt.Errorf("failed to extract MCP server: %w", err)
+			}
+			entry = h.generateMCPEntry(serverDir)
+		} else {
+			// Config-only mode: no extraction, register commands as-is
+			entry = h.generateConfigOnlyMCPEntry()
+		}
 	}
 
 	// Add to config
@@ -65,7 +85,25 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 		return fmt.Errorf("failed to write mcp.json: %w", err)
 	}
 
+	// Mirror the entry into the Copilot CLI config so the asset also works in
+	// `copilot` sessions, which don't read VS Code's user-level mcp.json.
+	if h.shouldMirrorToCLI(packaged) {
+		if err := setCLIMCPServer(h.CLIConfigPath, h.metadata.Asset.Name, cliMCPEntry(entry)); err != nil {
+			return fmt.Errorf("failed to update Copilot CLI MCP config: %w", err)
+		}
+	}
+
 	return nil
+}
+
+// shouldMirrorToCLI reports whether an entry belongs in the Copilot CLI config.
+// Packaged entries reference machine-absolute paths and are kept out of shared
+// (committed) config files; remote and config-only entries are portable.
+func (h *MCPHandler) shouldMirrorToCLI(packaged bool) bool {
+	if h.CLIConfigPath == "" {
+		return false
+	}
+	return !packaged || !h.CLIConfigShared
 }
 
 // Remove removes an MCP entry from VS Code
@@ -86,11 +124,57 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 		return fmt.Errorf("failed to write mcp.json: %w", err)
 	}
 
+	if h.CLIConfigPath != "" {
+		if err := removeCLIMCPServer(h.CLIConfigPath, h.metadata.Asset.Name); err != nil {
+			return fmt.Errorf("failed to update Copilot CLI MCP config: %w", err)
+		}
+	}
+
 	// Remove server directory (if exists)
 	serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 	os.RemoveAll(serverDir) // Ignore errors if doesn't exist
 
 	return nil
+}
+
+// cliMCPEntry adapts a VS Code mcp.json entry for the Copilot CLI config.
+// The CLI requires an explicit "type" on every server; VS Code stdio entries
+// omit it, so add it here. Remote entries already carry their type.
+func cliMCPEntry(entry map[string]any) map[string]any {
+	cliEntry := make(map[string]any, len(entry)+1)
+	maps.Copy(cliEntry, entry)
+	if _, ok := cliEntry["type"]; !ok {
+		cliEntry["type"] = "stdio"
+	}
+	return cliEntry
+}
+
+// setCLIMCPServer writes an MCP server entry to a Copilot CLI config file
+// (mcpServers key), overwriting any existing entry so upgrades take effect.
+func setCLIMCPServer(configPath, name string, entry map[string]any) error {
+	config, err := readCopilotCLIMCPConfig(configPath)
+	if err != nil {
+		return err
+	}
+	if config.MCPServers == nil {
+		config.MCPServers = make(map[string]any)
+	}
+	config.MCPServers[name] = entry
+	return writeCopilotCLIMCPConfig(configPath, config)
+}
+
+// removeCLIMCPServer removes an MCP server entry from a Copilot CLI config file.
+// A missing file or entry is a no-op so the config isn't materialized on removal.
+func removeCLIMCPServer(configPath, name string) error {
+	config, err := readCopilotCLIMCPConfig(configPath)
+	if err != nil {
+		return err
+	}
+	if _, exists := config.MCPServers[name]; !exists {
+		return nil
+	}
+	delete(config.MCPServers, name)
+	return writeCopilotCLIMCPConfig(configPath, config)
 }
 
 func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]any {
@@ -111,6 +195,19 @@ func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]any {
 	return entry
 }
 
+// generateRemoteMCPEntry builds a VS Code mcp.json entry for a remote (sse/http)
+// MCP server. VS Code requires an explicit "type" on every server and connects
+// to the given URL directly. Env is not written: per the VS Code MCP config
+// reference, env applies only to stdio servers — remote servers authenticate via
+// "headers", which sx metadata has no analogue for, so env vars on a remote MCP
+// are dropped rather than written into an unrecognized field.
+func (h *MCPHandler) generateRemoteMCPEntry() map[string]any {
+	return map[string]any{
+		"type": h.metadata.MCP.Transport,
+		"url":  h.metadata.MCP.URL,
+	}
+}
+
 func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
 	mcpConfig := h.metadata.MCP
 
@@ -129,15 +226,18 @@ func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
 	return entry
 }
 
-// mcpConfig represents VS Code's .vscode/mcp.json structure
+// mcpConfig represents VS Code's .vscode/mcp.json structure. Extra holds any
+// other top-level keys (e.g. "inputs") so rewrites don't drop them.
 type mcpConfig struct {
-	Servers map[string]any `json:"servers"`
+	Servers map[string]any
+	Extra   map[string]any
 }
 
 // readMCPConfig reads VS Code's mcp.json file
 func readMCPConfig(path string) (*mcpConfig, error) {
 	config := &mcpConfig{
 		Servers: make(map[string]any),
+		Extra:   make(map[string]any),
 	}
 
 	data, err := os.ReadFile(path)
@@ -148,9 +248,15 @@ func readMCPConfig(path string) (*mcpConfig, error) {
 		return nil, err
 	}
 
-	if err := utils.UnmarshalJSONC(data, config); err != nil {
+	doc := make(map[string]any)
+	if err := utils.UnmarshalJSONC(data, &doc); err != nil {
 		return nil, err
 	}
+	if servers, ok := doc["servers"].(map[string]any); ok {
+		config.Servers = servers
+	}
+	delete(doc, "servers")
+	config.Extra = doc
 
 	return config, nil
 }
@@ -162,7 +268,11 @@ func writeMCPConfig(path string, config *mcpConfig) error {
 		return err
 	}
 
-	data, err := json.MarshalIndent(config, "", "  ")
+	doc := make(map[string]any, len(config.Extra)+1)
+	maps.Copy(doc, config.Extra)
+	doc["servers"] = config.Servers
+
+	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -170,9 +280,71 @@ func writeMCPConfig(path string, config *mcpConfig) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// VerifyInstalled checks if the MCP server is properly installed
+// VerifyInstalled checks if the MCP server is properly installed. Packaged
+// servers are verified through their extracted directory; config-only and
+// remote servers have no directory, so fall back to checking for the server's
+// entry in mcp.json. When a Copilot CLI mirror is expected, its entry must
+// also be present so --repair rewrites a broken CLI config.
 func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
-	return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
+	serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
+	if utils.IsDirectory(serverDir) {
+		installed, msg := mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
+		if !installed {
+			return installed, msg
+		}
+		if h.shouldMirrorToCLI(true) && !cliEntryExists(h.CLIConfigPath, h.metadata.Asset.Name) {
+			return false, "missing from Copilot CLI config"
+		}
+		return installed, msg
+	}
+
+	config, err := readMCPConfig(filepath.Join(targetBase, "mcp.json"))
+	if err != nil {
+		return false, "failed to read mcp.json: " + err.Error()
+	}
+	entry, exists := config.Servers[h.metadata.Asset.Name].(map[string]any)
+	if !exists {
+		return false, "not found in mcp.json"
+	}
+	// Verification runs with minimal lockfile metadata (no [mcp] section), so
+	// packaged vs config-only can't be told apart from metadata. A packaged
+	// entry references absolute paths under the extracted server directory;
+	// if it points at the missing directory the install is broken and needs
+	// repair rather than being reported healthy.
+	if entryReferencesDir(entry, serverDir) {
+		return false, "server directory missing"
+	}
+	if h.shouldMirrorToCLI(false) && !cliEntryExists(h.CLIConfigPath, h.metadata.Asset.Name) {
+		return false, "missing from Copilot CLI config"
+	}
+	return true, "registered in mcp.json"
+}
+
+// cliEntryExists reports whether a Copilot CLI config file has an entry for name
+func cliEntryExists(configPath, name string) bool {
+	config, err := readCopilotCLIMCPConfig(configPath)
+	if err != nil {
+		return false
+	}
+	_, exists := config.MCPServers[name]
+	return exists
+}
+
+// entryReferencesDir reports whether an mcp.json entry's command or args
+// reference files under dir.
+func entryReferencesDir(entry map[string]any, dir string) bool {
+	prefix := dir + string(os.PathSeparator)
+	if cmd, ok := entry["command"].(string); ok && strings.HasPrefix(cmd, prefix) {
+		return true
+	}
+	if args, ok := entry["args"].([]any); ok {
+		for _, arg := range args {
+			if s, ok := arg.(string); ok && strings.HasPrefix(s, prefix) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // AddMCPServer adds an MCP server entry to .vscode/mcp.json
@@ -229,9 +401,12 @@ func RemoveMCPServer(vscodeDir, name string) error {
 	return nil
 }
 
-// copilotCLIMCPConfig represents Copilot CLI's ~/.copilot/mcp-config.json structure
+// copilotCLIMCPConfig represents Copilot CLI's ~/.copilot/mcp-config.json
+// structure (also used for the repo-level .github/mcp.json mirror). Extra
+// holds any other top-level keys so rewrites don't drop them.
 type copilotCLIMCPConfig struct {
-	MCPServers map[string]any `json:"mcpServers"`
+	MCPServers map[string]any
+	Extra      map[string]any
 }
 
 // AddCopilotCLIMCPServer adds an MCP server entry to ~/.copilot/mcp-config.json
@@ -292,6 +467,7 @@ func RemoveCopilotCLIMCPServer(copilotDir, name string) error {
 func readCopilotCLIMCPConfig(path string) (*copilotCLIMCPConfig, error) {
 	config := &copilotCLIMCPConfig{
 		MCPServers: make(map[string]any),
+		Extra:      make(map[string]any),
 	}
 
 	data, err := os.ReadFile(path)
@@ -302,9 +478,15 @@ func readCopilotCLIMCPConfig(path string) (*copilotCLIMCPConfig, error) {
 		return nil, err
 	}
 
-	if err := utils.UnmarshalJSONC(data, config); err != nil {
+	doc := make(map[string]any)
+	if err := utils.UnmarshalJSONC(data, &doc); err != nil {
 		return nil, err
 	}
+	if servers, ok := doc["mcpServers"].(map[string]any); ok {
+		config.MCPServers = servers
+	}
+	delete(doc, "mcpServers")
+	config.Extra = doc
 
 	return config, nil
 }
@@ -316,7 +498,11 @@ func writeCopilotCLIMCPConfig(path string, config *copilotCLIMCPConfig) error {
 		return err
 	}
 
-	data, err := json.MarshalIndent(config, "", "  ")
+	doc := make(map[string]any, len(config.Extra)+1)
+	maps.Copy(doc, config.Extra)
+	doc["mcpServers"] = config.MCPServers
+
+	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return err
 	}
