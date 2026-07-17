@@ -50,7 +50,7 @@ func TestAgentHandler_Install_WritesIDEFormat(t *testing.T) {
 	}
 
 	content := string(data)
-	if !strings.Contains(content, `description: "A test agent"`) {
+	if !strings.Contains(content, "description: A test agent") {
 		t.Errorf("expected description in frontmatter, got:\n%s", content)
 	}
 	if !strings.Contains(content, "---") {
@@ -121,7 +121,7 @@ func TestAgentHandler_Install_WithKiroFields(t *testing.T) {
 		t.Fatalf("Failed to read IDE file: %v", err)
 	}
 	ideContent := string(ideData)
-	if !strings.Contains(ideContent, `model: "claude-sonnet-4"`) {
+	if !strings.Contains(ideContent, "model: claude-sonnet-4") {
 		t.Errorf("expected model in IDE frontmatter, got:\n%s", ideContent)
 	}
 	if !strings.Contains(ideContent, "tools:") {
@@ -323,7 +323,7 @@ func TestAgentHandler_Install_EmptyCollectionsOmitted(t *testing.T) {
 			t.Errorf("IDE file should not contain %q when value is empty, got:\n%s", key, ideContent)
 		}
 	}
-	if !strings.Contains(ideContent, `model: "claude-sonnet-4"`) {
+	if !strings.Contains(ideContent, "model: claude-sonnet-4") {
 		t.Errorf("IDE file should still contain non-empty fields, got:\n%s", ideContent)
 	}
 
@@ -411,5 +411,141 @@ func TestAgentHandler_VerifyInstalled(t *testing.T) {
 	installed, _ = handler.VerifyInstalled(targetBase)
 	if installed {
 		t.Error("should not be installed after remove")
+	}
+}
+
+func TestAgentHandler_PermissionsFromRealTOML(t *testing.T) {
+	// BurntSushi decodes [[agent.kiro.permissions]] inside a map[string]any as
+	// []map[string]any (not []any); permissions must still reach the .md file.
+	src := `
+metadata-version = "1.0"
+
+[asset]
+name = "toml-agent"
+version = "1.0.0"
+type = "agent"
+description = "Agent with permissions"
+
+[agent]
+prompt-file = "AGENT.md"
+
+[agent.kiro]
+model = "claude-sonnet-4"
+
+[[agent.kiro.permissions]]
+capability = "filesystem"
+effect = "allow"
+match = ["src/**"]
+
+[[agent.kiro.permissions]]
+capability = "shell"
+effect = "deny"
+`
+	meta, err := metadata.Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	targetBase := t.TempDir()
+	handler := NewAgentHandler(meta)
+	zipData := createTestAgentZip(t, "A secure agent.")
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(targetBase, DirAgents, "toml-agent.md"))
+	if err != nil {
+		t.Fatalf("Failed to read IDE file: %v", err)
+	}
+	content := string(data)
+	for _, want := range []string{"permissions:", "rules:", "capability: filesystem", "effect: deny"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("IDE file should contain %q when parsed from real TOML, got:\n%s", want, content)
+		}
+	}
+}
+
+func TestAgentHandler_Install_TablePermissionsRejected(t *testing.T) {
+	// A single [agent.kiro.permissions] table (instead of an array of tables)
+	// would silently produce the wrong schema; it must error with guidance.
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "bad-perms", Description: "Agent"},
+		Agent: &metadata.AgentConfig{
+			PromptFile: "AGENT.md",
+			Kiro: map[string]any{
+				"permissions": map[string]any{"capability": "shell", "effect": "deny"},
+			},
+		},
+	}
+	handler := NewAgentHandler(meta)
+	zipData := createTestAgentZip(t, "Bad perms agent.")
+
+	err := handler.Install(context.Background(), zipData, t.TempDir())
+	if err == nil {
+		t.Fatal("Install should fail for table-shaped permissions")
+	}
+	if !strings.Contains(err.Error(), "[[agent.kiro.permissions]]") {
+		t.Errorf("error should point at the array-of-tables syntax, got: %v", err)
+	}
+}
+
+func TestAgentHandler_Install_DefaultNameReserved(t *testing.T) {
+	// .kiro/agents/default.json is the sx-managed hooks config; an agent named
+	// "default" would clobber it.
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "default"},
+		Agent: &metadata.AgentConfig{PromptFile: "AGENT.md"},
+	}
+	handler := NewAgentHandler(meta)
+	zipData := createTestAgentZip(t, "Reserved name agent.")
+
+	if err := handler.Install(context.Background(), zipData, t.TempDir()); err == nil {
+		t.Fatal("Install should reject the reserved agent name \"default\"")
+	}
+}
+
+func TestAgentHandler_Remove_DefaultPreservesHooksConfig(t *testing.T) {
+	targetBase := t.TempDir()
+	agentsDir := filepath.Join(targetBase, DirAgents)
+	if err := os.MkdirAll(agentsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	hooksConfig := filepath.Join(agentsDir, "default.json")
+	if err := os.WriteFile(hooksConfig, []byte(`{"name":"default","hooks":{}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "default"},
+		Agent: &metadata.AgentConfig{PromptFile: "AGENT.md"},
+	}
+	handler := NewAgentHandler(meta)
+	if err := handler.Remove(context.Background(), targetBase); err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+
+	if _, err := os.Stat(hooksConfig); err != nil {
+		t.Error("Remove must never delete the sx-managed default.json hooks config")
+	}
+}
+
+func TestAgentHandler_VerifyInstalled_MissingCLIFile(t *testing.T) {
+	targetBase := t.TempDir()
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "half-agent"},
+		Agent: &metadata.AgentConfig{PromptFile: "AGENT.md"},
+	}
+	handler := NewAgentHandler(meta)
+	zipData := createTestAgentZip(t, "Half installed.")
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if err := os.Remove(filepath.Join(targetBase, DirAgents, "half-agent.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	installed, msg := handler.VerifyInstalled(targetBase)
+	if installed {
+		t.Errorf("missing CLI file should fail verification, got: %s", msg)
 	}
 }

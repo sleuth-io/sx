@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,6 +58,12 @@ func NewAgentHandler(meta *metadata.Metadata) *AgentHandler {
 
 // Install writes both IDE (.md) and CLI (.json) agent files to {targetBase}/agents/
 func (h *AgentHandler) Install(ctx context.Context, zipData []byte, targetBase string) error {
+	// {targetBase}/agents/default.json is the sx-managed Kiro CLI hooks config;
+	// an agent with that name would clobber it on install and delete it on remove.
+	if h.metadata.Asset.Name == "default" {
+		return errors.New(`agent name "default" is reserved: .kiro/agents/default.json holds sx-managed Kiro CLI hooks`)
+	}
+
 	content, err := h.readAgentContent(zipData)
 	if err != nil {
 		return fmt.Errorf("failed to read agent content: %w", err)
@@ -80,10 +87,16 @@ func (h *AgentHandler) Install(ctx context.Context, zipData []byte, targetBase s
 
 // Remove removes both IDE and CLI agent files
 func (h *AgentHandler) Remove(ctx context.Context, targetBase string) error {
-	for _, filename := range []string{
+	files := []string{
 		filepath.Join(targetBase, DirAgents, h.metadata.Asset.Name+".md"),
-		filepath.Join(targetBase, DirAgents, h.metadata.Asset.Name+".json"),
-	} {
+	}
+	// Never touch default.json — it is the sx-managed Kiro CLI hooks config,
+	// not an installed agent (Install rejects the name, but Remove can be
+	// invoked from lockfile cleanup regardless).
+	if h.metadata.Asset.Name != "default" {
+		files = append(files, filepath.Join(targetBase, DirAgents, h.metadata.Asset.Name+".json"))
+	}
+	for _, filename := range files {
 		if err := os.Remove(filename); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove agent file %s: %w", filename, err)
 		}
@@ -91,13 +104,18 @@ func (h *AgentHandler) Remove(ctx context.Context, targetBase string) error {
 	return nil
 }
 
-// VerifyInstalled checks if the IDE agent file exists (canonical format)
+// VerifyInstalled checks that both agent files exist; a missing half means the
+// install is broken for one of the Kiro engines and should be repaired
 func (h *AgentHandler) VerifyInstalled(targetBase string) (bool, string) {
-	filePath := filepath.Join(targetBase, DirAgents, h.metadata.Asset.Name+".md")
-	if _, err := os.Stat(filePath); err == nil {
-		return true, "Found at " + filePath
+	mdPath := filepath.Join(targetBase, DirAgents, h.metadata.Asset.Name+".md")
+	if _, err := os.Stat(mdPath); err != nil {
+		return false, "IDE agent file not found"
 	}
-	return false, "Agent file not found"
+	jsonPath := filepath.Join(targetBase, DirAgents, h.metadata.Asset.Name+".json")
+	if _, err := os.Stat(jsonPath); err != nil {
+		return false, "CLI agent file not found"
+	}
+	return true, "Found at " + mdPath
 }
 
 // writeIDEFormat writes the Kiro IDE / CLI v3 agent markdown file with YAML frontmatter.
@@ -111,21 +129,25 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 	sb.WriteString("---\n")
 
 	if desc := h.getDescription(); desc != "" {
-		fmt.Fprintf(&sb, "description: %q\n", desc)
+		if err := writeYAMLField(&sb, "description", desc); err != nil {
+			return err
+		}
 	}
 
 	kiro := h.getKiroFields()
 
 	if model, ok := kiro["model"].(string); ok && model != "" {
-		fmt.Fprintf(&sb, "model: %q\n", model)
+		if err := writeYAMLField(&sb, "model", model); err != nil {
+			return err
+		}
 	}
 
 	// Known collection fields — skip if empty to avoid no-op keys
 	for _, key := range []string{"tools", "resources"} {
 		if val, ok := kiro[key]; ok {
 			if sl, isList := val.([]any); isList && len(sl) > 0 {
-				if out, err := yaml.Marshal(map[string]any{key: val}); err == nil {
-					sb.Write(out)
+				if err := writeYAMLField(&sb, key, val); err != nil {
+					return err
 				}
 			}
 		}
@@ -133,26 +155,27 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 
 	if mcpServers, ok := kiro["mcpServers"]; ok {
 		if m, isMap := mcpServers.(map[string]any); isMap && len(m) > 0 {
-			if out, err := yaml.Marshal(map[string]any{"mcpServers": mcpServers}); err == nil {
-				sb.Write(out)
+			if err := writeYAMLField(&sb, "mcpServers", mcpServers); err != nil {
+				return err
 			}
 		}
 	}
 
 	if wm, ok := kiro["welcomeMessage"].(string); ok && wm != "" {
-		if out, err := yaml.Marshal(map[string]any{"welcomeMessage": wm}); err == nil {
-			sb.Write(out)
+		if err := writeYAMLField(&sb, "welcomeMessage", wm); err != nil {
+			return err
 		}
 	}
 
 	if permissions, ok := kiro["permissions"]; ok {
-		// Only wrap a non-empty []any — a TOML table ([agent.kiro.permissions]) decodes
-		// as map[string]any and must not be passed through: it would produce the wrong
-		// schema shape {rules:{key:val}} instead of {rules:[...]}.
-		if sl, isList := permissions.([]any); isList && len(sl) > 0 {
+		rules, err := normalizePermissions(permissions)
+		if err != nil {
+			return err
+		}
+		if len(rules) > 0 {
 			// Kiro expects permissions as an object with a "rules" key: { rules: [...] }
-			if out, err := yaml.Marshal(map[string]any{"permissions": map[string]any{"rules": permissions}}); err == nil {
-				sb.Write(out)
+			if err := writeYAMLField(&sb, "permissions", map[string]any{"rules": rules}); err != nil {
+				return err
 			}
 		}
 	}
@@ -167,8 +190,8 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 		if isEmptyValue(val) {
 			continue
 		}
-		if out, err := yaml.Marshal(map[string]any{key: val}); err == nil {
-			sb.Write(out)
+		if err := writeYAMLField(&sb, key, val); err != nil {
+			return err
 		}
 	}
 
@@ -178,6 +201,40 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 
 	filePath := filepath.Join(agentsDir, h.metadata.Asset.Name+".md")
 	return os.WriteFile(filePath, []byte(sb.String()), 0644)
+}
+
+// writeYAMLField appends one `key: value` mapping to the frontmatter, using
+// yaml.Marshal so quoting and escaping are always valid YAML
+func writeYAMLField(sb *strings.Builder, key string, val any) error {
+	out, err := yaml.Marshal(map[string]any{key: val})
+	if err != nil {
+		return fmt.Errorf("failed to marshal frontmatter field %s: %w", key, err)
+	}
+	sb.Write(out)
+	return nil
+}
+
+// normalizePermissions converts the decoded [[agent.kiro.permissions]] value
+// into a []any of rule tables. BurntSushi decodes a TOML array of tables held
+// in a map[string]any as []map[string]any, while hand-built values and JSON
+// decode as []any — both are accepted. A single table
+// ([agent.kiro.permissions]) is an authoring mistake that would otherwise be
+// dropped silently, so it is rejected with guidance.
+func normalizePermissions(val any) ([]any, error) {
+	switch p := val.(type) {
+	case []any:
+		return p, nil
+	case []map[string]any:
+		rules := make([]any, len(p))
+		for i, rule := range p {
+			rules[i] = rule
+		}
+		return rules, nil
+	case map[string]any:
+		return nil, errors.New("[agent.kiro.permissions] must be an array of tables — use [[agent.kiro.permissions]]")
+	default:
+		return nil, fmt.Errorf("unsupported permissions value of type %T", val)
+	}
 }
 
 // writeCLIFormat writes the Kiro CLI v2 agent JSON file.
