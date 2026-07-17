@@ -527,3 +527,74 @@ func TestCopilotMCPHandler_CLIMirror_PreservesOtherEntries(t *testing.T) {
 		t.Errorf("new CLI entry should be written, got: %v", entry)
 	}
 }
+
+func TestCopilotMCPHandler_Packaged_NotMirroredToSharedCLIConfig(t *testing.T) {
+	// Packaged entries carry machine-absolute paths and must stay out of the
+	// shared (committed) .github/mcp.json; portable entries still mirror.
+	targetBase := t.TempDir()
+	cliConfigPath := filepath.Join(t.TempDir(), "mcp.json")
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "packaged-shared", Version: "1.0.0", Type: asset.TypeMCP},
+		MCP: &metadata.MCPConfig{
+			Command: "node",
+			Args:    []string{"index.js"},
+		},
+	}
+	zipData := createTestZip(t, map[string]string{
+		"metadata.toml": `[asset]
+name = "packaged-shared"
+version = "1.0.0"
+type = "mcp"
+
+[mcp]
+command = "node"
+args = ["index.js"]
+`,
+		"index.js": "console.log('hi')",
+	})
+
+	handler := NewMCPHandler(meta)
+	handler.CLIConfigPath = cliConfigPath
+	handler.CLIConfigShared = true
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if _, err := os.Stat(cliConfigPath); !os.IsNotExist(err) {
+		t.Errorf("packaged server should not be mirrored into a shared CLI config")
+	}
+
+	// Verification must not demand the skipped mirror
+	installed, msg := handler.VerifyInstalled(targetBase)
+	if !installed {
+		t.Errorf("packaged server without shared mirror should verify as installed, got: %s", msg)
+	}
+}
+
+func TestCopilotMCPHandler_VerifyInstalled_MissingCLIMirror(t *testing.T) {
+	// A deleted CLI mirror entry must fail verification so --repair rewrites it.
+	targetBase := t.TempDir()
+	cliConfigPath := filepath.Join(t.TempDir(), "mcp-config.json")
+	meta := remoteMCPMeta("remote-cli-verify", "http", "https://example.com/mcp")
+	zipData := remoteMCPZip(t, "remote-cli-verify", "http", "https://example.com/mcp")
+
+	handler := NewMCPHandler(meta)
+	handler.CLIConfigPath = cliConfigPath
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	installed, msg := handler.VerifyInstalled(targetBase)
+	if !installed {
+		t.Fatalf("should verify as installed with both configs present, got: %s", msg)
+	}
+
+	if err := os.Remove(cliConfigPath); err != nil {
+		t.Fatalf("Failed to delete CLI config: %v", err)
+	}
+
+	installed, _ = handler.VerifyInstalled(targetBase)
+	if installed {
+		t.Error("missing CLI mirror entry should fail verification")
+	}
+}

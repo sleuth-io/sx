@@ -25,6 +25,12 @@ type MCPHandler struct {
 	// (~/.copilot/mcp-config.json for global scope, {repoRoot}/.github/mcp.json
 	// for repo/path scopes). Empty disables the CLI mirror.
 	CLIConfigPath string
+
+	// CLIConfigShared marks CLIConfigPath as a shared, typically committed file
+	// ({repoRoot}/.github/mcp.json). Packaged servers are not mirrored there:
+	// their entries carry machine-absolute paths under .vscode/mcp-servers/
+	// that won't resolve on teammates' machines.
+	CLIConfigShared bool
 }
 
 // NewMCPHandler creates a new MCP handler
@@ -44,6 +50,7 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 	}
 
 	var entry map[string]any
+	packaged := false
 	if h.metadata.MCP != nil && h.metadata.MCP.IsRemote() {
 		// Remote mode: nothing runs locally, so never extract — just register the URL
 		entry = h.generateRemoteMCPEntry()
@@ -55,6 +62,7 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 
 		if hasContent {
 			// Packaged mode: extract MCP server files to .vscode/mcp-servers/{name}/
+			packaged = true
 			serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 			if err := utils.ExtractZip(zipData, serverDir); err != nil {
 				return fmt.Errorf("failed to extract MCP server: %w", err)
@@ -79,13 +87,23 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 
 	// Mirror the entry into the Copilot CLI config so the asset also works in
 	// `copilot` sessions, which don't read VS Code's user-level mcp.json.
-	if h.CLIConfigPath != "" {
+	if h.shouldMirrorToCLI(packaged) {
 		if err := setCLIMCPServer(h.CLIConfigPath, h.metadata.Asset.Name, cliMCPEntry(entry)); err != nil {
 			return fmt.Errorf("failed to update Copilot CLI MCP config: %w", err)
 		}
 	}
 
 	return nil
+}
+
+// shouldMirrorToCLI reports whether an entry belongs in the Copilot CLI config.
+// Packaged entries reference machine-absolute paths and are kept out of shared
+// (committed) config files; remote and config-only entries are portable.
+func (h *MCPHandler) shouldMirrorToCLI(packaged bool) bool {
+	if h.CLIConfigPath == "" {
+		return false
+	}
+	return !packaged || !h.CLIConfigShared
 }
 
 // Remove removes an MCP entry from VS Code
@@ -252,11 +270,19 @@ func writeMCPConfig(path string, config *mcpConfig) error {
 // VerifyInstalled checks if the MCP server is properly installed. Packaged
 // servers are verified through their extracted directory; config-only and
 // remote servers have no directory, so fall back to checking for the server's
-// entry in mcp.json.
+// entry in mcp.json. When a Copilot CLI mirror is expected, its entry must
+// also be present so --repair rewrites a broken CLI config.
 func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
 	serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 	if utils.IsDirectory(serverDir) {
-		return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
+		installed, msg := mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
+		if !installed {
+			return installed, msg
+		}
+		if h.shouldMirrorToCLI(true) && !cliEntryExists(h.CLIConfigPath, h.metadata.Asset.Name) {
+			return false, "missing from Copilot CLI config"
+		}
+		return installed, msg
 	}
 
 	config, err := readMCPConfig(filepath.Join(targetBase, "mcp.json"))
@@ -275,7 +301,20 @@ func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
 	if entryReferencesDir(entry, serverDir) {
 		return false, "server directory missing"
 	}
+	if h.shouldMirrorToCLI(false) && !cliEntryExists(h.CLIConfigPath, h.metadata.Asset.Name) {
+		return false, "missing from Copilot CLI config"
+	}
 	return true, "registered in mcp.json"
+}
+
+// cliEntryExists reports whether a Copilot CLI config file has an entry for name
+func cliEntryExists(configPath, name string) bool {
+	config, err := readCopilotCLIMCPConfig(configPath)
+	if err != nil {
+		return false
+	}
+	_, exists := config.MCPServers[name]
+	return exists
 }
 
 // entryReferencesDir reports whether an mcp.json entry's command or args

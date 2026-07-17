@@ -173,7 +173,7 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 				installErr = mcpErr
 			} else {
 				handler := handlers.NewMCPHandler(bundle.Metadata)
-				handler.CLIConfigPath = c.determineCLIMCPConfigPath(req.Scope)
+				handler.CLIConfigPath, handler.CLIConfigShared = c.determineCLIMCPConfig(req.Scope)
 				installErr = handler.Install(ctx, bundle.ZipData, mcpTargetBase)
 			}
 		default:
@@ -242,7 +242,7 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 				uninstallErr = mcpErr
 			} else {
 				handler := handlers.NewMCPHandler(meta)
-				handler.CLIConfigPath = c.determineCLIMCPConfigPath(req.Scope)
+				handler.CLIConfigPath, handler.CLIConfigShared = c.determineCLIMCPConfig(req.Scope)
 				uninstallErr = handler.Remove(ctx, mcpTargetBase)
 			}
 		default:
@@ -316,27 +316,28 @@ func (c *Client) determineMCPTargetBase(scope *clients.InstallScope) (string, er
 	}
 }
 
-// determineCLIMCPConfigPath returns the Copilot CLI MCP config file MCP entries
+// determineCLIMCPConfig returns the Copilot CLI MCP config file MCP entries
 // are mirrored into, alongside VS Code's mcp.json. The CLI doesn't read VS
 // Code's user-level mcp.json: its user config is ~/.copilot/mcp-config.json,
 // and at repo level it auto-loads .github/mcp.json (root .mcp.json is left to
-// the Claude Code client, which manages that file). Returns "" (mirror
-// disabled) when the location can't be determined.
-func (c *Client) determineCLIMCPConfigPath(scope *clients.InstallScope) string {
+// the Claude Code client, which manages that file). shared marks the repo-level
+// file, which is typically committed. Returns "" (mirror disabled) when the
+// location can't be determined.
+func (c *Client) determineCLIMCPConfig(scope *clients.InstallScope) (path string, shared bool) {
 	switch scope.Type {
 	case clients.ScopeRepository, clients.ScopePath:
 		if scope.RepoRoot == "" {
-			return ""
+			return "", false
 		}
-		return filepath.Join(scope.RepoRoot, ".github", "mcp.json")
+		return filepath.Join(scope.RepoRoot, ".github", "mcp.json"), true
 	case clients.ScopeGlobal:
 		fallthrough
 	default:
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return ""
+			return "", false
 		}
-		return filepath.Join(home, handlers.ConfigDir, "mcp-config.json")
+		return filepath.Join(home, handlers.ConfigDir, "mcp-config.json"), false
 	}
 }
 
@@ -470,6 +471,9 @@ func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, sco
 		if err != nil {
 			result.Message = err.Error()
 		} else {
+			if mcpHandler, ok := handler.(*handlers.MCPHandler); ok {
+				mcpHandler.CLIConfigPath, mcpHandler.CLIConfigShared = c.determineCLIMCPConfig(scope)
+			}
 			result.Installed, result.Message = handler.VerifyInstalled(targetBase)
 		}
 
