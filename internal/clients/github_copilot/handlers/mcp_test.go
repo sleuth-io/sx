@@ -355,3 +355,175 @@ args = ["index.js"]
 		t.Errorf("packaged MCP with deleted directory should not verify as installed, got: %s", msg)
 	}
 }
+
+func readCLIServerEntry(t *testing.T, configPath, name string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("Failed to read CLI config %s: %v", configPath, err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatalf("Failed to parse CLI config: %v", err)
+	}
+	servers, ok := config["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatalf("mcpServers key not found in CLI config, got: %s", data)
+	}
+	entry, ok := servers[name].(map[string]any)
+	if !ok {
+		t.Fatalf("server %q not found in CLI config, got: %s", name, data)
+	}
+	return entry
+}
+
+func TestCopilotMCPHandler_Remote_CLIMirror(t *testing.T) {
+	targetBase := t.TempDir()
+	cliConfigPath := filepath.Join(t.TempDir(), "mcp-config.json")
+	meta := remoteMCPMeta("remote-cli", "http", "https://example.com/mcp")
+	zipData := remoteMCPZip(t, "remote-cli", "http", "https://example.com/mcp")
+
+	handler := NewMCPHandler(meta)
+	handler.CLIConfigPath = cliConfigPath
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	entry := readCLIServerEntry(t, cliConfigPath, "remote-cli")
+	if entry["type"] != "http" {
+		t.Errorf("CLI entry type = %v, want \"http\"", entry["type"])
+	}
+	if entry["url"] != "https://example.com/mcp" {
+		t.Errorf("CLI entry url = %v, want \"https://example.com/mcp\"", entry["url"])
+	}
+
+	// VS Code mcp.json is still written alongside
+	vscodeEntry := readServerEntry(t, targetBase, "remote-cli")
+	if vscodeEntry["url"] != "https://example.com/mcp" {
+		t.Errorf("VS Code entry url = %v, want \"https://example.com/mcp\"", vscodeEntry["url"])
+	}
+}
+
+func TestCopilotMCPHandler_Stdio_CLIMirrorAddsType(t *testing.T) {
+	// VS Code stdio entries omit "type"; the Copilot CLI requires it.
+	targetBase := t.TempDir()
+	cliConfigPath := filepath.Join(t.TempDir(), "mcp-config.json")
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "stdio-cli", Version: "1.0.0", Type: asset.TypeMCP},
+		MCP: &metadata.MCPConfig{
+			Command: "npx",
+			Args:    []string{"-y", "some-server"},
+			Env:     map[string]string{"API_KEY": "secret"},
+		},
+	}
+	zipData := createTestZip(t, map[string]string{
+		"metadata.toml": `[asset]
+name = "stdio-cli"
+version = "1.0.0"
+type = "mcp"
+
+[mcp]
+command = "npx"
+args = ["-y", "some-server"]
+`,
+	})
+
+	handler := NewMCPHandler(meta)
+	handler.CLIConfigPath = cliConfigPath
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	entry := readCLIServerEntry(t, cliConfigPath, "stdio-cli")
+	if entry["type"] != "stdio" {
+		t.Errorf("CLI entry type = %v, want \"stdio\"", entry["type"])
+	}
+	if entry["command"] != "npx" {
+		t.Errorf("CLI entry command = %v, want \"npx\"", entry["command"])
+	}
+
+	// The VS Code entry keeps its existing shape without a type field
+	vscodeEntry := readServerEntry(t, targetBase, "stdio-cli")
+	if _, hasType := vscodeEntry["type"]; hasType {
+		t.Errorf("VS Code stdio entry should not gain a type field, got: %v", vscodeEntry)
+	}
+}
+
+func TestCopilotMCPHandler_Remove_CLIMirror(t *testing.T) {
+	targetBase := t.TempDir()
+	cliDir := t.TempDir()
+	cliConfigPath := filepath.Join(cliDir, "mcp-config.json")
+	meta := remoteMCPMeta("remote-rm-cli", "http", "https://example.com/mcp")
+	zipData := remoteMCPZip(t, "remote-rm-cli", "http", "https://example.com/mcp")
+
+	handler := NewMCPHandler(meta)
+	handler.CLIConfigPath = cliConfigPath
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+	if err := handler.Remove(context.Background(), targetBase); err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+
+	data, err := os.ReadFile(cliConfigPath)
+	if err != nil {
+		t.Fatalf("Failed to read CLI config: %v", err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatalf("Failed to parse CLI config: %v", err)
+	}
+	servers, _ := config["mcpServers"].(map[string]any)
+	if _, exists := servers["remote-rm-cli"]; exists {
+		t.Errorf("CLI config should not contain remote-rm-cli after remove, got: %s", data)
+	}
+}
+
+func TestCopilotMCPHandler_Remove_NoCLIConfigNoop(t *testing.T) {
+	// Removing an asset that was never mirrored must not materialize the CLI config
+	targetBase := t.TempDir()
+	cliConfigPath := filepath.Join(t.TempDir(), "mcp.json")
+	meta := remoteMCPMeta("never-mirrored", "http", "https://example.com/mcp")
+
+	handler := NewMCPHandler(meta)
+	handler.CLIConfigPath = cliConfigPath
+	if err := handler.Remove(context.Background(), targetBase); err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+
+	if _, err := os.Stat(cliConfigPath); !os.IsNotExist(err) {
+		t.Errorf("CLI config should not be created by a no-op remove")
+	}
+}
+
+func TestCopilotMCPHandler_CLIMirror_PreservesOtherEntries(t *testing.T) {
+	// Installing must not clobber pre-existing entries (e.g. user-added servers
+	// or the sx bootstrap query server) in the CLI config.
+	targetBase := t.TempDir()
+	cliDir := t.TempDir()
+	cliConfigPath := filepath.Join(cliDir, "mcp-config.json")
+	existing := `{
+  "mcpServers": {
+    "user-server": {"type": "stdio", "command": "my-tool"}
+  }
+}`
+	if err := os.WriteFile(cliConfigPath, []byte(existing), 0644); err != nil {
+		t.Fatalf("Failed to seed CLI config: %v", err)
+	}
+
+	meta := remoteMCPMeta("added-later", "http", "https://example.com/mcp")
+	zipData := remoteMCPZip(t, "added-later", "http", "https://example.com/mcp")
+
+	handler := NewMCPHandler(meta)
+	handler.CLIConfigPath = cliConfigPath
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if entry := readCLIServerEntry(t, cliConfigPath, "user-server"); entry["command"] != "my-tool" {
+		t.Errorf("pre-existing CLI entry should be preserved, got: %v", entry)
+	}
+	if entry := readCLIServerEntry(t, cliConfigPath, "added-later"); entry["url"] != "https://example.com/mcp" {
+		t.Errorf("new CLI entry should be written, got: %v", entry)
+	}
+}

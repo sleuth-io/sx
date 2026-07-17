@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,11 @@ var mcpOps = dirasset.NewOperations(DirMCPServers, &asset.TypeMCP)
 // MCPHandler handles MCP asset installation for GitHub Copilot (VS Code)
 type MCPHandler struct {
 	metadata *metadata.Metadata
+
+	// CLIConfigPath is the Copilot CLI MCP config file to mirror entries into
+	// (~/.copilot/mcp-config.json for global scope, {repoRoot}/.github/mcp.json
+	// for repo/path scopes). Empty disables the CLI mirror.
+	CLIConfigPath string
 }
 
 // NewMCPHandler creates a new MCP handler
@@ -71,6 +77,14 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 		return fmt.Errorf("failed to write mcp.json: %w", err)
 	}
 
+	// Mirror the entry into the Copilot CLI config so the asset also works in
+	// `copilot` sessions, which don't read VS Code's user-level mcp.json.
+	if h.CLIConfigPath != "" {
+		if err := setCLIMCPServer(h.CLIConfigPath, h.metadata.Asset.Name, cliMCPEntry(entry)); err != nil {
+			return fmt.Errorf("failed to update Copilot CLI MCP config: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -92,11 +106,57 @@ func (h *MCPHandler) Remove(ctx context.Context, targetBase string) error {
 		return fmt.Errorf("failed to write mcp.json: %w", err)
 	}
 
+	if h.CLIConfigPath != "" {
+		if err := removeCLIMCPServer(h.CLIConfigPath, h.metadata.Asset.Name); err != nil {
+			return fmt.Errorf("failed to update Copilot CLI MCP config: %w", err)
+		}
+	}
+
 	// Remove server directory (if exists)
 	serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 	os.RemoveAll(serverDir) // Ignore errors if doesn't exist
 
 	return nil
+}
+
+// cliMCPEntry adapts a VS Code mcp.json entry for the Copilot CLI config.
+// The CLI requires an explicit "type" on every server; VS Code stdio entries
+// omit it, so add it here. Remote entries already carry their type.
+func cliMCPEntry(entry map[string]any) map[string]any {
+	cliEntry := make(map[string]any, len(entry)+1)
+	maps.Copy(cliEntry, entry)
+	if _, ok := cliEntry["type"]; !ok {
+		cliEntry["type"] = "stdio"
+	}
+	return cliEntry
+}
+
+// setCLIMCPServer writes an MCP server entry to a Copilot CLI config file
+// (mcpServers key), overwriting any existing entry so upgrades take effect.
+func setCLIMCPServer(configPath, name string, entry map[string]any) error {
+	config, err := readCopilotCLIMCPConfig(configPath)
+	if err != nil {
+		return err
+	}
+	if config.MCPServers == nil {
+		config.MCPServers = make(map[string]any)
+	}
+	config.MCPServers[name] = entry
+	return writeCopilotCLIMCPConfig(configPath, config)
+}
+
+// removeCLIMCPServer removes an MCP server entry from a Copilot CLI config file.
+// A missing file or entry is a no-op so the config isn't materialized on removal.
+func removeCLIMCPServer(configPath, name string) error {
+	config, err := readCopilotCLIMCPConfig(configPath)
+	if err != nil {
+		return err
+	}
+	if _, exists := config.MCPServers[name]; !exists {
+		return nil
+	}
+	delete(config.MCPServers, name)
+	return writeCopilotCLIMCPConfig(configPath, config)
 }
 
 func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]any {
