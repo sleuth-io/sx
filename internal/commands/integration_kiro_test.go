@@ -613,7 +613,7 @@ path = "assets/api-helper/1.0.0"
 		t.Fatalf("Failed to install: %v", err)
 	}
 
-	// Global scope → ~/.kiro/agents/ with both output formats
+	// Default (global) install target → ~/.kiro/agents/ with both output formats
 	agentsDir := filepath.Join(env.HomeDir, ".kiro", "agents")
 	mdFile := filepath.Join(agentsDir, "api-helper.md")
 	jsonFile := filepath.Join(agentsDir, "api-helper.json")
