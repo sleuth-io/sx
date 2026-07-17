@@ -134,11 +134,12 @@ func (h *AgentHandler) writeIDEFormat(agentsDir string, content string) error {
 	// handled tracks fields consumed by the field-specific logic below
 	// (whether emitted or intentionally omitted when empty). A known field
 	// with an unexpected type is left unhandled so the generic pass-through
-	// still emits it rather than dropping it silently. name and description
-	// are reserved top-level fields (description is already written from
-	// [asset].description above) — never pass them through a second time,
-	// mirroring the reserved-key guard in writeCLIFormat.
-	handled := map[string]bool{"permissions": true, "name": true, "description": true}
+	// still emits it rather than dropping it silently. name, description, and
+	// prompt are reserved (description is already written from
+	// [asset].description above; the prompt is this format's document body) —
+	// never pass them through, mirroring the reserved-key guard in
+	// writeCLIFormat.
+	handled := map[string]bool{"permissions": true, "name": true, "description": true, "prompt": true}
 
 	if model, ok := kiro["model"].(string); ok {
 		handled["model"] = true
