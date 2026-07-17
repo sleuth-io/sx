@@ -309,3 +309,49 @@ args = ["-y", "some-server"]
 		t.Errorf("config-only MCP should verify as installed, got: %s", msg)
 	}
 }
+
+func TestCopilotMCPHandler_VerifyInstalled_PackagedDirDeleted(t *testing.T) {
+	// A packaged server whose extracted directory was deleted but whose
+	// mcp.json entry survives is broken (the entry points into the missing
+	// directory) and must not verify as installed, so --repair re-extracts it.
+	targetBase := t.TempDir()
+	meta := &metadata.Metadata{
+		Asset: metadata.Asset{Name: "packaged", Version: "1.0.0", Type: asset.TypeMCP},
+		MCP: &metadata.MCPConfig{
+			Command: "node",
+			Args:    []string{"index.js"},
+		},
+	}
+	zipData := createTestZip(t, map[string]string{
+		"metadata.toml": `[asset]
+name = "packaged"
+version = "1.0.0"
+type = "mcp"
+
+[mcp]
+command = "node"
+args = ["index.js"]
+`,
+		"index.js": "console.log('hi')",
+	})
+
+	handler := NewMCPHandler(meta)
+	if err := handler.Install(context.Background(), zipData, targetBase); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	installed, msg := handler.VerifyInstalled(targetBase)
+	if !installed {
+		t.Fatalf("packaged MCP should verify as installed, got: %s", msg)
+	}
+
+	serverDir := filepath.Join(targetBase, DirMCPServers, "packaged")
+	if err := os.RemoveAll(serverDir); err != nil {
+		t.Fatalf("Failed to delete server dir: %v", err)
+	}
+
+	installed, msg = handler.VerifyInstalled(targetBase)
+	if installed {
+		t.Errorf("packaged MCP with deleted directory should not verify as installed, got: %s", msg)
+	}
+}

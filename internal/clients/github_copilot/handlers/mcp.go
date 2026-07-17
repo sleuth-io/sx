@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/sleuth-io/sx/internal/asset"
 	"github.com/sleuth-io/sx/internal/handlers/dirasset"
@@ -36,26 +37,27 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 		return fmt.Errorf("failed to read mcp.json: %w", err)
 	}
 
-	hasContent, err := utils.HasContentFiles(zipData)
-	if err != nil {
-		return fmt.Errorf("failed to inspect zip contents: %w", err)
-	}
-
 	var entry map[string]any
-	switch {
-	case h.metadata.MCP != nil && h.metadata.MCP.IsRemote():
+	if h.metadata.MCP != nil && h.metadata.MCP.IsRemote() {
 		// Remote mode: nothing runs locally, so never extract — just register the URL
 		entry = h.generateRemoteMCPEntry()
-	case hasContent:
-		// Packaged mode: extract MCP server files to .vscode/mcp-servers/{name}/
-		serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
-		if err := utils.ExtractZip(zipData, serverDir); err != nil {
-			return fmt.Errorf("failed to extract MCP server: %w", err)
+	} else {
+		hasContent, err := utils.HasContentFiles(zipData)
+		if err != nil {
+			return fmt.Errorf("failed to inspect zip contents: %w", err)
 		}
-		entry = h.generateMCPEntry(serverDir)
-	default:
-		// Config-only mode: no extraction, register commands as-is
-		entry = h.generateConfigOnlyMCPEntry()
+
+		if hasContent {
+			// Packaged mode: extract MCP server files to .vscode/mcp-servers/{name}/
+			serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
+			if err := utils.ExtractZip(zipData, serverDir); err != nil {
+				return fmt.Errorf("failed to extract MCP server: %w", err)
+			}
+			entry = h.generateMCPEntry(serverDir)
+		} else {
+			// Config-only mode: no extraction, register commands as-is
+			entry = h.generateConfigOnlyMCPEntry()
+		}
 	}
 
 	// Add to config
@@ -201,10 +203,36 @@ func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
 	if err != nil {
 		return false, "failed to read mcp.json: " + err.Error()
 	}
-	if _, exists := config.Servers[h.metadata.Asset.Name]; exists {
-		return true, "registered in mcp.json"
+	entry, exists := config.Servers[h.metadata.Asset.Name].(map[string]any)
+	if !exists {
+		return false, "not found in mcp.json"
 	}
-	return false, "not found in mcp.json"
+	// Verification runs with minimal lockfile metadata (no [mcp] section), so
+	// packaged vs config-only can't be told apart from metadata. A packaged
+	// entry references absolute paths under the extracted server directory;
+	// if it points at the missing directory the install is broken and needs
+	// repair rather than being reported healthy.
+	if entryReferencesDir(entry, serverDir) {
+		return false, "server directory missing"
+	}
+	return true, "registered in mcp.json"
+}
+
+// entryReferencesDir reports whether an mcp.json entry's command or args
+// reference files under dir.
+func entryReferencesDir(entry map[string]any, dir string) bool {
+	prefix := dir + string(os.PathSeparator)
+	if cmd, ok := entry["command"].(string); ok && strings.HasPrefix(cmd, prefix) {
+		return true
+	}
+	if args, ok := entry["args"].([]any); ok {
+		for _, arg := range args {
+			if s, ok := arg.(string); ok && strings.HasPrefix(s, prefix) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // AddMCPServer adds an MCP server entry to .vscode/mcp.json
