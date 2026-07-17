@@ -42,14 +42,18 @@ func (h *MCPHandler) Install(ctx context.Context, zipData []byte, targetBase str
 	}
 
 	var entry map[string]any
-	if hasContent {
+	switch {
+	case h.metadata.MCP != nil && h.metadata.MCP.IsRemote():
+		// Remote mode: nothing runs locally, so never extract — just register the URL
+		entry = h.generateRemoteMCPEntry()
+	case hasContent:
 		// Packaged mode: extract MCP server files to .vscode/mcp-servers/{name}/
 		serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
 		if err := utils.ExtractZip(zipData, serverDir); err != nil {
 			return fmt.Errorf("failed to extract MCP server: %w", err)
 		}
 		entry = h.generateMCPEntry(serverDir)
-	} else {
+	default:
 		// Config-only mode: no extraction, register commands as-is
 		entry = h.generateConfigOnlyMCPEntry()
 	}
@@ -111,6 +115,19 @@ func (h *MCPHandler) generateMCPEntry(serverDir string) map[string]any {
 	return entry
 }
 
+// generateRemoteMCPEntry builds a VS Code mcp.json entry for a remote (sse/http)
+// MCP server. VS Code requires an explicit "type" on every server and connects
+// to the given URL directly. Env is not written: per the VS Code MCP config
+// reference, env applies only to stdio servers — remote servers authenticate via
+// "headers", which sx metadata has no analogue for, so env vars on a remote MCP
+// are dropped rather than written into an unrecognized field.
+func (h *MCPHandler) generateRemoteMCPEntry() map[string]any {
+	return map[string]any{
+		"type": h.metadata.MCP.Transport,
+		"url":  h.metadata.MCP.URL,
+	}
+}
+
 func (h *MCPHandler) generateConfigOnlyMCPEntry() map[string]any {
 	mcpConfig := h.metadata.MCP
 
@@ -170,9 +187,24 @@ func writeMCPConfig(path string, config *mcpConfig) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// VerifyInstalled checks if the MCP server is properly installed
+// VerifyInstalled checks if the MCP server is properly installed. Packaged
+// servers are verified through their extracted directory; config-only and
+// remote servers have no directory, so fall back to checking for the server's
+// entry in mcp.json.
 func (h *MCPHandler) VerifyInstalled(targetBase string) (bool, string) {
-	return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
+	serverDir := filepath.Join(targetBase, DirMCPServers, h.metadata.Asset.Name)
+	if utils.IsDirectory(serverDir) {
+		return mcpOps.VerifyInstalled(targetBase, h.metadata.Asset.Name, h.metadata.Asset.Version)
+	}
+
+	config, err := readMCPConfig(filepath.Join(targetBase, "mcp.json"))
+	if err != nil {
+		return false, "failed to read mcp.json: " + err.Error()
+	}
+	if _, exists := config.Servers[h.metadata.Asset.Name]; exists {
+		return true, "registered in mcp.json"
+	}
+	return false, "not found in mcp.json"
 }
 
 // AddMCPServer adds an MCP server entry to .vscode/mcp.json

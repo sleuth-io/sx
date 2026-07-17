@@ -167,13 +167,6 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 			handler := handlers.NewAgentHandler(bundle.Metadata)
 			installErr = handler.Install(ctx, bundle.ZipData, targetBase)
 		case asset.TypeMCP:
-			// Remote MCP (sse/http) not supported for GitHub Copilot
-			if bundle.Metadata.MCP != nil && bundle.Metadata.MCP.IsRemote() {
-				result.Status = clients.StatusSkipped
-				result.Message = "Remote MCP (sse/http) not supported"
-				resp.Results = append(resp.Results, result)
-				continue
-			}
 			// MCP uses .vscode/ instead of .github/
 			mcpTargetBase, mcpErr := c.determineMCPTargetBase(req.Scope)
 			if mcpErr != nil {
