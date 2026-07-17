@@ -563,3 +563,192 @@ func TestKiroBootstrapUninstall(t *testing.T) {
 		t.Error("postToolUse hooks should be empty after uninstall")
 	}
 }
+
+func TestKiroAgentInstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	// Hand-written asset so it carries [agent.kiro] fields, including the
+	// [[agent.kiro.permissions]] array-of-tables shape from real TOML.
+	agentDir := env.MkdirAll(filepath.Join(vaultDir, "assets", "api-helper", "1.0.0"))
+	env.WriteFile(filepath.Join(agentDir, "metadata.toml"), `[asset]
+name = "api-helper"
+type = "agent"
+version = "1.0.0"
+description = "Agent for API development"
+
+[agent]
+prompt-file = "AGENT.md"
+
+[agent.kiro]
+model = "claude-sonnet-4"
+tools = ["read", "write"]
+
+[[agent.kiro.permissions]]
+capability = "filesystem"
+effect = "allow"
+match = ["src/**"]
+`)
+	env.WriteFile(filepath.Join(agentDir, "AGENT.md"), "You are an API development expert.")
+
+	lockFile := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "api-helper"
+version = "1.0.0"
+type = "agent"
+
+[assets.source-path]
+path = "assets/api-helper/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFile)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	// Default (global) install target → ~/.kiro/agents/ with both output formats
+	agentsDir := filepath.Join(env.HomeDir, ".kiro", "agents")
+	mdFile := filepath.Join(agentsDir, "api-helper.md")
+	jsonFile := filepath.Join(agentsDir, "api-helper.json")
+	env.AssertFileExists(mdFile)
+	env.AssertFileExists(jsonFile)
+
+	mdContent, err := os.ReadFile(mdFile)
+	if err != nil {
+		t.Fatalf("Failed to read IDE agent file: %v", err)
+	}
+	for _, want := range []string{"model: claude-sonnet-4", "permissions:", "rules:", "capability: filesystem", "You are an API development expert."} {
+		if !strings.Contains(string(mdContent), want) {
+			t.Errorf("IDE agent file should contain %q, got:\n%s", want, string(mdContent))
+		}
+	}
+
+	jsonContent, err := os.ReadFile(jsonFile)
+	if err != nil {
+		t.Fatalf("Failed to read CLI agent file: %v", err)
+	}
+	for _, want := range []string{`"name": "api-helper"`, `"prompt"`, `"model": "claude-sonnet-4"`} {
+		if !strings.Contains(string(jsonContent), want) {
+			t.Errorf("CLI agent file should contain %q, got:\n%s", want, string(jsonContent))
+		}
+	}
+	// CLI v2 has no permissions model
+	if strings.Contains(string(jsonContent), "permissions") {
+		t.Errorf("CLI agent file should not contain permissions, got:\n%s", string(jsonContent))
+	}
+}
+
+func TestKiroAgentUninstall(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddAgentToVault(vaultDir, "temp-agent", "1.0.0", "Temporary agent.")
+	env.AddSkillToVault(vaultDir, "keeper-skill", "1.0.0")
+
+	lockFileWithBoth := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "temp-agent"
+version = "1.0.0"
+type = "agent"
+
+[assets.source-path]
+path = "assets/temp-agent/1.0.0"
+
+[[assets]]
+name = "keeper-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/keeper-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFileWithBoth)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	installCmd := NewInstallCommand()
+	if err := installCmd.Execute(); err != nil {
+		t.Fatalf("Failed to install: %v", err)
+	}
+
+	agentsDir := filepath.Join(env.HomeDir, ".kiro", "agents")
+	env.AssertFileExists(filepath.Join(agentsDir, "temp-agent.md"))
+	env.AssertFileExists(filepath.Join(agentsDir, "temp-agent.json"))
+
+	// Remove the agent from the lock and re-install
+	lockFileSkillOnly := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "keeper-skill"
+version = "1.0.0"
+type = "skill"
+
+[assets.source-path]
+path = "assets/keeper-skill/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFileSkillOnly)
+
+	installCmd2 := NewInstallCommand()
+	if err := installCmd2.Execute(); err != nil {
+		t.Fatalf("Failed to re-install: %v", err)
+	}
+
+	env.AssertFileNotExists(filepath.Join(agentsDir, "temp-agent.md"))
+	env.AssertFileNotExists(filepath.Join(agentsDir, "temp-agent.json"))
+}
+
+func TestKiroAgentDefaultNameRejected(t *testing.T) {
+	env := NewTestEnv(t)
+
+	vaultDir := env.SetupPathVault()
+	env.AddAgentToVault(vaultDir, "default", "1.0.0", "Reserved name agent.")
+
+	lockFile := `lock-version = "1"
+version = "1.0.0"
+created-by = "test"
+
+[[assets]]
+name = "default"
+version = "1.0.0"
+type = "agent"
+
+[assets.source-path]
+path = "assets/default/1.0.0"
+`
+	env.WriteLockFile(vaultDir, lockFile)
+
+	// Seed the sx-managed hooks config that an agent named "default" would clobber
+	agentsDir := filepath.Join(env.HomeDir, ".kiro", "agents")
+	env.MkdirAll(agentsDir)
+	hooksConfig := filepath.Join(agentsDir, "default.json")
+	env.WriteFile(hooksConfig, `{"name":"default","hooks":{"agentSpawn":[{"command":"sx install --hook-mode --client=kiro"}]}}`)
+
+	projectDir := env.SetupGitRepo("project", "https://github.com/testorg/testrepo")
+	env.Chdir(projectDir)
+
+	installCmd := NewInstallCommand()
+	_ = installCmd.Execute() // install reports a failed asset; command itself may not error
+
+	// The reserved name must not produce agent files or clobber the hooks config
+	env.AssertFileNotExists(filepath.Join(agentsDir, "default.md"))
+	content, err := os.ReadFile(hooksConfig)
+	if err != nil {
+		t.Fatalf("hooks config should still exist: %v", err)
+	}
+	if !strings.Contains(string(content), "agentSpawn") {
+		t.Errorf("sx-managed hooks config should be untouched, got: %s", content)
+	}
+}

@@ -80,7 +80,8 @@ type CommandConfig struct {
 
 // AgentConfig represents the [agent] section
 type AgentConfig struct {
-	PromptFile string `toml:"prompt-file"`
+	PromptFile string         `toml:"prompt-file"`
+	Kiro       map[string]any `toml:"kiro,omitempty"`
 }
 
 // HookConfig represents the [hook] section
