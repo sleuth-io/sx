@@ -239,7 +239,12 @@ Use "{{muted (printf "%s [command] --help" .CommandPath)}}" for more information
 	rootCmd.AddCommand(commands.NewAuditCommand())
 	rootCmd.AddCommand(commands.NewCloudCommand())
 
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	// Inline SSH keys (SX_SSH_KEY content, typically a CI secret) are written
+	// to temp files for git; remove them before the process ends so nothing
+	// that runs after sx in the same job can read them.
+	git.CleanupTempSSHKeys()
+	if err != nil {
 		// Print error with styling
 		styledOut := ui.NewOutput(os.Stdout, os.Stderr)
 		styledOut.Error(err.Error())

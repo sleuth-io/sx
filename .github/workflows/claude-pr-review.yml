@@ -17,7 +17,7 @@ jobs:
       skills: ${{ steps.check.outputs.skills }}
     env:
       HAS_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
-      HAS_SKILLS_KEY: ${{ secrets.SKILLS_SITE_API_KEY != '' }}
+      HAS_VAULT_KEY: ${{ secrets.SX_VAULT_SSH_KEY != '' }}
       IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
     steps:
       - id: check
@@ -35,12 +35,12 @@ jobs:
             exit 0
           fi
           echo "review=true" >> "$GITHUB_OUTPUT"
-          # Skills are a bonus. Without a vault key the review still runs
-          # against the repo's own standards.
-          if [ "$HAS_SKILLS_KEY" = "true" ]; then
+          # Skills are a bonus. Without the vault deploy key the review still
+          # runs against the repo's own standards.
+          if [ "$HAS_VAULT_KEY" = "true" ]; then
             echo "skills=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Skills vault key is not configured; reviewing without installed skills."
+            echo "SX_VAULT_SSH_KEY is not configured; reviewing without installed skills."
             echo "skills=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -67,16 +67,40 @@ jobs:
       - name: Build sx
         run: make build
 
+      # The skills vault is a private git repository (sleuth-io/ai-assets).
+      # GITHUB_TOKEN only reaches the repo this workflow runs in, so sx
+      # authenticates to the vault with a read-only deploy key passed inline
+      # via SX_SSH_KEY. See docs/github-actions.md for the full story.
       - name: Setup sx config
         if: needs.guard.outputs.skills == 'true'
         run: |
           mkdir -p $HOME/.config/sx
           mkdir -p $HOME/.claude
-          printf '%s\n' '{' '  "type": "sleuth",' '  "repositoryUrl": "https://app.skills.new",' '  "authToken": "${{ secrets.SKILLS_SITE_API_KEY }}"' '}' > $HOME/.config/sx/config.json
+          printf '%s\n' '{' \
+            '  "defaultProfile": "default",' \
+            '  "profiles": {' \
+            '    "default": {' \
+            '      "type": "git",' \
+            '      "repositoryUrl": "git@github.com:sleuth-io/ai-assets.git"' \
+            '    }' \
+            '  },' \
+            '  "forceEnabledClients": ["claude-code"]' \
+            '}' > $HOME/.config/sx/config.json
 
       - name: Install skills
         if: needs.guard.outputs.skills == 'true'
+        env:
+          SX_SSH_KEY: ${{ secrets.SX_VAULT_SSH_KEY }}
+          # Install as the vault's CI bot so team- and bot-scoped skills for
+          # this repo resolve, not just repo-scoped and org-wide ones.
+          SX_BOT: SX Bot
         run: ./dist/sx install
+
+      # sx removes its temp copy of the inline key on exit; this is belt and
+      # braces so the review agent below can never find one in $TMPDIR.
+      - name: Scrub SSH key temp files
+        if: always() && needs.guard.outputs.skills == 'true'
+        run: rm -f "${TMPDIR:-/tmp}"/ssh-key-*
 
       - name: Discover installed Claude skills
         id: discover-skills

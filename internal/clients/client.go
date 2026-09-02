@@ -217,6 +217,15 @@ const (
 	StatusSkipped ResultStatus = "skipped"
 )
 
+// ErrEnvironmentUnavailable marks an install that cannot proceed because the
+// runtime lacks a tool the asset type depends on — for example a marketplace
+// claude-code plugin on a machine without the claude CLI (a CI runner that
+// installs Claude Code in a later step). The asset and the vault are fine;
+// only this environment can't complete the install. Handlers wrap it so
+// TranslateInstallError reports StatusSkipped rather than StatusFailed, the
+// same treatment hook.ErrUnsupportedEvent gets; --strict escalates both.
+var ErrEnvironmentUnavailable = errors.New("required tool is not available in this environment")
+
 // TranslateInstallError converts an error returned by a per-asset install
 // handler into the AssetResult fields a client should report.
 //
@@ -239,7 +248,7 @@ func TranslateInstallError(err error, successMessage string) (ResultStatus, stri
 	if err == nil {
 		return StatusSuccess, successMessage, nil
 	}
-	if errors.Is(err, hook.ErrUnsupportedEvent) {
+	if errors.Is(err, hook.ErrUnsupportedEvent) || errors.Is(err, ErrEnvironmentUnavailable) {
 		return StatusSkipped, err.Error(), err
 	}
 	return StatusFailed, fmt.Sprintf("Installation failed: %v", err), err

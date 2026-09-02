@@ -2,6 +2,7 @@ package clients
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -66,4 +67,21 @@ func TestTranslateInstallError(t *testing.T) {
 			t.Errorf("err = nil, want the original error preserved")
 		}
 	})
+}
+
+// A handler that can't complete an install because the runtime lacks a tool
+// (marketplace plugin, no claude CLI) reports a skip, not a failure, and the
+// sentinel survives for --strict to escalate.
+func TestTranslateInstallError_EnvironmentUnavailableIsSkipped(t *testing.T) {
+	wrapped := fmt.Errorf("marketplace %q is not installed and the claude CLI is not available: %w", "acme/plugins", ErrEnvironmentUnavailable)
+	status, msg, err := TranslateInstallError(wrapped, "unused")
+	if status != StatusSkipped {
+		t.Fatalf("status = %s, want skipped", status)
+	}
+	if msg != wrapped.Error() {
+		t.Errorf("message = %q, want the error text", msg)
+	}
+	if !errors.Is(err, ErrEnvironmentUnavailable) {
+		t.Errorf("sentinel not preserved: %v", err)
+	}
 }

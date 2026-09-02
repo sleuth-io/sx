@@ -52,6 +52,7 @@ make build && ./dist/sx <command>
 - [Metadata Spec](docs/metadata-spec.md) - Asset metadata format and fields
 - [MCP Spec](docs/mcp-spec.md) - MCP server tools (query)
 - [Environment Variables](docs/environment-variables.md) - SX_CONFIG_DIR, SX_CACHE_DIR, and isolation recipes
+- [GitHub Actions](docs/github-actions.md) - Installing from a private vault in CI (deploy keys, SX_SSH_KEY, SX_BOT)
 
 ## Development
 

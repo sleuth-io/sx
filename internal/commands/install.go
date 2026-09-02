@@ -114,7 +114,7 @@ equivalent of 'pip freeze' against the vault's manifest.`,
 	cmd.Flags().StringVar(&targetDir, "target", "", "Install as if running from this directory")
 	cmd.Flags().StringVar(&clientsFlag, "clients", "", "Install to multiple clients (e.g., 'claude-code,cursor')")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the resolved asset list for the current context and exit without downloading or installing")
-	cmd.Flags().BoolVar(&strict, "strict", false, "Treat hook installs that soft-skip (event not supported by client) as failures (also via SX_STRICT=1)")
+	cmd.Flags().BoolVar(&strict, "strict", false, "Treat soft-skipped installs (hook event not supported by client, or a required tool such as the claude CLI missing) as failures (also via SX_STRICT=1)")
 
 	cmd.Flags().BoolVar(&orgFlag, "org", false, "Scope: install org-wide (global, exclusive)")
 	cmd.Flags().StringArrayVar(&repoFlags, "repo", nil, "Scope: a repository URL (repeatable)")
@@ -797,7 +797,7 @@ func processInstallationResults(allResults map[string]clients.InstallResponse, s
 			// compatible assets, unsupported asset type) are unaffected —
 			// only hook events that *some* client supports but this one
 			// doesn't carry the sentinel.
-			if strict && status == clients.StatusSkipped && errors.Is(result.Error, hook.ErrUnsupportedEvent) {
+			if strict && status == clients.StatusSkipped && (errors.Is(result.Error, hook.ErrUnsupportedEvent) || errors.Is(result.Error, clients.ErrEnvironmentUnavailable)) {
 				status = clients.StatusFailed
 				strictSawUnsupported = true
 			}
