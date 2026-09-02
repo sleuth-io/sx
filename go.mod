@@ -3,7 +3,7 @@ module github.com/sleuth-io/sx/v2
 go 1.26.0
 
 require (
-	charm.land/bubbles/v2 v2.2.0
+	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.0.9
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/BurntSushi/toml v1.6.0
@@ -13,7 +13,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/coder/websocket v1.8.15
 	github.com/creativeprojects/go-selfupdate v1.6.0
-	github.com/gofrs/flock v0.13.0
+	github.com/gofrs/flock v0.13.1
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-isatty v0.0.24
 	github.com/modelcontextprotocol/go-sdk v1.7.0
