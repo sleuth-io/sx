@@ -153,6 +153,15 @@ creation):
 sx bot key create <bot-name>
 ```
 
+## 8. Update CI jobs that install skills
+
+Any workflow that ran `sx install` against skills.new (a Claude PR review, an
+agent job) needs a credential for the new private repository — the workflow's
+built-in token only reaches the repository it runs in. Add a read-only deploy
+key to the vault, store it as a secret, and switch the job to `vault-url` +
+`ssh-key`. The full walkthrough, including running the job as an sx bot, is in
+[Using your vault from GitHub Actions](github-actions.md).
+
 ## What doesn't carry over
 
 The copy report names every skipped item, but three categories are expected:
@@ -184,6 +193,7 @@ The copy report names every skipped item, but three categories are expected:
 ## Further reading
 
 - [Copying a vault](copy.md) — everything `sx vault copy` moves and how
+- [Using your vault from GitHub Actions](github-actions.md) — CI access to a private vault
 - [Profiles](profiles.md) — managing multiple vault connections
 - [Vault structure](vault-spec.md) — what the git repository contains
 - [Permissions / RBAC](rbac.md) — governance on git vaults
