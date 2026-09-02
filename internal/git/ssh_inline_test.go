@@ -1,6 +1,8 @@
 package git
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"strings"
 	"testing"
@@ -32,7 +34,7 @@ func TestBuildSSHCommand_InlineKeyCachedAndCleanedUp(t *testing.T) {
 	}
 
 	CleanupTempSSHKeys()
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("temp key file should be removed on cleanup, stat err=%v", err)
 	}
 	// After cleanup a new command writes a fresh file rather than reusing the deleted path.

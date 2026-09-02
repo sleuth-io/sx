@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/sleuth-io/sx/v2/internal/clients"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sleuth-io/sx/v2/internal/clients"
 	"github.com/sleuth-io/sx/v2/internal/utils"
 )
 
@@ -139,7 +139,7 @@ func EnsureMarketplaceInstalledFromFile(ctx context.Context, knownMarketsPath, i
 	if _, err := exec.LookPath("claude"); err != nil {
 		// Soft-skip, not a failure: the plugin is fine, this machine just
 		// can't add marketplaces without the claude CLI (typical for CI).
-		return "", fmt.Errorf("marketplace %q is not installed and the claude CLI is not available to auto-install it (%v): %w", identifier, err, clients.ErrEnvironmentUnavailable)
+		return "", fmt.Errorf("marketplace %q is not installed and the claude CLI is not available to auto-install it (%w): %w", identifier, err, clients.ErrEnvironmentUnavailable)
 	}
 
 	fmt.Fprintf(os.Stderr, "  ℹ Marketplace %q not found locally, installing via claude CLI...\n", repo)
