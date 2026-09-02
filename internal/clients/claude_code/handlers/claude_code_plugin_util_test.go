@@ -1,11 +1,15 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sleuth-io/sx/v2/internal/clients"
 )
 
 func TestExtractRepoIdentifier(t *testing.T) {
@@ -519,5 +523,23 @@ func TestIsPluginRegistered(t *testing.T) {
 	// After unregistration
 	if IsPluginRegistered(targetBase, "test-plugin", "my-market") {
 		t.Error("expected false after unregistration")
+	}
+}
+
+// Without the claude CLI on PATH, auto-installing a marketplace must surface
+// the environment-unavailable sentinel so the install is soft-skipped rather
+// than failing the whole sx install run (CI runners rarely have claude yet).
+func TestEnsureMarketplaceInstalledFromFile_NoClaudeCLIIsSoftSkip(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // no claude binary anywhere
+	known := filepath.Join(t.TempDir(), "known_marketplaces.json")
+	if err := os.WriteFile(known, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := EnsureMarketplaceInstalledFromFile(context.Background(), known, "https://github.com/acme/plugins")
+	if err == nil {
+		t.Fatal("expected an error without the claude CLI")
+	}
+	if !errors.Is(err, clients.ErrEnvironmentUnavailable) {
+		t.Fatalf("want ErrEnvironmentUnavailable, got: %v", err)
 	}
 }

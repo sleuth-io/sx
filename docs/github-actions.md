@@ -41,7 +41,9 @@ GIT_SSH_COMMAND="ssh -i <tmpfile> -o IdentitiesOnly=yes -o StrictHostKeyChecking
 Nothing secret is written to the sx config file, `IdentitiesOnly` stops ssh
 from trying the runner's other keys, and `accept-new` accepts the host key on
 first contact (GitHub's runners already ship github.com's host keys, so this
-is a no-op there). GitHub masks the secret's value in job logs.
+is a no-op there). sx writes the key once per process and deletes the temp
+file when it exits, so the key doesn't outlive the `sx install` step. GitHub
+masks the secret's value in job logs.
 
 ## Recommended: a read-only deploy key
 
@@ -167,6 +169,10 @@ asset access. The deploy key is what gates that access.
 - **Never print the key.** Steps that `echo` environment variables will have
   the value masked by GitHub, but `set -x` in a script that constructs an ssh
   command can still leak fragments. sx itself logs only the key's type.
+- **Keep the key's lifetime to the install step.** sx removes its temp copy
+  of the key on exit. If a later step in the same job runs an agent with
+  shell access, don't also export `SX_SSH_KEY` at the job level — scope the
+  `env:` to the install step, as the examples here do.
 - **Deploy keys show who is using them.** The vault repository's Deploy keys
   page records when each key was last used.
 
@@ -212,9 +218,10 @@ tied to whoever created it and expires on a schedule. Treat it as a stopgap.
 - **`Permission denied (publickey)`** — the deploy key isn't on the vault
   repository, or the secret holds the public key / a truncated key. The value
   must be the whole private key file, `-----BEGIN` to `-----END`.
-- **`repository URL unreachable`** or a clone timeout — the `vault-url` is an
-  HTTPS URL but no credential is configured (deploy keys are SSH-only; use
-  `git@github.com:...`), or the runner can't reach GitHub over SSH.
+- **`fatal: could not read Username for 'https://github.com'`** — the
+  `vault-url` is HTTPS and no credential is configured. Either supply the
+  deploy key (sx rewrites an HTTPS GitHub URL to SSH when `SX_SSH_KEY` is set)
+  or route HTTPS through an App token as described below.
 - **The job reports `skills=none`** — the vault has nothing scoped to this
   repository or org-wide, or the checkout's remote doesn't match the vault's
   repo scope rows. Run `sx vault show <asset>` locally to see an asset's

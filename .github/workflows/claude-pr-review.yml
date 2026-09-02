@@ -96,6 +96,12 @@ jobs:
           SX_BOT: SX Bot
         run: ./dist/sx install
 
+      # sx removes its temp copy of the inline key on exit; this is belt and
+      # braces so the review agent below can never find one in $TMPDIR.
+      - name: Scrub SSH key temp files
+        if: always() && needs.guard.outputs.skills == 'true'
+        run: rm -f "${TMPDIR:-/tmp}"/ssh-key-*
+
       - name: Discover installed Claude skills
         id: discover-skills
         run: |
