@@ -34,10 +34,11 @@ Parts B and C only need the new vault, so do Part A first.
 - **The admin running Part A needs**: access to your skills.new library, the
   ability to create a private repository in your GitHub organization, and SSH
   access to GitHub from their machine (`ssh -T git@github.com`).
-- **Teammates need** read access to the new repository to install assets.
-  Publishing with `sx add` and contributing usage analytics to `sx stats`
-  need push access; teammates without it can still publish through the
-  pull-request flow (see [Access levels](#access-levels)).
+- **Teammates need** read access to the new repository to install assets,
+  and push access to publish with `sx add` or to have their usage counted in
+  `sx stats` (see [Access levels](#access-levels)). Most teams simply give
+  everyone push access and let sx's org-admin and team-admin rules govern
+  who may change what.
 
 ---
 
@@ -56,7 +57,9 @@ gh repo create your-org/ai-assets --private
 git ls-remote git@github.com:your-org/ai-assets.git   # should print nothing and exit 0
 ```
 
-(In the GitHub UI: New repository → Private → leave "Add a README" unchecked.)
+(In the GitHub UI: New repository → Private → leave "Add a README" unchecked.
+Any git host works — GitLab and Bitbucket have deploy keys too — but the
+commands in this guide are written for GitHub.)
 
 ### A2. Add a git profile alongside your skills.new profile
 
@@ -152,22 +155,27 @@ sx vault show <asset> --profile ai-assets
 
 ### A6. Tidy team admins
 
-Creating a team on a git vault adds the creator as a member and admin, so you
-are now an admin (and member) of every copied team, alongside the admins that
-were copied over. Adjust where that's not wanted:
+Teams keep the admins they had on skills.new. A team that had *no* admins
+gets you as its admin and member — a git vault won't create an orphaned team.
+Check the result and adjust only where that's not wanted:
 
 ```bash
-sx team admin unset <team> you@company.com
-sx team member remove <team> you@company.com
+sx team list --profile ai-assets
+sx team admin unset --profile ai-assets <team> you@company.com
+sx team member remove --profile ai-assets <team> you@company.com
 ```
+
+`--profile ai-assets` matters for every write in Part A: your skills.new
+profile is still the active one, so a command without it changes skills.new.
 
 ### A7. Lock down scope changes
 
 A fresh git vault has no org-admins, which means anyone with push access can
-install any asset anywhere. Restore governance now:
+set any org-, repo-, path-, or bot-scoped install (team scopes are always
+gated on that team's admins). Restore governance now:
 
 ```bash
-sx org admin add you@company.com colleague@company.com
+sx org admin add --profile ai-assets you@company.com colleague@company.com
 ```
 
 Org-admins control org-, repo-, path-, and bot-scoped installs; team admins
@@ -190,6 +198,8 @@ CI uses this.
 the vault already has everything.*
 
 ### B1. Point sx at the new vault
+
+(If you ran Part A, the profile already exists — start at `sx profile use`.)
 
 ```bash
 sx profile add ai-assets          # Share with my team → Git repository → git@github.com:your-org/ai-assets.git
@@ -227,29 +237,31 @@ CLI, so once the CLI switch above is done the app follows.
 ### B4. Remove skills.new-only pieces
 
 - **Cloud relay.** If you exposed your vault to claude.ai or chatgpt.com
-  through the skills.new relay, revoke the credential — the relay serves the
-  skills.new vault, not your git repository:
+  through the skills.new relay, drop this machine's relay credential — the
+  relay serves the skills.new vault, not your git repository:
 
   ```bash
   sx cloud status
-  sx cloud revoke
+  sx cloud revoke     # removes the local token only
   ```
 
+  The relay itself stays active on skills.new until it's invalidated there —
+  that's an admin step in Part D.
+
 - **MCP servers that call app.skills.new.** Any MCP asset whose configuration
-  points at `app.skills.new` targets the vault you're leaving. Uninstall it and
-  remove it from the new vault (`sx vault remove <name>`).
+  points at `app.skills.new` targets the vault you're leaving. Uninstall it
+  locally (`sx uninstall <name>`); the admin removes it from the vault in
+  Part D.
 
 ### Access levels
 
 | You want to… | Repository access needed |
 |--------------|--------------------------|
 | Install assets (`sx install`) | read |
-| Publish or rescope assets (`sx add`) | push — or read + the [`gh` CLI](https://cli.github.com/), which opens a pull request instead |
+| Publish or rescope assets (`sx add`) | push (a teammate blocked by a team's edit gate is offered a pull request instead of a hard failure — that still pushes a branch, so it needs push access too) |
 | Have your usage counted in `sx stats` | push (usage events are committed and pushed by your sx, throttled; without push access they stay queued locally — nothing else breaks) |
 | Manage teams, org-admins, bots | push (and the relevant team-admin / org-admin role) |
 
-Most teams give everyone push access to the vault repository and let the
-org-admin and team-admin rules in sx govern who may change what.
 
 ---
 
@@ -360,7 +372,18 @@ Once Parts A–C are done:
 
 2. **Confirm nobody is still on the old profile**: `sx profile list` on each
    machine should no longer show a `https://app.skills.new` entry.
-3. **Keep the repository private** and treat read access to it as access to
+3. **Remove skills.new-only assets from the vault** — any MCP server whose
+   configuration points at `app.skills.new` (teammates uninstalled it locally
+   in B4; this removes it from the vault once):
+
+   ```bash
+   sx vault remove <name>
+   ```
+
+4. **Invalidate the cloud relay server-side**, if you used one: `sx cloud
+   revoke` only deletes local tokens, so visit
+   [app.skills.new/relay](https://app.skills.new/relay) and revoke it there.
+5. **Keep the repository private** and treat read access to it as access to
    your team's skills.
 
 ---
@@ -394,7 +417,7 @@ The copy report lists every skipped item. These are the expected ones:
 - **After switching, repo-scoped assets are missing in a repo** — check the
   scope with `sx vault show <asset>`; it should read `github.com/org/repo`.
   If it reads a bare `org/repo`, the copy was made with an sx older than
-  2.3.8: update sx and re-run `sx vault copy … --only assets --yes` (scopes are
+  2.3.9: update sx and re-run `sx vault copy … --only assets --yes` (scopes are
   rewritten in place).
 - **The copy report says `user-scoped installs may only target the
   authenticated caller`** — same cause: update sx and re-run the assets stage.

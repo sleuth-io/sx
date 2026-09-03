@@ -353,3 +353,37 @@ func TestCopy_ForeignUserScopeOnCollectionCopied(t *testing.T) {
 		t.Fatalf("dst targets = %+v present=%v err=%v, want bob@example.com user target", targets, present, err)
 	}
 }
+
+// The bot-key note in the copy report must match the destination: a file
+// vault issues no API keys, so telling the operator to run `sx bot key create`
+// (which errors there) would contradict the migration docs.
+func TestCopy_BotKeyNoteMatchesDestination(t *testing.T) {
+	mgmt.ResetActorCache()
+	ctx := context.Background()
+
+	src := newSeededVault(t)
+	dst := newEmptyVault(t)
+	if _, err := src.CreateBot(ctx, mgmt.Bot{Name: "ci-reviewer", Description: "PR review job"}); err != nil {
+		t.Fatalf("seed bot: %v", err)
+	}
+
+	report, err := vaultcopy.Copy(ctx, src, dst, vaultcopy.Options{Bots: true})
+	if err != nil {
+		t.Fatalf("Copy: %v (warnings: %v)", err, report.Warnings)
+	}
+	if report.Bots != 1 {
+		t.Fatalf("report = %+v, want 1 bot", report)
+	}
+	var sawNote bool
+	for _, w := range report.Warnings {
+		if strings.Contains(w, "sx bot key create") {
+			t.Fatalf("file-vault destination must not be told to create API keys: %q", w)
+		}
+		if strings.Contains(w, "SX_BOT") {
+			sawNote = true
+		}
+	}
+	if !sawNote {
+		t.Fatalf("want the SX_BOT bot-identity note, got %v", report.Warnings)
+	}
+}

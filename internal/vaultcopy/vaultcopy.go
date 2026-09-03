@@ -188,7 +188,11 @@ func copyBots(ctx context.Context, src, dst vault.Vault, opts Options, r *Report
 		}
 	}
 	if len(bots) > 0 && !opts.DryRun {
-		r.warnf("bot API keys are not copied; create fresh ones on the destination with 'sx bot key create'")
+		if _, issuesKeys := dst.(botKeyManager); issuesKeys {
+			r.warnf("bot API keys are not copied; create fresh ones on the destination with 'sx bot key create'")
+		} else {
+			r.warnf("bot API keys are not copied and this destination issues none; jobs claim a bot with SX_BOT=<name> instead")
+		}
 	}
 	return nil
 }
