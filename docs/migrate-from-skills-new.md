@@ -156,14 +156,19 @@ sx vault show <asset> --profile ai-assets
 ### A6. Tidy team admins
 
 Teams keep the admins they had on skills.new. A team that had *no* admins
-gets you as its admin and member — a git vault won't create an orphaned team.
-Check the result and adjust only where that's not wanted:
+gets you as its sole admin and member — a git vault never leaves a team
+without an admin. Check the result, and where you'd rather not own a team,
+hand it to someone first (the last admin can't leave), then step out;
+removing your membership also drops your admin role:
 
 ```bash
 sx team list --profile ai-assets
-sx team admin unset --profile ai-assets <team> you@company.com
+sx team member add --profile ai-assets <team> colleague@company.com --admin
 sx team member remove --profile ai-assets <team> you@company.com
 ```
+
+Only a team's admins can change it (org-admins don't override this), so leave
+teams that already had admins to them.
 
 `--profile ai-assets` matters for every write in Part A: your skills.new
 profile is still the active one, so a command without it changes skills.new.
@@ -417,7 +422,7 @@ The copy report lists every skipped item. These are the expected ones:
 - **After switching, repo-scoped assets are missing in a repo** — check the
   scope with `sx vault show <asset>`; it should read `github.com/org/repo`.
   If it reads a bare `org/repo`, the copy was made with an sx older than
-  2.3.9: update sx and re-run `sx vault copy … --only assets --yes` (scopes are
+  2.3.8: update sx and re-run `sx vault copy … --only assets --yes` (scopes are
   rewritten in place).
 - **The copy report says `user-scoped installs may only target the
   authenticated caller`** — same cause: update sx and re-run the assets stage.
