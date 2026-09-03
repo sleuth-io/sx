@@ -5,7 +5,7 @@ teams, bots, installation scopes, audit history, and usage history. The source
 and destination can be any backend, so you can convert a skills.new vault into a
 git vault (or vice versa) without leaving the contents behind. For the full
 step-by-step skills.new exit path, see
-[Migrating from app.skills.new to a git vault](migrate-from-skills-new.md).
+[Migrating from skills.new to your own git vault](migrate-from-skills-new.md).
 
 ```bash
 sx vault copy --from <profile> --to <profile> [--only ...] [--dry-run] [--yes]
@@ -77,7 +77,8 @@ collections (including their collection-level install rows), audit, and usage
 in both directions, with these exceptions:
 
 - **Bot API keys** can't be copied (they're shown once at creation). Regenerate
-  them on the destination.
+  them on a skills.new destination; git and path vaults have no bot keys — a
+  job claims a bot identity with `SX_BOT=<name>` instead (see [Bots](bots.md)).
 - **Cross-org copies** require the referenced entities to exist in the
   destination org: a team can only include members who are users of that org,
   and repo/user-scoped installs only land if that repo/user exists there.
