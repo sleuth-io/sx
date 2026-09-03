@@ -1,13 +1,12 @@
 # Migrating from skills.new to your own git vault
 
-skills.new is being retired — it shuts down once every team using it has
-confirmed they've migrated, so there's no deadline to race, only a request:
-tell us when you're done. Everything your team keeps there — skills, rules,
+This guide moves a team's library from skills.new into a private git
+repository your organization controls. Everything comes along — skills, rules,
 commands, MCP configs, hooks, plugins, their full version history, teams, bots,
-installation scopes, collections, audit history, and usage history — moves into
-a private git repository your organization controls, and `sx` keeps working
-exactly as before against it. This guide is the whole migration, start to
-finish. Follow it in order and you're done.
+installation scopes, collections, audit history, and usage history — and `sx`
+keeps working exactly as before against the new vault. It covers the whole
+migration, start to finish: the vault itself, every teammate's machine, and
+your GitHub Actions. Follow it in order and you're done.
 
 **Who does what**
 
@@ -16,10 +15,9 @@ finish. Follow it in order and you're done.
 | [A. Move the vault](#part-a-move-the-vault) | one admin, once | 15–60 min (mostly waiting on the copy) |
 | [B. Switch your machine](#part-b-switch-your-machine) | every teammate | 2 min each |
 | [C. Update GitHub Actions](#part-c-update-github-actions) | one admin, once per org | 10 min |
-| [D. Retire skills.new](#part-d-retire-skillsnew) | one admin | 5 min |
+| [D. Clean up](#part-d-clean-up) | one admin | 5 min |
 
-Nothing in Part B or C depends on skills.new still being up once Part A is
-done — do Part A first.
+Parts B and C only need the new vault, so do Part A first.
 
 ## Before you start
 
@@ -229,8 +227,8 @@ CLI, so once the CLI switch above is done the app follows.
 ### B4. Remove skills.new-only pieces
 
 - **Cloud relay.** If you exposed your vault to claude.ai or chatgpt.com
-  through the skills.new relay, revoke the credential — the relay is hosted on
-  skills.new and stops working with it:
+  through the skills.new relay, revoke the credential — the relay serves the
+  skills.new vault, not your git repository:
 
   ```bash
   sx cloud status
@@ -238,8 +236,8 @@ CLI, so once the CLI switch above is done the app follows.
   ```
 
 - **MCP servers that call app.skills.new.** Any MCP asset whose configuration
-  points at `app.skills.new` will fail after the shutdown. Uninstall it and
-  remove it from the vault (`sx vault remove <name>`).
+  points at `app.skills.new` targets the vault you're leaving. Uninstall it and
+  remove it from the new vault (`sx vault remove <name>`).
 
 ### Access levels
 
@@ -349,7 +347,7 @@ doesn't fail the job.
 
 ---
 
-## Part D: Retire skills.new
+## Part D: Clean up
 
 Once Parts A–C are done:
 
@@ -364,8 +362,6 @@ Once Parts A–C are done:
    machine should no longer show a `https://app.skills.new` entry.
 3. **Keep the repository private** and treat read access to it as access to
    your team's skills.
-4. **Tell us you're done.** We turn skills.new off only after every team has
-   confirmed their migration, so your confirmation is what lets us proceed.
 
 ---
 
