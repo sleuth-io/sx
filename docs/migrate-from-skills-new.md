@@ -1,6 +1,8 @@
 # Migrating from skills.new to your own git vault
 
-skills.new is shutting down. Everything your team keeps there — skills, rules,
+skills.new is being retired — it shuts down once every team using it has
+confirmed they've migrated, so there's no deadline to race, only a request:
+tell us when you're done. Everything your team keeps there — skills, rules,
 commands, MCP configs, hooks, plugins, their full version history, teams, bots,
 installation scopes, collections, audit history, and usage history — moves into
 a private git repository your organization controls, and `sx` keeps working
@@ -17,7 +19,7 @@ finish. Follow it in order and you're done.
 | [D. Retire skills.new](#part-d-retire-skillsnew) | one admin | 5 min |
 
 Nothing in Part B or C depends on skills.new still being up once Part A is
-done — do Part A first, before the shutdown date.
+done — do Part A first.
 
 ## Before you start
 
@@ -362,6 +364,8 @@ Once Parts A–C are done:
    machine should no longer show a `https://app.skills.new` entry.
 3. **Keep the repository private** and treat read access to it as access to
    your team's skills.
+4. **Tell us you're done.** We turn skills.new off only after every team has
+   confirmed their migration, so your confirmation is what lets us proceed.
 
 ---
 
