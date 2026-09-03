@@ -234,5 +234,5 @@ tied to whoever created it and expires on a schedule. Treat it as a stopgap.
 
 - [Bots](bots.md) — bot identities and `SX_BOT`
 - [Environment variables](environment-variables.md) — `SX_SSH_KEY`, `SX_BOT`, isolation recipes
-- [Migrating from app.skills.new](migrate-from-skills-new.md) — moving a library into a git vault
+- [Migrating from skills.new to your own git vault](migrate-from-skills-new.md)
 - [sleuth-io/skills-actions](https://github.com/sleuth-io/skills-actions) — the composite action

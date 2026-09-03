@@ -353,3 +353,83 @@ func TestCopy_ForeignUserScopeOnCollectionCopied(t *testing.T) {
 		t.Fatalf("dst targets = %+v present=%v err=%v, want bob@example.com user target", targets, present, err)
 	}
 }
+
+// The bot-key note in the copy report must match the destination: a file
+// vault issues no API keys, so telling the operator to run `sx bot key create`
+// (which errors there) would contradict the migration docs.
+func TestCopy_BotKeyNoteMatchesDestination(t *testing.T) {
+	mgmt.ResetActorCache()
+	ctx := context.Background()
+
+	src := newSeededVault(t)
+	dst := newEmptyVault(t)
+	if _, err := src.CreateBot(ctx, mgmt.Bot{Name: "ci-reviewer", Description: "PR review job"}); err != nil {
+		t.Fatalf("seed bot: %v", err)
+	}
+
+	report, err := vaultcopy.Copy(ctx, src, dst, vaultcopy.Options{Bots: true})
+	if err != nil {
+		t.Fatalf("Copy: %v (warnings: %v)", err, report.Warnings)
+	}
+	if report.Bots != 1 {
+		t.Fatalf("report = %+v, want 1 bot", report)
+	}
+	var sawNote bool
+	for _, w := range report.Warnings {
+		if strings.Contains(w, "sx bot key create") {
+			t.Fatalf("file-vault destination must not be told to create API keys: %q", w)
+		}
+		if strings.Contains(w, "SX_BOT") {
+			sawNote = true
+		}
+	}
+	if !sawNote {
+		t.Fatalf("want the SX_BOT bot-identity note, got %v", report.Warnings)
+	}
+}
+
+// keyIssuingVault wraps a file vault so it satisfies vault.BotApiKeyManager —
+// the probe `sx bot key create` uses — standing in for a skills.new-style
+// destination that does issue bot API keys.
+type keyIssuingVault struct {
+	vault.Vault
+}
+
+func (v *keyIssuingVault) CreateBotApiKey(context.Context, string, string) (string, mgmt.BotApiKey, error) {
+	return "raw", mgmt.BotApiKey{ID: "k1"}, nil
+}
+func (v *keyIssuingVault) ListBotApiKeys(context.Context, string) ([]mgmt.BotApiKey, error) {
+	return nil, nil
+}
+func (v *keyIssuingVault) DeleteBotApiKey(context.Context, string, string) error { return nil }
+
+// A destination that does issue keys must get the `sx bot key create` note —
+// the counterpart of TestCopy_BotKeyNoteMatchesDestination, so neither branch
+// can be inverted or dropped unnoticed.
+func TestCopy_BotKeyNoteForKeyIssuingDestination(t *testing.T) {
+	mgmt.ResetActorCache()
+	ctx := context.Background()
+
+	src := newSeededVault(t)
+	dst := &keyIssuingVault{newEmptyVault(t)}
+	if _, err := src.CreateBot(ctx, mgmt.Bot{Name: "ci-reviewer"}); err != nil {
+		t.Fatalf("seed bot: %v", err)
+	}
+
+	report, err := vaultcopy.Copy(ctx, src, dst, vaultcopy.Options{Bots: true})
+	if err != nil {
+		t.Fatalf("Copy: %v (warnings: %v)", err, report.Warnings)
+	}
+	var sawCreate bool
+	for _, w := range report.Warnings {
+		if strings.Contains(w, "SX_BOT") {
+			t.Fatalf("key-issuing destination must not get the identity-only note: %q", w)
+		}
+		if strings.Contains(w, "sx bot key create") {
+			sawCreate = true
+		}
+	}
+	if !sawCreate {
+		t.Fatalf("want the 'sx bot key create' note, got %v", report.Warnings)
+	}
+}
