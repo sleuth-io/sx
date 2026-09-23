@@ -62,6 +62,7 @@ var (
 		"openclaw":       true,
 		"opencode":       true,
 		"kiro":           true,
+		"kirocrew":       true,
 	}
 )
 
