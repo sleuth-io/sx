@@ -60,7 +60,7 @@ func (c *Client) IsInstalled() bool {
 	}
 
 	// Check for global .kiro directory (user-level config)
-	home, err := os.UserHomeDir()
+	home, err := kiroHome()
 	if err == nil {
 		configDir := filepath.Join(home, handlers.ConfigDir)
 		if stat, err := os.Stat(configDir); err == nil && stat.IsDir() {
@@ -203,10 +203,21 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 	return resp, nil
 }
 
+// kiroHome resolves the root under which the GLOBAL ~/.kiro directory lives.
+// It honors the KIRO_HOME environment variable when set (matching Kiro's own
+// override), falling back to the user's home directory otherwise. This only
+// affects global-scope resolution; repo/path scopes are rooted at RepoRoot.
+func kiroHome() (string, error) {
+	if home := strings.TrimSpace(os.Getenv("KIRO_HOME")); home != "" {
+		return home, nil
+	}
+	return os.UserHomeDir()
+}
+
 // determineTargetBase returns the installation directory based on scope
 // Returns an error if a repo/path-scoped install is requested without a valid RepoRoot
 func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := kiroHome()
 	if err != nil {
 		return "", fmt.Errorf("cannot determine home directory: %w", err)
 	}
@@ -279,7 +290,7 @@ func (c *Client) removeLegacySteeringFile(scope *clients.InstallScope) {
 
 // registerSkillsMCPServer adds skills MCP server to ~/.kiro/settings/mcp.json
 func (c *Client) registerSkillsMCPServer() error {
-	home, err := os.UserHomeDir()
+	home, err := kiroHome()
 	if err != nil {
 		return err
 	}
@@ -423,7 +434,7 @@ func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) 
 
 // installMCPServerFromConfig installs an MCP server from a bootstrap.MCPServerConfig
 func (c *Client) installMCPServerFromConfig(config *bootstrap.MCPServerConfig) error {
-	home, err := os.UserHomeDir()
+	home, err := kiroHome()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
@@ -484,7 +495,7 @@ func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option
 
 // uninstallMCPServerByName removes an MCP server by its name
 func (c *Client) uninstallMCPServerByName(name string) error {
-	home, err := os.UserHomeDir()
+	home, err := kiroHome()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
