@@ -17,7 +17,6 @@ import (
 	"github.com/sleuth-io/sx/v2/internal/lockfile"
 	"github.com/sleuth-io/sx/v2/internal/logger"
 	"github.com/sleuth-io/sx/v2/internal/metadata"
-	"github.com/sleuth-io/sx/v2/internal/utils"
 )
 
 // Client implements the clients.Client interface for Kiro
@@ -215,37 +214,31 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 // A leading ~ is expanded and a relative value is made absolute, so the returned
 // path is always absolute. This governs global scope only; repo and path scopes
 // stay rooted at RepoRoot and never consult KIRO_HOME.
+//
+// The rule itself lives in handlers.GlobalConfigDir so report-usage can match
+// skill paths against the same resolved root instead of a second hardcoded
+// literal; this is the package-local seam onto it.
 func kiroConfigDir() (string, error) {
-	if raw := strings.TrimSpace(os.Getenv("KIRO_HOME")); raw != "" {
-		expanded, err := utils.ExpandTilde(raw)
-		if err != nil {
-			return "", fmt.Errorf("cannot expand KIRO_HOME %q: %w", raw, err)
-		}
-		abs, err := filepath.Abs(expanded)
-		if err != nil {
-			return "", fmt.Errorf("cannot resolve KIRO_HOME %q: %w", raw, err)
-		}
-		return abs, nil
-	}
+	return handlers.GlobalConfigDir()
+}
 
-	home, err := os.UserHomeDir()
+// globalTargetBase resolves the global installation root. Only global-scoped
+// installs call it: a KIRO_HOME that cannot be resolved must not be able to fail
+// a repo- or path-scoped install, which never consults the variable at all.
+func globalTargetBase() (string, error) {
+	dir, err := kiroConfigDir()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("cannot determine Kiro config directory: %w", err)
 	}
-	return filepath.Join(home, handlers.ConfigDir), nil
+	return dir, nil
 }
 
 // determineTargetBase returns the installation directory based on scope
 // Returns an error if a repo/path-scoped install is requested without a valid RepoRoot
 func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error) {
-	globalDir, err := kiroConfigDir()
-	if err != nil {
-		return "", fmt.Errorf("cannot determine Kiro config directory: %w", err)
-	}
-
 	switch scope.Type {
 	case clients.ScopeGlobal:
-		return globalDir, nil
+		return globalTargetBase()
 	case clients.ScopeRepository:
 		if scope.RepoRoot == "" {
 			return "", errors.New("repo-scoped install requires RepoRoot but none provided (not in a git repository?)")
@@ -257,7 +250,7 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 		}
 		return filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir), nil
 	default:
-		return globalDir, nil
+		return globalTargetBase()
 	}
 }
 
@@ -309,7 +302,9 @@ func (c *Client) removeLegacySteeringFile(scope *clients.InstallScope) {
 	}
 }
 
-// registerSkillsMCPServer adds skills MCP server to ~/.kiro/settings/mcp.json
+// registerSkillsMCPServer adds the skills MCP server to the global
+// settings/mcp.json under the resolved Kiro config root (KIRO_HOME when set,
+// otherwise ~/.kiro).
 func (c *Client) registerSkillsMCPServer() error {
 	configDir, err := kiroConfigDir()
 	if err != nil {

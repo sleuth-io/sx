@@ -6,13 +6,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/sleuth-io/sx/v2/internal/assets"
 	"github.com/sleuth-io/sx/v2/internal/assets/detectors"
+	"github.com/sleuth-io/sx/v2/internal/clients/kiro/handlers"
 	"github.com/sleuth-io/sx/v2/internal/config"
 	"github.com/sleuth-io/sx/v2/internal/logger"
 	"github.com/sleuth-io/sx/v2/internal/stats"
@@ -65,16 +68,53 @@ type KiroPostToolUseEvent struct {
 	ToolResult string `json:"toolResult"`
 }
 
-// kiroSkillPathRegex matches skill file paths in Kiro's readFile tool result
-// Captures the top-level skill name (handles both single-file and multi-file skills)
-// e.g., .kiro/skills/my-skill.md -> my-skill
-// e.g., .kiro/skills/my-skill/index.md -> my-skill
-var kiroSkillPathRegex = regexp.MustCompile(`<file name="\.kiro/skills/([^/".]+)(?:\.md|/)`)
+// kiroSkillPathSuffix is the part of a Kiro readFile path that follows the
+// directory holding skills: the skill's own name, then either its single-file
+// .md extension or the directory separator of a multi-file skill.
+const kiroSkillPathSuffix = `skills/([^/".]+)(?:\.md|/)`
+
+// kiroSkillPathRegex builds the pattern that spots skill reads in Kiro's
+// readFile tool result. Two path forms are accepted:
+//
+//	.kiro/skills/my-skill.md          repo-local, relative to the workspace
+//	/opt/kiro/skills/my-skill.md      under the resolved global config root
+//
+// The second form is why this is built rather than a package-level constant:
+// KIRO_HOME *is* the Kiro config root, so a relocated home has no .kiro segment
+// anywhere in its paths (KIRO_HOME=/opt/kiro reads skills from /opt/kiro/skills)
+// and a hardcoded ".kiro/skills/" literal silently stops reporting usage. The
+// root comes from handlers.GlobalConfigDir so KIRO_HOME resolution lives in one
+// place, and it is read per call because the environment is only known at run
+// time.
+//
+// UNVERIFIED: the exact path Kiro emits for a skill read outside the workspace
+// could not be confirmed against kiro-cli (its binary carries no matching format
+// string), so the absolute form above is inferred, not observed. If a relocated
+// home turns out to be reported some other way, this is the place to widen.
+//
+// Deliberately NOT accepted: a bare or arbitrarily-prefixed "skills/<name>".
+// An sx vault repo keeps its own authored skills in a top-level skills/
+// directory, and its author has those same skills installed, so that form would
+// report a plain repo file read as skill usage and the installed-asset check
+// downstream would not filter it out.
+func kiroSkillPathRegex() *regexp.Regexp {
+	// Legacy/repo-local form first; it is what every in-workspace read matches.
+	roots := []string{regexp.QuoteMeta(handlers.ConfigDir)}
+
+	if globalDir, err := handlers.GlobalConfigDir(); err == nil && globalDir != "" {
+		// Kiro reports paths with forward slashes, so compare in that form.
+		if slashed := strings.TrimSuffix(filepath.ToSlash(globalDir), "/"); slashed != "" {
+			roots = append(roots, regexp.QuoteMeta(slashed))
+		}
+	}
+
+	return regexp.MustCompile(`<file name="(?:` + strings.Join(roots, "|") + `)/` + kiroSkillPathSuffix)
+}
 
 // extractKiroSkillNames extracts all skill names from Kiro's readFile tool result
 // Returns all unique skill names found in the tool result
 func extractKiroSkillNames(toolResult string) []string {
-	matches := kiroSkillPathRegex.FindAllStringSubmatch(toolResult, -1)
+	matches := kiroSkillPathRegex().FindAllStringSubmatch(toolResult, -1)
 	if len(matches) == 0 {
 		return nil
 	}
