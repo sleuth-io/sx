@@ -99,9 +99,11 @@ A leading `~` is expanded, and a relative value is made absolute
 against the working directory. A blank or whitespace-only value counts
 as unset.
 
-Only **global**-scope installs follow it. Repo- and path-scoped
-installs write `.kiro/crew/` inside the target repository's working
-tree and ignore `KIROCREW_HOME` entirely.
+Every KiroCrew install follows it, because KiroCrew installs are
+global-only: KiroCrew reads skills from this one crew root and never
+looks for a `.kiro/crew` directory inside a repository, so repo- and
+path-scoped installs are skipped rather than written into the working
+tree.
 
 ## Other variables
 
