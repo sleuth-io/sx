@@ -25,6 +25,7 @@ import (
 	"github.com/sleuth-io/sx/v2/internal/clients/kirocrew/handlers"
 	"github.com/sleuth-io/sx/v2/internal/lockfile"
 	"github.com/sleuth-io/sx/v2/internal/metadata"
+	"github.com/sleuth-io/sx/v2/internal/utils"
 )
 
 // Client implements the clients.Client interface for KiroCrew.
@@ -55,9 +56,22 @@ func NewClient() *Client {
 //
 // The second return value reports whether KIROCREW_HOME supplied the base, which
 // tells the caller whether the crew segment has already been consumed.
+//
+// A KIROCREW_HOME value has a leading ~ expanded and a relative value made
+// absolute, so the returned path is always absolute — matching how the other
+// clients normalize their config-dir overrides. A blank or whitespace-only
+// value counts as unset.
 func crewHomeBase() (base string, fromEnv bool, err error) {
-	if home := strings.TrimSpace(os.Getenv("KIROCREW_HOME")); home != "" {
-		return home, true, nil
+	if raw := strings.TrimSpace(os.Getenv("KIROCREW_HOME")); raw != "" {
+		expanded, err := utils.ExpandTilde(raw)
+		if err != nil {
+			return "", false, fmt.Errorf("cannot expand KIROCREW_HOME %q: %w", raw, err)
+		}
+		abs, err := filepath.Abs(expanded)
+		if err != nil {
+			return "", false, fmt.Errorf("cannot resolve KIROCREW_HOME %q: %w", raw, err)
+		}
+		return abs, true, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
