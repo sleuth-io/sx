@@ -157,9 +157,10 @@ func TestDetermineTargetBaseKiroHomeIsConfigRoot(t *testing.T) {
 		if !filepath.IsAbs(got) {
 			t.Errorf("global target base = %q, want an absolute path", got)
 		}
-		// Compare against the evaluated working directory: t.TempDir() can sit
-		// under a symlinked prefix (/var -> /private/var on macOS), which
-		// filepath.Abs resolves via the process cwd.
+		// Checked as a suffix rather than against filepath.Join(workDir, ...):
+		// t.TempDir() can sit under a symlinked prefix (/var -> /private/var on
+		// macOS) that filepath.Abs resolves via the process cwd, so the resolved
+		// path legitimately differs from workDir in its leading segments.
 		wantSuffix := filepath.Join("profiles", "staging")
 		if !strings.HasSuffix(got, wantSuffix) {
 			t.Errorf("global target base = %q, want it to end with %q", got, wantSuffix)
@@ -347,4 +348,80 @@ func TestMCPServerWritesUnderKiroHome(t *testing.T) {
 	if _, ok := config.MCPServers[serverName]; ok {
 		t.Errorf("mcp.json still carries the %q server entry after uninstall", serverName)
 	}
+}
+
+// TestIsInstalledHonorsKiroHome covers IsInstalled's config-root probe under a
+// relocated KIRO_HOME. IsInstalled short-circuits on a kiro-cli binary in PATH,
+// so PATH is pointed at an empty directory: on a developer machine with Kiro
+// installed the lookup would otherwise return true and the config-root branch —
+// the part that has to consult KIRO_HOME — would never run. Hermetic:
+// t.TempDir()/t.Setenv/t.Chdir only, never the real HOME or PATH.
+func TestIsInstalledHonorsKiroHome(t *testing.T) {
+	c := NewClient()
+
+	// emptyPATH removes any real kiro-cli from the lookup so the result reflects
+	// only the config-root check.
+	emptyPATH := func(t *testing.T) {
+		t.Helper()
+		t.Setenv("PATH", t.TempDir())
+	}
+
+	t.Run("true when only the relocated home holds the config root", func(t *testing.T) {
+		emptyPATH(t)
+		t.Chdir(t.TempDir())
+
+		// HOME points at a directory that does not exist, so a resolver reading
+		// the default home cannot satisfy this case by stating HOME itself — only
+		// consulting KIRO_HOME can make it true.
+		absentHome := filepath.Join(t.TempDir(), "absent-home")
+		t.Setenv("HOME", absentHome)
+		t.Setenv("USERPROFILE", absentHome)
+
+		kiroHomeDir := t.TempDir() // exists, so it is the install marker
+		t.Setenv("KIRO_HOME", kiroHomeDir)
+
+		if !c.IsInstalled() {
+			t.Errorf("IsInstalled() = false with KIRO_HOME=%q present, want true", kiroHomeDir)
+		}
+	})
+
+	t.Run("false when neither the relocated nor the default home holds it", func(t *testing.T) {
+		emptyPATH(t)
+		hermeticHome(t)
+		t.Chdir(t.TempDir())
+
+		missing := filepath.Join(t.TempDir(), "no-such-profile")
+		t.Setenv("KIRO_HOME", missing)
+
+		if c.IsInstalled() {
+			t.Errorf("IsInstalled() = true with KIRO_HOME=%q absent, want false", missing)
+		}
+	})
+
+	t.Run("false when KIRO_HOME is unset and the default root is absent", func(t *testing.T) {
+		emptyPATH(t)
+		hermeticHome(t)
+		t.Chdir(t.TempDir())
+		t.Setenv("KIRO_HOME", "")
+
+		if c.IsInstalled() {
+			t.Error("IsInstalled() = true with no config root anywhere, want false")
+		}
+	})
+
+	t.Run("a file at the config root is not an install", func(t *testing.T) {
+		emptyPATH(t)
+		hermeticHome(t)
+		t.Chdir(t.TempDir())
+
+		asFile := filepath.Join(t.TempDir(), "profile-file")
+		if err := os.WriteFile(asFile, []byte("not a directory"), 0o644); err != nil {
+			t.Fatalf("writing %q: %v", asFile, err)
+		}
+		t.Setenv("KIRO_HOME", asFile)
+
+		if c.IsInstalled() {
+			t.Errorf("IsInstalled() = true with KIRO_HOME=%q a regular file, want false", asFile)
+		}
+	})
 }

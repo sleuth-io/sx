@@ -24,7 +24,7 @@ import (
 //
 // It lives in this package, beside the ConfigDir/Dir* path vocabulary, so the
 // one resolution rule is reachable from every caller that needs a global Kiro
-// path — the client's install/MCP paths and the report-usage skill-path matcher —
+// path — the client's install/MCP paths and the rule_caps asset classifier —
 // without any of them re-deriving it from a hardcoded literal.
 func GlobalConfigDir() (string, error) {
 	if raw := strings.TrimSpace(os.Getenv("KIRO_HOME")); raw != "" {
