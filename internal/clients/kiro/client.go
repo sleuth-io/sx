@@ -202,29 +202,12 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 	return resp, nil
 }
 
-// kiroConfigDir resolves the GLOBAL Kiro configuration root — the directory
-// that holds agents, skills, steering, settings and sessions.
-//
-// KIRO_HOME, when set, *is* that root: it replaces ~/.kiro wholesale rather than
-// naming a parent under which a .kiro directory gets created, which is what lets
-// one machine hold several independent Kiro profiles. So KIRO_HOME=/opt/profile
-// resolves to /opt/profile, never /opt/profile/.kiro. When it is unset or blank
-// the root is the default ~/.kiro. See https://kiro.dev/docs/configuration/.
-//
-// A leading ~ is expanded and a relative value is made absolute, so the returned
-// path is always absolute. This governs global scope only; repo and path scopes
-// stay rooted at RepoRoot and never consult KIRO_HOME.
-//
-// The rule itself lives in handlers.GlobalConfigDir so report-usage can match
-// skill paths against the same resolved root instead of a second hardcoded
-// literal; this is the package-local seam onto it.
+// kiroConfigDir is the package-local seam onto handlers.GlobalConfigDir.
 func kiroConfigDir() (string, error) {
 	return handlers.GlobalConfigDir()
 }
 
-// globalTargetBase resolves the global installation root. Only global-scoped
-// installs call it: a KIRO_HOME that cannot be resolved must not be able to fail
-// a repo- or path-scoped install, which never consults the variable at all.
+// globalTargetBase resolves the global installation root; only global-scoped installs call it.
 func globalTargetBase() (string, error) {
 	dir, err := kiroConfigDir()
 	if err != nil {
