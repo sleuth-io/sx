@@ -7,7 +7,9 @@ demo recordings, or any sandbox.
 
 Note their scope: these variables isolate **sx's own state only**.
 Client install targets (`~/.claude`, `~/.codex`, …) are derived from
-the home directory, and repo-scoped clients (GitHub Copilot's
+the home directory unless the client offers its own override (see
+[Client-honored variables](#client-honored-variables)), and
+repo-scoped clients (GitHub Copilot's
 `.github/hooks/`, Kiro's `.kiro/hooks/`) write into the **current
 repository's working tree** — so fully sandboxing `sx install` also
 requires overriding `$HOME` and running from a scratch directory. See
@@ -76,6 +78,35 @@ config path and directories. Also make sure the sandbox environment
 doesn't inherit a stray `SX_PROFILE`, `SX_BOT`, or `SX_BOT_KEY`
 (below), which would change which profile or identity a sandboxed run
 resolves.
+
+## Client-honored variables
+
+These are not sx's own variables. They belong to a client, and sx reads
+them so that installs land where that client actually looks.
+
+### `KIRO_HOME`
+
+Redirects Kiro's **global configuration root** — the directory holding
+`agents/`, `skills/`, `steering/`, `settings/`, and sessions. When
+unset, that root is `~/.kiro`.
+
+`KIRO_HOME` *is* the root. It does not name a parent under which a
+`.kiro` directory gets created, so `KIRO_HOME=/opt/kiro-work` puts
+skills in `/opt/kiro-work/skills`, not
+`/opt/kiro-work/.kiro/skills`. Pointing it at separate directories is
+how one machine keeps several independent Kiro profiles.
+
+A leading `~` is expanded, and a relative value is made absolute
+against the working directory. A blank or whitespace-only value counts
+as unset.
+
+Only **global**-scope installs follow it. Repo- and path-scoped
+installs write `.kiro/` inside the target repository's working tree and
+ignore `KIRO_HOME` entirely.
+
+See Kiro's [configuration
+documentation](https://kiro.dev/docs/configuration/) for the
+authoritative contract.
 
 ## Other variables
 

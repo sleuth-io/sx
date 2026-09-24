@@ -17,6 +17,7 @@ import (
 	"github.com/sleuth-io/sx/v2/internal/lockfile"
 	"github.com/sleuth-io/sx/v2/internal/logger"
 	"github.com/sleuth-io/sx/v2/internal/metadata"
+	"github.com/sleuth-io/sx/v2/internal/utils"
 )
 
 // Client implements the clients.Client interface for Kiro
@@ -60,9 +61,8 @@ func (c *Client) IsInstalled() bool {
 	}
 
 	// Check for global .kiro directory (user-level config)
-	home, err := kiroHome()
+	configDir, err := kiroConfigDir()
 	if err == nil {
-		configDir := filepath.Join(home, handlers.ConfigDir)
 		if stat, err := os.Stat(configDir); err == nil && stat.IsDir() {
 			return true
 		}
@@ -203,28 +203,49 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 	return resp, nil
 }
 
-// kiroHome resolves the root under which the GLOBAL ~/.kiro directory lives.
-// It honors the KIRO_HOME environment variable when set (matching Kiro's own
-// override), falling back to the user's home directory otherwise. This only
-// affects global-scope resolution; repo/path scopes are rooted at RepoRoot.
-func kiroHome() (string, error) {
-	if home := strings.TrimSpace(os.Getenv("KIRO_HOME")); home != "" {
-		return home, nil
+// kiroConfigDir resolves the GLOBAL Kiro configuration root — the directory
+// that holds agents, skills, steering, settings and sessions.
+//
+// KIRO_HOME, when set, *is* that root: it replaces ~/.kiro wholesale rather than
+// naming a parent under which a .kiro directory gets created, which is what lets
+// one machine hold several independent Kiro profiles. So KIRO_HOME=/opt/profile
+// resolves to /opt/profile, never /opt/profile/.kiro. When it is unset or blank
+// the root is the default ~/.kiro. See https://kiro.dev/docs/configuration/.
+//
+// A leading ~ is expanded and a relative value is made absolute, so the returned
+// path is always absolute. This governs global scope only; repo and path scopes
+// stay rooted at RepoRoot and never consult KIRO_HOME.
+func kiroConfigDir() (string, error) {
+	if raw := strings.TrimSpace(os.Getenv("KIRO_HOME")); raw != "" {
+		expanded, err := utils.ExpandTilde(raw)
+		if err != nil {
+			return "", fmt.Errorf("cannot expand KIRO_HOME %q: %w", raw, err)
+		}
+		abs, err := filepath.Abs(expanded)
+		if err != nil {
+			return "", fmt.Errorf("cannot resolve KIRO_HOME %q: %w", raw, err)
+		}
+		return abs, nil
 	}
-	return os.UserHomeDir()
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, handlers.ConfigDir), nil
 }
 
 // determineTargetBase returns the installation directory based on scope
 // Returns an error if a repo/path-scoped install is requested without a valid RepoRoot
 func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error) {
-	home, err := kiroHome()
+	globalDir, err := kiroConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("cannot determine home directory: %w", err)
+		return "", fmt.Errorf("cannot determine Kiro config directory: %w", err)
 	}
 
 	switch scope.Type {
 	case clients.ScopeGlobal:
-		return filepath.Join(home, handlers.ConfigDir), nil
+		return globalDir, nil
 	case clients.ScopeRepository:
 		if scope.RepoRoot == "" {
 			return "", errors.New("repo-scoped install requires RepoRoot but none provided (not in a git repository?)")
@@ -236,7 +257,7 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 		}
 		return filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir), nil
 	default:
-		return filepath.Join(home, handlers.ConfigDir), nil
+		return globalDir, nil
 	}
 }
 
@@ -290,12 +311,12 @@ func (c *Client) removeLegacySteeringFile(scope *clients.InstallScope) {
 
 // registerSkillsMCPServer adds skills MCP server to ~/.kiro/settings/mcp.json
 func (c *Client) registerSkillsMCPServer() error {
-	home, err := kiroHome()
+	configDir, err := kiroConfigDir()
 	if err != nil {
 		return err
 	}
 
-	mcpConfigPath := filepath.Join(home, handlers.ConfigDir, handlers.DirSettings, "mcp.json")
+	mcpConfigPath := filepath.Join(configDir, handlers.DirSettings, "mcp.json")
 
 	// Read existing mcp.json
 	config, err := handlers.ReadMCPConfig(mcpConfigPath)
@@ -434,11 +455,10 @@ func (c *Client) InstallBootstrap(ctx context.Context, opts []bootstrap.Option) 
 
 // installMCPServerFromConfig installs an MCP server from a bootstrap.MCPServerConfig
 func (c *Client) installMCPServerFromConfig(config *bootstrap.MCPServerConfig) error {
-	home, err := kiroHome()
+	kiroDir, err := kiroConfigDir()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return fmt.Errorf("failed to get Kiro config directory: %w", err)
 	}
-	kiroDir := filepath.Join(home, handlers.ConfigDir)
 	log := logger.Get()
 
 	serverConfig := map[string]any{
@@ -495,11 +515,10 @@ func (c *Client) UninstallBootstrap(ctx context.Context, opts []bootstrap.Option
 
 // uninstallMCPServerByName removes an MCP server by its name
 func (c *Client) uninstallMCPServerByName(name string) error {
-	home, err := kiroHome()
+	kiroDir, err := kiroConfigDir()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return fmt.Errorf("failed to get Kiro config directory: %w", err)
 	}
-	kiroDir := filepath.Join(home, handlers.ConfigDir)
 	log := logger.Get()
 
 	if err := handlers.RemoveMCPServer(kiroDir, name); err != nil {

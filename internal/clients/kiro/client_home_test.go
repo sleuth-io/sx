@@ -1,21 +1,53 @@
 package kiro
 
 import (
-	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sleuth-io/sx/v2/internal/clients"
 	"github.com/sleuth-io/sx/v2/internal/clients/kiro/handlers"
 )
 
-// TestDetermineTargetBaseHonorsKiroHome asserts that global-scope resolution
-// honors KIRO_HOME while repo/path scopes stay rooted at RepoRoot. All cases
-// are hermetic: they use t.TempDir()/t.Setenv and never touch the real HOME.
-func TestDetermineTargetBaseHonorsKiroHome(t *testing.T) {
+// hermeticHome points os.UserHomeDir() at a scratch directory for the duration
+// of a test, so no case reads or writes the developer's real home. USERPROFILE
+// is set alongside HOME because os.UserHomeDir() consults it on Windows.
+func hermeticHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	return home
+}
+
+// assertNoNestedConfigDir fails when a resolved path adds a .kiro segment below
+// base. KIRO_HOME *is* the config root, so appending .kiro under it would write
+// to $KIRO_HOME/.kiro/skills while kiro-cli reads $KIRO_HOME/skills — the exact
+// mismatch this test guards. Only the portion below base is inspected: the
+// ambient temp prefix may itself legitimately contain a .kiro directory.
+func assertNoNestedConfigDir(t *testing.T, base, got string) {
+	t.Helper()
+	rel, err := filepath.Rel(base, got)
+	if err != nil {
+		t.Fatalf("filepath.Rel(%q, %q) returned error: %v", base, got, err)
+	}
+	for segment := range strings.SplitSeq(filepath.ToSlash(rel), "/") {
+		if segment == handlers.ConfigDir {
+			t.Errorf("resolved path %q adds a %q segment below %q; KIRO_HOME is the config root, not a parent of it", got, handlers.ConfigDir, base)
+		}
+	}
+}
+
+// TestDetermineTargetBaseKiroHomeIsConfigRoot asserts that KIRO_HOME replaces
+// ~/.kiro wholesale rather than naming a parent under which .kiro is created,
+// matching https://kiro.dev/docs/configuration/. Repo and path scopes must keep
+// resolving against RepoRoot and never consult KIRO_HOME. Every case is
+// hermetic: t.TempDir()/t.Setenv only, never the real HOME.
+func TestDetermineTargetBaseKiroHomeIsConfigRoot(t *testing.T) {
 	c := NewClient()
 
-	t.Run("global scope resolves under KIRO_HOME", func(t *testing.T) {
+	t.Run("global scope uses KIRO_HOME as the config root", func(t *testing.T) {
+		home := hermeticHome(t)
 		kiroHomeDir := t.TempDir()
 		t.Setenv("KIRO_HOME", kiroHomeDir)
 
@@ -24,23 +56,31 @@ func TestDetermineTargetBaseHonorsKiroHome(t *testing.T) {
 			t.Fatalf("determineTargetBase returned error: %v", err)
 		}
 
-		want := filepath.Join(kiroHomeDir, handlers.ConfigDir)
-		if got != want {
-			t.Errorf("global target base = %q, want %q", got, want)
+		if got != kiroHomeDir {
+			t.Errorf("global target base = %q, want %q (KIRO_HOME verbatim)", got, kiroHomeDir)
 		}
 
-		// Guard against ever resolving to the real home's .kiro when KIRO_HOME is set.
-		realHome, herr := os.UserHomeDir()
-		if herr == nil {
-			realBase := filepath.Join(realHome, handlers.ConfigDir)
-			if got == realBase {
-				t.Errorf("global target base resolved to real home %q despite KIRO_HOME=%q", realBase, kiroHomeDir)
-			}
+		// The regression: .kiro appended under KIRO_HOME.
+		if nested := filepath.Join(kiroHomeDir, handlers.ConfigDir); got == nested {
+			t.Errorf("global target base = %q, but KIRO_HOME is the config root; %q must not be appended", nested, handlers.ConfigDir)
+		}
+		assertNoNestedConfigDir(t, kiroHomeDir, got)
+
+		// Skills land exactly where kiro-cli reads them: $KIRO_HOME/skills.
+		skills := filepath.Join(got, handlers.DirSkills)
+		if want := filepath.Join(kiroHomeDir, handlers.DirSkills); skills != want {
+			t.Errorf("global skills dir = %q, want %q", skills, want)
+		}
+
+		// And never under the (scratch) home when KIRO_HOME is set.
+		if got == filepath.Join(home, handlers.ConfigDir) {
+			t.Errorf("global target base fell back to home %q despite KIRO_HOME=%q", got, kiroHomeDir)
 		}
 	})
 
-	t.Run("global scope falls back to home when KIRO_HOME unset", func(t *testing.T) {
-		// Explicitly clear KIRO_HOME for this subtest; t.Setenv restores it after.
+	t.Run("global scope defaults to ~/.kiro when KIRO_HOME unset", func(t *testing.T) {
+		home := hermeticHome(t)
+		// t.Setenv registers the restore, so clearing here cannot leak.
 		t.Setenv("KIRO_HOME", "")
 
 		got, err := c.determineTargetBase(&clients.InstallScope{Type: clients.ScopeGlobal})
@@ -48,36 +88,88 @@ func TestDetermineTargetBaseHonorsKiroHome(t *testing.T) {
 			t.Fatalf("determineTargetBase returned error: %v", err)
 		}
 
-		realHome, herr := os.UserHomeDir()
-		if herr != nil {
-			t.Fatalf("os.UserHomeDir returned error: %v", herr)
+		if want := filepath.Join(home, handlers.ConfigDir); got != want {
+			t.Errorf("global target base = %q, want default %q", got, want)
 		}
-		want := filepath.Join(realHome, handlers.ConfigDir)
-		if got != want {
-			t.Errorf("global target base = %q, want fallback %q", got, want)
+		if want := filepath.Join(home, handlers.ConfigDir, handlers.DirSkills); filepath.Join(got, handlers.DirSkills) != want {
+			t.Errorf("global skills dir = %q, want %q", filepath.Join(got, handlers.DirSkills), want)
 		}
 	})
 
-	t.Run("global scope falls back to home when KIRO_HOME is whitespace", func(t *testing.T) {
-		// A whitespace-only value must be treated as unset (TrimSpace).
-		t.Setenv("KIRO_HOME", "   ")
+	t.Run("whitespace-only KIRO_HOME is treated as unset", func(t *testing.T) {
+		home := hermeticHome(t)
+		t.Setenv("KIRO_HOME", "   \t  ")
 
 		got, err := c.determineTargetBase(&clients.InstallScope{Type: clients.ScopeGlobal})
 		if err != nil {
 			t.Fatalf("determineTargetBase returned error: %v", err)
 		}
 
-		realHome, herr := os.UserHomeDir()
-		if herr != nil {
-			t.Fatalf("os.UserHomeDir returned error: %v", herr)
-		}
-		want := filepath.Join(realHome, handlers.ConfigDir)
-		if got != want {
-			t.Errorf("global target base = %q, want fallback %q", got, want)
+		if want := filepath.Join(home, handlers.ConfigDir); got != want {
+			t.Errorf("global target base = %q, want default %q for a blank KIRO_HOME", got, want)
 		}
 	})
 
+	t.Run("leading tilde in KIRO_HOME expands to home", func(t *testing.T) {
+		home := hermeticHome(t)
+		t.Setenv("KIRO_HOME", "~/kiro-profiles/work")
+
+		got, err := c.determineTargetBase(&clients.InstallScope{Type: clients.ScopeGlobal})
+		if err != nil {
+			t.Fatalf("determineTargetBase returned error: %v", err)
+		}
+
+		if want := filepath.Join(home, "kiro-profiles", "work"); got != want {
+			t.Errorf("global target base = %q, want expanded %q", got, want)
+		}
+		if strings.HasPrefix(got, "~") {
+			t.Errorf("global target base %q still carries an unexpanded tilde", got)
+		}
+		assertNoNestedConfigDir(t, home, got)
+	})
+
+	t.Run("bare tilde KIRO_HOME expands to home itself", func(t *testing.T) {
+		home := hermeticHome(t)
+		t.Setenv("KIRO_HOME", "~")
+
+		got, err := c.determineTargetBase(&clients.InstallScope{Type: clients.ScopeGlobal})
+		if err != nil {
+			t.Fatalf("determineTargetBase returned error: %v", err)
+		}
+
+		if got != home {
+			t.Errorf("global target base = %q, want %q", got, home)
+		}
+	})
+
+	t.Run("relative KIRO_HOME resolves to an absolute path", func(t *testing.T) {
+		hermeticHome(t)
+		workDir := t.TempDir()
+		t.Chdir(workDir)
+		t.Setenv("KIRO_HOME", filepath.Join("profiles", "staging"))
+
+		got, err := c.determineTargetBase(&clients.InstallScope{Type: clients.ScopeGlobal})
+		if err != nil {
+			t.Fatalf("determineTargetBase returned error: %v", err)
+		}
+
+		if !filepath.IsAbs(got) {
+			t.Errorf("global target base = %q, want an absolute path", got)
+		}
+		// Compare against the evaluated working directory: t.TempDir() can sit
+		// under a symlinked prefix (/var -> /private/var on macOS), which
+		// filepath.Abs resolves via the process cwd.
+		wantSuffix := filepath.Join("profiles", "staging")
+		if !strings.HasSuffix(got, wantSuffix) {
+			t.Errorf("global target base = %q, want it to end with %q", got, wantSuffix)
+		}
+		// Base the segment check on the resolved path minus the expected
+		// suffix, so only what the resolver added is inspected.
+		assertNoNestedConfigDir(t, strings.TrimSuffix(got, wantSuffix), got)
+	})
+
 	t.Run("repo scope is unaffected by KIRO_HOME", func(t *testing.T) {
+		hermeticHome(t)
 		kiroHomeDir := t.TempDir()
 		t.Setenv("KIRO_HOME", kiroHomeDir)
 
@@ -94,8 +186,32 @@ func TestDetermineTargetBaseHonorsKiroHome(t *testing.T) {
 		if got != want {
 			t.Errorf("repo target base = %q, want %q (must stay rooted at RepoRoot)", got, want)
 		}
-		if got == filepath.Join(kiroHomeDir, handlers.ConfigDir) {
-			t.Errorf("repo target base was redirected by KIRO_HOME to %q", got)
+		if strings.HasPrefix(got, kiroHomeDir) {
+			t.Errorf("repo target base %q was redirected under KIRO_HOME %q", got, kiroHomeDir)
+		}
+	})
+
+	t.Run("path scope is unaffected by KIRO_HOME", func(t *testing.T) {
+		hermeticHome(t)
+		kiroHomeDir := t.TempDir()
+		t.Setenv("KIRO_HOME", kiroHomeDir)
+
+		repoRoot := t.TempDir()
+		got, err := c.determineTargetBase(&clients.InstallScope{
+			Type:     clients.ScopePath,
+			RepoRoot: repoRoot,
+			Path:     filepath.Join("services", "api"),
+		})
+		if err != nil {
+			t.Fatalf("determineTargetBase returned error: %v", err)
+		}
+
+		want := filepath.Join(repoRoot, "services", "api", handlers.ConfigDir)
+		if got != want {
+			t.Errorf("path target base = %q, want %q (must stay rooted at RepoRoot)", got, want)
+		}
+		if strings.HasPrefix(got, kiroHomeDir) {
+			t.Errorf("path target base %q was redirected under KIRO_HOME %q", got, kiroHomeDir)
 		}
 	})
 }
