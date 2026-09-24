@@ -1,6 +1,7 @@
 package kirocrew
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +29,7 @@ func hermeticHome(t *testing.T) string {
 // TestDetermineTargetBaseHonorsKirocrewHome asserts that global-scope
 // resolution treats KIROCREW_HOME as the crew home itself (the crew ConfigDir
 // segment must NOT be re-appended), expands a tilde and makes a relative value
-// absolute, and leaves repo/path scopes rooted at RepoRoot. Every case is
+// absolute, and refuses repo/path scopes outright. Every case is
 // hermetic: t.TempDir()/t.Setenv only, never the real HOME.
 func TestDetermineTargetBaseHonorsKirocrewHome(t *testing.T) {
 	c := NewClient()
@@ -143,7 +144,7 @@ func TestDetermineTargetBaseHonorsKirocrewHome(t *testing.T) {
 		}
 	})
 
-	t.Run("repo scope is unaffected by KIROCREW_HOME", func(t *testing.T) {
+	t.Run("repo scope is refused, not redirected into the repo tree", func(t *testing.T) {
 		hermeticHome(t)
 		crewHomeDir := t.TempDir()
 		t.Setenv("KIROCREW_HOME", crewHomeDir)
@@ -153,20 +154,15 @@ func TestDetermineTargetBaseHonorsKirocrewHome(t *testing.T) {
 			Type:     clients.ScopeRepository,
 			RepoRoot: repoRoot,
 		})
-		if err != nil {
-			t.Fatalf("determineTargetBase returned error: %v", err)
+		if !errors.Is(err, errScopeNotGlobal) {
+			t.Fatalf("determineTargetBase(repo) error = %v, want errScopeNotGlobal", err)
 		}
-
-		want := filepath.Join(repoRoot, handlers.ConfigDir)
-		if got != want {
-			t.Errorf("repo target base = %q, want %q (must stay rooted at RepoRoot)", got, want)
-		}
-		if strings.HasPrefix(got, crewHomeDir) {
-			t.Errorf("repo target base %q was redirected under KIROCREW_HOME %q", got, crewHomeDir)
+		if got != "" {
+			t.Errorf("determineTargetBase(repo) = %q, want no path (KiroCrew never reads a repo-local crew dir)", got)
 		}
 	})
 
-	t.Run("path scope is unaffected by KIROCREW_HOME", func(t *testing.T) {
+	t.Run("path scope is refused, not redirected into the repo tree", func(t *testing.T) {
 		hermeticHome(t)
 		crewHomeDir := t.TempDir()
 		t.Setenv("KIROCREW_HOME", crewHomeDir)
@@ -177,16 +173,11 @@ func TestDetermineTargetBaseHonorsKirocrewHome(t *testing.T) {
 			RepoRoot: repoRoot,
 			Path:     filepath.Join("services", "api"),
 		})
-		if err != nil {
-			t.Fatalf("determineTargetBase returned error: %v", err)
+		if !errors.Is(err, errScopeNotGlobal) {
+			t.Fatalf("determineTargetBase(path) error = %v, want errScopeNotGlobal", err)
 		}
-
-		want := filepath.Join(repoRoot, "services", "api", handlers.ConfigDir)
-		if got != want {
-			t.Errorf("path target base = %q, want %q (must stay rooted at RepoRoot/Path)", got, want)
-		}
-		if strings.HasPrefix(got, crewHomeDir) {
-			t.Errorf("path target base %q was redirected under KIROCREW_HOME %q", got, crewHomeDir)
+		if got != "" {
+			t.Errorf("determineTargetBase(path) = %q, want no path (KiroCrew never reads a repo-local crew dir)", got)
 		}
 	})
 }

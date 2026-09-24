@@ -8,6 +8,13 @@
 // This client supports exactly one asset type — skill — and reuses the shared
 // dirasset extraction engine verbatim. It registers no MCP server and installs
 // no bootstrap hooks; those belong to the kiro client, not here.
+//
+// Installs are GLOBAL-ONLY. KiroCrew resolves its crew skills root once, from
+// its single data home (config/paths.py config_dir() -> ~/.kiro/crew, or
+// KIROCREW_HOME), and never discovers a .kiro/crew directory by walking up from
+// a repository or working directory. A repo/path-scoped install would therefore
+// write a tree KiroCrew never reads, so those scopes are refused here instead of
+// producing files that look installed and do nothing.
 package kirocrew
 
 import (
@@ -31,6 +38,29 @@ import (
 // Client implements the clients.Client interface for KiroCrew.
 type Client struct {
 	clients.BaseClient
+}
+
+// errScopeNotGlobal reports a non-global scope reaching a KiroCrew operation.
+//
+// KiroCrew loads crew skills from exactly one root, resolved from its global
+// data home; no code path discovers a repo-local .kiro/crew. Writing a
+// repo/path-scoped install would produce a directory that looks installed and is
+// never read, so callers translate this sentinel into a skipped result instead.
+var errScopeNotGlobal = errors.New("KiroCrew only supports global skill installs; repo/path scopes are not read by KiroCrew")
+
+// skippedResults renders one skipped AssetResult per asset name. Used when the
+// requested scope means there is nothing KiroCrew would ever load, so the run
+// reports a skip per asset rather than failing the whole install.
+func skippedResults(names []string, message string) []clients.AssetResult {
+	results := make([]clients.AssetResult, 0, len(names))
+	for _, name := range names {
+		results = append(results, clients.AssetResult{
+			AssetName: name,
+			Status:    clients.StatusSkipped,
+			Message:   message,
+		})
+	}
+	return results
 }
 
 // NewClient creates a new KiroCrew client. It declares support for skills only;
@@ -130,7 +160,7 @@ func (c *Client) GetVersion() string {
 }
 
 // InstallAssets installs skills to KiroCrew. Non-skill asset types are skipped
-// as unsupported.
+// as unsupported, and every asset is skipped when the scope is not global.
 func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) (clients.InstallResponse, error) {
 	resp := clients.InstallResponse{
 		Results: make([]clients.AssetResult, 0, len(req.Assets)),
@@ -138,6 +168,14 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 
 	targetBase, err := c.determineTargetBase(req.Scope)
 	if err != nil {
+		if errors.Is(err, errScopeNotGlobal) {
+			names := make([]string, 0, len(req.Assets))
+			for _, bundle := range req.Assets {
+				names = append(names, bundle.Asset.Name)
+			}
+			resp.Results = skippedResults(names, err.Error())
+			return resp, nil
+		}
 		return resp, fmt.Errorf("cannot determine installation directory: %w", err)
 	}
 
@@ -167,7 +205,8 @@ func (c *Client) InstallAssets(ctx context.Context, req clients.InstallRequest) 
 }
 
 // UninstallAssets removes skills from KiroCrew. Non-skill asset types are
-// skipped as unsupported.
+// skipped as unsupported, and every asset is skipped when the scope is not
+// global — a non-global scope was never a location this client installed to.
 func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallRequest) (clients.UninstallResponse, error) {
 	resp := clients.UninstallResponse{
 		Results: make([]clients.AssetResult, 0, len(req.Assets)),
@@ -175,6 +214,14 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 
 	targetBase, err := c.determineTargetBase(req.Scope)
 	if err != nil {
+		if errors.Is(err, errScopeNotGlobal) {
+			names := make([]string, 0, len(req.Assets))
+			for _, a := range req.Assets {
+				names = append(names, a.Name)
+			}
+			resp.Results = skippedResults(names, err.Error())
+			return resp, nil
+		}
 		return resp, fmt.Errorf("cannot determine uninstall directory: %w", err)
 	}
 
@@ -212,24 +259,16 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 
 // determineTargetBase returns the installation directory based on scope.
 //
-// Global scope resolves under the crew home, honoring KIROCREW_HOME.
-// Repo/path scopes stay rooted at the repo/worktree and are NEVER redirected by
-// the env var — they join handlers.ConfigDir onto scope.RepoRoot the same way
-// the kiro client does.
+// Only global scope resolves: it returns the crew home, honoring KIROCREW_HOME.
+// Repository and path scopes return errScopeNotGlobal — KiroCrew reads skills
+// from its one global crew root and never looks for a .kiro/crew directory
+// inside a repository, so there is no repo-local location to write.
 func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error) {
 	switch scope.Type {
 	case clients.ScopeGlobal:
 		return globalCrewDir()
-	case clients.ScopeRepository:
-		if scope.RepoRoot == "" {
-			return "", errors.New("repo-scoped install requires RepoRoot but none provided (not in a git repository?)")
-		}
-		return filepath.Join(scope.RepoRoot, handlers.ConfigDir), nil
-	case clients.ScopePath:
-		if scope.RepoRoot == "" {
-			return "", errors.New("path-scoped install requires RepoRoot but none provided (not in a git repository?)")
-		}
-		return filepath.Join(scope.RepoRoot, scope.Path, handlers.ConfigDir), nil
+	case clients.ScopeRepository, clients.ScopePath:
+		return "", fmt.Errorf("%w (requested scope: %s)", errScopeNotGlobal, scope.Type)
 	default:
 		return globalCrewDir()
 	}
@@ -313,16 +352,24 @@ func (c *Client) ShouldInstall(ctx context.Context) (bool, error) {
 }
 
 // VerifyAssets checks if skills are actually installed on the filesystem.
+//
+// A non-global scope reports every asset as not installed with the global-only
+// explanation: clients.VerifyResult carries no status field, so "not installed,
+// and here is why it never could be" is the honest reading.
 func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, scope *clients.InstallScope) []clients.VerifyResult {
 	results := make([]clients.VerifyResult, 0, len(assets))
 
 	targetBase, err := c.determineTargetBase(scope)
 	if err != nil {
+		message := fmt.Sprintf("cannot determine target directory: %v", err)
+		if errors.Is(err, errScopeNotGlobal) {
+			message = err.Error()
+		}
 		for _, a := range assets {
 			results = append(results, clients.VerifyResult{
 				Asset:     a,
 				Installed: false,
-				Message:   fmt.Sprintf("cannot determine target directory: %v", err),
+				Message:   message,
 			})
 		}
 		return results
