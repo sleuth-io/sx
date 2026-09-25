@@ -9,9 +9,6 @@ import (
 )
 
 // SkillOps is the shared dirasset operations for KiroCrew skills.
-// Reused verbatim from the kiro client — the only difference between the two
-// clients is the install root (crew home vs. ~/.kiro), not the extraction
-// engine or the on-disk skill layout.
 var SkillOps = dirasset.NewOperations(DirSkills, &asset.TypeSkill)
 
 // SkillHandler handles skill asset installation for KiroCrew.
