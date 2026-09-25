@@ -31,18 +31,12 @@ func RuleCapabilities() *clients.RuleCapabilities {
 }
 
 // kiroAssetDirFragments returns the path fragments that mark a Kiro directory of
-// the given name: the repo-relative ".kiro/<name>/" literal every in-repo asset
-// carries, plus the resolved global config root's "<name>/" so a KIRO_HOME that
-// is not named .kiro is recognized too — KIRO_HOME *is* the config root, so
-// KIRO_HOME=/opt/profile holds its skills at /opt/profile/skills with no .kiro
-// segment anywhere in the path.
+// the given name: the repo-relative ".kiro/<name>/" literal, plus the resolved
+// global config root's "<name>/" so a KIRO_HOME that is not named .kiro is
+// recognized too (KIRO_HOME=/opt/profile holds its skills at /opt/profile/skills
+// with no .kiro segment).
 //
-// Reconstructing the root is sound here, unlike in the report-usage skill matcher
-// which deliberately does not: this classifies a path the caller just handed to
-// `sx add` for installation into the root this same process resolves, not a path
-// echoed back by a Kiro session that may have spelled it any number of ways.
-//
-// The claim stays scoped to Kiro's own roots on purpose. "skills" is vocabulary
+// The claim stays scoped to Kiro's own roots on purpose: "skills" is vocabulary
 // shared with every other harness, and clients.DetectAssetType returns the first
 // client that claims a path, so keying on a bare "/skills/" segment would make
 // Kiro claim .claude/skills/ and every other client's skills directory as well.

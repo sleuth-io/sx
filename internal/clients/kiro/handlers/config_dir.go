@@ -21,11 +21,6 @@ import (
 // A leading ~ is expanded and a relative value is made absolute, so the returned
 // path is always absolute. This governs global scope only; repo and path scopes
 // stay rooted at a repo root and never consult KIRO_HOME.
-//
-// It lives in this package, beside the ConfigDir/Dir* path vocabulary, so the
-// one resolution rule is reachable from every caller that needs a global Kiro
-// path — the client's install/MCP paths and the rule_caps asset classifier —
-// without any of them re-deriving it from a hardcoded literal.
 func GlobalConfigDir() (string, error) {
 	if raw := strings.TrimSpace(os.Getenv("KIRO_HOME")); raw != "" {
 		expanded, err := utils.ExpandTilde(raw)
