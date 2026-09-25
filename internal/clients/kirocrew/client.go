@@ -1,20 +1,10 @@
 // Package kirocrew implements the clients.Client interface for KiroCrew.
 //
-// KiroCrew is a distinct client target from kiro: its only semantic difference
-// is the install root. Dispatched KiroCrew agents load skills from KiroCrew's
-// own skills root (~/.kiro/crew/skills/ by default, or $KIROCREW_HOME/skills/
-// when the KIROCREW_HOME env var is set) rather than kiro-cli's ~/.kiro/skills/.
-//
-// This client supports exactly one asset type — skill — and reuses the shared
-// dirasset extraction engine verbatim. It registers no MCP server and installs
-// no bootstrap hooks; those belong to the kiro client, not here.
-//
-// Installs are GLOBAL-ONLY. KiroCrew resolves its crew skills root once, from
-// its single data home (config/paths.py config_dir() -> ~/.kiro/crew, or
-// KIROCREW_HOME), and never discovers a .kiro/crew directory by walking up from
-// a repository or working directory. A repo/path-scoped install would therefore
-// write a tree KiroCrew never reads, so those scopes are refused here instead of
-// producing files that look installed and do nothing.
+// Skills only, global scope only. Dispatched KiroCrew agents load skills from
+// KiroCrew's own crew root (~/.kiro/crew/skills/ by default, or
+// $KIROCREW_HOME/skills/ when KIROCREW_HOME is set) rather than kiro-cli's
+// ~/.kiro/skills/. KiroCrew never reads a repo-local .kiro/crew, so repo/path
+// scopes are skipped rather than written into a repo tree.
 package kirocrew
 
 import (
@@ -40,12 +30,8 @@ type Client struct {
 	clients.BaseClient
 }
 
-// errScopeNotGlobal reports a non-global scope reaching a KiroCrew operation.
-//
-// KiroCrew loads crew skills from exactly one root, resolved from its global
-// data home; no code path discovers a repo-local .kiro/crew. Writing a
-// repo/path-scoped install would produce a directory that looks installed and is
-// never read, so callers translate this sentinel into a skipped result instead.
+// errScopeNotGlobal reports a non-global scope reaching a KiroCrew operation;
+// KiroCrew reads skills only from its one global crew root.
 var errScopeNotGlobal = errors.New("KiroCrew only supports global skill installs; repo/path scopes are not read by KiroCrew")
 
 // skippedResults renders one skipped AssetResult per asset name. Used when the
@@ -77,20 +63,12 @@ func NewClient() *Client {
 	}
 }
 
-// crewHomeBase returns the base directory that the crew config dir is resolved
-// under for GLOBAL-scope installs. When KIROCREW_HOME is set (non-empty after
-// trimming), it already points AT the crew home, so it is returned directly and
-// the caller must NOT append the crew ConfigDir again. When unset, the base is
-// the user's home directory and the caller joins handlers.ConfigDir (.kiro/crew)
-// onto it.
-//
-// The second return value reports whether KIROCREW_HOME supplied the base, which
-// tells the caller whether the crew segment has already been consumed.
-//
-// A KIROCREW_HOME value has a leading ~ expanded and a relative value made
-// absolute, so the returned path is always absolute — matching how the other
-// clients normalize their config-dir overrides. A blank or whitespace-only
-// value counts as unset.
+// crewHomeBase returns the base directory the crew config dir resolves under for
+// GLOBAL-scope installs. When KIROCREW_HOME is set (non-empty after trimming) it
+// already points AT the crew home and is returned directly with fromEnv=true, so
+// the caller must NOT append ConfigDir; when unset the base is the user's home
+// and the caller joins ConfigDir onto it. A leading ~ is expanded and a relative
+// value made absolute, so the result is always absolute.
 func crewHomeBase() (base string, fromEnv bool, err error) {
 	if raw := strings.TrimSpace(os.Getenv("KIROCREW_HOME")); raw != "" {
 		expanded, err := utils.ExpandTilde(raw)
@@ -124,8 +102,6 @@ func globalCrewDir() (string, error) {
 		return "", err
 	}
 	if fromEnv {
-		// KIROCREW_HOME already points at the crew home; do not re-append
-		// the crew segment.
 		return base, nil
 	}
 	return filepath.Join(base, handlers.ConfigDir), nil
@@ -257,12 +233,9 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 	return resp, nil
 }
 
-// determineTargetBase returns the installation directory based on scope.
-//
-// Only global scope resolves: it returns the crew home, honoring KIROCREW_HOME.
-// Repository and path scopes return errScopeNotGlobal — KiroCrew reads skills
-// from its one global crew root and never looks for a .kiro/crew directory
-// inside a repository, so there is no repo-local location to write.
+// determineTargetBase returns the installation directory based on scope. Only
+// global scope resolves (to the crew home, honoring KIROCREW_HOME); repository
+// and path scopes return errScopeNotGlobal.
 func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error) {
 	switch scope.Type {
 	case clients.ScopeGlobal:
@@ -274,9 +247,8 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 	}
 }
 
-// EnsureAssetSupport is a no-op for KiroCrew. KiroCrew auto-discovers skills
-// from its crew skills root; there is no MCP server or steering file to manage
-// here (that is the kiro client's job).
+// EnsureAssetSupport is a no-op for KiroCrew, which auto-discovers skills from
+// its crew skills root and has no MCP server or steering file to manage.
 func (c *Client) EnsureAssetSupport(ctx context.Context, scope *clients.InstallScope) error {
 	return nil
 }
@@ -351,11 +323,9 @@ func (c *Client) ShouldInstall(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// VerifyAssets checks if skills are actually installed on the filesystem.
-//
-// A non-global scope reports every asset as not installed with the global-only
-// explanation: clients.VerifyResult carries no status field, so "not installed,
-// and here is why it never could be" is the honest reading.
+// VerifyAssets checks if skills are actually installed on the filesystem. A
+// non-global scope reports every asset as not installed with the global-only
+// explanation.
 func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, scope *clients.InstallScope) []clients.VerifyResult {
 	results := make([]clients.VerifyResult, 0, len(assets))
 
