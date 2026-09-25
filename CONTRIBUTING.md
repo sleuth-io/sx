@@ -53,6 +53,12 @@ Useful individual targets:
 - Pull requests from forks skip the automated Claude review, which needs
   repository secrets. A maintainer will review those by hand.
 
+### Commit Messages
+
+- Keep the commit **subject line ≤ 72 characters**. A CI status
+  (`pr-check/sleuth`) enforces this maximum subject length and blocks the pull
+  request when a subject is longer. Put detail in the body, not the subject.
+
 ## Reporting Bugs
 
 Open an issue with the version (`sx --version`), your OS, the command you ran,
