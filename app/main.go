@@ -19,6 +19,7 @@ import (
 	_ "github.com/sleuth-io/sx/v2/internal/clients/gemini"         // Register Gemini Code Assist client
 	_ "github.com/sleuth-io/sx/v2/internal/clients/github_copilot" // Register GitHub Copilot client
 	_ "github.com/sleuth-io/sx/v2/internal/clients/kiro"           // Register Kiro client
+	_ "github.com/sleuth-io/sx/v2/internal/clients/kirocrew"       // Register KiroCrew client
 	_ "github.com/sleuth-io/sx/v2/internal/clients/openclaw"       // Register OpenClaw client
 	_ "github.com/sleuth-io/sx/v2/internal/clients/opencode"       // Register OpenCode client
 	"github.com/sleuth-io/sx/v2/internal/config"

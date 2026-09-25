@@ -77,6 +77,34 @@ doesn't inherit a stray `SX_PROFILE`, `SX_BOT`, or `SX_BOT_KEY`
 (below), which would change which profile or identity a sandboxed run
 resolves.
 
+## Client-honored variables
+
+These are not sx's own variables. They belong to a client, and sx reads
+them so that installs land where that client actually looks.
+
+### `KIROCREW_HOME`
+
+Redirects KiroCrew's user data root — the directory holding its
+skills, agents, and other crew configuration. When unset, that root is
+`~/.kiro/crew` (see [kirodotdev/KiroCrew](https://github.com/kirodotdev/KiroCrew)).
+
+`KIROCREW_HOME` *is* the crew root. It does not name a parent under
+which a `.kiro/crew` directory gets created, so
+`KIROCREW_HOME=/opt/crew-work` puts skills in `/opt/crew-work/skills`,
+not `/opt/crew-work/.kiro/crew/skills`. Pointing it at separate
+directories is how one machine keeps several independent KiroCrew
+profiles.
+
+A leading `~` is expanded, and a relative value is made absolute
+against the working directory. A blank or whitespace-only value counts
+as unset.
+
+Every KiroCrew install follows it, because KiroCrew installs are
+global-only: KiroCrew reads skills from this one crew root and never
+looks for a `.kiro/crew` directory inside a repository, so repo- and
+path-scoped installs are skipped rather than written into the working
+tree.
+
 ## Other variables
 
 These behave as flag or setting equivalents rather than relocating
