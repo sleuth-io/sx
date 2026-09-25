@@ -9,23 +9,10 @@ import (
 	"github.com/sleuth-io/sx/v2/internal/utils"
 )
 
-// GlobalConfigDir resolves the GLOBAL Kiro configuration root — the directory
-// that holds agents, skills, steering, settings and sessions.
-//
-// KIRO_HOME, when set, *is* that root: it replaces ~/.kiro wholesale rather than
-// naming a parent under which a .kiro directory gets created, which is what lets
-// one machine hold several independent Kiro profiles. So KIRO_HOME=/opt/profile
-// resolves to /opt/profile, never /opt/profile/.kiro. When it is unset or blank
-// the root is the default ~/.kiro. See https://kiro.dev/docs/configuration/.
-//
-// A leading ~ is expanded and a relative value is made absolute, so the returned
-// path is always absolute. This governs global scope only; repo and path scopes
-// stay rooted at a repo root and never consult KIRO_HOME.
-//
-// It lives in this package, beside the ConfigDir/Dir* path vocabulary, so the
-// one resolution rule is reachable from every caller that needs a global Kiro
-// path — the client's install/MCP paths and the rule_caps asset classifier —
-// without any of them re-deriving it from a hardcoded literal.
+// GlobalConfigDir resolves the global Kiro config root. KIRO_HOME, when set, is
+// that root itself (it replaces ~/.kiro, it is not a parent of it); otherwise the
+// root is ~/.kiro. A leading ~ is expanded and a relative value made absolute.
+// Repo and path scopes never consult KIRO_HOME. See https://kiro.dev/docs/configuration/.
 func GlobalConfigDir() (string, error) {
 	if raw := strings.TrimSpace(os.Getenv("KIRO_HOME")); raw != "" {
 		expanded, err := utils.ExpandTilde(raw)
