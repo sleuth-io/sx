@@ -70,22 +70,7 @@ func NewClient() *Client {
 // and the caller joins ConfigDir onto it. A leading ~ is expanded and a relative
 // value made absolute, so the result is always absolute.
 func crewHomeBase() (base string, fromEnv bool, err error) {
-	if raw := strings.TrimSpace(os.Getenv("KIROCREW_HOME")); raw != "" {
-		expanded, err := utils.ExpandTilde(raw)
-		if err != nil {
-			return "", false, fmt.Errorf("cannot expand KIROCREW_HOME %q: %w", raw, err)
-		}
-		abs, err := filepath.Abs(expanded)
-		if err != nil {
-			return "", false, fmt.Errorf("cannot resolve KIROCREW_HOME %q: %w", raw, err)
-		}
-		return abs, true, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", false, fmt.Errorf("cannot determine home directory: %w", err)
-	}
-	return home, false, nil
+	return utils.ResolveHomeEnv("KIROCREW_HOME")
 }
 
 // globalCrewDir resolves the crew home directory for global-scope operations,
