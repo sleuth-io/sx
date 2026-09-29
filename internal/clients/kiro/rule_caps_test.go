@@ -1,6 +1,7 @@
 package kiro
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -514,6 +515,82 @@ func TestDetectAssetType(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDetectAssetTypeRelocatedHome covers a Kiro config root that is not named
+// .kiro. KIRO_HOME *is* the config root, so KIRO_HOME=/opt/profile holds skills
+// at /opt/profile/skills and steering at /opt/profile/steering, with no .kiro
+// segment anywhere — against the repo-relative literals alone every such path
+// was classified as "not a Kiro asset". Hermetic: t.TempDir()/t.Setenv only.
+func TestDetectAssetTypeRelocatedHome(t *testing.T) {
+	t.Run("skills under a relocated root are detected", func(t *testing.T) {
+		kiroHome := t.TempDir()
+		t.Setenv("KIRO_HOME", kiroHome)
+
+		path := filepath.Join(kiroHome, "skills", "my-skill", "SKILL.md")
+		got := detectAssetType(path, nil)
+
+		if got == nil || *got != asset.TypeSkill {
+			t.Errorf("detectAssetType(%q) = %v, want %v", path, got, asset.TypeSkill)
+		}
+	})
+
+	t.Run("steering under a relocated root is detected", func(t *testing.T) {
+		kiroHome := t.TempDir()
+		t.Setenv("KIRO_HOME", kiroHome)
+
+		path := filepath.Join(kiroHome, "steering", "my-rule.md")
+		got := detectAssetType(path, nil)
+
+		if got == nil || *got != asset.TypeRule {
+			t.Errorf("detectAssetType(%q) = %v, want %v", path, got, asset.TypeRule)
+		}
+	})
+
+	t.Run("matchesPath accepts steering under a relocated root", func(t *testing.T) {
+		kiroHome := t.TempDir()
+		t.Setenv("KIRO_HOME", kiroHome)
+
+		path := filepath.Join(kiroHome, "steering", "my-rule.md")
+		if !matchesPath(path) {
+			t.Errorf("matchesPath(%q) = false, want true", path)
+		}
+
+		notMarkdown := filepath.Join(kiroHome, "steering", "my-rule.txt")
+		if matchesPath(notMarkdown) {
+			t.Errorf("matchesPath(%q) = true, want false", notMarkdown)
+		}
+	})
+
+	t.Run("repo-relative paths still work while KIRO_HOME is set", func(t *testing.T) {
+		t.Setenv("KIRO_HOME", t.TempDir())
+
+		got := detectAssetType(".kiro/steering/my-rule.md", nil)
+		if got == nil || *got != asset.TypeRule {
+			t.Errorf("detectAssetType(.kiro/steering/my-rule.md) = %v, want %v", got, asset.TypeRule)
+		}
+
+		if !matchesPath(".kiro/steering/my-rule.md") {
+			t.Error("matchesPath(.kiro/steering/my-rule.md) = false, want true")
+		}
+	})
+
+	t.Run("another client's skills directory is not claimed", func(t *testing.T) {
+		// clients.DetectAssetType takes the first client that claims a path, so
+		// Kiro must stay scoped to its own roots rather than keying on a bare
+		// "skills/" segment shared by every harness.
+		t.Setenv("KIRO_HOME", t.TempDir())
+
+		for _, path := range []string{
+			".claude/skills/my-skill/SKILL.md",
+			".copilot/skills/my-skill/SKILL.md",
+			"foo/steering/my-rule.md",
+		} {
+			if got := detectAssetType(path, nil); got != nil {
+				t.Errorf("detectAssetType(%q) = %v, want nil", path, *got)
+			}
+		}
+	})
 }
 
 func TestExtractYAMLFrontmatter(t *testing.T) {

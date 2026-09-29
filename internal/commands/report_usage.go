@@ -65,11 +65,12 @@ type KiroPostToolUseEvent struct {
 	ToolResult string `json:"toolResult"`
 }
 
-// kiroSkillPathRegex matches skill file paths in Kiro's readFile tool result
-// Captures the top-level skill name (handles both single-file and multi-file skills)
-// e.g., .kiro/skills/my-skill.md -> my-skill
-// e.g., .kiro/skills/my-skill/index.md -> my-skill
-var kiroSkillPathRegex = regexp.MustCompile(`<file name="\.kiro/skills/([^/".]+)(?:\.md|/)`)
+// kiroSkillPathRegex matches a "skills/<name>" path segment in Kiro's readFile
+// result, whatever the prefix (relative .kiro/, absolute, ~, or a KIRO_HOME
+// root). Keying on the segment alone rather than any particular root is what
+// lets one installed skill be recognized across all the spellings Kiro reports
+// it verbatim in; runReportUsage then filters matches against installed assets.
+var kiroSkillPathRegex = regexp.MustCompile(`<file name="(?:[^"]*/)?skills/([^/".]+)(?:\.md|/)`)
 
 // extractKiroSkillNames extracts all skill names from Kiro's readFile tool result
 // Returns all unique skill names found in the tool result

@@ -394,6 +394,116 @@ func TestExtractKiroSkillNames(t *testing.T) {
 	}
 }
 
+// TestExtractKiroSkillNamesRelocatedHome covers the path forms one installed
+// skill can arrive as. Kiro echoes the path the model asked for, so the same
+// skill shows up repo-relative, absolute, tilde-spelled, or — when KIRO_HOME
+// relocates the config root — with no .kiro segment anywhere. Matching the
+// skills/ segment and leaving the decision to the installed-asset check covers
+// all of them, and matches how the other clients are detected by name alone.
+// Hermetic: t.TempDir()/t.Setenv only, never the real HOME.
+func TestExtractKiroSkillNamesRelocatedHome(t *testing.T) {
+	t.Run("skill under a relocated KIRO_HOME is reported", func(t *testing.T) {
+		kiroHomeDir := t.TempDir()
+		t.Setenv("KIRO_HOME", kiroHomeDir)
+
+		result := extractKiroSkillNames(
+			`<file name="` + filepath.ToSlash(filepath.Join(kiroHomeDir, "skills", "fix-pr.md")) + `">content</file>`,
+		)
+
+		if len(result) != 1 || result[0] != "fix-pr" {
+			t.Errorf("extractKiroSkillNames under KIRO_HOME=%q = %v, want [fix-pr]", kiroHomeDir, result)
+		}
+	})
+
+	t.Run("multi-file skill under a relocated KIRO_HOME is reported", func(t *testing.T) {
+		kiroHomeDir := t.TempDir()
+		t.Setenv("KIRO_HOME", kiroHomeDir)
+
+		result := extractKiroSkillNames(
+			`<file name="` + filepath.ToSlash(filepath.Join(kiroHomeDir, "skills", "my-skill", "SKILL.md")) + `">content</file>`,
+		)
+
+		if len(result) != 1 || result[0] != "my-skill" {
+			t.Errorf("extractKiroSkillNames under KIRO_HOME=%q = %v, want [my-skill]", kiroHomeDir, result)
+		}
+	})
+
+	t.Run("legacy repo-local path still matches while KIRO_HOME is set", func(t *testing.T) {
+		t.Setenv("KIRO_HOME", t.TempDir())
+
+		result := extractKiroSkillNames(`<file name=".kiro/skills/fix-pr.md">content</file>`)
+
+		if len(result) != 1 || result[0] != "fix-pr" {
+			t.Errorf("extractKiroSkillNames legacy path = %v, want [fix-pr]", result)
+		}
+	})
+
+	t.Run("default home skills dir is reported when KIRO_HOME is unset", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
+		t.Setenv("KIRO_HOME", "")
+
+		result := extractKiroSkillNames(
+			`<file name="` + filepath.ToSlash(filepath.Join(home, ".kiro", "skills", "fix-pr.md")) + `">content</file>`,
+		)
+
+		if len(result) != 1 || result[0] != "fix-pr" {
+			t.Errorf("extractKiroSkillNames under default home = %v, want [fix-pr]", result)
+		}
+	})
+
+	t.Run("a path spelled with a tilde is reported", func(t *testing.T) {
+		// Kiro echoes the path the model asked for, so a tilde-spelled read never
+		// equals a reconstructed absolute root. Keying on the segment covers it.
+		result := extractKiroSkillNames(`<file name="~/.kiro/skills/fix-pr.md">content</file>`)
+
+		if len(result) != 1 || result[0] != "fix-pr" {
+			t.Errorf("extractKiroSkillNames tilde path = %v, want [fix-pr]", result)
+		}
+	})
+
+	t.Run("an arbitrary relocated root is reported without being configured", func(t *testing.T) {
+		// No KIRO_HOME set here on purpose: the pattern must not depend on the
+		// running process resolving the same root the reading session used.
+		result := extractKiroSkillNames(`<file name="/opt/kiro-profile/skills/my-skill/SKILL.md">c</file>`)
+
+		if len(result) != 1 || result[0] != "my-skill" {
+			t.Errorf("extractKiroSkillNames arbitrary root = %v, want [my-skill]", result)
+		}
+	})
+
+	t.Run("a repo's own top-level skills dir is reported too", func(t *testing.T) {
+		// Accepted consequence of keying on the segment alone. An sx vault authors
+		// its skills in a top-level skills/ directory and the vault author has
+		// those skills installed, so this read reports usage. It is a real read of
+		// a genuinely installed skill; rejecting it would mean reinstating a
+		// root-based filter, which is exactly what drops relocated-home reads.
+		for _, input := range []string{
+			`<file name="skills/fix-pr/SKILL.md">content</file>`,
+			`<file name="docs/skills/fix-pr.md">content</file>`,
+		} {
+			result := extractKiroSkillNames(input)
+			if len(result) != 1 || result[0] != "fix-pr" {
+				t.Errorf("extractKiroSkillNames(%q) = %v, want [fix-pr]", input, result)
+			}
+		}
+	})
+
+	t.Run("skills must be a whole path segment", func(t *testing.T) {
+		// The prefix is required to end in "/", so a directory that merely ends in
+		// the word "skills" is not a skills directory.
+		for _, input := range []string{
+			`<file name="noskills/my-skill/SKILL.md">content</file>`,
+			`<file name="myskills/my-skill/SKILL.md">content</file>`,
+		} {
+			if result := extractKiroSkillNames(input); result != nil {
+				t.Errorf("extractKiroSkillNames(%q) = %v, want nil", input, result)
+			}
+		}
+	})
+}
+
 // TestReportUsageFlushesQueueSynchronously is the regression test for SK-416.
 //
 // On 3/27/26, the queue flush in runReportUsage was wrapped in `go func() { ... }()`
