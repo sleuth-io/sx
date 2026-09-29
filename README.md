@@ -305,7 +305,7 @@ See [docs/library.md](docs/library.md) for the full API guide.
 | Gemini (CLI/VS Code)    | ✅ Supported   | Skills, rules, commands, MCP servers, hooks               |
 | Gemini (JetBrains)      | ✅ Supported   | Rules, MCP servers only (no commands/hooks)               |
 | Gemini (Android Studio) | ✅ Supported   | Rules, MCP-remote only (HTTP, no stdio)                   |
-| Kiro                    | ✅ Supported   | Skills, rules, commands, MCP servers                      |
+| Kiro                    | ✅ Supported   | Skills, rules, commands, agents, MCP servers, hooks       |
 | Openclaw                | ✅ Supported   | Skills, rules, commands                                   |
 | OpenCode                | ✅ Supported   | Skills, commands, agents, rules, MCP servers              |
 | claude.ai (web)         | ✅ Supported   | Via the [skills.new cloud relay](docs/cloud-relay.md)     |
