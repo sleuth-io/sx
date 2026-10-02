@@ -232,3 +232,74 @@ func TestURLHash(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveHomeEnv(t *testing.T) {
+	homeDir, _ := os.UserHomeDir()
+	const envName = "SX_TEST_HOME_ENV"
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		value   string // ignored when unset is true
+		unset   bool
+		want    string
+		wantSet bool
+	}{
+		{
+			name:    "unset falls back to home, set=false",
+			unset:   true,
+			want:    homeDir,
+			wantSet: false,
+		},
+		{
+			name:    "blank value counts as unset",
+			value:   "   ",
+			want:    homeDir,
+			wantSet: false,
+		},
+		{
+			name:    "absolute value is the root, set=true",
+			value:   "/opt/profile",
+			want:    "/opt/profile",
+			wantSet: true,
+		},
+		{
+			name:    "tilde is expanded",
+			value:   "~/work",
+			want:    filepath.Join(homeDir, "work"),
+			wantSet: true,
+		},
+		{
+			name:    "relative value is made absolute",
+			value:   "rel/dir",
+			want:    filepath.Join(cwd, "rel", "dir"),
+			wantSet: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.unset {
+				t.Setenv(envName, "placeholder")
+				_ = os.Unsetenv(envName)
+			} else {
+				t.Setenv(envName, tt.value)
+			}
+
+			got, set, err := ResolveHomeEnv(envName)
+			if err != nil {
+				t.Fatalf("ResolveHomeEnv() error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("ResolveHomeEnv() path = %q, want %q", got, tt.want)
+			}
+			if set != tt.wantSet {
+				t.Errorf("ResolveHomeEnv() set = %v, want %v", set, tt.wantSet)
+			}
+		})
+	}
+}

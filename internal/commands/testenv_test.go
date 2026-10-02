@@ -43,6 +43,11 @@ func NewTestEnv(t *testing.T) *TestEnv {
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
 	t.Setenv("SX_CONFIG_DIR", filepath.Join(homeDir, ".config", "sx"))
 	t.Setenv("SX_CACHE_DIR", filepath.Join(homeDir, ".cache", "sx"))
+	// KIROCREW_HOME is read straight from the environment by the kirocrew
+	// client, so a developer's own value would survive the HOME redirect above
+	// and point detection at their real crew root. Blank counts as unset, which
+	// sends resolution back to the sandboxed HOME.
+	t.Setenv("KIROCREW_HOME", "")
 
 	// Create directories for Claude Code, GitHub Copilot, Gemini, and Kiro
 	for _, dir := range []string{homeDir, claudeDir, copilotDir, geminiDir, kiroDir} {

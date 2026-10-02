@@ -1,10 +1,7 @@
 package handlers
 
 import (
-	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/sleuth-io/sx/v2/internal/utils"
 )
@@ -22,21 +19,12 @@ import (
 // path is always absolute. This governs global scope only; repo and path scopes
 // stay rooted at a repo root and never consult KIRO_HOME.
 func GlobalConfigDir() (string, error) {
-	if raw := strings.TrimSpace(os.Getenv("KIRO_HOME")); raw != "" {
-		expanded, err := utils.ExpandTilde(raw)
-		if err != nil {
-			return "", fmt.Errorf("cannot expand KIRO_HOME %q: %w", raw, err)
-		}
-		abs, err := filepath.Abs(expanded)
-		if err != nil {
-			return "", fmt.Errorf("cannot resolve KIRO_HOME %q: %w", raw, err)
-		}
-		return abs, nil
-	}
-
-	home, err := os.UserHomeDir()
+	base, set, err := utils.ResolveHomeEnv("KIRO_HOME")
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ConfigDir), nil
+	if set {
+		return base, nil
+	}
+	return filepath.Join(base, ConfigDir), nil
 }

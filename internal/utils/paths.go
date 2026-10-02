@@ -29,6 +29,34 @@ func ExpandTilde(path string) (string, error) {
 	return path, nil
 }
 
+// ResolveHomeEnv resolves a client's config-root override environment variable
+// (e.g. KIRO_HOME, KIROCREW_HOME) to an absolute path. It reports whether the
+// variable was set so the caller can decide how to treat the result — a set
+// value already IS the root, whereas the fallback is only the base the caller
+// joins its own config segment onto.
+//
+// When name is set (non-empty after trimming) its value is tilde-expanded and
+// made absolute, and set is true. When unset or blank, path is the user's home
+// directory and set is false. A blank or whitespace-only value counts as unset.
+func ResolveHomeEnv(name string) (path string, set bool, err error) {
+	if raw := strings.TrimSpace(os.Getenv(name)); raw != "" {
+		expanded, err := ExpandTilde(raw)
+		if err != nil {
+			return "", false, fmt.Errorf("cannot expand %s %q: %w", name, raw, err)
+		}
+		abs, err := filepath.Abs(expanded)
+		if err != nil {
+			return "", false, fmt.Errorf("cannot resolve %s %q: %w", name, raw, err)
+		}
+		return abs, true, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", false, fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	return home, false, nil
+}
+
 // NormalizePath normalizes a file path, expanding tilde and cleaning it
 func NormalizePath(path string) (string, error) {
 	expanded, err := ExpandTilde(path)
