@@ -244,7 +244,7 @@ func TestResolveHomeEnv(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		value   string // "" means unset the var entirely
+		value   string // ignored when unset is true
 		unset   bool
 		want    string
 		wantSet bool
