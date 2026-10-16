@@ -190,12 +190,17 @@ func installMCPServerFromConfig(homeDir string, config *bootstrap.MCPServerConfi
 		serverConfig["env"] = envMap
 	}
 
-	// Always install to ~/.copilot/mcp-config.json (Copilot CLI)
-	copilotDir := filepath.Join(homeDir, ".copilot")
+	// Always install to the Copilot CLI config dir's mcp-config.json. The
+	// config root honors COPILOT_HOME; the VS Code mirror below stays under the
+	// home dir, which COPILOT_HOME does not relocate.
+	copilotDir, err := handlers.GlobalConfigDir()
+	if err != nil {
+		return err
+	}
 	if err := handlers.AddCopilotCLIMCPServer(copilotDir, config.Name, serverConfig); err != nil {
 		return err
 	}
-	log.Info("MCP server installed", "server", config.Name, "location", "~/.copilot/mcp-config.json")
+	log.Info("MCP server installed", "server", config.Name, "location", filepath.Join(copilotDir, "mcp-config.json"))
 
 	// Also install to ~/.vscode/mcp.json if .vscode/ exists (VS Code Copilot)
 	// This is optional - VS Code users get MCP support, but failure here shouldn't block Copilot CLI
@@ -346,12 +351,16 @@ func removeHooksWithPrefix(hooks []CopilotHookEntry, subcommands ...string) []Co
 func uninstallMCPServerByName(homeDir, name string) error {
 	log := logger.Get()
 
-	// Remove from ~/.copilot/mcp-config.json (Copilot CLI)
-	copilotDir := filepath.Join(homeDir, ".copilot")
+	// Remove from the Copilot CLI config dir's mcp-config.json. The config root
+	// honors COPILOT_HOME; the VS Code mirror below stays under the home dir.
+	copilotDir, err := handlers.GlobalConfigDir()
+	if err != nil {
+		return err
+	}
 	if err := handlers.RemoveCopilotCLIMCPServer(copilotDir, name); err != nil {
 		return err
 	}
-	log.Info("MCP server uninstalled", "server", name, "location", "~/.copilot/mcp-config.json")
+	log.Info("MCP server uninstalled", "server", name, "location", filepath.Join(copilotDir, "mcp-config.json"))
 
 	// Also remove from ~/.vscode/mcp.json if it exists (VS Code Copilot)
 	vscodeDir := filepath.Join(homeDir, ".vscode")

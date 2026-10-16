@@ -18,6 +18,7 @@ import (
 	"github.com/sleuth-io/sx/v2/internal/buildinfo"
 	"github.com/sleuth-io/sx/v2/internal/cache"
 	"github.com/sleuth-io/sx/v2/internal/clients"
+	copilothandlers "github.com/sleuth-io/sx/v2/internal/clients/github_copilot/handlers"
 	"github.com/sleuth-io/sx/v2/internal/config"
 	"github.com/sleuth-io/sx/v2/internal/gitutil"
 	"github.com/sleuth-io/sx/v2/internal/lockfile"
@@ -328,7 +329,11 @@ func getClientDirectory(clientID string) string {
 	case clients.ClientIDGemini:
 		return filepath.Join(home, ".gemini")
 	case clients.ClientIDGitHubCopilot:
-		return filepath.Join(home, ".copilot")
+		dir, err := copilothandlers.GlobalConfigDir()
+		if err != nil {
+			return ""
+		}
+		return dir
 	case clients.ClientIDOpenClaw:
 		return filepath.Join(home, ".openclaw")
 	case clients.ClientIDOpenCode:

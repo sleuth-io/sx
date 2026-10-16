@@ -565,6 +565,12 @@ func TestReportUsageFlushesQueueSynchronously(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
+	// Neutralize COPILOT_HOME for every test in this package, including those
+	// that build their own sandbox without NewTestEnv. Left set, an exported
+	// value would redirect global Copilot installs into the developer's real
+	// directory and break the hand-sandboxed integration tests.
+	os.Unsetenv("COPILOT_HOME")
+
 	// Run tests
 	os.Exit(m.Run())
 }

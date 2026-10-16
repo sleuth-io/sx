@@ -50,15 +50,15 @@ func (c *Client) IsInstalled() bool {
 	return c.hasCopilotCLIConfig() || c.getVSCodeCopilotExtensionVersion() != ""
 }
 
-// hasCopilotCLIConfig checks if the ~/.copilot directory exists.
-// This directory is created when Copilot CLI is installed or configured.
+// hasCopilotCLIConfig checks if the Copilot CLI config directory exists.
+// This directory is created when Copilot CLI is installed or configured. It
+// honors COPILOT_HOME so a relocated config root is detected too.
 func (c *Client) hasCopilotCLIConfig() bool {
-	home, err := os.UserHomeDir()
+	configDir, err := handlers.GlobalConfigDir()
 	if err != nil {
 		return false
 	}
 
-	configDir := filepath.Join(home, handlers.ConfigDir)
 	if stat, err := os.Stat(configDir); err == nil {
 		return stat.IsDir()
 	}
@@ -275,11 +275,12 @@ func (c *Client) UninstallAssets(ctx context.Context, req clients.UninstallReque
 // configure the chat.agentSkillsLocations setting in VS Code to include the subdirectory
 // path (e.g., "src/backend/.github/skills").
 func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error) {
-	home, _ := os.UserHomeDir()
-
+	// COPILOT_HOME is resolved only inside the arms that use it, so an
+	// unresolvable value never fails a repo- or path-scoped install that does
+	// not consult it.
 	switch scope.Type {
 	case clients.ScopeGlobal:
-		return filepath.Join(home, handlers.ConfigDir), nil
+		return handlers.GlobalConfigDir()
 	case clients.ScopeRepository:
 		if scope.RepoRoot == "" {
 			return "", errors.New("repo-scoped install requires RepoRoot but none provided (not in a git repository?)")
@@ -293,7 +294,7 @@ func (c *Client) determineTargetBase(scope *clients.InstallScope) (string, error
 		}
 		return filepath.Join(scope.RepoRoot, scope.Path, ".github"), nil
 	default:
-		return filepath.Join(home, handlers.ConfigDir), nil
+		return handlers.GlobalConfigDir()
 	}
 }
 
@@ -333,11 +334,11 @@ func (c *Client) determineCLIMCPConfig(scope *clients.InstallScope) (path string
 	case clients.ScopeGlobal:
 		fallthrough
 	default:
-		home, err := os.UserHomeDir()
+		configDir, err := handlers.GlobalConfigDir()
 		if err != nil {
 			return "", false
 		}
-		return filepath.Join(home, handlers.ConfigDir, "mcp-config.json"), false
+		return filepath.Join(configDir, "mcp-config.json"), false
 	}
 }
 
@@ -459,6 +460,15 @@ func (c *Client) VerifyAssets(ctx context.Context, assets []*lockfile.Asset, sco
 			result.Message = fmt.Sprintf("cannot determine target directory: %v", err)
 			results = append(results, result)
 			continue
+		}
+
+		if a.Type == asset.TypeMCP && scope.Type == clients.ScopeGlobal {
+			if _, err := handlers.GlobalConfigDir(); err != nil {
+				result.Installed = false
+				result.Message = fmt.Sprintf("cannot resolve Copilot config directory: %v", err)
+				results = append(results, result)
+				continue
+			}
 		}
 
 		handler, err := handlers.NewHandler(a.Type, &metadata.Metadata{

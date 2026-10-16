@@ -48,6 +48,9 @@ func NewTestEnv(t *testing.T) *TestEnv {
 	// and point detection at their real crew root. Blank counts as unset, which
 	// sends resolution back to the sandboxed HOME.
 	t.Setenv("KIROCREW_HOME", "")
+	// COPILOT_HOME is read the same way by the github_copilot client; blank
+	// counts as unset and sends resolution back to the sandboxed HOME.
+	t.Setenv("COPILOT_HOME", "")
 
 	// Create directories for Claude Code, GitHub Copilot, Gemini, and Kiro
 	for _, dir := range []string{homeDir, claudeDir, copilotDir, geminiDir, kiroDir} {
