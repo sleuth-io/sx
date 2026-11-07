@@ -331,8 +331,10 @@ func addFromZipSource(ctx context.Context, cmd *cobra.Command, out *outputHelper
 	// Handle install: auto-run if --yes, prompt if interactive, skip if --no-install
 	if opts.Yes && !opts.NoInstall {
 		out.println()
-		if err := runInstall(cmd, nil, false, "", false, "", "", false, false); err != nil {
-			out.printfErr("Install failed: %v\n", err)
+		if err := addInstallFn(cmd, nil, false, "", false, "", "", false, false); err != nil {
+			// The asset is in the vault, but a script running `sx add --yes`
+			// must see that it did not install (issue 243).
+			return fmt.Errorf("asset added, but install failed: %w", err)
 		}
 	} else if !opts.NoInstall && !opts.isNonInteractive() {
 		promptRunInstall(cmd, ctx, out)
@@ -340,6 +342,10 @@ func addFromZipSource(ctx context.Context, cmd *cobra.Command, out *outputHelper
 
 	return nil
 }
+
+// addInstallFn runs the install that follows `sx add --yes`. A variable so
+// tests can make the install fail without a broken vault.
+var addInstallFn = runInstall
 
 // configureExistingAsset handles configuring scope for an asset that already exists in the vault
 func configureExistingAsset(ctx context.Context, cmd *cobra.Command, out *outputHelper, status *components.Status, assetName string, opts addOptions) error {
